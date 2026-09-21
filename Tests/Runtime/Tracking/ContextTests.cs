@@ -1,0 +1,382 @@
+using System;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace Emas.Tests
+{
+    /// <summary>Exercises identity, automatic ghost creation and query behavior.</summary>
+    public sealed class ContextTests
+    {
+        private Context _context;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _context = new Context();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _context.Dispose();
+        }
+
+        /// <summary>Different kinds may use the same source identifier.</summary>
+        [Test]
+        public void SameEntityIdAcrossKinds_CreatesTwoGhosts()
+        {
+            var first = new TestCoordinator(new Kind("vehicles.car"));
+            var second = new TestCoordinator(new Kind("vehicles.aircraft"));
+            _context.CreateOriginFor("simulation", first, second);
+
+            first.Publish("42", new Variant("car"));
+            second.Publish("42", new Variant("aircraft"));
+            _context.Update();
+
+            Assert.That(_context.Query().Count, Is.EqualTo(2));
+            Assert.That(_context.Query().OfKind(first.Kind).Count, Is.EqualTo(1));
+            Assert.That(_context.Query().OfKind(second.Kind).Count, Is.EqualTo(1));
+        }
+
+        /// <summary>Prepared ghosts remain unavailable until the source initializes them.</summary>
+        [Test]
+        public void Prepare_IsUnavailableUntilCoordinatorUsesIt()
+        {
+            var kind = new Kind("vehicles.car");
+            _context.CreateOriginFor("simulation");
+            var prepared = _context.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
+            Assert.That(prepared.IsAvailable, Is.False);
+            Assert.That(_context.Query().Count, Is.EqualTo(0));
+
+            var coordinator = new TestCoordinator(kind);
+            _context.CreateOriginFor("simulation", coordinator);
+            var initialized = coordinator.Publish("42", new Variant("car"));
+            _context.Update();
+
+            Assert.That(initialized, Is.SameAs(prepared));
+            Assert.That(initialized.IsAvailable, Is.True);
+            Assert.That(_context.Query().OfKind(kind).With<ITestPart>().Count, Is.EqualTo(1));
+        }
+
+        /// <summary>Subscriptions report current and later available matches once each.</summary>
+        [Test]
+        public void Subscription_ReportsCurrentAndLateGhost()
+        {
+            var kind = new Kind("vehicles.car");
+            var coordinator = new TestCoordinator(kind);
+            _context.CreateOriginFor("simulation", coordinator);
+            coordinator.Publish("1", new Variant("one"));
+            _context.Update();
+
+            var calls = 0;
+            var subscription = _context.Query().OfKind(kind).OnAvailable(ghost => calls++);
+            Assert.That(calls, Is.EqualTo(1));
+
+            coordinator.Publish("2", new Variant("two"));
+            _context.Update();
+            Assert.That(calls, Is.EqualTo(2));
+
+            _context.Update();
+            Assert.That(calls, Is.EqualTo(2));
+            subscription.Dispose();
+        }
+
+        /// <summary>Partial names and interfaces combine as filters.</summary>
+        [Test]
+        public void Query_CombinesNameKindAndPartFilters()
+        {
+            var kind = new Kind("vehicles.car");
+            var coordinator = new TestCoordinator(kind);
+            _context.CreateOriginFor("simulation", coordinator);
+            coordinator.Publish("1", new Variant("Small Car"));
+            _context.Update();
+
+            var result = _context.Query("1")
+                .OfKind(kind)
+                .InOrigin("simulation")
+                .With<ITestPart>()
+                .WithExactName("1");
+
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(result.Single().Name, Is.EqualTo("1"));
+        }
+
+        /// <summary>Empty queries return safe empty results.</summary>
+        [Test]
+        public void EmptyQuery_ReturnsEmptyAndNullFirst()
+        {
+            Assert.That(_context.Query("missing").Count, Is.EqualTo(0));
+            Assert.That(_context.Query("missing").FirstOrDefault(), Is.Null);
+        }
+
+        /// <summary>Single rejects a result that is not unique.</summary>
+        [Test]
+        public void Single_ThrowsWhenNoMatchExists()
+        {
+            Assert.Throws<InvalidOperationException>(() => _context.Query().Single());
+        }
+
+        /// <summary>Default ghost kinds are rejected by filters and registration paths.</summary>
+        [Test]
+        public void InvalidKind_IsRejected()
+        {
+            Assert.Throws<ArgumentException>(() => _context.Query().OfKind(default(Kind)));
+        }
+
+        /// <summary>Reuses a query description against a different context.</summary>
+        [Test]
+        public void QueryDescription_CanBeReusedAcrossContexts()
+        {
+            var kind = new Kind("vehicles.car");
+            var description = _context.Query().OfKind(kind).With<ITestPart>();
+            using (var other = new Context())
+            {
+                Assert.That(other.Query(description).Count, Is.EqualTo(0));
+            }
+        }
+
+        /// <summary>Rejects a ghost object that belongs to another context.</summary>
+        [Test]
+        public void Manifest_DoesNotAcceptEqualKeyFromAnotherContext()
+        {
+            var kind = new Kind("vehicles.car");
+            var firstCoordinator = new TestCoordinator(kind);
+            var secondContext = new Context();
+            try
+            {
+                _context.CreateOriginFor("simulation", firstCoordinator);
+                var firstGhost = firstCoordinator.Publish("42", new Variant("small-car"));
+                _context.Update();
+
+                var secondCoordinator = new TestCoordinator(kind);
+                secondContext.CreateOriginFor("simulation", secondCoordinator);
+                secondCoordinator.Publish("42", new Variant("small-car"));
+                secondContext.Update();
+
+                Assert.That(_context.Manifest(secondCoordinator.LastPublished), Is.Null);
+                Assert.That(firstGhost, Is.Not.Null);
+            }
+            finally
+            {
+                secondContext.Dispose();
+            }
+        }
+
+        /// <summary>Allows coordinators to expose source display names to partial-name queries.</summary>
+        [Test]
+        public void NamedPublication_IsAvailableToNameQueries()
+        {
+            var kind = new Kind("vehicles.car");
+            var coordinator = new TestCoordinator(kind);
+            _context.CreateOriginFor("simulation", coordinator);
+            coordinator.PublishNamed("42", "Car 42", new Variant("small-car"));
+            _context.Update();
+
+            Assert.That(_context.Query("car").Count, Is.EqualTo(1));
+            Assert.That(_context.Query().WithExactName("CAR 42").Count, Is.EqualTo(1));
+        }
+
+        /// <summary>Notifies a subscription again after replacement and reinitialization.</summary>
+        [Test]
+        public void Subscription_ReportsReplacementRecovery()
+        {
+            var kind = new Kind("vehicles.car");
+            var first = new TestCoordinator(kind);
+            var origin = _context.CreateOriginFor("simulation", first);
+            first.Publish("42", new Variant("small-car"));
+            _context.Update();
+
+            var calls = 0;
+            var subscription = _context.Query().OfKind(kind).OnAvailable(ghost => calls++);
+            var replacement = new TestCoordinator(kind);
+            origin.ReplaceCoordinator(first, replacement);
+            replacement.Publish("42", new Variant("small-car"));
+            _context.Update();
+
+            Assert.That(calls, Is.EqualTo(2));
+            subscription.Dispose();
+        }
+
+        /// <summary>Removes prepared records when their origin is removed.</summary>
+        [Test]
+        public void RemovingOrigin_RemovesPreparedIdentity()
+        {
+            var kind = new Kind("vehicles.car");
+            _context.CreateOriginFor("simulation");
+            var prepared = _context.Prepare<TestGhost>("simulation", kind, "42");
+            _context.RemoveOrigin("simulation");
+
+            var coordinator = new TestCoordinator(kind);
+            _context.CreateOriginFor("simulation", coordinator);
+            var discovered = coordinator.Publish("42", Variant.None);
+            _context.Update();
+
+            Assert.That(discovered, Is.Not.SameAs(prepared));
+            Assert.That(discovered.IsAvailable, Is.True);
+        }
+
+        /// <summary>Sets a named display value without changing the typed appearance.</summary>
+        [Test]
+        public void NamedPublication_CanRetainVariantWhenOmitted()
+        {
+            var kind = new Kind("vehicles.car");
+            var coordinator = new TestCoordinator(kind);
+            _context.CreateOriginFor("simulation", coordinator);
+            coordinator.PublishNamed("42", "Car 42", new Variant("small-car"));
+            coordinator.PublishNamed("42", "Car 42 updated", null);
+            _context.Update();
+
+            Assert.That(_context.Query().WithVariant(new Variant("small-car")).Count, Is.EqualTo(1));
+            Assert.That(_context.Query().WithExactName("Car 42 updated").Count, Is.EqualTo(1));
+        }
+        /// <summary>Removes a requested view for None while retaining the available ghost.</summary>
+        [Test]
+        public void ManifestNone_RemovesViewButRetainsGhost()
+        {
+            var kind = new Kind("vehicles.car");
+            var ghostTemplate = new GameObject("Ghost Template");
+            var viewPrefab = new GameObject("Car View");
+            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            try
+            {
+                ghostTemplate.SetActive(false);
+                ghostTemplate.AddComponent<TestGhost>();
+                viewPrefab.SetActive(false);
+                blueprint.Configure(
+                    kind,
+                    ghostTemplate.GetComponent<TestGhost>(),
+                    new[]
+                    {
+                        new Blueprint.ViewMapping(new Variant("small-car"), DetailLevel.Full, viewPrefab),
+                        new Blueprint.ViewMapping(new Variant("small-car"), DetailLevel.Minimal, viewPrefab)
+                    },
+                    null);
+                _context.RegisterBlueprint(blueprint);
+
+                var coordinator = new TestCoordinator(kind);
+                _context.CreateOriginFor("simulation", coordinator);
+                var ghost = coordinator.Publish("42", new Variant("small-car"));
+                _context.Update();
+
+                var view = _context.Manifest(ghost);
+                Assert.That(view, Is.Not.Null);
+                _context.SetDegree(ghost, DetailLevel.Minimal);
+                Assert.That(_context.Manifest(ghost), Is.SameAs(view));
+                Assert.That(view.Degree, Is.EqualTo(DetailLevel.Minimal));
+
+                _context.Manifest(ghost, DetailLevel.None);
+                Assert.That(_context.Query().OfKind(kind).Count, Is.EqualTo(1));
+                Assert.That(_context.Manifest(ghost, DetailLevel.None), Is.Null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(ghostTemplate);
+                UnityEngine.Object.DestroyImmediate(viewPrefab);
+            }
+        }
+
+        /// <summary>Replaces a selected child view when a live ghost changes variant.</summary>
+        [Test]
+        public void VariantChange_ReplacesRequestedView()
+        {
+            var kind = new Kind("vehicles.car");
+            var ghostTemplate = new GameObject("Ghost Template");
+            var smallView = new GameObject("Small View");
+            var largeView = new GameObject("Large View");
+            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            try
+            {
+                ghostTemplate.SetActive(false);
+                ghostTemplate.AddComponent<TestGhost>();
+                smallView.SetActive(false);
+                largeView.SetActive(false);
+                blueprint.Configure(
+                    kind,
+                    ghostTemplate.GetComponent<TestGhost>(),
+                    new[]
+                    {
+                        new Blueprint.ViewMapping(new Variant("small-car"), DetailLevel.Full, smallView),
+                        new Blueprint.ViewMapping(new Variant("large-car"), DetailLevel.Full, largeView)
+                    },
+                    null);
+                _context.RegisterBlueprint(blueprint);
+
+                var coordinator = new TestCoordinator(kind);
+                _context.CreateOriginFor("simulation", coordinator);
+                var ghost = coordinator.Publish("42", new Variant("small-car"));
+                _context.Update();
+                _context.Manifest(ghost);
+
+                coordinator.Publish("42", new Variant("large-car"));
+                var replacement = _context.Manifest(ghost);
+                Assert.That(replacement, Is.Not.Null);
+                Assert.That(replacement.gameObject.name, Is.EqualTo("Large View"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(ghostTemplate);
+                UnityEngine.Object.DestroyImmediate(smallView);
+                UnityEngine.Object.DestroyImmediate(largeView);
+            }
+        }
+
+        /// <summary>Discards dispatched work from a coordinator registration that was replaced.</summary>
+        [Test]
+        public void Dispatch_FromStoppedRegistrationIsDiscarded()
+        {
+            var coordinator = new DispatchCoordinator();
+            var origin = _context.CreateOriginFor("simulation", coordinator);
+            var calls = 0;
+            coordinator.QueueAction(() => calls++);
+            origin.ReplaceCoordinator(coordinator, new TestCoordinator(new Kind("vehicles.car")));
+            _context.Update();
+
+            Assert.That(calls, Is.EqualTo(0));
+        }
+        private interface ITestPart
+        {
+        }
+
+        private sealed class TestGhost : Ghost, ITestPart
+        {
+        }
+
+        private sealed class DispatchCoordinator : Coordinator
+        {
+            internal void QueueAction(Action action)
+            {
+                Dispatch(action);
+            }
+        }
+        private sealed class TestCoordinator : Coordinator
+        {
+            internal TestCoordinator(Kind kind)
+            {
+                Kind = kind;
+            }
+
+            internal Kind Kind { get; private set; }
+
+            internal TestGhost LastPublished
+            {
+                get { return _lastPublished; }
+            }
+
+            internal TestGhost Publish(string entityId, Variant variant)
+            {
+                _lastPublished = GetOrCreate<TestGhost>(entityId, Kind, variant);
+                return _lastPublished;
+            }
+
+            internal TestGhost PublishNamed(string entityId, string name, Variant? variant)
+            {
+                _lastPublished = GetOrCreate<TestGhost>(entityId, Kind, variant, name);
+                return _lastPublished;
+            }
+
+            private TestGhost _lastPublished;
+        }
+    }
+}

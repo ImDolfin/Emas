@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Emas: Context, Ghosts and Optional Views",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1390,
+      700
+    ],
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "Coordination / behavior"
+        },
+        "frontend": {
+          "label": "Scene / application"
+        },
+        "database": {
+          "label": "Blueprint asset"
+        },
+        "external": {
+          "label": "External source"
+        }
+      }
+    },
+    "views": [
+      {
+        "id": "discovery",
+        "label": "Discovery",
+        "focus": [
+          "network",
+          "coordinator",
+          "context",
+          "ghost",
+          "origin"
+        ],
+        "note": "Coordinators publish via GetOrCreate<TGhost>. Context creates roots beneath the origin and activates them after initialization."
+      },
+      {
+        "id": "query-and-view",
+        "label": "Query + views",
+        "focus": [
+          "application",
+          "context",
+          "ghost",
+          "blueprint",
+          "view"
+        ],
+        "note": "Queries match available ghosts only. The context owns Manifest, Demanifest and view refresh; the view is a child of the ghost."
+      },
+      {
+        "id": "root-behaviors",
+        "label": "Root behavior",
+        "focus": [
+          "ghost",
+          "behaviors",
+          "view"
+        ],
+        "note": "Demanifest destroys only the view. Root components continue while the ghost is available and active."
+      },
+      {
+        "id": "update-phases",
+        "label": "Update phases",
+        "focus": [
+          "coordinator",
+          "context",
+          "ghost",
+          "view",
+          "application"
+        ],
+        "note": "Apply source changes, activate initialized roots, refresh views, then notify. Dispatch handles at most 256 queued actions per update."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "network",
+      "type": "external",
+      "label": "External source",
+      "sublabel": "Application SDK / simulation",
+      "pos": [
+        40,
+        305
+      ],
+      "size": [
+        180,
+        80
+      ]
+    },
+    {
+      "id": "coordinator",
+      "type": "backend",
+      "label": "Coordinator",
+      "sublabel": "Application source integration",
+      "pos": [
+        330,
+        305
+      ],
+      "size": [
+        180,
+        80
+      ]
+    },
+    {
+      "id": "context",
+      "type": "backend",
+      "label": "Context",
+      "sublabel": "Ghosts / views / availability",
+      "pos": [
+        620,
+        305
+      ],
+      "size": [
+        180,
+        80
+      ]
+    },
+    {
+      "id": "ghost",
+      "type": "frontend",
+      "label": "Ghost",
+      "sublabel": "Identity + root components",
+      "pos": [
+        910,
+        305
+      ],
+      "size": [
+        180,
+        80
+      ]
+    },
+    {
+      "id": "view",
+      "type": "frontend",
+      "label": "View",
+      "sublabel": "Context-managed view child",
+      "pos": [
+        1200,
+        305
+      ],
+      "size": [
+        180,
+        80
+      ]
+    },
+    {
+      "id": "application",
+      "type": "frontend",
+      "label": "Application",
+      "sublabel": "Context.Default or isolated",
+      "pos": [
+        620,
+        65
+      ],
+      "size": [
+        180,
+        80
+      ]
+    },
+    {
+      "id": "blueprint",
+      "type": "database",
+      "label": "Blueprint",
+      "sublabel": "Ghost prefab + view mappings",
+      "pos": [
+        1200,
+        65
+      ],
+      "size": [
+        180,
+        80
+      ]
+    },
+    {
+      "id": "origin",
+      "type": "frontend",
+      "label": "Origin",
+      "sublabel": "Scene frame + coordinators",
+      "pos": [
+        620,
+        545
+      ],
+      "size": [
+        180,
+        80
+      ]
+    },
+    {
+      "id": "behaviors",
+      "type": "backend",
+      "label": "Root behaviors",
+      "sublabel": "Movement / application logic",
+      "pos": [
+        910,
+        545
+      ],
+      "size": [
+        180,
+        80
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "source-data",
+      "from": "network",
+      "to": "coordinator",
+      "label": "Read data",
+      "variant": "emphasis"
+    },
+    {
+      "id": "publish",
+      "from": "coordinator",
+      "to": "context",
+      "label": "GetOrCreate<T>",
+      "variant": "emphasis"
+    },
+    {
+      "id": "create-root",
+      "from": "context",
+      "to": "ghost",
+      "label": "Create / reuse",
+      "variant": "emphasis"
+    },
+    {
+      "id": "view-child",
+      "from": "ghost",
+      "to": "view",
+      "label": "Parents view",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api",
+      "from": "application",
+      "to": "context",
+      "label": "Query / Manifest",
+      "labelDy": 90
+    },
+    {
+      "id": "select",
+      "from": "blueprint",
+      "to": "view",
+      "label": "Variant + degree",
+      "labelDy": 90
+    },
+    {
+      "id": "own-origin",
+      "from": "context",
+      "to": "origin",
+      "label": "Owns lifetime",
+      "labelDy": 90
+    },
+    {
+      "id": "root-parts",
+      "from": "ghost",
+      "to": "behaviors",
+      "label": "Root components",
+      "labelDy": 90
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Availability and identity",
+      "items": [
+        "Queries return available ghosts only.",
+        "Key = origin ID + kind + entity ID."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Blueprint selection",
+      "items": [
+        "Kind selects the ghost prefab.",
+        "View: exact, highest lower, then fallback."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "One ordered update",
+      "items": [
+        "Apply source data; activate initialized roots.",
+        "Refresh requested views; notify matches."
+      ]
+    }
+  ]
+}

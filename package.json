@@ -1,0 +1,30 @@
+{
+  "name": "com.emas.core",
+  "version": "0.1.0",
+  "displayName": "Emas",
+  "description": "Emas: entity tracking and optional views for Unity.",
+  "unity": "2022.3",
+  "unityRelease": "0f1",
+  "documentationUrl": "Documentation~/GettingStarted.md",
+  "changelogUrl": "CHANGELOG.md",
+  "licensesUrl": "",
+  "keywords": [
+    "entity",
+    "views",
+    "simulation"
+  ],
+  "author": {
+    "name": "Emas",
+    "email": "",
+    "url": ""
+  },
+  "type": "library",
+  "dependencies": {},
+  "samples": [
+    {
+      "displayName": "Emas sample",
+      "description": "A source-independent vehicle and aircraft discovery example.",
+      "path": "Samples~/Example"
+    }
+  ]
+}

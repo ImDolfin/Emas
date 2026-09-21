@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Emas: Availability, Views and Recovery",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      566
+    ]
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Ghost and view lifetime"
+    },
+    {
+      "id": "recovery",
+      "label": "Availability loss"
+    }
+  ],
+  "states": [
+    {
+      "id": "created",
+      "type": "start",
+      "label": "Root created",
+      "sublabel": "Inactive; not queryable",
+      "lane": "main",
+      "col": 0
+    },
+    {
+      "id": "initializing",
+      "type": "active",
+      "label": "Initializing",
+      "sublabel": "Coordinator populates data",
+      "lane": "main",
+      "col": 1
+    },
+    {
+      "id": "available",
+      "type": "active",
+      "label": "Available ghost",
+      "sublabel": "Queryable; root active",
+      "lane": "main",
+      "col": 2
+    },
+    {
+      "id": "visible",
+      "type": "active",
+      "label": "View attached",
+      "sublabel": "Available + visual child",
+      "lane": "main",
+      "col": 3
+    },
+    {
+      "id": "removed",
+      "type": "neutral",
+      "label": "Removed",
+      "sublabel": "Root + view destroyed",
+      "lane": "main",
+      "col": 4
+    },
+    {
+      "id": "unavailable",
+      "type": "failure",
+      "label": "Unavailable",
+      "sublabel": "Root retained; inactive",
+      "lane": "recovery",
+      "col": 0,
+      "yOffset": 90
+    }
+  ],
+  "transitions": [
+    {
+      "id": "populate",
+      "from": "created",
+      "to": "initializing",
+      "label": "GetOrCreate<T>",
+      "labelDy": 65
+    },
+    {
+      "id": "finalize",
+      "from": "initializing",
+      "to": "available",
+      "label": "Finalize",
+      "labelDy": -40
+    },
+    {
+      "id": "manifest-view",
+      "from": "available",
+      "to": "visible",
+      "label": "Manifest",
+      "labelDy": 60
+    },
+    {
+      "id": "remove",
+      "from": "visible",
+      "to": "removed",
+      "label": "Remove / cleanup",
+      "labelDy": 65
+    },
+    {
+      "id": "demanifest",
+      "from": "visible",
+      "to": "available",
+      "label": "Demanifest / degree 0",
+      "route": "top-channel"
+    },
+    {
+      "id": "lose-availability",
+      "from": "available",
+      "to": "unavailable",
+      "label": "Replace / failure",
+      "labelDy": 110
+    },
+    {
+      "id": "recover",
+      "from": "unavailable",
+      "to": "available",
+      "label": "Republish + finalize",
+      "route": "left-channel",
+      "channelX": 325,
+      "labelDy": 65
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Optional view",
+      "items": [
+        "Manifest needs an available ghost and a prefab.",
+        "Demanifest removes only the child view."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Availability and cleanup",
+      "items": [
+        "Loss and recovery apply with or without a view.",
+        "Removal destroys root + view from any state."
+      ]
+    }
+  ]
+}
