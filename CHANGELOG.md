@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Made all Emas APIs main-thread-only and removed internal thread synchronization; applications now own SDK event handoff. Deferred callbacks, ordering and lifecycle protection remain.
+
 - Added read-only source health (`IsAttached`, `IsActive`, `LastError`) and copied anchor/source snapshots, with generation-safe failure reporting.
 - Added passive diagnostics and Blueprint/SceneSetup Inspectors sharing runtime validation; optional ghost prefabs no longer produce warnings.
 - Made example contracts read-only; expanded source replacement and cleanup demonstrations, integration guidance and Unity regression coverage.

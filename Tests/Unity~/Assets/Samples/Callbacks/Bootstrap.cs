@@ -4,6 +4,7 @@ using UnityEngine;
 namespace Emas.Callbacks
 {
     /// <summary>Connects SDK events and their unsubscribe action to Inspector-configured tracking.</summary>
+    /// <remarks>This simulated feed raises events on Unity's main thread. SDK adapters must deliver events on that thread before calling Emas.</remarks>
     public sealed class Bootstrap : MonoBehaviour
     {
         private SimulatedFeed _feed;

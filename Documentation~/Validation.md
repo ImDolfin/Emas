@@ -33,8 +33,8 @@ Verified on **2026-09-22**, package **0.1.0**, Windows Mono:
 
 No failed or skipped tests in the completed suites. Unity 2022 used the prepared repository project; Unity 6 used an isolated copy of its Assets, Packages and ProjectSettings. The repository project remains on Unity 2022.3.
 
-Coverage includes source status and primary-error retention, startup/update/dispatch failures, cleanup, stale callbacks and restart, replacement recovery, read-only snapshots, shared Inspector validation and passive diagnostics. Player tests exercise both quick starts and the larger example: views, explicit removal, disable/re-enable cleanup, interface consumption and stable identities across replacement. EditMode checks also detect differences between shipped and imported samples.
+Coverage includes main-thread callback deferral and FIFO ordering, source status and primary-error retention, startup/update/dispatch failures, cleanup, stale callbacks and restart, replacement recovery, read-only snapshots, shared Inspector validation and passive diagnostics. Player tests exercise both quick starts and the larger example: views, explicit removal, disable/re-enable cleanup, interface consumption and stable identities across replacement. EditMode checks also detect differences between shipped and imported samples.
 
 A fresh Unity 2022.3 consuming project imported all three samples through Package Manager with its manifest unchanged and no `testables` entry. All **3 sample smoke tests passed**. Package test opt-in remains separate from ordinary installation.
 
-Reports and logs from this run are in the ignored `Tests/Unity~/TestResults/Completion/` directory. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.
+The latest suite reports are in the ignored `Tests/Unity~/TestResults/MainThread/` directory; fresh-install reports are in `Tests/Unity~/TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.

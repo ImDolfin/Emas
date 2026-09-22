@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using System.Threading;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -149,42 +148,37 @@ namespace Emas.Tests
             Assert.That(ghost.Variant, Is.EqualTo(new Variant("retained")));
         }
 
-        /// <summary>Worker events run selectors and mapping only on the update thread.</summary>
+        /// <summary>Main-thread events defer selectors and mapping, preserving publication/removal order.</summary>
         [Test]
-        public void Dispatch_MarshalsWorkerCallbacksAndPreservesOrder()
+        public void Dispatch_DefersCallbacksAndPreservesOrder()
         {
             var feed = new Feed();
-            var threads = new List<int>();
-            var values = new List<int>();
-            var updateThread = Thread.CurrentThread.ManagedThreadId;
+            var calls = new List<string>();
+            var ghosts = new List<Probe>();
             var source = Source(feed)
-                .IdentifyBy(item => { threads.Add(Thread.CurrentThread.ManagedThreadId); return item.Id; })
-                .WithVariant(item => { threads.Add(Thread.CurrentThread.ManagedThreadId); return item.Variant; })
-                .Apply((item, ghost) => { threads.Add(Thread.CurrentThread.ManagedThreadId); values.Add(item.Value); });
+                .IdentifyBy(item => { calls.Add("identify:" + item.Value); return item.Id; })
+                .WithVariant(item => { calls.Add("variant:" + item.Value); return item.Variant; })
+                .Apply((item, ghost) =>
+                {
+                    calls.Add("apply:" + item.Value);
+                    ghosts.Add(ghost);
+                    ghost.Value = item.Value;
+                });
             _realm.GetOrCreateAnchor("callbacks", source);
-            Exception failure = null;
-            var worker = new Thread(() =>
-            {
-                try
-                {
-                    feed.Publish(new Item("a", 1));
-                    feed.Remove("a");
-                    feed.Publish(new Item("a", 2));
-                }
-                catch (Exception exception)
-                {
-                    failure = exception;
-                }
-            });
-            worker.Start();
-            Assert.That(worker.Join(5000), Is.True);
-            Assert.That(failure, Is.Null);
-            Assert.That(threads, Is.Empty);
+            feed.Publish(new Item("a", 1));
+            feed.Remove("a");
+            feed.Publish(new Item("a", 2));
+            Assert.That(calls, Is.Empty);
             Assert.That(_realm.Query().Count, Is.Zero);
             _realm.Update();
-            Assert.That(values, Is.EqualTo(new[] { 1, 2 }));
-            Assert.That(threads, Is.All.EqualTo(updateThread));
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
+            Assert.That(calls, Is.EqualTo(new[]
+            {
+                "identify:1", "variant:1", "apply:1",
+                "identify:2", "variant:2", "apply:2"
+            }));
+            Assert.That(ghosts[1], Is.Not.SameAs(ghosts[0]), "Removal must occur before the second publication.");
+            Assert.That(_realm.Query().Single(), Is.SameAs(ghosts[1]));
+            Assert.That(ghosts[1].Value, Is.EqualTo(2));
         }
 
         /// <summary>Callback events share the realm budget and nested publication waits another update.</summary>

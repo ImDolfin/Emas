@@ -7,7 +7,8 @@ namespace Emas
     /// <summary>Publishes individual source changes and explicit removals through the realm update queue.</summary>
     /// <typeparam name="TSource">The source item type.</typeparam>
     /// <typeparam name="TGhost">The application ghost component.</typeparam>
-    /// <remarks>Configure while detached on the Unity thread. Published items must remain unchanged until processed; copy mutable SDK data before publishing.</remarks>
+    /// <remarks>All calls, including publish/remove callbacks, require Unity's main thread; the application handles SDK threading.
+    /// Configure while detached. Published items must remain unchanged until processed; copy mutable SDK data before publishing.</remarks>
     public sealed class CallbackPresenceSource<TSource, TGhost> : PresenceSource where TGhost : Ghost
     {
         private readonly Kind _kind;
@@ -68,7 +69,7 @@ namespace Emas
         }
 
         /// <summary>Sets the subscription started when tracking begins and its cleanup action.</summary>
-        /// <param name="subscribe">Receives publish and remove-by-ID callbacks, callable from any thread. Returns an unsubscribe action, or null if cleanup is unnecessary.</param>
+        /// <param name="subscribe">Receives publish and remove-by-ID callbacks that must be called on Unity's main thread. Returns an unsubscribe action, or null if cleanup is unnecessary.</param>
         /// <returns>This source for further configuration.</returns>
         /// <remarks>Subscription and cleanup run on the Unity thread. Initial items may be published during subscription; all events are deferred. Undo partial subscriptions before throwing. The SDK client remains application-owned.</remarks>
         /// <exception cref="ArgumentNullException">The callback is null.</exception>
@@ -176,7 +177,7 @@ namespace Emas
         {
             if (IsRegistration(realm, generation))
             {
-                // Keep the subscription's generation even if stop/restart races with enqueueing.
+                // Keep the subscription's generation so queued events cannot enter a later attachment.
                 realm.Dispatch(this, generation, action);
             }
         }

@@ -1,6 +1,6 @@
 # API reference
 
-Runtime APIs use the `Emas` namespace. All operations use the Unity thread except callback-source publish/remove delegates and protected `Dispatch`. `Realm.Default` is updated automatically by Unity; an isolated `Realm` implements `IDisposable` and advances through explicit `Update()`.
+Runtime APIs use the `Emas` namespace. All operations require Unity's main thread, including callback-source publish/remove delegates and protected `Dispatch`. Applications handle SDK threading before calling Emas; Emas provides no thread synchronization or marshalling. `Realm.Default` is updated automatically by Unity; an isolated `Realm` implements `IDisposable` and advances through explicit `Update()`.
 
 ## Fast integration
 
@@ -21,8 +21,8 @@ For callbacks, configure `.IdentifyBy(idSelector)`, `.Apply(copyData)` and `.Lis
 
 | Callback contract | Behavior |
 | --- | --- |
-| Configuration | Locked while attached, including after failure, and during subscription startup |
-| Scheduling | Any thread can publish; all events use the bounded FIFO queue. Selectors and mapping run on a later realm update |
+| Configuration | Change only while detached and outside subscription startup; a failed attached source remains unconfigurable |
+| Scheduling | Publish/remove on Unity's main thread; all events use the bounded FIFO queue. Selectors and mapping run on a later realm update |
 | Identity | Repeated IDs update the same ghost; unknown removals do nothing; untouched entities remain |
 | Lifetime | Subscribe once per attachment; cleanup once on stop, including interrupted startup. Old callbacks cannot affect a restarted registration |
 | Failure | Null items, empty/null IDs or selector/mapping exceptions stop the source, unsubscribe, retain unavailable ghosts and discard queued work. Cleanup exceptions are logged and retained when no primary failure exists |
@@ -59,7 +59,7 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddSource`, `RemoveSource`, `Re
 | `OnStart`, `OnUpdate`, `OnStop` | Override lifecycle hooks; cleanup runs once for a started attachment, including startup failure |
 | `GetOrCreate<TGhost>(entityId, kind, variant = null)` | Obtain a stable owned ghost; another overload accepts a display name |
 | `Remove(kind, entityId)` | Remove one owned ghost |
-| `Dispatch(action)` | Queue main-thread source work; stopped/stale registrations cannot execute it |
+| `Dispatch(action)` | Defer source work from the main thread to a later update; stopped/stale registrations cannot execute it |
 | `OwnedGhosts` | Snapshot of owned ghosts, including unavailable ones |
 | `IGhost.Key`, `Name`, `Variant`, `IsAvailable` | Read identity, label, appearance and availability |
 | `IGhost.TryGet<T>(out part)` | Resolve a root component contract; excludes view children and rejects ambiguous providers |

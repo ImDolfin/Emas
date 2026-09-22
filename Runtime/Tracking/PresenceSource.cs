@@ -4,11 +4,10 @@ using System.Collections.Generic;
 namespace Emas
 {
     /// <summary>Base class for one network or simulation integration.</summary>
-    /// <remarks>Attach through an Anchor on the Unity thread. Sources own ghost data, not SDK clients.
-    /// Lifecycle hooks and mapping run on the realm update thread; only Dispatch and callback-source publications accept worker calls.</remarks>
+    /// <remarks>Use all source operations on Unity's main thread. The application handles SDK threading before calling Emas.
+    /// Attach through an Anchor. Sources own ghost data, not SDK clients.</remarks>
     public abstract class PresenceSource
     {
-        private readonly object _registrationLock = new object();
         private Anchor _anchor;
         private bool _started;
         private long _registrationGeneration;
@@ -103,21 +102,19 @@ namespace Emas
             }
         }
 
-        /// <summary>Queues an action for a bounded batch on the Emas update thread.</summary>
+        /// <summary>Defers an action to a bounded batch in a later realm update.</summary>
         /// <param name="action">The action to execute on the Unity thread; null is ignored.</param>
-        /// <remarks>May be called from worker threads. Stopped/detached calls are ignored; actions queued during an update wait until a later update.
+        /// <remarks>Call only on Unity's main thread. This defers work; it does not transfer work between threads.
+        /// Stopped/detached calls are ignored; actions queued during an update wait until a later update.
         /// Up to 256 queued actions run per update across the realm.
         /// Custom sources must invalidate old SDK callbacks in OnStop before reattachment; CallbackPresenceSource handles subscription generations automatically.</remarks>
         protected void Dispatch(Action action)
         {
-            lock (_registrationLock)
+            if (_anchor == null || !_started)
             {
-                if (_anchor == null || !_started)
-                {
-                    return;
-                }
-                _anchor.Realm.Dispatch(this, _registrationGeneration, action);
+                return;
             }
+            _anchor.Realm.Dispatch(this, _registrationGeneration, action);
         }
 
         /// <summary>Gets whether this registration is starting or accepting updates.</summary>
@@ -126,10 +123,7 @@ namespace Emas
         {
             get
             {
-                lock (_registrationLock)
-                {
-                    return _started;
-                }
+                return _started;
             }
         }
 
@@ -138,10 +132,7 @@ namespace Emas
         {
             get
             {
-                lock (_registrationLock)
-                {
-                    return _anchor != null;
-                }
+                return _anchor != null;
             }
         }
 
@@ -152,21 +143,15 @@ namespace Emas
         {
             get
             {
-                lock (_registrationLock)
-                {
-                    return _lastError;
-                }
+                return _lastError;
             }
         }
 
         internal void RecordError(Exception exception, long generation)
         {
-            lock (_registrationLock)
+            if (_registrationGeneration == generation && _lastError == null)
             {
-                if (_registrationGeneration == generation && _lastError == null)
-                {
-                    _lastError = exception;
-                }
+                _lastError = exception;
             }
         }
 
@@ -174,44 +159,32 @@ namespace Emas
         {
             get
             {
-                lock (_registrationLock)
-                {
-                    return _registrationGeneration;
-                }
+                return _registrationGeneration;
             }
         }
 
         internal bool IsAttachedTo(Anchor anchor)
         {
-            lock (_registrationLock)
-            {
-                return _anchor == anchor;
-            }
+            return _anchor == anchor;
         }
 
         internal bool IsRegistration(Realm realm, long generation)
         {
-            lock (_registrationLock)
-            {
-                return _started && _anchor != null && _anchor.Realm == realm
-                    && _registrationGeneration == generation;
-            }
+            return _started && _anchor != null && _anchor.Realm == realm
+                && _registrationGeneration == generation;
         }
 
         internal void Attach(Anchor anchor)
         {
             anchor.ThrowIfDisposed();
-            lock (_registrationLock)
+            if (_anchor != null)
             {
-                if (_anchor != null)
-                {
-                    throw new InvalidOperationException("The source is already attached to an anchor.");
-                }
-                _anchor = anchor;
-                _registrationGeneration++;
-                _lastError = null;
-                _started = true;
+                throw new InvalidOperationException("The source is already attached to an anchor.");
             }
+            _anchor = anchor;
+            _registrationGeneration++;
+            _lastError = null;
+            _started = true;
             var generation = RegistrationGeneration;
             try
             {
@@ -275,16 +248,12 @@ namespace Emas
 
         private void StopAfterFailure(long generation)
         {
-            Anchor anchor;
-            lock (_registrationLock)
+            if (!_started || _registrationGeneration != generation)
             {
-                if (!_started || _registrationGeneration != generation)
-                {
-                    return;
-                }
-                _started = false;
-                anchor = _anchor;
+                return;
             }
+            _started = false;
+            var anchor = _anchor;
             if (anchor != null)
             {
                 anchor.Realm.MarkUnavailable(this);
@@ -303,12 +272,8 @@ namespace Emas
         internal void Detach()
         {
             var generation = RegistrationGeneration;
-            bool wasStarted;
-            lock (_registrationLock)
-            {
-                wasStarted = _started;
-                _started = false;
-            }
+            var wasStarted = _started;
+            _started = false;
             try
             {
                 if (wasStarted)
@@ -323,10 +288,7 @@ namespace Emas
             }
             finally
             {
-                lock (_registrationLock)
-                {
-                    _anchor = null;
-                }
+                _anchor = null;
             }
         }
     }

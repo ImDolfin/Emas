@@ -31,7 +31,7 @@ Newly queued actions wait for a later update. The budget limits action count, no
 
 Successful startup outside an update finalizes directly populated ghosts immediately. Callback-source startup queues its initial publications for a later update. Variant changes and explicit view requests inside source/finalization callbacks defer refresh until source data is complete. Explicit requests outside those phases retain immediate behavior.
 
-`Realm.Default` provides an automatically updated default realm. An isolated realm uses explicit `Update()` instead. Unity object operations belong on the main thread; SDK callbacks use source `Dispatch`.
+`Realm.Default` provides an automatically updated default realm. An isolated realm uses explicit `Update()` instead. All Emas calls require Unity's main thread. Applications handle SDK threading before publishing or removing entities. The queue and protected `Dispatch` defer main-thread work to later updates; Emas provides no thread synchronization or marshalling.
 
 ## Failure and cleanup
 

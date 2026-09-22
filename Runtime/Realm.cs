@@ -5,7 +5,8 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Owns anchors, ghosts, blueprints, views and query subscriptions.</summary>
-    /// <remarks>All operations use the Unity thread. Dispose isolated realms when their owner stops; Unity advances Realm.Default automatically.</remarks>
+    /// <remarks>All operations require Unity's main thread. The application handles SDK threading before calling Emas.
+    /// Dispose isolated realms when their owner stops; Unity advances Realm.Default automatically.</remarks>
     public sealed class Realm : IDisposable
     {
         /// <summary>Gets the shared realm advanced automatically by Unity.</summary>
@@ -37,7 +38,6 @@ namespace Emas
         private readonly ViewManager _views;
         private readonly SceneEffects _scene = new SceneEffects();
         private readonly Queue<DispatchItem> _dispatch = new Queue<DispatchItem>();
-        private readonly object _dispatchLock = new object();
         // Deterministic action budget: newly queued work waits for the following update.
         internal const int MaxDispatchActionsPerUpdate = 256;
         private int _sourceDepth;
@@ -338,19 +338,10 @@ namespace Emas
             _updating = true;
             try
             {
-                int dispatchCount;
-                lock (_dispatchLock)
-                {
-                    dispatchCount = Math.Min(_dispatch.Count, MaxDispatchActionsPerUpdate);
-                }
+                var dispatchCount = Math.Min(_dispatch.Count, MaxDispatchActionsPerUpdate);
                 for (var index = 0; index < dispatchCount && !_disposed; index++)
                 {
-                    DispatchItem item;
-                    if (!TryDequeue(out item))
-                    {
-                        break;
-                    }
-                    ExecuteDispatch(item);
+                    ExecuteDispatch(_dispatch.Dequeue());
                 }
                 var anchors = new List<Anchor>(_anchors.Values);
                 for (var index = 0; index < anchors.Count && !_disposed; index++)
@@ -384,15 +375,12 @@ namespace Emas
         /// <remarks>Repeated disposal is safe. Subsequent mutating operations throw ObjectDisposedException.</remarks>
         public void Dispose()
         {
-            lock (_dispatchLock)
+            if (_disposed)
             {
-                if (_disposed)
-                {
-                    return;
-                }
-                _disposed = true;
-                _dispatch.Clear();
+                return;
             }
+            _disposed = true;
+            _dispatch.Clear();
             _subscriptions.Clear();
             var anchors = new List<Anchor>(_anchors.Values);
             for (var index = 0; index < anchors.Count; index++)
@@ -434,18 +422,15 @@ namespace Emas
                 return;
             }
 
-            lock (_dispatchLock)
+            if (_disposed)
             {
-                if (_disposed)
-                {
-                    return;
-                }
-
-                _dispatch.Enqueue(new DispatchItem(
-                    source,
-                    generation,
-                    action));
+                return;
             }
+
+            _dispatch.Enqueue(new DispatchItem(
+                source,
+                generation,
+                action));
         }
 
         internal TGhost GetOrCreate<TGhost>(
@@ -621,21 +606,6 @@ namespace Emas
             }
 
             return result;
-        }
-
-        private bool TryDequeue(out DispatchItem item)
-        {
-            lock (_dispatchLock)
-            {
-                if (_dispatch.Count == 0)
-                {
-                    item = null;
-                    return false;
-                }
-
-                item = _dispatch.Dequeue();
-                return true;
-            }
         }
 
         private void ExecuteDispatch(DispatchItem item)

@@ -94,7 +94,7 @@ For interface-based consumers, query subscriptions and source replacement, impor
 
 The callback builder uses `IdentifyBy`, `Apply` and `Listen`. `Listen` receives publish/remove callbacks and returns an unsubscribe action. Publish initial data inside `Listen`; every event is deferred to a later realm update. Import **Callback quick start**, open `Callbacks.unity`, and inspect its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for complete wiring, initial population and cleanup.
 
-Keep callback payloads unchanged until processed. SDK ownership, coordinate conversion and recovery are covered in [Guidelines](Guidelines.md); exact scheduling and failure contracts are in [API](API.md).
+Call all Emas APIs, including publish/remove callbacks, on Unity's main thread. Your SDK adapter is responsible for delivering events there. Keep callback payloads unchanged until processed. SDK ownership, coordinate conversion and recovery are covered in [Guidelines](Guidelines.md); exact scheduling and failure contracts are in [API](API.md).
 
 ## Troubleshooting
 
