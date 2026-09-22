@@ -76,8 +76,8 @@ namespace Emas.Tests
             var error = Assert.Throws<InvalidOperationException>(() => setup.Track(source));
             Assert.That(error.Message, Does.Contain(missing));
             Assert.That(reads, Is.Zero);
-            Assert.That(setup.Origin, Is.Null);
-            Assert.That(_realm.ContainsOrigin("default"), Is.False);
+            Assert.That(setup.Anchor, Is.Null);
+            Assert.That(_realm.ContainsAnchor("default"), Is.False);
             source.ReadFrom(() => new[] { "a" }).IdentifyBy(id => id).Apply((item, ghost) => { });
             setup.Track(source);
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
@@ -90,7 +90,7 @@ namespace Emas.Tests
         {
             var broken = false;
             var source = Source(() => broken ? null : new[] { "a" });
-            var origin = _realm.CreateOriginFor("poll", source);
+            var anchor = _realm.CreateAnchorFor("poll", source);
             if (fail)
             {
                 broken = true;
@@ -101,10 +101,10 @@ namespace Emas.Tests
             Assert.Throws<InvalidOperationException>(() => source.IdentifyBy(id => "changed"));
             Assert.Throws<InvalidOperationException>(() => source.Apply((item, ghost) => ghost.Value = 99));
             Assert.Throws<InvalidOperationException>(() => source.WithVariant(item => new Variant("changed")));
-            origin.RemoveCoordinator(source);
+            anchor.RemoveCoordinator(source);
             source.ReadFrom(() => new[] { "b" }).IdentifyBy(id => id)
                 .Apply((item, ghost) => ghost.Value = 3).WithVariant(item => new Variant("new"));
-            origin.AddCoordinator(source);
+            anchor.AddCoordinator(source);
             var ghost = (Probe)_realm.Query().Single();
             Assert.That(ghost.Key.EntityId, Is.EqualTo("b"));
             Assert.That(ghost.Value, Is.EqualTo(3));
@@ -117,7 +117,7 @@ namespace Emas.Tests
         {
             var ids = new List<string> { "a", "b" };
             var value = 1;
-            _realm.CreateOriginFor("poll", new PollingCoordinator<string, Probe>(Population)
+            _realm.CreateAnchorFor("poll", new PollingCoordinator<string, Probe>(Population)
                 .ReadFrom(() => ids)
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) => ghost.Value = value));
@@ -141,7 +141,7 @@ namespace Emas.Tests
         public void Polling_MapsVariants()
         {
             var variant = new Variant("first");
-            _realm.CreateOriginFor("poll", new PollingCoordinator<string, Probe>(Population)
+            _realm.CreateAnchorFor("poll", new PollingCoordinator<string, Probe>(Population)
                 .ReadFrom(() => new[] { "a" })
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) => { })
@@ -157,10 +157,10 @@ namespace Emas.Tests
         public void Polling_ReplacementRemovesAbsentTransferredGhosts()
         {
             var first = Source(() => new[] { "a", "b" });
-            var origin = _realm.CreateOriginFor("poll", first);
+            var anchor = _realm.CreateAnchorFor("poll", first);
             var retained = _realm.Query("a").Single();
             var removed = _realm.Query("b").Single();
-            origin.ReplaceCoordinator(first, Source(() => new[] { "a" }));
+            anchor.ReplaceCoordinator(first, Source(() => new[] { "a" }));
             Assert.That(_realm.Query().Single(), Is.SameAs(retained));
             Assert.That(removed.IsAvailable, Is.False);
         }
@@ -177,14 +177,14 @@ namespace Emas.Tests
                 failure == "null" ? null : failure == "duplicate" ? new[] { "a", "a" } :
                 failure == "empty-id" ? new[] { "" } : BrokenSnapshot();
             var source = Source(read);
-            var origin = _realm.CreateOriginFor("poll", source);
+            var anchor = _realm.CreateAnchorFor("poll", source);
             var retained = _realm.Query("a").Single();
             fail = true;
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException"));
             _realm.Update();
             Assert.That(_realm.GetOwnedGhosts(source).Count, Is.EqualTo(2));
             Assert.That(retained.IsAvailable, Is.False);
-            origin.ReplaceCoordinator(source, Source(() => new[] { "a" }));
+            anchor.ReplaceCoordinator(source, Source(() => new[] { "a" }));
             Assert.That(_realm.Query().Single(), Is.SameAs(retained));
         }
 
@@ -203,7 +203,7 @@ namespace Emas.Tests
                         throw new InvalidOperationException("mapper failed");
                     }
                 });
-            _realm.CreateOriginFor("poll", source);
+            _realm.CreateAnchorFor("poll", source);
             fail = true;
             LogAssert.Expect(LogType.Exception, new Regex("mapper failed"));
             _realm.Update();
@@ -213,7 +213,7 @@ namespace Emas.Tests
 
         /// <summary>A mapper can end its own registration without publishing remaining entries.</summary>
         [Test]
-        public void Polling_CanRemoveOriginDuringMapping()
+        public void Polling_CanRemoveAnchorDuringMapping()
         {
             var remove = false;
             var source = new PollingCoordinator<string, Probe>(Population)
@@ -223,10 +223,10 @@ namespace Emas.Tests
                 {
                     if (remove)
                     {
-                        _realm.RemoveOrigin("poll");
+                        _realm.RemoveAnchor("poll");
                     }
                 });
-            _realm.CreateOriginFor("poll", source);
+            _realm.CreateAnchorFor("poll", source);
             remove = true;
             _realm.Update();
             Assert.That(_realm.Query().Count, Is.Zero);
@@ -237,22 +237,22 @@ namespace Emas.Tests
         public void Setup_DisableCleansUpAndAllowsRestart()
         {
             var setup = CreateSetup();
-            var origin = setup.Track(Source(() => new[] { "a" }));
-            Assert.That(setup.Origin, Is.SameAs(origin));
-            Assert.That(origin.Transform.parent, Is.EqualTo(setup.transform));
+            var anchor = setup.Track(Source(() => new[] { "a" }));
+            Assert.That(setup.Anchor, Is.SameAs(anchor));
+            Assert.That(anchor.Transform.parent, Is.EqualTo(setup.transform));
             setup.enabled = false;
-            Assert.That(setup.Origin, Is.Null);
+            Assert.That(setup.Anchor, Is.Null);
             Assert.That(_realm.Query().Count, Is.Zero);
             Assert.Throws<InvalidOperationException>(() => setup.Track());
             setup.enabled = true;
-            Assert.That(setup.Track(Source(() => new[] { "b" })), Is.Not.SameAs(origin));
+            Assert.That(setup.Track(Source(() => new[] { "b" })), Is.Not.SameAs(anchor));
         }
 
-        /// <summary>Setup refuses to take over another owner's origin.</summary>
+        /// <summary>Setup refuses to take over another owner's anchor.</summary>
         [Test]
         public void Setup_RejectsDuplicateOwnershipAndRepeatedStart()
         {
-            var existing = _realm.CreateOriginFor("default", Source(() => new[] { "a" }));
+            var existing = _realm.CreateAnchorFor("default", Source(() => new[] { "a" }));
             var setup = CreateSetup();
             Assert.Throws<InvalidOperationException>(() => setup.Track());
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
@@ -282,14 +282,14 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Count, Is.Zero);
         }
 
-        /// <summary>Bad configuration does not create an origin.</summary>
+        /// <summary>Bad configuration does not create an anchor.</summary>
         [Test]
         public void Setup_ValidatesBlueprintsBeforeStarting()
         {
             var setup = CreateSetup();
             SetField(setup, "_blueprints", new Blueprint[] { null });
             Assert.Throws<InvalidOperationException>(() => setup.Track());
-            Assert.That(_realm.ContainsOrigin("default"), Is.False);
+            Assert.That(_realm.ContainsAnchor("default"), Is.False);
         }
 
         /// <summary>A startup exception rolls back the scene owner's population.</summary>
@@ -298,8 +298,8 @@ namespace Emas.Tests
         {
             var setup = CreateSetup();
             Assert.Throws<InvalidOperationException>(() => setup.Track(Source(() => null)));
-            Assert.That(setup.Origin, Is.Null);
-            Assert.That(_realm.ContainsOrigin("default"), Is.False);
+            Assert.That(setup.Anchor, Is.Null);
+            Assert.That(_realm.ContainsAnchor("default"), Is.False);
             Assert.That(setup.Track(Source(() => new[] { "a" })), Is.Not.Null);
         }
 
@@ -313,8 +313,8 @@ namespace Emas.Tests
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) => setup.enabled = false);
             Assert.Throws<InvalidOperationException>(() => setup.Track(source));
-            Assert.That(setup.Origin, Is.Null);
-            Assert.That(_realm.ContainsOrigin("default"), Is.False);
+            Assert.That(setup.Anchor, Is.Null);
+            Assert.That(_realm.ContainsAnchor("default"), Is.False);
         }
 
         /// <summary>A view activation callback can disable setup without leaving views or subscriptions alive.</summary>
@@ -335,9 +335,9 @@ namespace Emas.Tests
             StopSetupWhenEnabled.Target = setup;
             publish = true;
             _realm.Update();
-            Assert.That(setup.Origin, Is.Null);
+            Assert.That(setup.Anchor, Is.Null);
             Assert.That(_realm.Query().Count, Is.Zero);
-            Assert.That(_realm.ContainsOrigin("default"), Is.False);
+            Assert.That(_realm.ContainsAnchor("default"), Is.False);
         }
 
         private sealed class StopSetupWhenEnabled : MonoBehaviour
@@ -363,7 +363,7 @@ namespace Emas.Tests
             owner.AddComponent<EarlyBootstrap>();
             var setup = owner.AddComponent<SceneSetup>();
             owner.SetActive(true);
-            Assert.That(setup.Origin, Is.Not.Null);
+            Assert.That(setup.Anchor, Is.Not.Null);
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
         }
 

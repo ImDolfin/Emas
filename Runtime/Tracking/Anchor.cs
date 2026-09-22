@@ -5,19 +5,19 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Represents one scene coordinate frame and its coordinators.</summary>
-    public sealed class Origin : IDisposable
+    public sealed class Anchor : IDisposable
     {
         private readonly List<Coordinator> _coordinators = new List<Coordinator>();
         private readonly GameObject _gameObject;
         private bool _disposed;
 
-        internal Origin(Realm realm, string id, Transform frame)
+        internal Anchor(Realm realm, string id, Transform frame)
         {
             Realm = realm;
             Id = id;
-            _gameObject = new GameObject("[Emas Origin] " + id);
+            _gameObject = new GameObject("[Emas Anchor] " + id);
             Transform = _gameObject.transform;
-            var lifetime = _gameObject.AddComponent<OriginLifetime>();
+            var lifetime = _gameObject.AddComponent<AnchorLifetime>();
             lifetime.Initialize(this);
             if (frame != null)
             {
@@ -26,15 +26,15 @@ namespace Emas
         }
 
         /// <summary>Gets the owning realm.</summary>
-        /// <value>The realm that owns this origin.</value>
+        /// <value>The realm that owns this anchor.</value>
         public Realm Realm { get; private set; }
 
-        /// <summary>Gets the stable origin identifier.</summary>
-        /// <value>The exact origin identifier.</value>
+        /// <summary>Gets the stable anchor identifier.</summary>
+        /// <value>The exact anchor identifier.</value>
         public string Id { get; private set; }
 
-        /// <summary>Gets the scene transform for this origin.</summary>
-        /// <value>The origin scene transform.</value>
+        /// <summary>Gets the scene transform for this anchor.</summary>
+        /// <value>The anchor scene transform.</value>
         public Transform Transform { get; private set; }
 
         /// <summary>Adds and starts a coordinator.</summary>
@@ -54,7 +54,7 @@ namespace Emas
 
             if (coordinator.IsAttached)
             {
-                throw new InvalidOperationException("The coordinator is already attached to an origin.");
+                throw new InvalidOperationException("The coordinator is already attached to an anchor.");
             }
             var previous = Realm.CaptureGhosts();
             _coordinators.Add(coordinator);
@@ -109,7 +109,7 @@ namespace Emas
             var index = _coordinators.IndexOf(current);
             if (index < 0)
             {
-                throw new InvalidOperationException("The current coordinator is not attached to this origin.");
+                throw new InvalidOperationException("The current coordinator is not attached to this anchor.");
             }
 
             if (current == replacement)
@@ -119,7 +119,7 @@ namespace Emas
 
             if (_coordinators.Contains(replacement) || replacement.IsAttached)
             {
-                throw new InvalidOperationException("The replacement coordinator is already registered with an origin.");
+                throw new InvalidOperationException("The replacement coordinator is already registered with an anchor.");
             }
 
             _coordinators[index] = replacement;
@@ -158,7 +158,7 @@ namespace Emas
             }
         }
 
-        /// <summary>Stops the origin and destroys its scene objects.</summary>
+        /// <summary>Stops the anchor and destroys its scene objects.</summary>
         public void Dispose()
         {
             if (_disposed)
@@ -170,7 +170,7 @@ namespace Emas
             var coordinators = new List<Coordinator>(_coordinators);
             _coordinators.Clear();
             // Remove registration and records before scene callbacks can reenter the realm.
-            Realm.NotifyOriginDisposed(this);
+            Realm.NotifyAnchorDisposed(this);
             for (var index = coordinators.Count - 1; index >= 0; index--)
             {
                 try
@@ -194,26 +194,26 @@ namespace Emas
             Realm.ThrowIfDisposed();
             if (_disposed)
             {
-                throw new ObjectDisposedException(nameof(Origin));
+                throw new ObjectDisposedException(nameof(Anchor));
             }
         }
 
-        private sealed class OriginLifetime : MonoBehaviour
+        private sealed class AnchorLifetime : MonoBehaviour
         {
-            private Origin _origin;
+            private Anchor _anchor;
 
-            internal void Initialize(Origin origin)
+            internal void Initialize(Anchor anchor)
             {
-                _origin = origin;
+                _anchor = anchor;
             }
 
             private void OnDestroy()
             {
-                var origin = _origin;
-                _origin = null;
-                if (origin != null)
+                var anchor = _anchor;
+                _anchor = null;
+                if (anchor != null)
                 {
-                    origin.Realm.NotifyOriginDestroyed(origin);
+                    anchor.Realm.NotifyAnchorDestroyed(anchor);
                 }
             }
         }

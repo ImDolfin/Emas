@@ -13,7 +13,7 @@ The imported scene is under `Assets/Samples/Emas/0.1.0/Quick start/`. The [sampl
 ## Connect your source
 
 1. Write a `Ghost` subclass with the data or behavior your application needs. Put its `Kind` constant on that class.
-2. Add **Emas > Scene Setup** to a scene object. Give it a unique origin ID, assign blueprints, and enable **Automatic Views** if wanted.
+2. Add **Emas > Scene Setup** to a scene object. Give it a unique anchor ID, assign blueprints, and enable **Automatic Views** if wanted.
 3. Call `Track` from your bootstrap's `OnEnable`:
 
 ```csharp
@@ -28,7 +28,7 @@ GetComponent<SceneSetup>().Track(
 
 **Return a complete snapshot each time.** An empty collection removes the population. Null, duplicate/empty IDs or an exception stop that source and retain its existing ghosts as unavailable. A partial/delta feed must use a custom `Coordinator` instead.
 
-`SceneSetup` registers its blueprints, creates the origin under its transform and requests views for configured kinds. Disabling it removes its origin, ghosts, views and subscription. Re-enable and call `Track` again to restart; toggling the sample's whole Tracking object does this through its bootstrap. Blueprint registrations remain shared realm configuration.
+`SceneSetup` registers its blueprints, creates the anchor under its transform and requests views for configured kinds. Disabling it removes its anchor, ghosts, views and subscription. Re-enable and call `Track` again to restart; toggling the sample's whole Tracking object does this through its bootstrap. Blueprint registrations remain shared realm configuration.
 
 ## Optional features
 
@@ -37,7 +37,7 @@ GetComponent<SceneSetup>().Track(
 | Data-only tracking | Leave blueprints empty; views and custom interfaces are optional |
 | Consume available entities | `Realm.Default.Query().OfKind(Car.Kind)` |
 | SDK push callbacks or delta updates | Subclass `Coordinator`; marshal worker callbacks through `Dispatch` |
-| Explicit lifetime or update control | Use `Realm` and `CreateOriginFor` directly |
+| Explicit lifetime or update control | Use `Realm` and `CreateAnchorFor` directly |
 | Multiple sources and replacement | Import the **Emas sample** and open its `Scenes/Example.unity` |
 
 Unity advances the default realm automatically. Do not also call `Update()` every frame. See [API](API.md) for contracts and [architecture](Architecture.md) for update order and cleanup.

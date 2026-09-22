@@ -7,7 +7,7 @@ namespace Emas
 
     public abstract class Ghost : MonoBehaviour, IGhost
     {
-        [SerializeField] private string _originId;
+        [SerializeField] private string _anchorId;
         [SerializeField] private string _entityId;
         [SerializeField] private string _kindId;
         [SerializeField] private string _name;
@@ -20,7 +20,7 @@ namespace Emas
             get
             {
                 var kind = string.IsNullOrEmpty(_kindId) ? default(Kind) : new Kind(_kindId);
-                return new Key(_originId, kind, _entityId);
+                return new Key(_anchorId, kind, _entityId);
             }
         }
 
@@ -76,7 +76,7 @@ namespace Emas
         /// <param name="variantValue">The visual variant.</param>
         internal void Initialize(Key key, string nameValue, Variant variantValue)
         {
-            _originId = key.OriginId;
+            _anchorId = key.AnchorId;
             _entityId = key.EntityId;
             _kindId = key.Kind.Id;
             _name = nameValue ?? key.EntityId;

@@ -73,7 +73,7 @@ namespace Emas
         {
             if (IsAttached || _polling)
             {
-                throw new InvalidOperationException("Configure polling callbacks before attaching the coordinator to an origin.");
+                throw new InvalidOperationException("Configure polling callbacks before attaching the coordinator to an anchor.");
             }
         }
 

@@ -7,17 +7,17 @@ namespace Emas
     public abstract class Coordinator
     {
         private readonly object _registrationLock = new object();
-        private Origin _origin;
+        private Anchor _anchor;
         private bool _started;
         private long _registrationGeneration;
 
-        /// <summary>Gets the origin currently hosting this coordinator.</summary>
-        /// <value>The attached origin, or null while detached.</value>
-        protected Origin Origin
+        /// <summary>Gets the anchor currently hosting this coordinator.</summary>
+        /// <value>The attached anchor, or null while detached.</value>
+        protected Anchor Anchor
         {
             get
             {
-                return _origin;
+                return _anchor;
             }
         }
 
@@ -27,7 +27,7 @@ namespace Emas
         {
             get
             {
-                return _origin == null ? new List<IGhost>() : _origin.GetOwnedGhosts(this);
+                return _anchor == null ? new List<IGhost>() : _anchor.GetOwnedGhosts(this);
             }
         }
 
@@ -66,12 +66,12 @@ namespace Emas
         /// <returns>The stable ghost component.</returns>
         protected TGhost GetOrCreate<TGhost>(string entityId, Kind kind, Variant? variant, string name) where TGhost : Ghost
         {
-            if (_origin == null || !_started)
+            if (_anchor == null || !_started)
             {
-                throw new InvalidOperationException("The coordinator is not active on an origin.");
+                throw new InvalidOperationException("The coordinator is not active on an anchor.");
             }
-            _origin.ThrowIfDisposed();
-            return _origin.Realm.GetOrCreate<TGhost>(this, _origin.Id, entityId, kind, variant, name);
+            _anchor.ThrowIfDisposed();
+            return _anchor.Realm.GetOrCreate<TGhost>(this, _anchor.Id, entityId, kind, variant, name);
         }
 
         /// <summary>Removes one ghost owned by this coordinator.</summary>
@@ -79,10 +79,10 @@ namespace Emas
         /// <param name="entityId">The source entity ID.</param>
         protected void Remove(Kind kind, string entityId)
         {
-            if (_origin != null && _started)
+            if (_anchor != null && _started)
             {
-                _origin.ThrowIfDisposed();
-                _origin.Realm.RemoveGhost(this, new Key(_origin.Id, kind, entityId));
+                _anchor.ThrowIfDisposed();
+                _anchor.Realm.RemoveGhost(this, new Key(_anchor.Id, kind, entityId));
             }
         }
 
@@ -93,11 +93,11 @@ namespace Emas
         {
             lock (_registrationLock)
             {
-                if (_origin == null || !_started)
+                if (_anchor == null || !_started)
                 {
                     return;
                 }
-                _origin.Realm.Dispatch(this, _registrationGeneration, action);
+                _anchor.Realm.Dispatch(this, _registrationGeneration, action);
             }
         }
 
@@ -118,7 +118,7 @@ namespace Emas
             {
                 lock (_registrationLock)
                 {
-                    return _origin != null;
+                    return _anchor != null;
                 }
             }
         }
@@ -134,11 +134,11 @@ namespace Emas
             }
         }
 
-        internal bool IsAttachedTo(Origin origin)
+        internal bool IsAttachedTo(Anchor anchor)
         {
             lock (_registrationLock)
             {
-                return _origin == origin;
+                return _anchor == anchor;
             }
         }
 
@@ -146,36 +146,36 @@ namespace Emas
         {
             lock (_registrationLock)
             {
-                return _started && _origin != null && _origin.Realm == realm
+                return _started && _anchor != null && _anchor.Realm == realm
                     && _registrationGeneration == generation;
             }
         }
 
-        internal void Attach(Origin origin)
+        internal void Attach(Anchor anchor)
         {
-            origin.ThrowIfDisposed();
+            anchor.ThrowIfDisposed();
             lock (_registrationLock)
             {
-                if (_origin != null)
+                if (_anchor != null)
                 {
-                    throw new InvalidOperationException("The coordinator is already attached to an origin.");
+                    throw new InvalidOperationException("The coordinator is already attached to an anchor.");
                 }
-                _origin = origin;
+                _anchor = anchor;
                 _registrationGeneration++;
                 _started = true;
             }
             var generation = RegistrationGeneration;
             try
             {
-                origin.Realm.ApplySourceChanges(OnStart);
-                if (IsRegistration(origin.Realm, generation))
+                anchor.Realm.ApplySourceChanges(OnStart);
+                if (IsRegistration(anchor.Realm, generation))
                 {
-                    origin.Realm.FinalizeCoordinator(this);
+                    anchor.Realm.FinalizeCoordinator(this);
                 }
             }
             catch
             {
-                if (IsAttachedTo(origin) && RegistrationGeneration == generation)
+                if (IsAttachedTo(anchor) && RegistrationGeneration == generation)
                 {
                     StopAfterFailure();
                 }
@@ -185,23 +185,23 @@ namespace Emas
 
         internal void Tick()
         {
-            var origin = _origin;
+            var anchor = _anchor;
             var generation = RegistrationGeneration;
-            if (origin == null || !IsRegistration(origin.Realm, generation))
+            if (anchor == null || !IsRegistration(anchor.Realm, generation))
             {
                 return;
             }
             try
             {
-                origin.Realm.ApplySourceChanges(OnUpdate);
-                if (IsRegistration(origin.Realm, generation))
+                anchor.Realm.ApplySourceChanges(OnUpdate);
+                if (IsRegistration(anchor.Realm, generation))
                 {
-                    origin.Realm.FinalizeCoordinator(this);
+                    anchor.Realm.FinalizeCoordinator(this);
                 }
             }
             catch (Exception exception)
             {
-                if (IsRegistration(origin.Realm, generation))
+                if (IsRegistration(anchor.Realm, generation))
                 {
                     HandleFailure(exception);
                 }
@@ -224,7 +224,7 @@ namespace Emas
 
         private void StopAfterFailure()
         {
-            Origin origin;
+            Anchor anchor;
             lock (_registrationLock)
             {
                 if (!_started)
@@ -232,11 +232,11 @@ namespace Emas
                     return;
                 }
                 _started = false;
-                origin = _origin;
+                anchor = _anchor;
             }
-            if (origin != null)
+            if (anchor != null)
             {
-                origin.Realm.MarkUnavailable(this);
+                anchor.Realm.MarkUnavailable(this);
             }
             try
             {
@@ -267,7 +267,7 @@ namespace Emas
             {
                 lock (_registrationLock)
                 {
-                    _origin = null;
+                    _anchor = null;
                 }
             }
         }

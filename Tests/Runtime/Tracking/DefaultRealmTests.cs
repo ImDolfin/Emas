@@ -31,7 +31,7 @@ namespace Emas.Tests
         {
             var realm = Realm.Default;
             var source = new CountingSource();
-            var origin = realm.CreateOriginFor("tests.default", source);
+            var anchor = realm.CreateAnchorFor("tests.default", source);
             try
             {
                 yield return null;
@@ -41,7 +41,7 @@ namespace Emas.Tests
             }
             finally
             {
-                origin.Dispose();
+                anchor.Dispose();
             }
         }
 

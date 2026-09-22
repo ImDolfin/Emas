@@ -7,7 +7,7 @@ namespace Emas
     public interface IGhost
     {
         /// <summary>Gets the stable ghost key.</summary>
-        /// <value>The origin, kind and entity identity.</value>
+        /// <value>The anchor, kind and entity identity.</value>
         Key Key { get; }
 
         /// <summary>Gets the display name.</summary>

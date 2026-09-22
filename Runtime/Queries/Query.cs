@@ -10,7 +10,7 @@ namespace Emas
         private readonly Realm _realm;
         private readonly string _partialName;
         private readonly string _exactName;
-        private readonly string _originId;
+        private readonly string _anchorId;
         private readonly Kind? _kind;
         private readonly Variant? _variant;
         private readonly List<Func<IGhost, bool>> _parts;
@@ -20,12 +20,12 @@ namespace Emas
         {
         }
 
-        private Query(Realm realm, string partialName, string exactName, string originId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
+        private Query(Realm realm, string partialName, string exactName, string anchorId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
         {
             _realm = realm;
             _partialName = partialName;
             _exactName = exactName;
-            _originId = originId;
+            _anchorId = anchorId;
             _kind = kind;
             _variant = variant;
             _parts = parts;
@@ -41,15 +41,15 @@ namespace Emas
                 throw new ArgumentException("The query kind must be valid.", nameof(kind));
             }
 
-            return Copy(_partialName, _exactName, _originId, kind, _variant, _parts);
+            return Copy(_partialName, _exactName, _anchorId, kind, _variant, _parts);
         }
 
-        /// <summary>Restricts the query to an origin.</summary>
-        /// <param name="originId">The origin identifier.</param>
+        /// <summary>Restricts the query to an anchor.</summary>
+        /// <param name="anchorId">The anchor identifier.</param>
         /// <returns>A query containing the added filter.</returns>
-        public Query InOrigin(string originId)
+        public Query InAnchor(string anchorId)
         {
-            return Copy(_partialName, _exactName, originId, _kind, _variant, _parts);
+            return Copy(_partialName, _exactName, anchorId, _kind, _variant, _parts);
         }
 
         /// <summary>Restricts the query to ghosts exposing an interface.</summary>
@@ -59,7 +59,7 @@ namespace Emas
         {
             var parts = new List<Func<IGhost, bool>>(_parts);
             parts.Add(HasPart<T>);
-            return Copy(_partialName, _exactName, _originId, _kind, _variant, parts);
+            return Copy(_partialName, _exactName, _anchorId, _kind, _variant, parts);
         }
 
         /// <summary>Restricts the query to one display name.</summary>
@@ -67,7 +67,7 @@ namespace Emas
         /// <returns>A query containing the added filter.</returns>
         public Query WithExactName(string name)
         {
-            return Copy(_partialName, name, _originId, _kind, _variant, _parts);
+            return Copy(_partialName, name, _anchorId, _kind, _variant, _parts);
         }
 
         /// <summary>Restricts the query to one visual variant.</summary>
@@ -75,7 +75,7 @@ namespace Emas
         /// <returns>A query containing the added filter.</returns>
         public Query WithVariant(Variant variant)
         {
-            return Copy(_partialName, _exactName, _originId, _kind, variant, _parts);
+            return Copy(_partialName, _exactName, _anchorId, _kind, variant, _parts);
         }
 
         /// <summary>Gets the number of current matches.</summary>
@@ -154,7 +154,7 @@ namespace Emas
                 return false;
             }
 
-            if (_originId != null && !string.Equals(ghost.Key.OriginId, _originId, StringComparison.Ordinal))
+            if (_anchorId != null && !string.Equals(ghost.Key.AnchorId, _anchorId, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -193,11 +193,11 @@ namespace Emas
 
         internal Query Rebind(Realm realm)
         {
-            return new Query(realm, _partialName, _exactName, _originId, _kind, _variant, _parts);
+            return new Query(realm, _partialName, _exactName, _anchorId, _kind, _variant, _parts);
         }
-        private Query Copy(string partialName, string exactName, string originId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
+        private Query Copy(string partialName, string exactName, string anchorId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
         {
-            return new Query(_realm, partialName, exactName, originId, kind, variant, new List<Func<IGhost, bool>>(parts));
+            return new Query(_realm, partialName, exactName, anchorId, kind, variant, new List<Func<IGhost, bool>>(parts));
         }
     }
 }

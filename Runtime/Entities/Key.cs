@@ -3,25 +3,25 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Identifies one ghost within one origin and kind.</summary>
+    /// <summary>Identifies one ghost within one anchor and kind.</summary>
     [Serializable]
 
     public struct Key : IEquatable<Key>
     {
         /// <summary>Creates a key.</summary>
-        /// <param name="originId">The origin identifier.</param>
+        /// <param name="anchorId">The anchor identifier.</param>
         /// <param name="kind">The ghost kind.</param>
         /// <param name="entityId">The source entity identifier.</param>
-        public Key(string originId, Kind kind, string entityId)
+        public Key(string anchorId, Kind kind, string entityId)
         {
-            OriginId = originId ?? string.Empty;
+            AnchorId = anchorId ?? string.Empty;
             Kind = kind;
             EntityId = entityId ?? string.Empty;
         }
 
-        /// <summary>Gets the origin identifier.</summary>
-        /// <value>The origin identifier.</value>
-        public string OriginId { get; private set; }
+        /// <summary>Gets the anchor identifier.</summary>
+        /// <value>The anchor identifier.</value>
+        public string AnchorId { get; private set; }
 
         /// <summary>Gets the ghost kind.</summary>
         /// <value>The exact ghost kind.</value>
@@ -34,7 +34,7 @@ namespace Emas
         /// <inheritdoc />
         public bool Equals(Key other)
         {
-            return string.Equals(OriginId, other.OriginId, StringComparison.Ordinal)
+            return string.Equals(AnchorId, other.AnchorId, StringComparison.Ordinal)
                 && Kind == other.Kind
                 && string.Equals(EntityId, other.EntityId, StringComparison.Ordinal);
         }
@@ -50,7 +50,7 @@ namespace Emas
         {
             unchecked
             {
-                var hash = StringComparer.Ordinal.GetHashCode(OriginId ?? string.Empty);
+                var hash = StringComparer.Ordinal.GetHashCode(AnchorId ?? string.Empty);
                 hash = (hash * 397) ^ Kind.GetHashCode();
                 return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(EntityId ?? string.Empty);
             }
@@ -77,7 +77,7 @@ namespace Emas
         /// <inheritdoc />
         public override string ToString()
         {
-            return OriginId + ":" + Kind + ":" + EntityId;
+            return AnchorId + ":" + Kind + ":" + EntityId;
         }
     }
 }

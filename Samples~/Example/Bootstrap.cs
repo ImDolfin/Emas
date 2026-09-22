@@ -8,10 +8,10 @@ namespace Emas.Sample
 
     public sealed class Bootstrap : MonoBehaviour
     {
-        private const string OriginId = "sample";
+        private const string AnchorId = "sample";
         private IDisposable _carSubscription;
         private IDisposable _aircraftSubscription;
-        private Origin _origin;
+        private Anchor _anchor;
         private SdkOneCarCoordinator _firstCarSource;
         private SimulatedCockpitFeed _cockpitFeed;
         private bool _sourceReplaced;
@@ -22,7 +22,7 @@ namespace Emas.Sample
         private readonly List<GameObject> _runtimeObjects = new List<GameObject>();
         private readonly List<Blueprint> _runtimeBlueprints = new List<Blueprint>();
 
-        /// <summary>Starts the sample origin and its coordinators.</summary>
+        /// <summary>Starts the sample anchor and its coordinators.</summary>
         private void Start()
         {
             _cockpitFeed = new SimulatedCockpitFeed();
@@ -31,8 +31,8 @@ namespace Emas.Sample
             RegisterAircraftBlueprint();
 
             _firstCarSource = new SdkOneCarCoordinator();
-            _origin = Realm.Default.CreateOriginFor(
-                OriginId,
+            _anchor = Realm.Default.CreateAnchorFor(
+                AnchorId,
                 _firstCarSource,
                 new SimulatedAircraftCoordinator());
 
@@ -57,7 +57,7 @@ namespace Emas.Sample
             _replacementTimer += Time.deltaTime;
             if (!_sourceReplaced && _replacementTimer >= 4.0f)
             {
-                _origin.ReplaceCoordinator(_firstCarSource, new SdkTwoCarCoordinator());
+                _anchor.ReplaceCoordinator(_firstCarSource, new SdkTwoCarCoordinator());
                 _sourceReplaced = true;
             }
 
@@ -77,7 +77,7 @@ namespace Emas.Sample
             }
         }
 
-        /// <summary>Stops sample subscriptions, origins and generated objects.</summary>
+        /// <summary>Stops sample subscriptions, anchors and generated objects.</summary>
         private void OnDestroy()
         {
             if (_carSubscription != null)
@@ -92,7 +92,7 @@ namespace Emas.Sample
                 _aircraftSubscription = null;
             }
 
-            Realm.Default.RemoveOrigin(OriginId);
+            Realm.Default.RemoveAnchor(AnchorId);
             if (_cockpitScreen != null)
             {
                 Destroy(_cockpitScreen.gameObject);

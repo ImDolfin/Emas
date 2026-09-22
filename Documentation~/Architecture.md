@@ -10,12 +10,12 @@ Emas owns identity, availability and optional views. Applications own source int
 
 ```text
 Realm
-  Origin (scene frame; one or more coordinators)
+  Anchor (scene frame; one or more coordinators)
     Ghost (identity, application data, root behaviors)
       View (optional visual child)
 ```
 
-Identity is `(origin ID, kind, entity ID)`. Display names are labels. Each identity belongs to one coordinator; compatible replacement transfers ownership without replacing its root. Prepared ghosts remain unowned and unavailable until claimed.
+Identity is `(anchor ID, kind, entity ID)`. Display names are labels. Each identity belongs to one coordinator; compatible replacement transfers ownership without replacing its root. Prepared ghosts remain unowned and unavailable until claimed.
 
 Queries see available ghosts only. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors.
 
@@ -43,12 +43,12 @@ Successful startup outside an update finalizes its population immediately. Varia
 | Failed initial attachment | Remove only newly created records; restore prepared identities to unowned/unavailable |
 | Attach an already registered coordinator | Reject without changing its original population |
 | Remove ghost/coordinator | Remove the selected identity/owned population and associated views |
-| Dispose/remove origin or unload its scene | Remove owned and prepared records; stop coordinators |
-| Dispose realm | Remove origins, records, views, subscriptions, blueprints and queued work |
+| Dispose/remove anchor or unload its scene | Remove owned and prepared records; stop coordinators |
+| Dispose realm | Remove anchors, records, views, subscriptions, blueprints and queued work |
 
 Availability loss deactivates the root and excludes it from queries; retained data may be stale. Demanifesting only removes the visual child. Recovery is explicit through an active coordinator republishing identities.
 
-Realm/origin disposal is idempotent. Further mutations throw `ObjectDisposedException`; disposed-realm queries are empty and `Update()` is a no-op. Origin disposal unregisters records immediately, before Unity's deferred destruction.
+Realm/anchor disposal is idempotent. Further mutations throw `ObjectDisposedException`; disposed-realm queries are empty and `Update()` is a no-op. Anchor disposal unregisters records immediately, before Unity's deferred destruction.
 
 ## Callback safety and internal boundaries
 
@@ -56,12 +56,12 @@ Registry traversal uses snapshots and rechecks membership/registration after cal
 
 | Component | Responsibility |
 | --- | --- |
-| [Realm](../Runtime/Realm.cs) | Orchestrate origins, configuration and update phases |
+| [Realm](../Runtime/Realm.cs) | Orchestrate anchors, configuration and update phases |
 | [Registry](../Runtime/Tracking/Registry.cs) | Store identity, ownership and pending state |
 | [ViewManager](../Runtime/Views/ViewManager.cs) | Stage, bind, refresh and destroy views |
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
 | [SceneEffects](../Runtime/Unity/SceneEffects.cs) | Serialize nested scene effects |
-| [Coordinator](../Runtime/Tracking/Coordinator.cs) / [Origin](../Runtime/Tracking/Origin.cs) | Source lifecycle, registration and scene ownership |
+| [Coordinator](../Runtime/Tracking/Coordinator.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | Source lifecycle, registration and scene ownership |
 
 Query interface filters use typed predicates; subscription reconciliation avoids repeated per-key scans. These are implementation choices, not measured performance guarantees.
 
@@ -73,7 +73,7 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | --- | --- |
 | `Runtime/` | `Realm` entry point and package metadata |
 | `Runtime/Entities/` | Ghost contract, component and identity values |
-| `Runtime/Tracking/` | Origins, coordinators and ownership storage |
+| `Runtime/Tracking/` | Anchors, coordinators and ownership storage |
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | Blueprint, detail level and view lifecycle |
 | `Runtime/Unity/` | Scene setup, automatic runner and nested scene effects |

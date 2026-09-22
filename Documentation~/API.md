@@ -7,29 +7,29 @@ Runtime APIs use the `Emas` namespace. `Realm.Default` is updated automatically 
 | API | Contract |
 | --- | --- |
 | `PollingCoordinator<TSource, TGhost>(kind)` | Poll on startup and every update; create/update entities and remove those absent from a successful complete snapshot |
-| `SceneSetup.Track(params coordinators)` | Register Inspector blueprints and start one owned origin under the component transform |
-| `SceneSetup.Origin` | Current owned origin, or null when stopped; use it for source replacement |
+| `SceneSetup.Track(params coordinators)` | Register Inspector blueprints and start one owned anchor under the component transform |
+| `SceneSetup.Anchor` | Current owned anchor, or null when stopped; use it for source replacement |
 
-Configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an origin.
+Configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an anchor.
 
 Polling requires a non-null full snapshot and unique, non-empty IDs. The entire read is validated before mapping; departures run only after all mapping callbacks succeed. Failures use normal coordinator stop/unavailability behavior. SDK clients remain application-owned.
 
-`SceneSetup` must be enabled and its origin ID unused. Call `Track` once per enabled lifetime. Automatic views apply only to its assigned blueprint kinds. Disable cleans up tracking and subscriptions; re-enable requires another `Track` call. Blueprint registrations remain in the shared realm.
+`SceneSetup` must be enabled and its anchor ID unused. Call `Track` once per enabled lifetime. Automatic views apply only to its assigned blueprint kinds. Disable cleans up tracking and subscriptions; re-enable requires another `Track` call. Blueprint registrations remain in the shared realm.
 
 ## Tracking and lifecycle
 
 | Operation | Contract |
 | --- | --- |
 | `RegisterBlueprint(blueprint)` | Register prefab/view configuration by kind |
-| `CreateOriginFor(id, params coordinators)` | Create an origin and start its coordinators; overload accepts a `Transform` frame |
-| `Prepare<TGhost>(originId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
+| `CreateAnchorFor(id, params coordinators)` | Create an anchor and start its coordinators; overload accepts a `Transform` frame |
+| `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
 | `Query(partialName = null)` | Describe filters over available ghosts |
 | `Query(description)` | Rebind an existing query description to this realm |
-| `RemoveOrigin(id)` | Stop its coordinators and remove all its records, including prepared ghosts |
+| `RemoveAnchor(id)` | Stop its coordinators and remove all its records, including prepared ghosts |
 | `Update()` | Advance an explicitly managed realm; the default realm advances automatically |
 | `realm.Dispose()` | Release the realm and all owned state |
 
-An `Origin` exposes `Id`, `Transform`, `Realm`, `AddCoordinator`, `RemoveCoordinator`, `ReplaceCoordinator(current, replacement)` and `Dispose()`. Replacement retains compatible identities; removal destroys the removed coordinator's population. See [lifecycle rules](Architecture.md#failure-and-cleanup).
+An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddCoordinator`, `RemoveCoordinator`, `ReplaceCoordinator(current, replacement)` and `Dispose()`. Replacement retains compatible identities; removal destroys the removed coordinator's population. See [lifecycle rules](Architecture.md#failure-and-cleanup).
 
 ## Coordinator and ghost contracts
 
@@ -52,7 +52,7 @@ Queries are immutable and combine all filters. They never create ghosts or compo
 | Filter/result | Meaning |
 | --- | --- |
 | `Query(partialName)` / `WithExactName(name)` | Case-insensitive substring / exact display-name match |
-| `OfKind(kind)` / `InOrigin(id)` / `WithVariant(variant)` | Exact, case-sensitive ID match |
+| `OfKind(kind)` / `InAnchor(id)` / `WithVariant(variant)` | Exact, case-sensitive ID match |
 | `With<T>()` | Require a root contract |
 | Enumeration / `Count` | Current available matches; empty when none match |
 | `FirstOrDefault()` | First match or null; no ordering guarantee |
@@ -72,7 +72,7 @@ Declare named constants in application classes for autocomplete. Kinds and varia
 
 | Value | Meaning |
 | --- | --- |
-| `Key` | Identity tuple: origin ID, kind and entity ID |
+| `Key` | Identity tuple: anchor ID, kind and entity ID |
 | Omitted/null variant in `Prepare` or `GetOrCreate` | Preserve the existing appearance |
 | `Variant.None` | Unspecified appearance; explicitly passing it clears the appearance |
 | `WithVariant(None)` | Match unspecified appearances; omitting the filter matches any appearance |

@@ -27,7 +27,7 @@ namespace Emas.Tests
         {
             var first = new TestCoordinator(new Kind("vehicles.car"));
             var second = new TestCoordinator(new Kind("vehicles.aircraft"));
-            _realm.CreateOriginFor("simulation", first, second);
+            _realm.CreateAnchorFor("simulation", first, second);
 
             first.Publish("42", new Variant("car"));
             second.Publish("42", new Variant("aircraft"));
@@ -43,13 +43,13 @@ namespace Emas.Tests
         public void Prepare_IsUnavailableUntilCoordinatorUsesIt()
         {
             var kind = new Kind("vehicles.car");
-            _realm.CreateOriginFor("simulation");
+            _realm.CreateAnchorFor("simulation");
             var prepared = _realm.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
             Assert.That(prepared.IsAvailable, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
 
             var coordinator = new TestCoordinator(kind);
-            _realm.CreateOriginFor("simulation", coordinator);
+            _realm.CreateAnchorFor("simulation", coordinator);
             var initialized = coordinator.Publish("42", new Variant("car"));
             _realm.Update();
 
@@ -64,7 +64,7 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var coordinator = new TestCoordinator(kind);
-            _realm.CreateOriginFor("simulation", coordinator);
+            _realm.CreateAnchorFor("simulation", coordinator);
             coordinator.Publish("1", new Variant("one"));
             _realm.Update();
 
@@ -87,13 +87,13 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var coordinator = new TestCoordinator(kind);
-            _realm.CreateOriginFor("simulation", coordinator);
+            _realm.CreateAnchorFor("simulation", coordinator);
             coordinator.Publish("1", new Variant("Small Car"));
             _realm.Update();
 
             var result = _realm.Query("1")
                 .OfKind(kind)
-                .InOrigin("simulation")
+                .InAnchor("simulation")
                 .With<ITestPart>()
                 .WithExactName("1");
 
@@ -144,12 +144,12 @@ namespace Emas.Tests
             var secondRealm = new Realm();
             try
             {
-                _realm.CreateOriginFor("simulation", firstCoordinator);
+                _realm.CreateAnchorFor("simulation", firstCoordinator);
                 var firstGhost = firstCoordinator.Publish("42", new Variant("small-car"));
                 _realm.Update();
 
                 var secondCoordinator = new TestCoordinator(kind);
-                secondRealm.CreateOriginFor("simulation", secondCoordinator);
+                secondRealm.CreateAnchorFor("simulation", secondCoordinator);
                 secondCoordinator.Publish("42", new Variant("small-car"));
                 secondRealm.Update();
 
@@ -168,7 +168,7 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var coordinator = new TestCoordinator(kind);
-            _realm.CreateOriginFor("simulation", coordinator);
+            _realm.CreateAnchorFor("simulation", coordinator);
             coordinator.PublishNamed("42", "Car 42", new Variant("small-car"));
             _realm.Update();
 
@@ -182,14 +182,14 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var first = new TestCoordinator(kind);
-            var origin = _realm.CreateOriginFor("simulation", first);
+            var anchor = _realm.CreateAnchorFor("simulation", first);
             first.Publish("42", new Variant("small-car"));
             _realm.Update();
 
             var calls = 0;
             var subscription = _realm.Query().OfKind(kind).OnAvailable(ghost => calls++);
             var replacement = new TestCoordinator(kind);
-            origin.ReplaceCoordinator(first, replacement);
+            anchor.ReplaceCoordinator(first, replacement);
             replacement.Publish("42", new Variant("small-car"));
             _realm.Update();
 
@@ -197,17 +197,17 @@ namespace Emas.Tests
             subscription.Dispose();
         }
 
-        /// <summary>Removes prepared records when their origin is removed.</summary>
+        /// <summary>Removes prepared records when their anchor is removed.</summary>
         [Test]
-        public void RemovingOrigin_RemovesPreparedIdentity()
+        public void RemovingAnchor_RemovesPreparedIdentity()
         {
             var kind = new Kind("vehicles.car");
-            _realm.CreateOriginFor("simulation");
+            _realm.CreateAnchorFor("simulation");
             var prepared = _realm.Prepare<TestGhost>("simulation", kind, "42");
-            _realm.RemoveOrigin("simulation");
+            _realm.RemoveAnchor("simulation");
 
             var coordinator = new TestCoordinator(kind);
-            _realm.CreateOriginFor("simulation", coordinator);
+            _realm.CreateAnchorFor("simulation", coordinator);
             var discovered = coordinator.Publish("42", Variant.None);
             _realm.Update();
 
@@ -221,7 +221,7 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var coordinator = new TestCoordinator(kind);
-            _realm.CreateOriginFor("simulation", coordinator);
+            _realm.CreateAnchorFor("simulation", coordinator);
             coordinator.PublishNamed("42", "Car 42", new Variant("small-car"));
             coordinator.PublishNamed("42", "Car 42 updated", null);
             _realm.Update();
@@ -254,7 +254,7 @@ namespace Emas.Tests
                 _realm.RegisterBlueprint(blueprint);
 
                 var coordinator = new TestCoordinator(kind);
-                _realm.CreateOriginFor("simulation", coordinator);
+                _realm.CreateAnchorFor("simulation", coordinator);
                 var ghost = coordinator.Publish("42", new Variant("small-car"));
                 _realm.Update();
 
@@ -303,7 +303,7 @@ namespace Emas.Tests
                 _realm.RegisterBlueprint(blueprint);
 
                 var coordinator = new TestCoordinator(kind);
-                _realm.CreateOriginFor("simulation", coordinator);
+                _realm.CreateAnchorFor("simulation", coordinator);
                 var ghost = coordinator.Publish("42", new Variant("small-car"));
                 _realm.Update();
                 _realm.Manifest(ghost);
@@ -327,10 +327,10 @@ namespace Emas.Tests
         public void Dispatch_FromStoppedRegistrationIsDiscarded()
         {
             var coordinator = new DispatchCoordinator();
-            var origin = _realm.CreateOriginFor("simulation", coordinator);
+            var anchor = _realm.CreateAnchorFor("simulation", coordinator);
             var calls = 0;
             coordinator.QueueAction(() => calls++);
-            origin.ReplaceCoordinator(coordinator, new TestCoordinator(new Kind("vehicles.car")));
+            anchor.ReplaceCoordinator(coordinator, new TestCoordinator(new Kind("vehicles.car")));
             _realm.Update();
 
             Assert.That(calls, Is.EqualTo(0));

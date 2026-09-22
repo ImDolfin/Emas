@@ -34,9 +34,9 @@
           "coordinator",
           "realm",
           "ghost",
-          "origin"
+          "anchor"
         ],
-        "note": "Coordinators publish via GetOrCreate<TGhost>. Realm creates roots beneath the origin and activates them after initialization."
+        "note": "Coordinators publish via GetOrCreate<TGhost>. Realm creates roots beneath the anchor and activates them after initialization."
       },
       {
         "id": "query-and-view",
@@ -174,9 +174,9 @@
       ]
     },
     {
-      "id": "origin",
+      "id": "anchor",
       "type": "frontend",
-      "label": "Origin",
+      "label": "Anchor",
       "sublabel": "Scene frame + coordinators",
       "pos": [
         620,
@@ -246,9 +246,9 @@
       "labelDy": 90
     },
     {
-      "id": "own-origin",
+      "id": "own-anchor",
       "from": "realm",
-      "to": "origin",
+      "to": "anchor",
       "label": "Owns lifetime",
       "labelDy": 90
     },
@@ -266,7 +266,7 @@
       "title": "Availability and identity",
       "items": [
         "Queries return available ghosts only.",
-        "Key = origin ID + kind + entity ID."
+        "Key = anchor ID + kind + entity ID."
       ]
     },
     {

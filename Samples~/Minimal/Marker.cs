@@ -8,7 +8,7 @@ namespace Emas.Minimal
         /// <summary>The population identifier used by this sample's blueprint.</summary>
         public static readonly Kind Kind = new Kind("minimal.marker");
 
-        /// <summary>Applies a position in the origin's coordinate frame.</summary>
+        /// <summary>Applies a position in the anchor's coordinate frame.</summary>
         /// <param name="position">The source-independent local position.</param>
         public void SetPosition(Vector3 position)
         {

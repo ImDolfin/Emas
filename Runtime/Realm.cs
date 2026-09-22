@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Owns origins, ghosts, blueprints, views and query subscriptions.</summary>
+    /// <summary>Owns anchors, ghosts, blueprints, views and query subscriptions.</summary>
     public sealed class Realm : IDisposable
     {
         /// <summary>Gets the shared realm advanced automatically by Unity.</summary>
@@ -14,7 +14,7 @@ namespace Emas
             get { return DefaultRuntime.Realm; }
         }
 
-        private readonly Dictionary<string, Origin> _origins = new Dictionary<string, Origin>();
+        private readonly Dictionary<string, Anchor> _anchors = new Dictionary<string, Anchor>();
         private readonly Registry _ghosts = new Registry();
         private readonly Dictionary<string, Blueprint> _blueprints = new Dictionary<string, Blueprint>(StringComparer.Ordinal);
         private readonly Subscriptions _subscriptions;
@@ -52,9 +52,9 @@ namespace Emas
             }
         }
 
-        internal bool ContainsOrigin(string id)
+        internal bool ContainsAnchor(string id)
         {
-            return _origins.ContainsKey(id);
+            return _anchors.ContainsKey(id);
         }
 
         /// <summary>Registers a blueprint by kind.</summary>
@@ -70,44 +70,44 @@ namespace Emas
             _blueprints[blueprint.Kind.Id] = blueprint;
         }
 
-        /// <summary>Creates or returns an origin at the scene origin.</summary>
-        /// <param name="id">The origin identifier.</param>
+        /// <summary>Creates or returns an anchor at the root scene frame.</summary>
+        /// <param name="id">The anchor identifier.</param>
         /// <param name="coordinators">The coordinators to attach.</param>
-        /// <returns>The existing or new origin.</returns>
-        public Origin CreateOriginFor(string id, params Coordinator[] coordinators)
+        /// <returns>The existing or new anchor.</returns>
+        public Anchor CreateAnchorFor(string id, params Coordinator[] coordinators)
         {
-            return CreateOriginFor(id, null, coordinators);
+            return CreateAnchorFor(id, null, coordinators);
         }
 
-        /// <summary>Creates or returns an origin under a scene frame.</summary>
-        /// <param name="id">The origin identifier.</param>
+        /// <summary>Creates or returns an anchor under a scene frame.</summary>
+        /// <param name="id">The anchor identifier.</param>
         /// <param name="frame">The optional parent transform.</param>
         /// <param name="coordinators">The coordinators to attach.</param>
-        /// <returns>The existing or new origin.</returns>
-        public Origin CreateOriginFor(string id, Transform frame, params Coordinator[] coordinators)
+        /// <returns>The existing or new anchor.</returns>
+        public Anchor CreateAnchorFor(string id, Transform frame, params Coordinator[] coordinators)
         {
             ThrowIfDisposed();
             if (string.IsNullOrEmpty(id))
             {
-                throw new ArgumentException("An origin requires an identifier.", nameof(id));
+                throw new ArgumentException("An anchor requires an identifier.", nameof(id));
             }
 
-            Origin origin;
+            Anchor anchor;
             var created = false;
-            if (!_origins.TryGetValue(id, out origin))
+            if (!_anchors.TryGetValue(id, out anchor))
             {
-                origin = new Origin(this, id, frame);
-                _origins.Add(id, origin);
+                anchor = new Anchor(this, id, frame);
+                _anchors.Add(id, anchor);
                 created = true;
             }
 
             try
             {
-                if (origin.Transform.parent != frame)
+                if (anchor.Transform.parent != frame)
                 {
-                    if (frame != null || origin.Transform.parent != null)
+                    if (frame != null || anchor.Transform.parent != null)
                     {
-                        throw new InvalidOperationException("The existing origin uses a different coordinate frame.");
+                        throw new InvalidOperationException("The existing anchor uses a different coordinate frame.");
                     }
                 }
 
@@ -115,32 +115,32 @@ namespace Emas
                 {
                     for (var index = 0; index < coordinators.Length; index++)
                     {
-                        origin.AddCoordinator(coordinators[index]);
+                        anchor.AddCoordinator(coordinators[index]);
                     }
                 }
 
-                return origin;
+                return anchor;
             }
             catch
             {
                 if (created)
                 {
-                    origin.Dispose();
+                    anchor.Dispose();
                 }
 
                 throw;
             }
         }
 
-        /// <summary>Removes and disposes an origin.</summary>
-        /// <param name="id">The origin identifier.</param>
-        public void RemoveOrigin(string id)
+        /// <summary>Removes and disposes an anchor.</summary>
+        /// <param name="id">The anchor identifier.</param>
+        public void RemoveAnchor(string id)
         {
             ThrowIfDisposed();
-            Origin origin;
-            if (_origins.TryGetValue(id, out origin))
+            Anchor anchor;
+            if (_anchors.TryGetValue(id, out anchor))
             {
-                origin.Dispose();
+                anchor.Dispose();
             }
         }
 
@@ -168,14 +168,14 @@ namespace Emas
 
         /// <summary>Prepares an unavailable typed ghost before source discovery.</summary>
         /// <typeparam name="TGhost">The ghost component type.</typeparam>
-        /// <param name="originId">The origin identifier.</param>
+        /// <param name="anchorId">The anchor identifier.</param>
         /// <param name="kind">The ghost kind.</param>
         /// <param name="entityId">The source entity identifier.</param>
         /// <param name="variant">The appearance; null retains an existing value, and None clears it.</param>
         /// <returns>The prepared ghost.</returns>
-        public TGhost Prepare<TGhost>(string originId, Kind kind, string entityId, Variant? variant = null) where TGhost : Ghost
+        public TGhost Prepare<TGhost>(string anchorId, Kind kind, string entityId, Variant? variant = null) where TGhost : Ghost
         {
-            return GetOrCreate<TGhost>(null, originId, entityId, kind, variant, null);
+            return GetOrCreate<TGhost>(null, anchorId, entityId, kind, variant, null);
         }
 
         /// <summary>Requests a full-degree view when no view request exists, or refreshes the existing request.</summary>
@@ -305,21 +305,21 @@ namespace Emas
                     }
                     ExecuteDispatch(item);
                 }
-                var origins = new List<Origin>(_origins.Values);
-                for (var index = 0; index < origins.Count && !_disposed; index++)
+                var anchors = new List<Anchor>(_anchors.Values);
+                for (var index = 0; index < anchors.Count && !_disposed; index++)
                 {
-                    var origin = origins[index];
-                    Origin current;
-                    if (!_origins.TryGetValue(origin.Id, out current) || current != origin)
+                    var anchor = anchors[index];
+                    Anchor current;
+                    if (!_anchors.TryGetValue(anchor.Id, out current) || current != anchor)
                     {
                         continue;
                     }
-                    if (origin.Transform == null)
+                    if (anchor.Transform == null)
                     {
-                        origin.Dispose();
+                        anchor.Dispose();
                         continue;
                     }
-                    origin.Tick();
+                    anchor.Tick();
                 }
                 if (!_disposed)
                 {
@@ -333,7 +333,7 @@ namespace Emas
             }
         }
 
-        /// <summary>Disposes all origins, ghosts, views and subscriptions.</summary>
+        /// <summary>Disposes all anchors, ghosts, views and subscriptions.</summary>
         /// <remarks>Repeated disposal is safe. Subsequent mutating operations throw ObjectDisposedException.</remarks>
         public void Dispose()
         {
@@ -347,10 +347,10 @@ namespace Emas
                 _dispatch.Clear();
             }
             _subscriptions.Clear();
-            var origins = new List<Origin>(_origins.Values);
-            for (var index = 0; index < origins.Count; index++)
+            var anchors = new List<Anchor>(_anchors.Values);
+            for (var index = 0; index < anchors.Count; index++)
             {
-                origins[index].Dispose();
+                anchors[index].Dispose();
             }
             var records = _ghosts.Snapshot();
             for (var index = 0; index < records.Count; index++)
@@ -403,7 +403,7 @@ namespace Emas
 
         internal TGhost GetOrCreate<TGhost>(
             Coordinator owner,
-            string originId,
+            string anchorId,
             string entityId,
             Kind kind,
             Variant? variant,
@@ -414,12 +414,12 @@ namespace Emas
             {
                 throw new InvalidOperationException("A stopped coordinator cannot publish ghosts.");
             }
-            if (!kind.IsValid || string.IsNullOrEmpty(originId) || string.IsNullOrEmpty(entityId))
+            if (!kind.IsValid || string.IsNullOrEmpty(anchorId) || string.IsNullOrEmpty(entityId))
             {
-                throw new ArgumentException("Origin, kind and entity identifiers are required.");
+                throw new ArgumentException("Anchor, kind and entity identifiers are required.");
             }
 
-            var key = new Key(originId, kind, entityId);
+            var key = new Key(anchorId, kind, entityId);
             Record record;
             if (_ghosts.TryGetValue(key, out record))
             {
@@ -461,9 +461,9 @@ namespace Emas
             Blueprint blueprint;
             _blueprints.TryGetValue(kind.Id, out blueprint);
             Ghost prefab = blueprint == null ? null : blueprint.GhostPrefab;
-            Transform originTransform = GetOriginTransform(originId);
+            Transform anchorTransform = GetAnchorTransform(anchorId);
             var staging = new GameObject("[Emas Staging]");
-            staging.transform.SetParent(originTransform, false);
+            staging.transform.SetParent(anchorTransform, false);
             staging.SetActive(false);
 
             TGhost typed;
@@ -487,7 +487,7 @@ namespace Emas
 
                 typed.gameObject.SetActive(false);
                 typed.Initialize(key, nameValue ?? entityId, variant ?? Variant.None);
-                typed.transform.SetParent(originTransform, false);
+                typed.transform.SetParent(anchorTransform, false);
                 typed.gameObject.SetActive(false);
             }
             catch
@@ -558,9 +558,9 @@ namespace Emas
             DeactivateRecords(records, owner);
         }
 
-        internal void NotifyOriginDestroyed(Origin origin)
+        internal void NotifyAnchorDestroyed(Anchor anchor)
         {
-            origin.Dispose();
+            anchor.Dispose();
         }
         internal IReadOnlyList<IGhost> GetOwnedGhosts(Coordinator owner)
         {
@@ -613,15 +613,15 @@ namespace Emas
                 }
             }
         }
-        private Transform GetOriginTransform(string originId)
+        private Transform GetAnchorTransform(string anchorId)
         {
-            Origin origin;
-            if (!_origins.TryGetValue(originId, out origin) || origin.Transform == null)
+            Anchor anchor;
+            if (!_anchors.TryGetValue(anchorId, out anchor) || anchor.Transform == null)
             {
-                throw new InvalidOperationException("The origin '" + originId + "' does not exist.");
+                throw new InvalidOperationException("The anchor '" + anchorId + "' does not exist.");
             }
 
-            return origin.Transform;
+            return anchor.Transform;
         }
 
         private TGhost RequireGhost<TGhost>(IGhost ghost) where TGhost : Ghost
@@ -674,13 +674,13 @@ namespace Emas
             }
         }
 
-        private void RemoveOriginGhosts(string originId)
+        private void RemoveAnchorGhosts(string anchorId)
         {
             var records = _ghosts.Snapshot();
             for (var index = 0; index < records.Count; index++)
             {
                 var record = records[index];
-                if (string.Equals(record.Key.OriginId, originId, StringComparison.Ordinal))
+                if (string.Equals(record.Key.AnchorId, anchorId, StringComparison.Ordinal))
                 {
                     RemoveRecord(record.Key, record);
                 }
@@ -711,13 +711,13 @@ namespace Emas
             _scene.Destroy(target);
         }
 
-        internal void NotifyOriginDisposed(Origin origin)
+        internal void NotifyAnchorDisposed(Anchor anchor)
         {
-            Origin current;
-            if (_origins.TryGetValue(origin.Id, out current) && current == origin)
+            Anchor current;
+            if (_anchors.TryGetValue(anchor.Id, out current) && current == anchor)
             {
-                _origins.Remove(origin.Id);
-                RemoveOriginGhosts(origin.Id);
+                _anchors.Remove(anchor.Id);
+                RemoveAnchorGhosts(anchor.Id);
             }
         }
 
