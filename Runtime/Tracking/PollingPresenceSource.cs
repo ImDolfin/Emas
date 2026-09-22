@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace Emas
 {
@@ -13,12 +14,15 @@ namespace Emas
     /// The application ghost component.
     /// </typeparam>
     /// <remarks>
-    /// Configure while detached on the Unity thread. Reads on startup and each update. Use full snapshots, not delta batches.
+    /// Configure while detached on the Unity thread. Reads on startup and every update unless PollEvery sets an interval. Use full snapshots, not delta batches.
     /// </remarks>
     public sealed class PollingPresenceSource<TSource, TGhost> : PresenceSource where TGhost : Ghost
     {
         private bool _polling;
         private readonly Kind _kind;
+        private readonly Func<double> _elapsedSeconds;
+        private double _intervalSeconds;
+        private double _nextPollTime;
         private Func<IEnumerable<TSource>> _read;
         private Func<TSource, string> _identify;
         private Action<TSource, TGhost> _apply;
@@ -36,6 +40,11 @@ namespace Emas
         /// The kind is empty or invalid.
         /// </exception>
         public PollingPresenceSource(Kind kind)
+            : this(kind, () => Time.realtimeSinceStartupAsDouble)
+        {
+        }
+
+        internal PollingPresenceSource(Kind kind, Func<double> elapsedSeconds)
         {
             if (!kind.IsValid)
             {
@@ -43,10 +52,11 @@ namespace Emas
             }
 
             _kind = kind;
+            _elapsedSeconds = elapsedSeconds ?? throw new ArgumentNullException(nameof(elapsedSeconds));
         }
 
         /// <summary>
-        /// Sets the callback that reads the complete current population on startup and each update.
+        /// Sets the callback that reads the complete current population on startup and each scheduled poll.
         /// </summary>
         /// <param name="read">
         /// Returns all current items; an empty collection removes the population, null is an error.
@@ -133,6 +143,39 @@ namespace Emas
             return this;
         }
 
+        /// <summary>
+        /// Sets the minimum elapsed time between polls after the immediate startup read.
+        /// </summary>
+        /// <param name="interval">
+        /// A non-negative interval. Zero, the default, polls on every realm update.
+        /// </param>
+        /// <returns>
+        /// This source for further configuration.
+        /// </returns>
+        /// <remarks>
+        /// Uses unscaled real time on Unity's main thread. Positive intervals run on the first realm update
+        /// at or after the deadline, with at most one poll per update and no catch-up reads. The next deadline
+        /// is measured from the start of the actual poll. Every attachment, including restart, reads immediately
+        /// and resets the deadline. Ghost data and membership remain unchanged between polls.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The interval is negative.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The source is attached or a read is still executing.
+        /// </exception>
+        public PollingPresenceSource<TSource, TGhost> PollEvery(TimeSpan interval)
+        {
+            ThrowIfConfiguringWhileTracking();
+            if (interval < TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(interval), "The polling interval must be non-negative.");
+            }
+
+            _intervalSeconds = interval.TotalSeconds;
+            return this;
+        }
+
         private void ThrowIfConfiguringWhileTracking()
         {
             if (IsAttached || _polling)
@@ -166,12 +209,26 @@ namespace Emas
                     + string.Join(", ", missing) + ". Configure them before tracking.");
             }
 
+            // A fresh attachment always reads now, regardless of its previous deadline.
+            _nextPollTime = _intervalSeconds > 0 ? _elapsedSeconds() + _intervalSeconds : 0;
             Poll();
         }
 
         /// <inheritdoc />
         protected override void OnUpdate()
         {
+            if (_intervalSeconds > 0)
+            {
+                double now = _elapsedSeconds();
+                if (now < _nextPollTime)
+                {
+                    return;
+                }
+
+                // Schedule from this read, so a delayed update cannot cause a catch-up burst.
+                _nextPollTime = now + _intervalSeconds;
+            }
+
             Poll();
         }
 

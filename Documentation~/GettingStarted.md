@@ -92,6 +92,19 @@ Unity advances `Realm.Default` automatically. `SceneSetup.StopTracking()` remove
 
 To retry an attached source while retaining its ghosts, call `setup.Anchor.RestartSource(source)`. Use `ReplaceSource` when changing the source instance. Both require new publication before retained data becomes available.
 
+When you already know the identity, look it up directly:
+
+```csharp
+Key key = new Key("default", Marker.Kind, "one");
+IGhost ghost;
+if (Realm.Default.TryGetGhost(key, out ghost) && ghost.IsAvailable)
+{
+    Debug.Log(ghost.Name);
+}
+```
+
+The anchor ID must match your SceneSetup. Lookup also finds retained unavailable ghosts, whose data may be stale; removal returns `false`.
+
 For interface-based consumers, paired query arrivals/departures and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>`; the application owns those interfaces.
 
 ## Choose a source
@@ -101,6 +114,8 @@ For interface-based consumers, paired query arrivals/departures and source repla
 | `PollingPresenceSource` | The SDK can return the complete current population on startup and each update | Omitted IDs disappear after a successful read; an empty collection removes all |
 | `CallbackPresenceSource` | The SDK supplies individual changes and removals | Only an explicit remove callback deletes an ID |
 | Custom `PresenceSource` | The integration needs its own lifecycle or multiple feeds | Call protected `Remove` yourself |
+
+Polling reads on every update by default. For slower feeds, add `.PollEvery(System.TimeSpan.FromMilliseconds(500))` to the builder before tracking. Startup still reads immediately; later reads use unscaled elapsed time, without catch-up bursts. Existing data remains available between reads. Restart resets the interval.
 
 The callback builder uses `IdentifyBy`, `Apply` and `Listen`. `Listen` receives publish/remove callbacks and returns an unsubscribe action. Publish initial data inside `Listen`; every event is deferred to a later realm update. Import **Callback quick start**, open `Callbacks.unity`, and inspect its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for complete wiring, initial population and cleanup.
 

@@ -6,13 +6,16 @@ Runtime APIs use the `Emas` namespace. All operations require Unity's main threa
 
 | API | Contract |
 | --- | --- |
-| `PollingPresenceSource<TSource, TGhost>(kind)` | Poll on startup and every update; create/update entities and remove those absent from a successful complete snapshot |
+| `PollingPresenceSource<TSource, TGhost>(kind)` | Poll on startup and every update by default; create/update entities and remove those absent from a successful complete snapshot |
+| `PollingPresenceSource.PollEvery(interval)` | Optionally space reads by a non-negative `TimeSpan`; zero restores every-update polling |
 | `CallbackPresenceSource<TSource, TGhost>(kind)` | Subscribe once per attachment; queue individual publications and explicit removals |
 | `SceneSetup.Track(params PresenceSource[] sources)` | Register Inspector blueprints and start one owned anchor under the component transform |
 | `SceneSetup.Anchor` | Current owned anchor, or null when stopped; use it for source restart or replacement |
 | `SceneSetup.StopTracking()` | Release the owned anchor, ghosts, views and subscriptions; keep the component enabled and ready for another `Track` |
 
 For polling, configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an anchor.
+
+`PollEvery(TimeSpan.FromMilliseconds(500))` reads immediately on attachment, then on the first realm update at least 500 ms after the previous read started. It uses unscaled real time on Unity's main thread, runs at most once per update and skips missed intervals without catch-up reads. Restart and reattachment read immediately and reset the deadline. Data and membership stay unchanged between polls. Configure the interval while detached and outside a read; negative intervals are rejected.
 
 Polling requires a non-null full snapshot and unique, non-empty IDs. The entire read is validated before mapping; departures run only after all mapping callbacks succeed. Failures use normal source stop/unavailability behavior. SDK clients remain application-owned.
 
@@ -42,6 +45,7 @@ Subscription and cleanup run on the Unity thread. Initial items may be published
 | `RegisterBlueprint(blueprint)` | Validate and register prefab/view configuration by kind; assets stay application-owned |
 | `GetOrCreateAnchor(id, params PresenceSource[] sources)` | Create or reuse an anchor and attach/start supplied sources; overload accepts a `Transform` frame, which must match when reusing |
 | `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
+| `TryGetGhost(key, out ghost)` | Look up an exact identity, including prepared and retained unavailable ghosts; return false/null for missing, invalid or destroyed identities and disposed realms |
 | `Query(partialName = null)` | Describe filters over available ghosts |
 | `Query(description)` | Rebind an existing query description to this realm |
 | `RemoveAnchor(id)` | Stop its sources and remove all its records, including prepared ghosts |
@@ -70,6 +74,8 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddSource`, `RemoveSource`, `Re
 Application interfaces should be read-only; concrete ghost setters are for source mapping. `Ghost` supplies `IGhost`; root activation happens after publication, so `Awake` must not assume mapped data. Source-specific types and coordinate conversion stay in application sources. One source owns each identity; an application source can compose multiple feeds.
 
 ## Queries and subscriptions
+
+Use `TryGetGhost` when the full `Key` is known. It reads the realm registry without creating, activating or updating anything. Check `ghost.IsAvailable` before consuming its data; a found ghost may be prepared or retained after failure or replacement. Keys are case-sensitive and resolved only within the receiving realm. Removal stops lookup immediately, even before Unity finishes destroying the object.
 
 Queries are immutable and combine all filters. They never create ghosts or components.
 

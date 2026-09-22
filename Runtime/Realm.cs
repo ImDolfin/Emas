@@ -247,6 +247,42 @@ namespace Emas
         }
 
         /// <summary>
+        /// Finds a tracked ghost by its exact identity, including unavailable ghosts.
+        /// </summary>
+        /// <param name="key">
+        /// The case-sensitive anchor, kind and entity identity.
+        /// </param>
+        /// <param name="ghost">
+        /// The tracked ghost, or null when no live object exists for this identity.
+        /// </param>
+        /// <returns>
+        /// True when this realm contains the ghost; false for missing or invalid keys and disposed realms.
+        /// </returns>
+        /// <remarks>
+        /// Read on Unity's main thread. Prepared ghosts and ghosts retained after source failure or replacement
+        /// can be returned while unavailable; check IsAvailable before consuming their data. Lookup does not
+        /// create, activate or update anything. A returned reference remains subject to its tracking lifetime.
+        /// </remarks>
+        public bool TryGetGhost(Key key, out IGhost ghost)
+        {
+            ghost = null;
+            if (_disposed)
+            {
+                return false;
+            }
+
+            // Resolve identity independently of availability, excluding destroyed Unity objects.
+            Record record;
+            if (!_ghosts.TryGetValue(key, out record) || record.Ghost == null)
+            {
+                return false;
+            }
+
+            ghost = record.Ghost;
+            return true;
+        }
+
+        /// <summary>
         /// Creates a query by partial display name.
         /// </summary>
         /// <param name="partialName">

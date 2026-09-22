@@ -2,6 +2,9 @@
 
 ## 0.1.0
 
+- Added `Realm.TryGetGhost(key, out ghost)` for exact identity lookup, including retained unavailable ghosts.
+- Added optional `PollingPresenceSource.PollEvery(TimeSpan)` with immediate startup, unscaled main-thread timing, fresh restart deadlines and no catch-up bursts.
+
 - Capture and verify intentional test exceptions in scoped assertions, with concise Test Runner output instead of expected exception stacks in the Console.
 
 - Added `SceneSetup.StopTracking()` and `Anchor.RestartSource(source)` with retained ghost identities, view requests and stale-callback protection.
