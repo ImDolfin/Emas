@@ -6,6 +6,8 @@
 2. Open it with **Unity 2022.3.62f3** and wait for package import and compilation.
 3. Open **Window > General > Test Runner**; choose **Run All** in **EditMode**, then **PlayMode**.
 
+Failure-path tests capture and verify their declared exception messages. Their Test Runner output and exported XML contain short `Verified expected failure` entries. Unexpected errors still reach the Console and fail the test.
+
 The saved project already includes Test Framework, package test registration and imported samples. No manifest editing is needed. Sample scenes are under `Assets/Samples/`. The repository root contains the UPM package; opening that root as a Unity project does not load this configuration.
 
 For standalone validation, select Windows in Build Settings and choose **Run all in player** in Test Runner (Windows Mono build support required). Close other Unity editors during player runs so they cannot intercept the test connection. The prepared project enables full scene and domain reload.
@@ -28,13 +30,13 @@ Verified on **2026-09-22**, package **0.1.0**, Windows Mono:
 
 | Editor | Test Framework | EditMode | PlayMode | Windows player |
 | --- | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 183 passed | 183 passed |
-| 6000.3.24f1 / Unity 6.3 LTS (`4e7b9b5b6244`) | 1.6.0 | 9 passed | 183 passed | 183 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 193 passed | 193 passed |
+| 6000.3.24f1 / Unity 6.3 LTS (`4e7b9b5b6244`) | 1.6.0 | 9 passed | 193 passed | 193 passed |
 
 No failed or skipped tests in the final suites. Unity 2022 used the prepared repository project; Unity 6 used isolated copies of its Assets, Packages and ProjectSettings. The repository project remains on Unity 2022.3.
 
-Coverage includes explicit tracking stop and source restart, retained roots/views, stale callbacks, paired query arrivals/departures, destroyed-object departure keys, filter changes, reentrant consumers, labelled failure context and primary-error retention. Existing checks cover callback FIFO/budgeting, replacement recovery, read-only snapshots, shared Inspector validation and passive diagnostics. Player tests exercise both quick starts and the larger example: views, explicit removal, disable/re-enable cleanup, interface consumption and stable identities across replacement. EditMode checks also detect differences between shipped and imported samples.
+Coverage includes explicit tracking stop and source restart, retained roots/views, stale callbacks, paired query arrivals/departures, destroyed-object departure keys, filter changes, reentrant consumers, labelled failure context and primary-error retention. Quiet-log regressions cover expected-message ordering, missing and unexpected messages, duplicates, nesting and logger restoration after failure. Existing checks cover callback FIFO/budgeting, replacement recovery, read-only snapshots, shared Inspector validation and passive diagnostics. Player tests exercise both quick starts and the larger example: views, explicit removal, disable/re-enable cleanup, interface consumption and stable identities across replacement. EditMode checks also detect differences between shipped and imported samples.
 
 A fresh Unity 2022.3 consuming project imported all three samples through Package Manager with its manifest unchanged and no `testables` entry. All **3 sample smoke tests passed**. Package test opt-in remains separate from ordinary installation.
 
-The latest suite reports are in the ignored `Tests/Unity~/TestResults/DeveloperApi/` directory; fresh-install reports are in `Tests/Unity~/TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.
+The latest suite reports are in the ignored `Tests/Unity~/TestResults/QuietTests/` directory; fresh-install reports are in `Tests/Unity~/TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.

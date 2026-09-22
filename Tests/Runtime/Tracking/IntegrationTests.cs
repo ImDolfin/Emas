@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -119,8 +118,7 @@ namespace Emas.Tests
             if (fail)
             {
                 broken = true;
-                LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException"));
-                _realm.Update();
+                ExpectedErrors.Verify(_realm.Update, "must return a complete snapshot, not null");
             }
 
             Assert.Throws<InvalidOperationException>(() => source.ReadFrom(() => new[] { "b" }));
@@ -216,8 +214,9 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("poll", source);
             IGhost retained = _realm.Query("a").Single();
             fail = true;
-            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException"));
-            _realm.Update();
+            string expected = failure == "null" ? "must return a complete snapshot, not null"
+                : failure == "enumeration" ? "snapshot failed" : "contains an empty or duplicate entity ID";
+            ExpectedErrors.Verify(_realm.Update, expected);
             Assert.That(_realm.GetOwnedGhosts(source).Count, Is.EqualTo(2));
             Assert.That(retained.IsAvailable, Is.False);
             anchor.ReplaceSource(source, Source(() => new[] { "a" }));
@@ -243,8 +242,7 @@ namespace Emas.Tests
                 });
             _realm.GetOrCreateAnchor("poll", source);
             fail = true;
-            LogAssert.Expect(LogType.Exception, new Regex("mapper failed"));
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "mapper failed");
             Assert.That(_realm.GetOwnedGhosts(source).Count, Is.EqualTo(2));
             Assert.That(_realm.Query().Count, Is.Zero);
         }

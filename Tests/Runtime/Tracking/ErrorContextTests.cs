@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
@@ -66,8 +64,7 @@ namespace Emas.Tests
                     });
                 source.Name = "SDK One";
                 anchor.AddSource(source);
-                LogAssert.Expect(LogType.Exception, new Regex("vehicles.*SDK One.*" + operation + ".*SDK rejected item"));
-                _realm.Update();
+                ExpectedErrors.Verify(_realm.Update, "vehicles.*SDK One.*" + operation + ".*SDK rejected item");
             }
             else
             {
@@ -134,9 +131,7 @@ namespace Emas.Tests
                 });
             source.Name = "Shared SDK";
             Anchor anchor = _realm.GetOrCreateAnchor("vehicles", source);
-            LogAssert.Expect(LogType.Exception, new Regex("operation 'Apply'.*entity '42'.*mapping failed"));
-            LogAssert.Expect(LogType.Exception, new Regex("operation 'Unsubscribe'.*unsubscribe failed"));
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "operation 'Apply'.*entity '42'.*mapping failed", "operation 'Unsubscribe'.*unsubscribe failed");
             Assert.That(source.LastErrorContext, Does.Contain("Apply").And.Contain("42"));
             Assert.That(source.LastError.Message, Is.EqualTo("mapping failed"));
             failing = false;
@@ -173,8 +168,7 @@ namespace Emas.Tests
             if (cleanup)
             {
                 anchor.AddSource(source);
-                LogAssert.Expect(LogType.Exception, new Regex("vehicles.*Unsubscribe.*cleanup failed"));
-                anchor.RemoveSource(source);
+                ExpectedErrors.Verify(() => anchor.RemoveSource(source), "vehicles.*Unsubscribe.*cleanup failed");
             }
             else
             {

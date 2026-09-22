@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -489,8 +488,7 @@ namespace Emas.Tests
             {
                 throw new InvalidOperationException("probe failure");
             };
-            LogAssert.Expect(LogType.Exception, new Regex("probe failure"));
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "probe failure");
             Assert.That(failedGhost.IsAvailable, Is.False);
             Assert.That(failedGhost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Single(), Is.SameAs(healthyGhost));
@@ -570,8 +568,7 @@ namespace Emas.Tests
                 ghost = source.Publish("car");
                 throw new InvalidOperationException("dispatch failure");
             });
-            LogAssert.Expect(LogType.Exception, new Regex("dispatch failure"));
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "dispatch failure");
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));

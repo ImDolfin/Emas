@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
@@ -50,8 +48,7 @@ namespace Emas.Tests
                 {
                     throw new InvalidOperationException("update failed");
                 };
-                LogAssert.Expect(LogType.Exception, new Regex("update failed"));
-                _realm.Update();
+                ExpectedErrors.Verify(_realm.Update, "update failed");
                 source.Updating = null;
             }
             else
@@ -116,8 +113,7 @@ namespace Emas.Tests
             {
                 throw new InvalidOperationException("cleanup failed");
             };
-            LogAssert.Expect(LogType.Exception, new Regex("operation 'OnStop'.*cleanup failed"));
-            anchor.RestartSource(source);
+            ExpectedErrors.Verify(() => anchor.RestartSource(source), "operation 'OnStop'.*cleanup failed");
             source.Stopping = null;
             Assert.That(source.IsActive, Is.True);
             Assert.That(source.Stops, Is.EqualTo(1));
@@ -236,8 +232,7 @@ namespace Emas.Tests
             {
                 throw new InvalidOperationException("update failed");
             };
-            LogAssert.Expect(LogType.Exception, new Regex("update failed"));
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "update failed");
             Assert.That(attempts, Is.EqualTo(1));
             Assert.That(source.Stops, Is.EqualTo(1));
             Assert.That(source.Starts, Is.EqualTo(1));

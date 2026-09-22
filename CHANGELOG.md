@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Capture and verify intentional test exceptions in scoped assertions, with concise Test Runner output instead of expected exception stacks in the Console.
+
 - Added `SceneSetup.StopTracking()` and `Anchor.RestartSource(source)` with retained ghost identities, view requests and stale-callback protection.
 - Added `Query.Observe(onEnter, onLeave)` for paired arrivals and departures, including removal, lost availability and filter changes.
 - Added source labels and `LastErrorContext`; logs lead with operation context and diagnostics show expandable exception details. Expanded samples and lifecycle regression coverage.

@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -168,8 +167,7 @@ namespace Emas.Tests
             {
                 throw new Exception("source failed");
             };
-            LogAssert.Expect(LogType.Exception, new Regex("source failed"));
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "source failed");
             _realm.Update();
             Assert.That(left, Is.EqualTo(new[] { "failed" }));
             other.Dispose();
@@ -196,8 +194,7 @@ namespace Emas.Tests
             {
             }, key => healthy++);
             _source.RemoveId("one");
-            LogAssert.Expect(LogType.Exception, new Regex("query departure.*one.*leave failed"));
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "query departure.*one.*leave failed");
             Assert.That(healthy, Is.EqualTo(1));
             Assert.That(_source.IsActive, Is.True);
         }

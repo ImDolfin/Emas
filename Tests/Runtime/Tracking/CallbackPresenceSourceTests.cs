@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
@@ -107,8 +105,7 @@ namespace Emas.Tests
             if (fail)
             {
                 feed.Publish(null);
-                LogAssert.Expect(LogType.Exception, new Regex("cannot publish a null item"));
-                _realm.Update();
+                ExpectedErrors.Verify(_realm.Update, "cannot publish a null item");
             }
 
             AssertConfigurationLocked(source);
@@ -303,25 +300,27 @@ namespace Emas.Tests
                 {
                     throw new InvalidOperationException("cleanup failed");
                 };
-                LogAssert.Expect(LogType.Exception, new Regex("cleanup failed"));
             }
 
-            if (stop == "source")
+            ExpectedErrors.Verify(() =>
             {
-                anchor.RemoveSource(source);
-            }
-            else if (stop == "anchor")
-            {
-                anchor.Dispose();
-            }
-            else if (stop == "realm")
-            {
-                _realm.Dispose();
-            }
-            else
-            {
-                anchor.ReplaceSource(source, Source(new Feed()));
-            }
+                if (stop == "source")
+                {
+                    anchor.RemoveSource(source);
+                }
+                else if (stop == "anchor")
+                {
+                    anchor.Dispose();
+                }
+                else if (stop == "realm")
+                {
+                    _realm.Dispose();
+                }
+                else
+                {
+                    anchor.ReplaceSource(source, Source(new Feed()));
+                }
+            }, throws ? new[] { "cleanup failed" } : Array.Empty<string>());
 
             _realm.Dispose();
             feed.Publish(new Item("late"));
@@ -367,12 +366,8 @@ namespace Emas.Tests
                     }
                 };
             });
-            if (throws)
-            {
-                LogAssert.Expect(LogType.Exception, new Regex("late cleanup failed"));
-            }
-
-            anchor.AddSource(source);
+            ExpectedErrors.Verify(() => anchor.AddSource(source),
+                throws ? new[] { "late cleanup failed" } : Array.Empty<string>());
             _realm.Update();
             Assert.That(stops, Is.EqualTo(1));
             Assert.That(_realm.Query().Count, Is.Zero);
@@ -493,8 +488,10 @@ namespace Emas.Tests
             }
 
             feed.Remove("a");
-            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException"));
-            _realm.Update();
+            string expected = failure == "null-item" ? "cannot publish a null item"
+                : failure == "identify" || failure == "variant" || failure == "apply" ? failure + " failed"
+                : "requires a non-empty entity ID";
+            ExpectedErrors.Verify(_realm.Update, expected);
             Assert.That(feed.Stops, Is.EqualTo(1));
             Assert.That(retained.IsAvailable, Is.False);
             Assert.That(_realm.GetOwnedGhosts(source).Count, Is.EqualTo(1));
@@ -649,8 +646,7 @@ namespace Emas.Tests
             };
             fail = true;
             feed.Publish(new Item("a"));
-            LogAssert.Expect(LogType.Exception, new Regex("restart failure"));
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "restart failure");
             Assert.That(starts, Is.EqualTo(2));
             Assert.That(stops, Is.EqualTo(new[] { 1 }));
             fail = false;

@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
@@ -56,8 +54,7 @@ namespace Emas.Tests
             {
                 throw new Exception("cleanup failure");
             };
-            Expect("cleanup failure");
-            Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source)), Is.SameAs(primary));
+            ExpectedErrors.Verify(() => Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source)), Is.SameAs(primary)), "cleanup failure");
             Assert.That(source.LastError, Is.SameAs(primary));
             Assert.That(source.IsAttached || source.IsActive, Is.False);
             Assert.That(source.Stops, Is.EqualTo(1));
@@ -106,9 +103,7 @@ namespace Emas.Tests
                 };
             }
 
-            Expect("runtime failure");
-            Expect("cleanup failure");
-            _realm.Update();
+            ExpectedErrors.Verify(_realm.Update, "runtime failure", "cleanup failure");
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);
@@ -140,15 +135,17 @@ namespace Emas.Tests
                 }
             };
             Anchor anchor = _realm.GetOrCreateAnchor("status", source);
-            Expect("cleanup only");
-            if (dispose)
+            ExpectedErrors.Verify(() =>
             {
-                anchor.Dispose();
-            }
-            else
-            {
-                anchor.RemoveSource(source);
-            }
+                if (dispose)
+                {
+                    anchor.Dispose();
+                }
+                else
+                {
+                    anchor.RemoveSource(source);
+                }
+            }, "cleanup only");
 
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.IsAttached || source.IsActive, Is.False);
@@ -185,14 +182,11 @@ namespace Emas.Tests
             if (mappingFails)
             {
                 publish("one");
-                Expect("mapping failure");
-                Expect("unsubscribe failure");
-                _realm.Update();
+                ExpectedErrors.Verify(_realm.Update, "mapping failure", "unsubscribe failure");
             }
             else
             {
-                Expect("unsubscribe failure");
-                anchor.RemoveSource(source);
+                ExpectedErrors.Verify(() => anchor.RemoveSource(source), "unsubscribe failure");
             }
 
             Assert.That(source.LastError, Is.SameAs(mappingFails ? mapping : cleanup));
@@ -261,8 +255,7 @@ namespace Emas.Tests
                     publish("current");
                     return null;
                 });
-            Expect("obsolete cleanup");
-            anchor.AddSource(source);
+            ExpectedErrors.Verify(() => anchor.AddSource(source), "obsolete cleanup");
             _realm.Update();
             Assert.That(source.IsActive && source.IsAttached, Is.True);
             Assert.That(source.LastError, Is.Null);
@@ -332,11 +325,6 @@ namespace Emas.Tests
             Assert.That(anchor.Sources, Is.Empty);
             Assert.That(anchors.Count, Is.EqualTo(1));
             Assert.That(sources.Count, Is.EqualTo(1));
-        }
-
-        private static void Expect(string message)
-        {
-            LogAssert.Expect(LogType.Exception, new Regex(message));
         }
 
         private sealed class ProbeSource : PresenceSource
