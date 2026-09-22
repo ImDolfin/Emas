@@ -36,19 +36,17 @@ Runtime entry point: `Realm.Default`. Keep short role names in namespace `Emas`;
 
 ## Build & Test
 
-```bash
-# There is no CLI build. Open the package in Unity via:
-#   Package Manager → Add package from disk → select package.json
+For the preconfigured test project, add `Tests/Unity~` through Unity Hub and open it with Unity **2022.3.62f3**. The repository root is a UPM package, not the runnable project. No manifest editing is required for the included project.
 
-# Run tests from Unity:
-#   Window → General → Test Runner → Run All
-```
+In an existing consuming Unity project, install Test Framework and add `"testables": ["com.emas.core"]` beside `dependencies` in `Packages/manifest.json`. Run EditMode and PlayMode tests through **Window > General > Test Runner**. Reopen Unity if the tests remain hidden.
+
+For repository development, open the optional `Tests/Unity~` project in Unity **2022.3.62f3**. It also tests the imported samples and supports **Run all in player** (Windows Mono build support required). Update `Assets/Samples/` in that project when changing `Samples~/`; EditMode tests detect differences. All required inputs are tracked; only generated output is ignored. See `Documentation~/Validation.md` for results.
 
 ## File Organization Rules
 
 - New runtime code goes in `Runtime/` and must be in the `Emas` namespace.
 - New editor code goes in `Editor/` and must be in the `Emas.Editor` namespace.
-- New tests go in `Tests/Runtime/` or `Tests/Editor/` as appropriate.
+- Package tests go in `Tests/Runtime/` or `Tests/Editor/`; imported-sample tests go in `Tests/Unity~/Assets/Tests/`.
 - Sample assets go in `Samples~/` — never in `Runtime/` or `Editor/`.
 - Documentation goes in `Documentation~/`.
 

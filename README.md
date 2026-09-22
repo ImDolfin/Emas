@@ -10,9 +10,17 @@ A Unity 2022.3+ package that tracks source entities as scene-owned ghosts and cr
 
 The quick start shows one moving marker with Inspector-configured tracking. The **Callback quick start** sample adds SDK events, explicit removals and unsubscribe cleanup. The larger Emas sample demonstrates multiple sources and replacement.
 
+## Tests
+
+1. In **Unity Hub**, add the project from **`Tests/Unity~`** and open it with **Unity 2022.3.62f3**.
+2. Wait for package import and compilation to finish.
+3. Open **Window > General > Test Runner** and choose **Run All** in both **EditMode** and **PlayMode**.
+
+This project already includes the samples and test configuration. No manifest editing or sample import is needed. The repository root is a UPM package; `Tests/Unity~` is the Unity project to open. See [validation](Documentation~/Validation.md) for testing in other projects.
+
 ## Documentation
 
 - [Getting started](Documentation~/GettingStarted.md): install and integrate a source.
 - [API reference](Documentation~/API.md): operations and behavior contracts.
 - [Architecture](Documentation~/Architecture.md): ownership, update phases and lifecycle diagrams.
-- [Validation](Documentation~/Validation.md): test results and limits.
+- [Validation](Documentation~/Validation.md): Unity Test Runner setup, results and limits.

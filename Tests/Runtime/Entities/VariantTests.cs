@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -104,6 +106,27 @@ namespace Emas.Tests
                 UnityEngine.Object.DestroyImmediate(full);
                 UnityEngine.Object.DestroyImmediate(minimal);
                 UnityEngine.Object.DestroyImmediate(fallback);
+            }
+        }
+
+        /// <summary>Appearance APIs require Variant values without implicit kind or string conversions.</summary>
+        [Test]
+        public void Api_RequiresTypedVariants()
+        {
+            Assert.That(typeof(IGhost).GetProperty(nameof(IGhost.Variant)).PropertyType, Is.EqualTo(typeof(Variant)));
+            Assert.That(typeof(Query).GetMethod(nameof(Query.WithVariant)).GetParameters()[0].ParameterType,
+                Is.EqualTo(typeof(Variant)));
+            Assert.That(typeof(Blueprint).GetMethod(nameof(Blueprint.ResolveViewPrefab)).GetParameters()[0].ParameterType,
+                Is.EqualTo(typeof(Variant)));
+            Assert.That(typeof(Realm).GetMethod(nameof(Realm.Prepare)).GetParameters()[3].ParameterType,
+                Is.EqualTo(typeof(Variant?)));
+            Assert.That(typeof(PresenceSource).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Any(method => method.Name == "GetOrCreate" && method.GetParameters().Length == 3
+                    && method.GetParameters()[2].ParameterType == typeof(Variant?)), Is.True);
+            foreach (var type in new[] { typeof(Variant), typeof(Kind) })
+            {
+                Assert.That(type.GetMethods().Any(method => method.Name == "op_Implicit"), Is.False,
+                    type.Name + " must require explicit construction.");
             }
         }
 

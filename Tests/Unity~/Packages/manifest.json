@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "com.emas.core": "file:../../..",
+    "com.unity.test-framework": "1.1.33",
+    "com.unity.modules.physics": "1.0.0"
+  },
+  "testables": [
+    "com.emas.core"
+  ]
+}
