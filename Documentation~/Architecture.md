@@ -4,7 +4,7 @@ Emas owns identity, availability and optional views. Applications own source int
 
 [Architecture diagram](Diagrams/Architecture.html) / [Lifecycle diagram](Diagrams/Lifecycle.html)
 
-`SceneSetup` is an optional Inspector-configured owner around the default realm. `PollingPresenceSource` adapts complete source snapshots through selectors; both use the same tracking and lifecycle path described below.
+`SceneSetup` is an optional Inspector-configured owner around the default realm. `PollingPresenceSource` adapts complete source snapshots; `CallbackPresenceSource` queues individual publications and removals with subscription cleanup. All use the same tracking and lifecycle path described below.
 
 ## Ownership
 
@@ -29,7 +29,7 @@ Queries see available ghosts only. Root components provide data contracts; visua
 
 Newly queued actions wait for a later update. The budget limits action count, not execution time; application callbacks must remain short. Dispatch records the source's registration generation, so stale work is discarded even if the same instance is reattached.
 
-Successful startup outside an update finalizes its population immediately. Variant changes and explicit view requests inside source/finalization callbacks defer refresh until source data is complete. Explicit requests outside those phases retain immediate behavior.
+Successful startup outside an update finalizes directly populated ghosts immediately. Callback-source startup queues its initial publications for a later update. Variant changes and explicit view requests inside source/finalization callbacks defer refresh until source data is complete. Explicit requests outside those phases retain immediate behavior.
 
 `Realm.Default` provides an automatically updated default realm. An isolated realm uses explicit `Update()` instead. Unity object operations belong on the main thread; SDK callbacks use source `Dispatch`.
 
@@ -79,6 +79,7 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Runtime/Unity/` | Scene setup, automatic runner and nested scene effects |
 | `Editor/Diagnostics/` | Emas diagnostics window |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
+| `Samples~/Minimal/` / `Samples~/Callbacks/` | Polling and callback quick starts |
 | `Samples~/Example/` | Contracts, entities, behaviors and source integrations |
 
 Each top-level type has its own file. Runtime public types share the `Emas` namespace so application imports remain simple.

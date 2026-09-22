@@ -26,9 +26,34 @@ GetComponent<SceneSetup>().Track(
 
 `SdkItem`, `Car` and `client` are your application types. The selectors supply identity and copy data; optional `.WithVariant(item => ...)` selects an appearance. No custom source class is needed for this polling path.
 
-**Return a complete snapshot each time.** An empty collection removes the population. Null, duplicate/empty IDs or an exception stop that source and retain its existing ghosts as unavailable. A partial/delta feed must use a custom `PresenceSource` instead.
+**Return a complete snapshot each time.** An empty collection removes the population. Null, duplicate/empty IDs or an exception stop that source and retain its existing ghosts as unavailable. For individual changes and removals, use `CallbackPresenceSource` below.
 
 `SceneSetup` registers its blueprints, creates the anchor under its transform and requests views for configured kinds. Disabling it removes its anchor, ghosts, views and subscription. Re-enable and call `Track` again to restart; toggling the sample's whole Tracking object does this through its bootstrap. Blueprint registrations remain shared realm configuration.
+
+## Connect SDK events
+
+```csharp
+GetComponent<SceneSetup>().Track(
+    new CallbackPresenceSource<SdkItem, Car>(Car.Kind)
+        .IdentifyBy(item => item.Id)
+        .Apply((item, ghost) => ghost.SetPosition(item.Position))
+        .Listen((publish, remove) =>
+        {
+            client.Changed += publish;
+            client.Removed += remove;
+            return () =>
+            {
+                client.Changed -= publish;
+                client.Removed -= remove;
+            };
+        }));
+```
+
+`Changed` supplies one item; `Removed` supplies its ID. Publishing creates or updates that entity; untouched entities remain present. Callbacks may arrive on any thread and are applied on a later realm update. Copy mutable SDK objects before publishing; each item must remain unchanged until processed.
+
+`Listen` runs once per attachment and may publish existing entities before returning. Your adapter must order initial data with live events and undo partial subscriptions if startup throws. Its returned cleanup runs when tracking stops; return null only when no cleanup is needed. Emas does not dispose your SDK client.
+
+Import **Callback quick start** and open `Callbacks.unity` for a runnable example with initial publication, explicit removal and restart. See its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for initial-data and unsubscribe wiring.
 
 ## Optional features
 
@@ -36,7 +61,8 @@ GetComponent<SceneSetup>().Track(
 | --- | --- |
 | Data-only tracking | Leave blueprints empty; views and custom interfaces are optional |
 | Consume available entities | `Realm.Default.Query().OfKind(Car.Kind)` |
-| SDK push callbacks or delta updates | Subclass `PresenceSource`; marshal worker callbacks through `Dispatch` |
+| SDK push callbacks or delta updates | `CallbackPresenceSource` with `Listen` |
+| Custom integration lifecycle | Subclass `PresenceSource`; marshal worker callbacks through `Dispatch` |
 | Explicit lifetime or update control | Use `Realm` and `GetOrCreateAnchor` directly |
 | Multiple sources and replacement | Import the **Emas sample** and open its `Scenes/Example.unity` |
 

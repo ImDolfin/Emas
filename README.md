@@ -8,7 +8,7 @@ A Unity 2022.3+ package that tracks source entities as scene-owned ghosts and cr
 2. Import the **Quick start** sample.
 3. Open its `QuickStart.unity` scene and press Play.
 
-The quick start shows one moving marker with Inspector-configured tracking. The larger Emas sample demonstrates multiple sources and replacement.
+The quick start shows one moving marker with Inspector-configured tracking. The **Callback quick start** sample adds SDK events, explicit removals and unsubscribe cleanup. The larger Emas sample demonstrates multiple sources and replacement.
 
 ## Documentation
 

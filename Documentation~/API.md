@@ -7,12 +7,29 @@ Runtime APIs use the `Emas` namespace. `Realm.Default` is updated automatically 
 | API | Contract |
 | --- | --- |
 | `PollingPresenceSource<TSource, TGhost>(kind)` | Poll on startup and every update; create/update entities and remove those absent from a successful complete snapshot |
+| `CallbackPresenceSource<TSource, TGhost>(kind)` | Subscribe once per attachment; queue individual publications and explicit removals |
 | `SceneSetup.Track(params PresenceSource[] sources)` | Register Inspector blueprints and start one owned anchor under the component transform |
 | `SceneSetup.Anchor` | Current owned anchor, or null when stopped; use it for source replacement |
 
-Configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an anchor.
+For polling, configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an anchor.
 
 Polling requires a non-null full snapshot and unique, non-empty IDs. The entire read is validated before mapping; departures run only after all mapping callbacks succeed. Failures use normal source stop/unavailability behavior. SDK clients remain application-owned.
+
+For callbacks, configure `.IdentifyBy(idSelector)`, `.Apply(copyData)` and `.Listen(subscribe)`; optional `.WithVariant(selector)` has the same appearance semantics.
+
+`Listen(Func<Action<TSource>, Action<string>, Action> subscribe)` supplies publish-item and remove-ID callbacks. Return an unsubscribe action, or null when cleanup is unnecessary.
+
+| Callback contract | Behavior |
+| --- | --- |
+| Configuration | Locked while attached, including after failure, and during subscription startup |
+| Scheduling | Any thread can publish; all events use the bounded FIFO queue. Selectors and mapping run on a later realm update |
+| Identity | Repeated IDs update the same ghost; unknown removals do nothing; untouched entities remain |
+| Lifetime | Subscribe once per attachment; cleanup once on stop, including interrupted startup. Old callbacks cannot affect a restarted registration |
+| Failure | Null items, empty/null IDs or selector/mapping exceptions stop the source, unsubscribe, retain unavailable ghosts and discard queued work. Cleanup exceptions are logged |
+| Replacement | Preserve compatible roots; each becomes available when republished. Unreported identities are not deleted |
+| Adapter responsibilities | Keep payloads unchanged until processed; copy mutable SDK data. Order initial publications with live events and undo partial subscriptions before throwing |
+
+Subscription and cleanup run on the Unity thread. Initial items may be published inside `Listen`; they are also deferred.
 
 `SceneSetup` must be enabled and its anchor ID unused. Call `Track` once per enabled lifetime. Automatic views apply only to its assigned blueprint kinds. Disable cleans up tracking and subscriptions; re-enable requires another `Track` call. Blueprint registrations remain in the shared realm.
 

@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Added `CallbackPresenceSource` for event-driven integration, registration-safe dispatch and unsubscribe cleanup, with a runnable Callback quick start sample.
 - Clarified detail-level, prefab selection and anchor reuse APIs; added Inspector guidance and specific configuration errors.
 
 - Added the `Realm` entry point and `Anchor.Realm` ownership property.

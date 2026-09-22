@@ -27,6 +27,11 @@
       "path": "Samples~/Minimal"
     },
     {
+      "displayName": "Callback quick start",
+      "description": "SDK events, explicit removal and unsubscribe cleanup with Inspector-configured views.",
+      "path": "Samples~/Callbacks"
+    },
+    {
       "displayName": "Emas sample",
       "description": "A source-independent vehicle and aircraft discovery example.",
       "path": "Samples~/Example"
