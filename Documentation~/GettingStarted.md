@@ -88,9 +88,11 @@ namespace Emas.Minimal
 3. Create a scene object named Tracking. Add **Emas > Scene Setup** and the `Bootstrap` component. Set a unique **Anchor Id**, assign the blueprint and leave **Automatic Views** enabled.
 4. Press Play. Emas creates a `Marker` root beneath the anchor, updates its data and attaches the cube view. Move Tracking to see the coordinate frame move with it.
 
-Unity advances `Realm.Default` automatically. `SceneSetup` removes its anchor, ghosts and views when disabled; the bootstrap calls `Track` again on re-enable. Toggle the whole Tracking object so both components share that lifetime. An empty blueprint list is valid for data-only tracking.
+Unity advances `Realm.Default` automatically. `SceneSetup.StopTracking()` removes its anchor, ghosts and views while leaving the component enabled; another `Track` call starts again. Disabling also removes tracking; the bootstrap calls `Track` again on re-enable. Toggle the whole Tracking object so both components share that lifetime. An empty blueprint list is valid for data-only tracking.
 
-For interface-based consumers, query subscriptions and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>`; the application owns those interfaces.
+To retry an attached source while retaining its ghosts, call `setup.Anchor.RestartSource(source)`. Use `ReplaceSource` when changing the source instance. Both require new publication before retained data becomes available.
+
+For interface-based consumers, paired query arrivals/departures and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>`; the application owns those interfaces.
 
 ## Choose a source
 
@@ -109,7 +111,7 @@ Call all Emas APIs, including publish/remove callbacks, on Unity's main thread. 
 | Symptom | Check |
 | --- | --- |
 | Nothing appears | Check Blueprint and SceneSetup Inspector errors, matching kind IDs and the view prefab. A ghost can be available without a view. |
-| A source stops | Open **Window > Emas** during Play Mode. Inspect its status and failure details, or read `source.LastError`. Fix the cause and explicitly replace/restart it. |
+| A source stops | Open **Window > Emas** during Play Mode. Inspect its label, status and failure details, or read `source.LastErrorContext` and `source.LastError`. Fix the cause and call `anchor.RestartSource(source)`. Assign `source.Name` to distinguish feeds. |
 | Polling entities disappear | Return the full population, not only changes. Null, duplicate/empty IDs and mapping exceptions stop the source. |
 | Restart creates duplicates | Unsubscribe in callback cleanup; dispose consumer query subscriptions when their owner stops. |
 | No tests appear | Open the prepared **`Tests/Unity~`** project through Unity Hub. Package import alone does not opt a consumer into tests. See [Validation](Validation.md). |

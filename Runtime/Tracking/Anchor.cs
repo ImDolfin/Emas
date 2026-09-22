@@ -13,6 +13,7 @@ namespace Emas
     public sealed class Anchor : IDisposable
     {
         private readonly List<PresenceSource> _sources = new List<PresenceSource>();
+        private readonly HashSet<PresenceSource> _restarting = new HashSet<PresenceSource>();
         private readonly GameObject _gameObject;
         private bool _disposed;
 
@@ -160,16 +161,91 @@ namespace Emas
                 return;
             }
 
+            source.Detach();
+
+            Realm.RemoveSourceGhosts(source);
+        }
+
+        /// <summary>
+        /// Restarts an attached source while retaining its ghost identities and view requests.
+        /// </summary>
+        /// <param name="source">
+        /// The active or failed source to restart with its current configuration.
+        /// </param>
+        /// <remarks>
+        /// Stops the old registration once and discards its queued work. Retained ghosts become unavailable until republished.
+        /// Startup errors propagate and leave the source attached with unavailable ghosts for another retry.
+        /// Callback sources retain unreported identities; polling removes identities absent from a successful complete read.
+        /// Cleanup errors are logged; the new attachment clears LastError and LastErrorContext before startup.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">
+        /// The source is null.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The source is absent, is starting or stopping, or is already being restarted.
+        /// Source startup can also throw application-specific exceptions.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// The anchor or realm was disposed.
+        /// </exception>
+        public void RestartSource(PresenceSource source)
+        {
+            ThrowIfDisposed();
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            if (!_sources.Contains(source) || !source.IsAttachedTo(this))
+            {
+                throw new InvalidOperationException("The source is not attached to this anchor.");
+            }
+
+            if (source.IsInLifecycle || !_restarting.Add(source))
+            {
+                throw new InvalidOperationException("A source cannot restart during startup, cleanup or another restart.");
+            }
+
+            long generation = source.RegistrationGeneration;
             try
             {
                 source.Detach();
-            }
-            catch (Exception exception)
-            {
-                Debug.LogException(exception);
-            }
+                if (!CanContinueRestart(source, generation))
+                {
+                    return;
+                }
 
-            Realm.RemoveSourceGhosts(source);
+                // Retain roots, but require publication from the new registration before exposing their data.
+                Realm.MarkUnavailable(source);
+                if (!CanContinueRestart(source, generation))
+                {
+                    return;
+                }
+
+                try
+                {
+                    source.Attach(this);
+                }
+                catch
+                {
+                    if (source.IsAttachedTo(this) && source.RegistrationGeneration == generation + 1)
+                    {
+                        Realm.MarkUnavailable(source);
+                    }
+
+                    throw;
+                }
+            }
+            finally
+            {
+                _restarting.Remove(source);
+            }
+        }
+
+        private bool CanContinueRestart(PresenceSource source, long generation)
+        {
+            return !_disposed && _sources.Contains(source) && !source.IsAttached
+                && source.RegistrationGeneration == generation;
         }
 
         /// <summary>
@@ -221,14 +297,7 @@ namespace Emas
             }
 
             _sources[index] = replacement;
-            try
-            {
-                current.Detach();
-            }
-            catch (Exception exception)
-            {
-                Debug.LogException(exception);
-            }
+            current.Detach();
 
             if (_disposed || !_sources.Contains(replacement))
             {
@@ -278,14 +347,7 @@ namespace Emas
             Realm.NotifyAnchorDisposed(this);
             for (int index = sources.Count - 1; index >= 0; index--)
             {
-                try
-                {
-                    sources[index].Detach();
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogException(exception);
-                }
+                sources[index].Detach();
 
                 Realm.RemoveSourceGhosts(sources[index]);
             }

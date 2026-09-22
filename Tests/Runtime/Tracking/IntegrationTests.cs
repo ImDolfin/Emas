@@ -476,6 +476,84 @@ namespace Emas.Tests
             }
         }
 
+        /// <summary>
+        /// Explicit stop releases automatic views and listeners while leaving the component ready to track again.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Setup_StopTrackingReleasesViewsAndAllowsTrackAgain()
+        {
+            SceneSetup setup = CreateSetup();
+            GameObject prefab = new GameObject("view prefab");
+            _objects.Add(prefab);
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            _objects.Add(blueprint);
+            blueprint.Configure(Population, null, null, prefab);
+            SetField(setup, "_blueprints", new[] { blueprint });
+            int stops = 0;
+            CallbackPresenceSource<string, Probe> source = new CallbackPresenceSource<string, Probe>(Population)
+                .IdentifyBy(id => id).Apply((id, ghost) =>
+                {
+                })
+                .Listen((publish, remove) =>
+                {
+                    publish("a");
+                    return () => stops++;
+                });
+            setup.StopTracking();
+            setup.Track(source);
+            _realm.Update();
+            Ghost ghost = (Ghost)_realm.Query().Single();
+            View view = ghost.GetComponentInChildren<View>();
+            Assert.That(view, Is.Not.Null);
+            setup.StopTracking();
+            setup.StopTracking();
+            Assert.That(setup.isActiveAndEnabled, Is.True);
+            Assert.That(setup.Anchor, Is.Null);
+            Assert.That(_realm.Query().Count, Is.Zero);
+            Assert.That(stops, Is.EqualTo(1));
+            yield return null;
+            Assert.That(ghost == null && view == null, Is.True);
+            setup.Track(source);
+            _realm.Update();
+            Assert.That(((Ghost)_realm.Query().Single()).GetComponentInChildren<View>(), Is.Not.Null);
+            setup.StopTracking();
+            Assert.That(stops, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// Stopping during Listen immediately cleans up the returned subscription and leaves no anchor behind.
+        /// </summary>
+        [Test]
+        public void Setup_StopTrackingDuringStartupCleansUpAndCanRetry()
+        {
+            SceneSetup setup = CreateSetup();
+            int stops = 0;
+            CallbackPresenceSource<string, Probe> source = new CallbackPresenceSource<string, Probe>(Population)
+                .IdentifyBy(id => id).Apply((id, ghost) =>
+                {
+                })
+                .Listen((publish, remove) =>
+                {
+                    publish("stale");
+                    setup.StopTracking();
+                    return () => stops++;
+                });
+            Assert.Throws<InvalidOperationException>(() => setup.Track(source));
+            Assert.That(stops, Is.EqualTo(1));
+            Assert.That(setup.Anchor, Is.Null);
+            Assert.That(source.IsAttached, Is.False);
+            source.Listen((publish, remove) =>
+            {
+                publish("new");
+                return () => stops++;
+            });
+            setup.Track(source);
+            _realm.Update();
+            Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("new"));
+            setup.StopTracking();
+            Assert.That(stops, Is.EqualTo(2));
+        }
+
         private static IEnumerable<string> BrokenSnapshot()
         {
             yield return "a";

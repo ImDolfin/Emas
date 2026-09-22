@@ -51,7 +51,12 @@ namespace Emas.Tests.Samples
         {
             yield return Load("Assets/Samples/Minimal/QuickStart.unity");
             SceneSetup setup = Find<SceneSetup>();
-            AssertView("quick-start");
+            Ghost original = AssertView("quick-start");
+            View originalView = original.GetComponentInChildren<View>();
+            setup.Anchor.RestartSource(setup.Anchor.Sources[0]);
+            yield return null;
+            Assert.That(AssertView("quick-start"), Is.SameAs(original));
+            Assert.That(original.GetComponentInChildren<View>(), Is.SameAs(originalView));
 
             setup.gameObject.SetActive(false);
             Assert.That(Population("quick-start").Count, Is.Zero);
@@ -77,6 +82,14 @@ namespace Emas.Tests.Samples
             Ghost ghost = AssertView(anchor);
             Vector3 position = ghost.transform.localPosition;
             AssertListeners(feed, 1);
+            View originalView = ghost.GetComponentInChildren<View>();
+            setup.Anchor.RestartSource(setup.Anchor.Sources[0]);
+            AssertListeners(feed, 1);
+            Assert.That(ghost.IsAvailable, Is.False);
+            yield return null;
+            yield return null;
+            Assert.That(AssertView(anchor), Is.SameAs(ghost));
+            Assert.That(ghost.GetComponentInChildren<View>(), Is.SameAs(originalView));
 
             feed.Advance(1f);
             Assert.That(ghost.transform.localPosition, Is.EqualTo(position), "Callbacks must stay deferred.");

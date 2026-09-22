@@ -13,6 +13,8 @@ namespace Emas.Sample
         private const string AnchorId = "sample";
         private IDisposable _carSubscription;
         private IDisposable _aircraftSubscription;
+        private readonly HashSet<Key> _cars = new HashSet<Key>();
+        private readonly HashSet<Key> _aircraft = new HashSet<Key>();
         private Anchor _anchor;
         private SdkOneCarSource _firstCarSource;
         private SimulatedCockpitFeed _cockpitFeed;
@@ -38,11 +40,11 @@ namespace Emas.Sample
             RegisterCarBlueprint();
             RegisterAircraftBlueprint();
 
-            _firstCarSource = new SdkOneCarSource();
+            _firstCarSource = new SdkOneCarSource { Name = "SDK One cars" };
             _anchor = Realm.Default.GetOrCreateAnchor(
                 AnchorId,
                 _firstCarSource,
-                new SimulatedAircraftSource());
+                new SimulatedAircraftSource { Name = "Simulated aircraft" });
 
             Realm realm = _anchor.Realm;
             _carSubscription = realm.Query()
@@ -50,13 +52,21 @@ namespace Emas.Sample
                 .OfKind(SampleKinds.Car)
                 .With<I3DPosition>()
                 .With<IArticulate>()
-                .OnAvailable(ghost => realm.Manifest(ghost));
+                .Observe(ghost =>
+                {
+                    _cars.Add(ghost.Key);
+                    realm.Manifest(ghost);
+                }, key => _cars.Remove(key));
 
             _aircraftSubscription = realm.Query()
                 .InAnchor(AnchorId)
                 .OfKind(SampleKinds.Aircraft)
                 .With<I3DPosition>()
-                .OnAvailable(ghost => realm.Manifest(ghost));
+                .Observe(ghost =>
+                {
+                    _aircraft.Add(ghost.Key);
+                    realm.Manifest(ghost);
+                }, key => _aircraft.Remove(key));
 
             CreateDemoEnvironment();
             CreateCockpitDemo();
@@ -72,7 +82,7 @@ namespace Emas.Sample
         {
             if (_anchor != null && !_sourceReplaced)
             {
-                _anchor.ReplaceSource(_firstCarSource, new SdkTwoCarSource());
+                _anchor.ReplaceSource(_firstCarSource, new SdkTwoCarSource { Name = "SDK Two cars" });
                 _sourceReplaced = true;
             }
         }
@@ -122,6 +132,9 @@ namespace Emas.Sample
                 _aircraftSubscription = null;
             }
 
+            // Disposing observers cancels notifications; release the consumer's retained membership too.
+            _cars.Clear();
+            _aircraft.Clear();
             if (_anchor != null)
             {
                 _anchor.Dispose();
@@ -172,8 +185,8 @@ namespace Emas.Sample
 
         private void OnGUI()
         {
-            int cars = _anchor.Realm.Query().InAnchor(AnchorId).OfKind(SampleKinds.Car).Count;
-            int aircraft = _anchor.Realm.Query().InAnchor(AnchorId).OfKind(SampleKinds.Aircraft).Count;
+            int cars = _cars.Count;
+            int aircraft = _aircraft.Count;
             GUI.color = Color.white;
             GUI.Label(
                 new Rect(16.0f, 16.0f, 900.0f, 28.0f),

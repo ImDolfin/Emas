@@ -582,10 +582,10 @@ namespace Emas
             return result;
         }
 
-        internal IDisposable Subscribe(Query query, Action<IGhost> callback)
+        internal IDisposable Subscribe(Query query, Action<IGhost> callback, Action<Key> onLeave = null)
         {
             ThrowIfDisposed();
-            return _subscriptions.Subscribe(query, callback, _sourceDepth == 0 && !_finalizing);
+            return _subscriptions.Subscribe(query, callback, onLeave, _sourceDepth == 0 && !_finalizing);
         }
 
         internal void Dispatch(PresenceSource source, long generation, Action action)
@@ -797,19 +797,21 @@ namespace Emas
                 return;
             }
 
+            string sourceContext = item.Source == null ? "realm" : item.Source.CaptureErrorContext();
             try
             {
                 ApplySourceChanges(item.Action);
             }
             catch (Exception exception)
             {
+                string context = PresenceSource.DescribeError(sourceContext, "Dispatch");
                 if (item.Source == null)
                 {
-                    Debug.LogException(exception);
+                    PresenceSource.LogError(exception, context);
                 }
                 else if (item.Source.IsRegistration(this, item.Generation))
                 {
-                    item.Source.HandleFailure(exception);
+                    item.Source.HandleFailure(exception, context);
                 }
             }
         }
@@ -1018,7 +1020,7 @@ namespace Emas
                     {
                         if (owner.IsRegistration(this, generation))
                         {
-                            owner.HandleFailure(exception);
+                            owner.HandleFailure(exception, PresenceSource.DescribeError(owner.CaptureErrorContext(), "Activate", record.Key.Kind, record.Key.EntityId));
                         }
                         else
                         {
@@ -1046,7 +1048,7 @@ namespace Emas
                     {
                         if (owner.IsRegistration(this, generation))
                         {
-                            owner.HandleFailure(exception);
+                            owner.HandleFailure(exception, PresenceSource.DescribeError(owner.CaptureErrorContext(), "RefreshView", record.Key.Kind, record.Key.EntityId));
                         }
                         else
                         {

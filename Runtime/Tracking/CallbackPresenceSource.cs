@@ -26,6 +26,7 @@ namespace Emas
         private Func<Action<TSource>, Action<string>, Action> _subscribe;
         private Action _unsubscribe;
         private long _unsubscribeGeneration;
+        private string _unsubscribeContext;
         private int _subscribeDepth;
 
         /// <summary>
@@ -174,13 +175,14 @@ namespace Emas
             // Retained delegates continue to identify the attachment that created them.
             Realm realm = Anchor.Realm;
             long generation = RegistrationGeneration;
+            string sourceContext = CaptureErrorContext();
             _subscribeDepth++;
             try
             {
                 // Availability-loss callbacks can reattach us before the old failure finishes stopping.
                 Action previousCleanup = _unsubscribe;
                 _unsubscribe = null;
-                Cleanup(previousCleanup, _unsubscribeGeneration);
+                Cleanup(previousCleanup, _unsubscribeGeneration, _unsubscribeContext);
                 if (!IsRegistration(realm, generation))
                 {
                     return;
@@ -193,12 +195,18 @@ namespace Emas
                 {
                     _unsubscribe = cleanup;
                     _unsubscribeGeneration = generation;
+                    _unsubscribeContext = sourceContext;
                 }
                 else
                 {
                     // Startup may synchronously stop or restart tracking before returning cleanup.
-                    Cleanup(cleanup, generation);
+                    Cleanup(cleanup, generation, sourceContext);
                 }
+            }
+            catch (Exception exception)
+            {
+                RecordError(exception, generation, DescribeError(sourceContext, "Listen", _kind));
+                throw;
             }
             finally
             {
@@ -217,10 +225,10 @@ namespace Emas
 
             Action cleanup = _unsubscribe;
             _unsubscribe = null;
-            Cleanup(cleanup, _unsubscribeGeneration);
+            Cleanup(cleanup, _unsubscribeGeneration, _unsubscribeContext);
         }
 
-        private void Cleanup(Action cleanup, long generation)
+        private void Cleanup(Action cleanup, long generation, string sourceContext)
         {
             try
             {
@@ -231,8 +239,9 @@ namespace Emas
             }
             catch (Exception exception)
             {
-                RecordError(exception, generation);
-                Debug.LogException(exception);
+                string context = DescribeError(sourceContext, "Unsubscribe", _kind);
+                RecordError(exception, generation, context);
+                LogError(exception, context);
             }
         }
 
@@ -247,36 +256,61 @@ namespace Emas
 
         private void Publish(Realm realm, long generation, TSource item)
         {
-            if ((object)item == null)
+            string sourceContext = CaptureErrorContext();
+            string operation = "Publish";
+            string id = null;
+            try
             {
-                throw new InvalidOperationException("A callback source cannot publish a null item.");
-            }
+                if ((object)item == null)
+                {
+                    throw new InvalidOperationException("A callback source cannot publish a null item.");
+                }
 
-            // Selectors can stop or replace the source before mapping begins.
-            string id = _identify(item);
-            if (!IsRegistration(realm, generation))
-            {
-                return;
-            }
+                // Selectors can stop or replace the source before mapping begins.
+                operation = nameof(IdentifyBy);
+                id = _identify(item);
+                if (!IsRegistration(realm, generation))
+                {
+                    return;
+                }
 
-            ValidateId(id);
-            Variant? variant = _variant == null ? (Variant?)null : _variant(item);
-            if (!IsRegistration(realm, generation))
-            {
-                return;
-            }
+                ValidateId(id);
+                operation = nameof(WithVariant);
+                Variant? variant = _variant == null ? (Variant?)null : _variant(item);
+                if (!IsRegistration(realm, generation))
+                {
+                    return;
+                }
 
-            TGhost ghost = GetOrCreate<TGhost>(id, _kind, variant);
-            if (IsRegistration(realm, generation))
+                operation = "GetOrCreate";
+                TGhost ghost = GetOrCreate<TGhost>(id, _kind, variant);
+                if (IsRegistration(realm, generation))
+                {
+                    operation = nameof(Apply);
+                    _apply(item, ghost);
+                }
+            }
+            catch (Exception exception)
             {
-                _apply(item, ghost);
+                RecordError(exception, generation, DescribeError(sourceContext, operation, _kind, id));
+                throw;
             }
         }
 
         private void RemovePublished(string id)
         {
-            ValidateId(id);
-            Remove(_kind, id);
+            long generation = RegistrationGeneration;
+            string sourceContext = CaptureErrorContext();
+            try
+            {
+                ValidateId(id);
+                Remove(_kind, id);
+            }
+            catch (Exception exception)
+            {
+                RecordError(exception, generation, DescribeError(sourceContext, "Remove", _kind, id));
+                throw;
+            }
         }
 
         private static void ValidateId(string id)

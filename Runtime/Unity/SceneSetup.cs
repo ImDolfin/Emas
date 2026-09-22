@@ -53,7 +53,7 @@ namespace Emas
         /// A source entry is null.
         /// </exception>
         /// <remarks>
-        /// Call once while enabled. Disabling cleans up; call again after re-enabling to restart.
+        /// Call once per tracking lifetime while enabled. StopTracking or disabling cleans up; call Track again to restart.
         /// Startup exceptions propagate after cleaning up this attempt. Sources may throw application-specific errors.
         /// SDK clients remain application-owned. Registered blueprints persist until the default realm is disposed.
         /// </remarks>
@@ -143,6 +143,18 @@ namespace Emas
             }
         }
 
+        /// <summary>
+        /// Stops tracking and releases the owned anchor, ghosts, views and subscriptions.
+        /// </summary>
+        /// <remarks>
+        /// Safe to call repeatedly, including during startup. The component stays enabled; call Track to start again.
+        /// Registered blueprints remain in the realm. SDK clients remain application-owned.
+        /// </remarks>
+        public void StopTracking()
+        {
+            Release();
+        }
+
         internal string GetConfigurationError()
         {
             if (string.IsNullOrEmpty(_anchorId))
@@ -179,7 +191,7 @@ namespace Emas
 
         private void OnDisable()
         {
-            Release();
+            StopTracking();
         }
 
         private void Release()

@@ -9,7 +9,8 @@ Runtime APIs use the `Emas` namespace. All operations require Unity's main threa
 | `PollingPresenceSource<TSource, TGhost>(kind)` | Poll on startup and every update; create/update entities and remove those absent from a successful complete snapshot |
 | `CallbackPresenceSource<TSource, TGhost>(kind)` | Subscribe once per attachment; queue individual publications and explicit removals |
 | `SceneSetup.Track(params PresenceSource[] sources)` | Register Inspector blueprints and start one owned anchor under the component transform |
-| `SceneSetup.Anchor` | Current owned anchor, or null when stopped; use it for source replacement |
+| `SceneSetup.Anchor` | Current owned anchor, or null when stopped; use it for source restart or replacement |
+| `SceneSetup.StopTracking()` | Release the owned anchor, ghosts, views and subscriptions; keep the component enabled and ready for another `Track` |
 
 For polling, configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an anchor.
 
@@ -31,7 +32,7 @@ For callbacks, configure `.IdentifyBy(idSelector)`, `.Apply(copyData)` and `.Lis
 
 Subscription and cleanup run on the Unity thread. Initial items may be published inside `Listen`; they are also deferred.
 
-`SceneSetup` must be enabled and its anchor ID unused. Call `Track` once per enabled lifetime. Automatic views apply only to its assigned blueprint kinds. Disable cleans up tracking and subscriptions; re-enable requires another `Track` call. Blueprint registrations remain in the shared realm.
+`SceneSetup` must be enabled and its anchor ID unused. Call `Track` once per tracking lifetime. Automatic views apply only to its assigned blueprint kinds. `StopTracking` and disable clean up tracking and subscriptions; call `Track` again to start another lifetime. Repeated stops are harmless. Stopping during startup cancels that attempt and cleans up any returned callback subscription. Blueprint registrations remain in the shared realm.
 
 ## Tracking and lifecycle
 
@@ -47,7 +48,7 @@ Subscription and cleanup run on the Unity thread. Initial items may be published
 | `Update()` | Advance an explicitly managed realm; the default realm advances automatically |
 | `realm.Dispose()` | Release the realm and all owned state |
 
-An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddSource`, `RemoveSource`, `ReplaceSource(current, replacement)` and `Dispose()`. Replacement retains compatible identities; removal destroys the removed source's population. See [lifecycle rules](Architecture.md#failure-and-cleanup).
+An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddSource`, `RemoveSource`, `RestartSource(source)`, `ReplaceSource(current, replacement)` and `Dispose()`. Restart reuses the attached active or failed source with its existing configuration; replacement uses a different instance. Both retain compatible identities and view requests, marking ghosts unavailable until republished. Restart rejects calls during startup, cleanup or another restart. Startup failure leaves the restarted source attached for another retry; callbacks from its previous registration remain invalid. Removal destroys the removed source's population. See [lifecycle rules](Architecture.md#failure-and-cleanup).
 
 ## PresenceSource and ghost contracts
 
@@ -55,7 +56,9 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddSource`, `RemoveSource`, `Re
 | --- | --- |
 | `IsAttached` | An anchor still owns this source, including a failed registration |
 | `IsActive` | The current attachment is starting or accepting updates |
-| `LastError` | First failure from the latest attachment; cleared before startup, retained after stopping/detachment, never overwritten by cleanup or an old registration |
+| `Name` | Optional application label for diagnostics; empty labels use the source type. Does not affect identity |
+| `LastError` | Original first exception from the latest attachment; cleared before startup, retained after stopping/detachment, never overwritten by cleanup or an old registration |
+| `LastErrorContext` | Captured anchor, source label and operation for `LastError`; built-in sources also include kind/entity ID when known. Same retention and reset rules |
 | `OnStart`, `OnUpdate`, `OnStop` | Override lifecycle hooks; cleanup runs once for a started attachment, including startup failure |
 | `GetOrCreate<TGhost>(entityId, kind, variant = null)` | Obtain a stable owned ghost; another overload accepts a display name |
 | `Remove(kind, entityId)` | Remove one owned ghost |
@@ -79,8 +82,11 @@ Queries are immutable and combine all filters. They never create ghosts or compo
 | `FirstOrDefault()` | First match or null; no ordering guarantee |
 | `Single()` | Exactly one match; otherwise throws |
 | `OnAvailable(callback)` | Notify current and future complete matches; dispose the returned subscription to stop |
+| `Observe(onEnter, onLeave)` | Paired membership callbacks: `IGhost` on entry, `Key` on departure |
 
 Subscriptions notify once while a ghost remains a match. Availability loss permits a fresh notification on recovery. Outside source/finalization/notification callbacks, current matches notify immediately. Inside those phases, notification is deferred; subscriptions created during notification wait for a later update. Callback exceptions are isolated, and each match is rechecked before invoking the callback.
+
+`Observe` reports departure when a previously delivered ghost is removed, becomes unavailable or no longer matches. Departures run at the update notification phase, before that subscription's arrivals. Removal and availability loss remain observable even if the identity returns before the next update; filter changes are evaluated at notification time. A departure receives a `Key` because its Unity object may already be destroyed. Disposing the subscription or realm cancels pending callbacks without synthesizing departures; consumers clear their own retained state.
 
 ## Typed values
 
@@ -118,4 +124,4 @@ Views require an available ghost and a positive request. View binding finishes b
 
 Source: [realm](../Runtime/Realm.cs), [queries](../Runtime/Queries/Query.cs), [blueprints](../Runtime/Views/Blueprint.cs).
 
-Integration policy: [Guidelines](Guidelines.md). Authoring errors appear in Blueprint/SceneSetup Inspectors using the same validation as runtime registration. **Window > Emas** passively shows existing default-realm anchors, per-source health, available/owned counts and failure details; isolated realms can be inspected through the snapshot APIs.
+Integration policy: [Guidelines](Guidelines.md). Authoring errors appear in Blueprint/SceneSetup Inspectors using the same validation as runtime registration. **Window > Emas** passively shows existing default-realm anchors, source labels, health, available/owned counts and failure context with expandable exception details; isolated realms can be inspected through the snapshot APIs.

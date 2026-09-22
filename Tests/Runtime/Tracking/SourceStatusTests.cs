@@ -44,10 +44,12 @@ namespace Emas.Tests
             Assert.That(source.IsAttached, Is.False);
             Assert.That(source.IsActive, Is.False);
             Assert.That(source.LastError, Is.Null);
+            Assert.That(source.LastErrorContext, Is.Null);
             source.Starting = () =>
             {
                 Assert.That(source.IsAttached && source.IsActive, Is.True);
                 Assert.That(source.LastError, Is.Null);
+                Assert.That(source.LastErrorContext, Is.Null);
                 throw primary;
             };
             source.Stopping = () =>
@@ -66,6 +68,7 @@ namespace Emas.Tests
             anchor.RemoveSource(source);
             Assert.That(source.IsAttached || source.IsActive, Is.False);
             Assert.That(source.LastError, Is.Null);
+            Assert.That(source.LastErrorContext, Is.Null);
             Assert.That(source.Stops, Is.EqualTo(2));
         }
 
@@ -197,6 +200,7 @@ namespace Emas.Tests
             source.Listen((changed, removed) => null);
             anchor.AddSource(source);
             Assert.That(source.LastError, Is.Null);
+            Assert.That(source.LastErrorContext, Is.Null);
             Assert.That(source.IsActive, Is.True);
         }
 
@@ -225,6 +229,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(source.IsActive && source.IsAttached, Is.True);
             Assert.That(source.LastError, Is.Null);
+            Assert.That(source.LastErrorContext, Is.Null);
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
         }
 
@@ -261,6 +266,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(source.IsActive && source.IsAttached, Is.True);
             Assert.That(source.LastError, Is.Null);
+            Assert.That(source.LastErrorContext, Is.Null);
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
         }
 
@@ -293,6 +299,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(source.IsAttached && source.IsActive, Is.True);
             Assert.That(source.LastError, Is.Null);
+            Assert.That(source.LastErrorContext, Is.Null);
             Assert.That(anchor.Sources, Is.EquivalentTo(new[] { source }));
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
         }

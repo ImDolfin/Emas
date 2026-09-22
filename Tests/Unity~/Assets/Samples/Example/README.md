@@ -6,9 +6,11 @@ Open `Scenes/Example.unity` and press Play. Cars and aircraft use application co
 | --- | --- |
 | Read-only application data | `Contracts/I3DPosition.cs`, `IArticulate.cs` |
 | Source mapping and mutation | `Entities/CarGhost.cs`, `Sources/Presence/SdkOneCarSource.cs` |
-| Queries, subscription disposal and replacement | `Bootstrap.cs` (`OnEnable`, `OnDisable`, `ReplaceCarSource`) |
+| Paired query membership, subscription disposal and replacement | `Bootstrap.cs` (`OnEnable`, `OnDisable`, `ReplaceCarSource`) |
 | Root position consumption | `Behaviors/ApplyPosition.cs` |
 | View consumption through `View.Ghost.TryGet<T>` | `Behaviors/VehicleLogic.cs`, `ArticulationLogic.cs` |
+
+The displayed counts use `Observe`: entry callbacks retain ghost keys and request views, departure callbacks remove keys. `OnDisable` disposes subscriptions and clears those sets. Sources have diagnostic labels visible in **Window > Emas**.
 
 Positions are local to the owning anchor. The simulated SDKs already use that frame; a real adapter must convert units, axes and coordinates before calling the concrete ghost's setters. Consumers only receive the read-only interfaces. The separate cockpit marker illustrates screen-local data without an Emas ghost.
 

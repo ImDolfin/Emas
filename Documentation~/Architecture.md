@@ -25,7 +25,7 @@ Queries see available ghosts only. Root components provide data contracts; visua
 2. Run source updates and finish assigning data.
 3. Publish initialized ghosts as available and activate their roots.
 4. Refresh requested dirty views.
-5. Notify availability subscriptions.
+5. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
 
 Newly queued actions wait for a later update. The budget limits action count, not execution time; application callbacks must remain short. Dispatch records the source's registration generation, so stale work is discarded even if the same instance is reattached.
 
@@ -38,23 +38,23 @@ Successful startup outside an update finalizes directly populated ghosts immedia
 | Event | Result |
 | --- | --- |
 | Source update/dispatched action throws | Stop that source and deactivate its population; other sources continue |
-| Replace source | Preserve identities and root components; ghosts remain unavailable until republished |
-| Failed replacement | Retain unavailable records and failed registration for another explicit replacement/removal |
+| Restart/replace source | Preserve identities, root components and view requests; ghosts remain unavailable until republished |
+| Failed restart/replacement | Retain unavailable records and failed registration for another explicit retry/replacement/removal |
 | Failed initial attachment | Remove only newly created records; restore prepared identities to unowned/unavailable |
 | Attach an already registered source | Reject without changing its original population |
 | Remove ghost/source | Remove the selected identity/owned population and associated views |
-| Dispose/remove anchor or unload its scene | Remove owned and prepared records; stop sources |
+| Stop SceneSetup, dispose/remove anchor or unload its scene | Remove owned and prepared records; stop sources |
 | Dispose realm | Remove anchors, records, views, subscriptions, blueprints and queued work |
 
 Availability loss deactivates the root and excludes it from queries; retained data may be stale. Demanifesting only removes the visual child. Recovery is explicit through an active source republishing identities.
 
-Sources retain the first failure in `LastError`; cleanup errors cannot hide it and old registrations cannot change a restarted source's status. See [status contracts](API.md#presencesource-and-ghost-contracts).
+Sources retain the original first exception in `LastError` and its captured anchor/source/operation in `LastErrorContext`; cleanup errors cannot hide either and old registrations cannot change a restarted source's status. See [status contracts](API.md#presencesource-and-ghost-contracts).
 
 Realm/anchor disposal is idempotent. Further mutations throw `ObjectDisposedException`; disposed-realm queries are empty and `Update()` is a no-op. Anchor disposal unregisters records immediately, before Unity's deferred destruction.
 
 ## Callback safety and internal boundaries
 
-Registry traversal uses snapshots and rechecks membership/registration after callbacks. Removal invalidates identity immediately. Nested scene activation/destruction waits until the outer Emas-triggered Unity scene effect returns, preventing unsafe hierarchy changes during activation callbacks.
+Registry traversal uses snapshots and rechecks membership/registration after callbacks. Removal invalidates identity immediately. `Observe` retains departure keys until notification, so removed Unity objects need not stay alive. Subscription or realm disposal cancels pending notifications. Nested scene activation/destruction waits until the outer Emas-triggered Unity scene effect returns, preventing unsafe hierarchy changes during activation callbacks.
 
 | Component | Responsibility |
 | --- | --- |

@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Added `SceneSetup.StopTracking()` and `Anchor.RestartSource(source)` with retained ghost identities, view requests and stale-callback protection.
+- Added `Query.Observe(onEnter, onLeave)` for paired arrivals and departures, including removal, lost availability and filter changes.
+- Added source labels and `LastErrorContext`; logs lead with operation context and diagnostics show expandable exception details. Expanded samples and lifecycle regression coverage.
+
 - Made all Emas APIs main-thread-only and removed internal thread synchronization; applications now own SDK event handoff. Deferred callbacks, ordering and lifecycle protection remain.
 
 - Added read-only source health (`IsAttached`, `IsActive`, `LastError`) and copied anchor/source snapshots, with generation-safe failure reporting.

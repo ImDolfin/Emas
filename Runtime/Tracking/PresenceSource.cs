@@ -16,6 +16,10 @@ namespace Emas
         private bool _started;
         private long _registrationGeneration;
         private Exception _lastError;
+        private string _lastErrorContext;
+        private string _name;
+        private string _sourceContext;
+        private int _lifecycleDepth;
 
         /// <summary>
         /// Gets the anchor currently hosting this source.
@@ -239,11 +243,108 @@ namespace Emas
             }
         }
 
-        internal void RecordError(Exception exception, long generation)
+        /// <summary>
+        /// Gets or sets an application label used in diagnostics and failure reports.
+        /// </summary>
+        /// <remarks>
+        /// Null, empty or whitespace labels use the source type name. Labels do not affect identity or ownership.
+        /// Change this value only on Unity's main thread; recorded failure context retains its original label.
+        /// </remarks>
+        public string Name
+        {
+            get
+            {
+                return string.IsNullOrWhiteSpace(_name) ? GetType().Name.Split('`')[0] : _name;
+            }
+            set
+            {
+                _name = value;
+                _sourceContext = null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the anchor, source and operation associated with LastError, or null when no error is recorded.
+        /// </summary>
+        /// <remarks>
+        /// Built-in sources include the kind and entity ID when known. Captured with the primary error and cleared
+        /// before each attachment attempt; cleanup and stale registrations cannot replace that context.
+        /// </remarks>
+        public string LastErrorContext
+        {
+            get
+            {
+                return _lastErrorContext;
+            }
+        }
+
+        internal bool IsInLifecycle
+        {
+            get
+            {
+                return _lifecycleDepth > 0;
+            }
+        }
+
+        internal string CaptureErrorContext()
+        {
+            if (_sourceContext == null)
+            {
+                _sourceContext = "anchor '" + (_anchor == null ? "<detached>" : _anchor.Id)
+                    + "', source '" + Name + "' (" + GetType().Name.Split('`')[0] + ")";
+            }
+
+            return _sourceContext;
+        }
+
+        internal static string DescribeError(string sourceContext, string operation, Kind? kind = null, string entityId = null)
+        {
+            string context = sourceContext + ", operation '" + operation + "'";
+            if (kind.HasValue)
+            {
+                context += ", kind '" + kind.Value.Id + "'";
+            }
+
+            if (entityId != null)
+            {
+                context += ", entity '" + entityId + "'";
+            }
+
+            return context;
+        }
+
+        internal void RecordError(Exception exception, long generation, string context)
         {
             if (_registrationGeneration == generation && _lastError == null)
             {
                 _lastError = exception;
+                _lastErrorContext = context;
+            }
+        }
+
+        internal static void LogError(Exception exception, string context)
+        {
+            // Unity unwraps LogException's inner exceptions; format explicitly to keep context on the first line.
+            UnityEngine.Debug.LogFormat(UnityEngine.LogType.Exception, UnityEngine.LogOption.NoStacktrace, null,
+                "Emas: {0}. {1}: {2}\n{3}", context, exception.GetType().Name, exception.Message, exception);
+        }
+
+        private string ErrorContextFor(Exception exception, long generation, string fallback)
+        {
+            return _registrationGeneration == generation && ReferenceEquals(_lastError, exception)
+                ? _lastErrorContext : fallback;
+        }
+
+        private void InvokeLifecycle(Action callback)
+        {
+            _lifecycleDepth++;
+            try
+            {
+                callback();
+            }
+            finally
+            {
+                _lifecycleDepth--;
             }
         }
 
@@ -276,13 +377,16 @@ namespace Emas
 
             // Startup callbacks observe the new attachment and a cleared error state.
             _anchor = anchor;
+            _sourceContext = null;
             _registrationGeneration++;
             _lastError = null;
+            _lastErrorContext = null;
             _started = true;
             long generation = RegistrationGeneration;
+            string context = DescribeError(CaptureErrorContext(), "OnStart");
             try
             {
-                anchor.Realm.ApplySourceChanges(OnStart);
+                anchor.Realm.ApplySourceChanges(() => InvokeLifecycle(OnStart));
                 if (IsRegistration(anchor.Realm, generation))
                 {
                     anchor.Realm.FinalizeSource(this);
@@ -290,7 +394,7 @@ namespace Emas
             }
             catch (Exception exception)
             {
-                RecordError(exception, generation);
+                RecordError(exception, generation, context);
                 if (IsAttachedTo(anchor) && RegistrationGeneration == generation)
                 {
                     StopAfterFailure(generation);
@@ -309,6 +413,7 @@ namespace Emas
                 return;
             }
 
+            string sourceContext = CaptureErrorContext();
             try
             {
                 anchor.Realm.ApplySourceChanges(OnUpdate);
@@ -321,16 +426,16 @@ namespace Emas
             {
                 if (IsRegistration(anchor.Realm, generation))
                 {
-                    HandleFailure(exception);
+                    HandleFailure(exception, DescribeError(sourceContext, "OnUpdate"));
                 }
                 else
                 {
-                    UnityEngine.Debug.LogException(exception);
+                    LogError(exception, DescribeError(sourceContext, "OnUpdate"));
                 }
             }
         }
 
-        internal void HandleFailure(Exception exception)
+        internal void HandleFailure(Exception exception, string context)
         {
             if (!IsActive)
             {
@@ -338,8 +443,8 @@ namespace Emas
             }
 
             long generation = RegistrationGeneration;
-            RecordError(exception, generation);
-            UnityEngine.Debug.LogException(exception);
+            RecordError(exception, generation, context);
+            LogError(exception, ErrorContextFor(exception, generation, context));
             StopAfterFailure(generation);
         }
 
@@ -350,22 +455,31 @@ namespace Emas
                 return;
             }
 
-            // Stop accepting publications before availability changes invoke scene callbacks.
+            string context = DescribeError(CaptureErrorContext(), "OnStop");
+            // Availability changes can invoke scene callbacks; keep the entire stop protected against restart.
             _started = false;
-            Anchor anchor = _anchor;
-            if (anchor != null)
-            {
-                anchor.Realm.MarkUnavailable(this);
-            }
-
+            _lifecycleDepth++;
             try
             {
-                OnStop();
+                Anchor anchor = _anchor;
+                if (anchor != null)
+                {
+                    anchor.Realm.MarkUnavailable(this);
+                }
+
+                try
+                {
+                    OnStop();
+                }
+                catch (Exception exception)
+                {
+                    RecordError(exception, generation, context);
+                    LogError(exception, context);
+                }
             }
-            catch (Exception exception)
+            finally
             {
-                RecordError(exception, generation);
-                UnityEngine.Debug.LogException(exception);
+                _lifecycleDepth--;
             }
         }
 
@@ -373,22 +487,28 @@ namespace Emas
         {
             long generation = RegistrationGeneration;
             bool wasStarted = _started;
+            string context = DescribeError(CaptureErrorContext(), "OnStop");
             _started = false;
             try
             {
                 if (wasStarted)
                 {
-                    OnStop();
+                    InvokeLifecycle(OnStop);
                 }
             }
             catch (Exception exception)
             {
-                RecordError(exception, generation);
-                throw;
+                RecordError(exception, generation, context);
+                LogError(exception, context);
             }
             finally
             {
-                _anchor = null;
+                // Cleanup may remove and reattach the instance; leave a newer registration intact.
+                if (_registrationGeneration == generation)
+                {
+                    _anchor = null;
+                    _sourceContext = null;
+                }
             }
         }
     }

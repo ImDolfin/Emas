@@ -16,9 +16,9 @@ namespace Emas
             _realm = realm;
         }
 
-        internal IDisposable Subscribe(Query query, Action<IGhost> callback, bool notifyImmediately)
+        internal IDisposable Subscribe(Query query, Action<IGhost> callback, Action<Key> onLeave, bool notifyImmediately)
         {
-            Subscription subscription = new Subscription(this, query, callback);
+            Subscription subscription = new Subscription(this, query, callback, onLeave);
             _items.Add(subscription);
             if (notifyImmediately && !_notifying)
             {
@@ -40,7 +40,11 @@ namespace Emas
         {
             for (int index = 0; index < _items.Count; index++)
             {
-                _items[index].Seen.Remove(key);
+                Subscription subscription = _items[index];
+                if (subscription.Seen.Remove(key) && subscription.OnLeave != null)
+                {
+                    subscription.Departures.Add(key);
+                }
             }
         }
 
@@ -95,8 +99,36 @@ namespace Emas
                 keys.Add(matches[index].Key);
             }
 
-            // Retain seen identities only while they remain current matches.
+            // Collect departures before invoking consumers, which may mutate the realm again.
+            foreach (Key key in subscription.Seen)
+            {
+                if (!keys.Contains(key) && subscription.OnLeave != null)
+                {
+                    subscription.Departures.Add(key);
+                }
+            }
+
             subscription.Seen.IntersectWith(keys);
+            List<Key> departures = new List<Key>(subscription.Departures);
+            subscription.Departures.Clear();
+            for (int index = 0; index < departures.Count; index++)
+            {
+                if (subscription.Disposed || _realm.IsDisposed)
+                {
+                    return;
+                }
+
+                Key key = departures[index];
+                try
+                {
+                    subscription.OnLeave(key);
+                }
+                catch (Exception exception)
+                {
+                    PresenceSource.LogError(exception, "query departure for " + key);
+                }
+            }
+
             for (int index = 0; index < matches.Count; index++)
             {
                 if (subscription.Disposed || _realm.IsDisposed)
@@ -119,7 +151,7 @@ namespace Emas
                     }
                     catch (Exception exception)
                     {
-                        Debug.LogException(exception);
+                        PresenceSource.LogError(exception, "query arrival for " + ghost.Key);
                     }
                 }
             }
@@ -127,18 +159,21 @@ namespace Emas
 
         private sealed class Subscription : IDisposable
         {
-            internal Subscription(Subscriptions owner, Query query, Action<IGhost> callback)
+            internal Subscription(Subscriptions owner, Query query, Action<IGhost> callback, Action<Key> onLeave)
             {
                 Owner = owner;
                 Query = query;
                 Callback = callback;
+                OnLeave = onLeave;
             }
 
             internal readonly Subscriptions Owner;
             internal readonly Query Query;
             internal readonly HashSet<Key> Seen = new HashSet<Key>();
             internal readonly HashSet<Key> MatchKeys = new HashSet<Key>();
+            internal readonly List<Key> Departures = new List<Key>();
             internal Action<IGhost> Callback;
+            internal Action<Key> OnLeave;
             internal bool Disposed;
 
             /// <summary>
@@ -155,7 +190,9 @@ namespace Emas
                 Owner._items.Remove(this);
                 Seen.Clear();
                 MatchKeys.Clear();
+                Departures.Clear();
                 Callback = null;
+                OnLeave = null;
             }
         }
     }

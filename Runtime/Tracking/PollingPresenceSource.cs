@@ -184,12 +184,21 @@ namespace Emas
 
             _polling = true;
             long generation = RegistrationGeneration;
+            Realm realm = Anchor.Realm;
+            string sourceContext = CaptureErrorContext();
+            string operation = nameof(ReadFrom);
+            string entityId = null;
             _seen.Clear();
             _entries.Clear();
             try
             {
                 // Validate the complete population before applying any changes to ghosts.
                 IEnumerable<TSource> snapshot = _read();
+                if (!IsRegistration(realm, generation))
+                {
+                    return;
+                }
+
                 if (snapshot == null)
                 {
                     throw new InvalidOperationException("A polling source must return a complete snapshot, not null.");
@@ -197,13 +206,29 @@ namespace Emas
 
                 foreach (TSource item in snapshot)
                 {
-                    string id = _identify(item);
-                    if (string.IsNullOrEmpty(id) || !_seen.Add(id))
+                    operation = nameof(IdentifyBy);
+                    entityId = _identify(item);
+                    if (!IsRegistration(realm, generation))
+                    {
+                        return;
+                    }
+
+                    if (string.IsNullOrEmpty(entityId) || !_seen.Add(entityId))
                     {
                         throw new InvalidOperationException("A polling snapshot contains an empty or duplicate entity ID.");
                     }
 
-                    _entries.Add(new Entry(item, id, _variant == null ? (Variant?)null : _variant(item)));
+                    operation = nameof(WithVariant);
+                    Variant? variant = _variant == null ? (Variant?)null : _variant(item);
+                    if (!IsRegistration(realm, generation))
+                    {
+                        return;
+                    }
+
+                    _entries.Add(new Entry(item, entityId, variant));
+                    // Enumerator failures belong to the read, not to the preceding selector.
+                    operation = nameof(ReadFrom);
+                    entityId = null;
                 }
 
                 // Map every item before deciding which existing ghosts have departed.
@@ -214,7 +239,15 @@ namespace Emas
                         return;
                     }
 
+                    operation = "GetOrCreate";
+                    entityId = entry.Id;
                     TGhost ghost = GetOrCreate<TGhost>(entry.Id, _kind, entry.Variant);
+                    if (!IsRegistration(realm, generation))
+                    {
+                        return;
+                    }
+
+                    operation = nameof(Apply);
                     _apply(entry.Item, ghost);
                 }
 
@@ -228,9 +261,16 @@ namespace Emas
 
                     if (ghost.Key.Kind != _kind || !_seen.Contains(ghost.Key.EntityId))
                     {
+                        operation = "Remove";
+                        entityId = ghost.Key.EntityId;
                         Remove(ghost.Key.Kind, ghost.Key.EntityId);
                     }
                 }
+            }
+            catch (Exception exception)
+            {
+                RecordError(exception, generation, DescribeError(sourceContext, operation, _kind, entityId));
+                throw;
             }
             finally
             {

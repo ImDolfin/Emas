@@ -11,6 +11,7 @@ namespace Emas.Editor
     public sealed class DiagnosticsWindow : EditorWindow
     {
         private Vector2 _scroll;
+        private readonly HashSet<PresenceSource> _expandedErrors = new HashSet<PresenceSource>();
 
         /// <summary>
         /// Opens diagnostics; opening or refreshing never creates a realm or starts tracking.
@@ -32,6 +33,7 @@ namespace Emas.Editor
             IReadOnlyList<AnchorStatus> anchors = Capture();
             if (anchors == null)
             {
+                _expandedErrors.Clear();
                 EditorGUILayout.HelpBox("No default realm exists. Enter Play Mode and start tracking to inspect it here.", MessageType.Info);
                 return;
             }
@@ -41,6 +43,7 @@ namespace Emas.Editor
                 EditorGUILayout.HelpBox("The default realm has no anchors.", MessageType.Info);
             }
 
+            HashSet<PresenceSource> failedSources = new HashSet<PresenceSource>();
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
             foreach (AnchorStatus anchor in anchors)
             {
@@ -54,7 +57,18 @@ namespace Emas.Editor
                     EditorGUILayout.LabelField("Available / owned ghosts", source.Available + " / " + source.Owned);
                     if (source.Error != null)
                     {
-                        EditorGUILayout.HelpBox(source.Error.ToString(), MessageType.Error);
+                        failedSources.Add(source.Source);
+                        EditorGUILayout.HelpBox(source.ErrorContext + "\n" + source.Error.Message, MessageType.Error);
+                        bool expanded = EditorGUILayout.Foldout(_expandedErrors.Contains(source.Source), "Exception details", true);
+                        if (expanded)
+                        {
+                            _expandedErrors.Add(source.Source);
+                            EditorGUILayout.SelectableLabel(source.Error.ToString(), EditorStyles.textArea, GUILayout.MinHeight(100f));
+                        }
+                        else
+                        {
+                            _expandedErrors.Remove(source.Source);
+                        }
                     }
                 }
 
@@ -62,6 +76,7 @@ namespace Emas.Editor
             }
 
             EditorGUILayout.EndScrollView();
+            _expandedErrors.IntersectWith(failedSources);
         }
 
         internal static IReadOnlyList<AnchorStatus> Capture()
@@ -90,9 +105,11 @@ namespace Emas.Editor
 
                     sources.Add(new SourceStatus
                     {
-                        Name = source.GetType().Name,
+                        Source = source,
+                        Name = source.Name,
                         Status = source.IsActive ? "Active" : source.IsAttached ? "Stopped (attached)" : "Detached",
                         Error = source.LastError,
+                        ErrorContext = source.LastErrorContext,
                         Available = available,
                         Owned = ghosts.Count
                     });
@@ -118,8 +135,10 @@ namespace Emas.Editor
 
         internal sealed class SourceStatus
         {
+            internal PresenceSource Source;
             internal string Name;
             internal string Status;
+            internal string ErrorContext;
             internal int Available;
             internal int Owned;
             internal Exception Error;

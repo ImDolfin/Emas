@@ -191,6 +191,47 @@ namespace Emas
             return _realm.Subscribe(this, callback);
         }
 
+        /// <summary>
+        /// Observes ghosts entering and leaving this query's results.
+        /// </summary>
+        /// <param name="onEnter">
+        /// Receives each available ghost when it begins matching, including current matches.
+        /// </param>
+        /// <param name="onLeave">
+        /// Receives the identity when a previously reported ghost is removed, becomes unavailable or stops matching.
+        /// </param>
+        /// <returns>
+        /// A subscription that cancels both callbacks when disposed.
+        /// </returns>
+        /// <remarks>
+        /// Initial entries follow OnAvailable scheduling. Departures run in the realm update notification phase, before entries
+        /// for this subscription. A departure supplies a Key because the Unity object may already be destroyed.
+        /// Availability loss and recovery between updates still produce a departure followed by a fresh entry.
+        /// Filter changes are observed at notification time. Disposing the subscription or realm cancels pending
+        /// notifications without synthesizing departures; consumers must release their own retained state.
+        /// Callback exceptions are logged and isolated. Subscriptions created inside notifications wait for another update.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">
+        /// Either callback is null.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// The realm was disposed.
+        /// </exception>
+        public IDisposable Observe(Action<IGhost> onEnter, Action<Key> onLeave)
+        {
+            if (onEnter == null)
+            {
+                throw new ArgumentNullException(nameof(onEnter));
+            }
+
+            if (onLeave == null)
+            {
+                throw new ArgumentNullException(nameof(onLeave));
+            }
+
+            return _realm.Subscribe(this, onEnter, onLeave);
+        }
+
         /// <inheritdoc />
         public IEnumerator<IGhost> GetEnumerator()
         {

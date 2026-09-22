@@ -127,7 +127,7 @@ namespace Emas.Editor.Tests
             Realm realm = Realm.Default;
             try
             {
-                FailedSource source = new FailedSource(true);
+                FailedSource source = new FailedSource(true) { Name = "Vehicle feed" };
                 Anchor anchor = realm.GetOrCreateAnchor("diagnostic", new FailedSource());
                 Assert.Throws<InvalidOperationException>(() => anchor.ReplaceSource(anchor.Sources[0], source));
                 System.Collections.Generic.IReadOnlyList<DiagnosticsWindow.AnchorStatus> first = DiagnosticsWindow.Capture();
@@ -137,6 +137,9 @@ namespace Emas.Editor.Tests
                 Assert.That(first[0].Available, Is.Zero);
                 Assert.That(first[0].Sources[0].Status, Is.EqualTo("Stopped (attached)"));
                 Assert.That(first[0].Sources[0].Error, Is.SameAs(source.LastError));
+                Assert.That(first[0].Sources[0].Name, Is.EqualTo("Vehicle feed"));
+                Assert.That(first[0].Sources[0].ErrorContext, Is.EqualTo(source.LastErrorContext));
+                Assert.That(first[0].Sources[0].ErrorContext, Does.Contain("diagnostic").And.Contain("OnStart"));
                 Assert.That(second[0].Sources[0].Error.Message, Is.EqualTo("diagnostic failure"));
                 Assert.That(source.Updates, Is.Zero);
                 realm.Dispose();
