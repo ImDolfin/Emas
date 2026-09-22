@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -88,34 +87,19 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Deferred enumeration failures are attributed to ReadFrom without a stale entity ID.
-        /// </summary>
-        [Test]
-        public void Polling_IdentifiesEnumeratorFailure()
-        {
-            PollingPresenceSource<string, TestGhost> source = new PollingPresenceSource<string, TestGhost>(new Kind("car"))
-                .ReadFrom(BrokenRead).IdentifyBy(id => id).Apply((id, ghost) =>
-                {
-                });
-            Anchor anchor = _realm.GetOrCreateAnchor("vehicles");
-            Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source));
-            Assert.That(source.LastErrorContext, Does.Contain("ReadFrom"));
-            Assert.That(source.LastErrorContext, Does.Not.Contain("entity '"));
-        }
-
-        /// <summary>
         /// Primary mapping context survives a second failure during unsubscribe and clears on restart.
         /// </summary>
         [Test]
         public void Cleanup_PreservesPrimaryContextAndRestartClearsIt()
         {
             bool failing = true;
+            InvalidOperationException primary = new InvalidOperationException("mapping failed");
             CallbackPresenceSource<string, TestGhost> source = new CallbackPresenceSource<string, TestGhost>(new Kind("car"))
                 .IdentifyBy(id => id).Apply((id, ghost) =>
                 {
                     if (failing)
                     {
-                        throw new InvalidOperationException("mapping failed");
+                        throw primary;
                     }
                 })
                 .Listen((publish, remove) =>
@@ -133,12 +117,15 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("vehicles", source);
             ExpectedErrors.Verify(_realm.Update, "operation 'Apply'.*entity '42'.*mapping failed", "operation 'Unsubscribe'.*unsubscribe failed");
             Assert.That(source.LastErrorContext, Does.Contain("Apply").And.Contain("42"));
-            Assert.That(source.LastError.Message, Is.EqualTo("mapping failed"));
+            Assert.That(source.LastError, Is.SameAs(primary));
+            Assert.That(source.IsAttached, Is.True);
+            Assert.That(source.IsActive, Is.False);
             failing = false;
             anchor.RestartSource(source);
             Assert.That(source.LastErrorContext, Is.Null);
             _realm.Update();
             Assert.That(source.LastError, Is.Null);
+            Assert.That(source.IsAttached && source.IsActive, Is.True);
         }
 
         /// <summary>
@@ -177,6 +164,8 @@ namespace Emas.Tests
 
             Assert.That(source.LastErrorContext, Does.Contain(cleanup ? "Unsubscribe" : "Listen"));
             Assert.That(source.LastErrorContext, Does.Contain("vehicles"));
+            Assert.That(source.LastError.Message, Is.EqualTo(cleanup ? "cleanup failed" : "listen failed"));
+            Assert.That(source.IsAttached || source.IsActive, Is.False);
         }
 
         /// <summary>
@@ -193,12 +182,6 @@ namespace Emas.Tests
             Assert.That(source.Name, Is.EqualTo("CallbackPresenceSource"));
             source.Name = null;
             Assert.That(source.Name, Is.EqualTo("CallbackPresenceSource"));
-        }
-
-        private static IEnumerable<string> BrokenRead()
-        {
-            yield return "42";
-            throw new InvalidOperationException("enumeration failed");
         }
 
         private sealed class TestGhost : Ghost

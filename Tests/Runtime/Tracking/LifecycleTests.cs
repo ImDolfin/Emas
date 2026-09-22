@@ -133,6 +133,9 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
             ProbeGhost prepared = _realm.Prepare<ProbeGhost>("anchor", Kind, "prepared");
             anchor.Dispose();
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(prepared.Key, out found), Is.False);
+            Assert.That(found, Is.Null);
             Assert.Throws<ObjectDisposedException>(() => anchor.AddSource(new ProbeSource()));
             Assert.Throws<ObjectDisposedException>(() => anchor.RemoveSource(source));
             Assert.Throws<ObjectDisposedException>(() => anchor.ReplaceSource(source, new ProbeSource()));
@@ -244,6 +247,9 @@ namespace Emas.Tests
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(ghost));
             Anchor otherAnchor = _realm.GetOrCreateAnchor("other");
             Assert.Throws<InvalidOperationException>(() => otherAnchor.AddSource(failed));
             ProbeSource recovery = new ProbeSource();
@@ -470,32 +476,6 @@ namespace Emas.Tests
             source.Queue(() => calls += 10);
             _realm.Update();
             Assert.That(calls, Is.EqualTo(10));
-        }
-
-        /// <summary>
-        /// A failing source deactivates only its own population and stops once.
-        /// </summary>
-        [Test]
-        public void SourceFailure_DoesNotStopOtherSources()
-        {
-            ProbeSource source = new ProbeSource();
-            ProbeSource other = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source, other);
-            ProbeGhost failedGhost = source.Publish("failed");
-            ProbeGhost healthyGhost = other.Publish("healthy");
-            _realm.Update();
-            source.Updating = () =>
-            {
-                throw new InvalidOperationException("probe failure");
-            };
-            ExpectedErrors.Verify(_realm.Update, "probe failure");
-            Assert.That(failedGhost.IsAvailable, Is.False);
-            Assert.That(failedGhost.gameObject.activeSelf, Is.False);
-            Assert.That(_realm.Query().Single(), Is.SameAs(healthyGhost));
-            Assert.That(source.StopCount, Is.EqualTo(1));
-            _realm.Update();
-            Assert.That(source.StopCount, Is.EqualTo(1));
-            Assert.That(other.UpdateCount, Is.EqualTo(3));
         }
 
         /// <summary>

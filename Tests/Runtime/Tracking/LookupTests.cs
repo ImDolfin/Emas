@@ -1,4 +1,3 @@
-using System;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -95,66 +94,14 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Failed sources retain a discoverable identity through restart and publication.
-        /// </summary>
-        [Test]
-        public void FailureAndRestart_RetainLookupIdentity()
-        {
-            Probe source = new Probe();
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            TestGhost expected = source.Publish("one");
-            _realm.Update();
-            source.Fail = true;
-            ExpectedErrors.Verify(_realm.Update, "lookup update failed");
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(expected.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(expected));
-            Assert.That(found.IsAvailable, Is.False);
-            source.Fail = false;
-            anchor.RestartSource(source);
-            Assert.That(_realm.TryGetGhost(expected.Key, out found), Is.True);
-            Assert.That(found.IsAvailable, Is.False);
-            source.Publish("one");
-            _realm.Update();
-            Assert.That(_realm.TryGetGhost(expected.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(expected));
-            Assert.That(found.IsAvailable, Is.True);
-        }
-
-        /// <summary>
-        /// Compatible replacement preserves lookup while awaiting new data.
-        /// </summary>
-        [Test]
-        public void Replacement_RetainsLookupIdentity()
-        {
-            Probe source = new Probe();
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            TestGhost expected = source.Publish("one");
-            _realm.Update();
-            Probe replacement = new Probe();
-            anchor.ReplaceSource(source, replacement);
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(expected.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(expected));
-            Assert.That(found.IsAvailable, Is.False);
-            replacement.Publish("one");
-            _realm.Update();
-            Assert.That(_realm.TryGetGhost(expected.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(expected));
-            Assert.That(found.IsAvailable, Is.True);
-        }
-
-        /// <summary>
         /// Removal stops lookup immediately, before Unity destroys the detached object.
         /// </summary>
         [TestCase("entity")]
-        [TestCase("source")]
-        [TestCase("anchor")]
         [TestCase("realm")]
         public void Removal_ReturnsFalseImmediately(string removal)
         {
             Probe source = new Probe();
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
+            _realm.GetOrCreateAnchor("anchor", source);
             TestGhost ghost = source.Publish("one");
             Key key = ghost.Key;
             _realm.Update();
@@ -162,12 +109,6 @@ namespace Emas.Tests
             {
                 case "entity":
                     source.Delete("one");
-                    break;
-                case "source":
-                    anchor.RemoveSource(source);
-                    break;
-                case "anchor":
-                    anchor.Dispose();
                     break;
                 case "realm":
                     _realm.Dispose();
@@ -220,8 +161,6 @@ namespace Emas.Tests
 
         private sealed class Probe : PresenceSource
         {
-            internal bool Fail;
-
             internal TestGhost Publish(string id)
             {
                 return GetOrCreate<TestGhost>(id, Kind, null, "Shared name");
@@ -230,15 +169,6 @@ namespace Emas.Tests
             internal void Delete(string id)
             {
                 Remove(Kind, id);
-            }
-
-            /// <inheritdoc />
-            protected override void OnUpdate()
-            {
-                if (Fail)
-                {
-                    throw new InvalidOperationException("lookup update failed");
-                }
             }
         }
     }

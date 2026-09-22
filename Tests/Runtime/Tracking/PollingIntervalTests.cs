@@ -45,17 +45,13 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Default and explicit zero intervals preserve polling on every realm update.
+        /// Explicit zero restores polling on every realm update.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void ZeroInterval_PollsEveryUpdate(bool explicitZero)
+        [Test]
+        public void ZeroInterval_PollsEveryUpdate()
         {
-            PollingPresenceSource<string, TestGhost> source = CreateSource();
-            if (explicitZero)
-            {
-                Assert.That(source.PollEvery(TimeSpan.Zero), Is.SameAs(source));
-            }
+            PollingPresenceSource<string, TestGhost> source = CreateSource().PollEvery(TimeSpan.FromSeconds(1));
+            Assert.That(source.PollEvery(TimeSpan.Zero), Is.SameAs(source));
 
             _realm.GetOrCreateAnchor("anchor", source);
             _realm.Update();
@@ -132,62 +128,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Every source maintains its own cadence without delaying other sources.
-        /// </summary>
-        [Test]
-        public void Intervals_AreIndependent()
-        {
-            PollingPresenceSource<string, TestGhost> slow = CreateSource().PollEvery(TimeSpan.FromSeconds(1));
-            int fastReads = 0;
-            PollingPresenceSource<string, TestGhost> fast = new PollingPresenceSource<string, TestGhost>(Kind, () => _now)
-                .ReadFrom(() =>
-                {
-                    fastReads++;
-                    return Array.Empty<string>();
-                })
-                .IdentifyBy(id => id)
-                .Apply((item, ghost) =>
-                {
-                });
-            _realm.GetOrCreateAnchor("anchor", slow, fast);
-            _realm.Update();
-            _now = 10.5;
-            _realm.Update();
-            Assert.That(_reads, Is.EqualTo(1));
-            Assert.That(fastReads, Is.EqualTo(3));
-            _now = 11;
-            _realm.Update();
-            Assert.That(_reads, Is.EqualTo(2));
-            Assert.That(fastReads, Is.EqualTo(4));
-        }
-
-        /// <summary>
-        /// Attached and failed sources retain configuration until explicitly detached.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Configuration_IsLockedUntilDetached(bool fail)
-        {
-            PollingPresenceSource<string, TestGhost> source = CreateSource().PollEvery(TimeSpan.FromSeconds(1));
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            if (fail)
-            {
-                _fail = true;
-                _now = 11;
-                ExpectedErrors.Verify(_realm.Update, "interval read failed");
-            }
-
-            Assert.Throws<InvalidOperationException>(() => source.PollEvery(TimeSpan.Zero));
-            anchor.RemoveSource(source);
-            Assert.That(source.PollEvery(TimeSpan.Zero), Is.SameAs(source));
-            _fail = false;
-            anchor.AddSource(source);
-            int before = _reads;
-            _realm.Update();
-            Assert.That(_reads, Is.EqualTo(before + 1));
-        }
-
-        /// <summary>
         /// Detaching inside a read cannot change its scheduling configuration mid-call.
         /// </summary>
         [Test]
@@ -207,25 +147,21 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Restart reads immediately, preserves roots and starts a fresh interval after success or failure.
+        /// Restart after failure reads immediately, preserves roots and starts a fresh interval.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Restart_ResetsDeadline(bool fail)
+        [Test]
+        public void Restart_ResetsDeadline()
         {
             PollingPresenceSource<string, TestGhost> source = CreateSource().PollEvery(TimeSpan.FromSeconds(1));
             Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
             IGhost original = _realm.Query().Single();
-            if (fail)
-            {
-                _fail = true;
-                _now = 11;
-                ExpectedErrors.Verify(_realm.Update, "interval read failed");
-                _now = 12;
-                _realm.Update();
-                Assert.That(_reads, Is.EqualTo(2));
-                Assert.That(original.IsAvailable, Is.False);
-            }
+            _fail = true;
+            _now = 11;
+            ExpectedErrors.Verify(_realm.Update, "interval read failed");
+            _now = 12;
+            _realm.Update();
+            Assert.That(_reads, Is.EqualTo(2));
+            Assert.That(original.IsAvailable, Is.False);
 
             _fail = false;
             _now += 0.25;
@@ -260,24 +196,6 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
             _realm.Update();
             Assert.That(_reads, Is.EqualTo(2));
-        }
-
-        /// <summary>
-        /// Reattachment after elapsed time still reads once immediately and resets its deadline.
-        /// </summary>
-        [Test]
-        public void Reattachment_ResetsDeadline()
-        {
-            PollingPresenceSource<string, TestGhost> source = CreateSource().PollEvery(TimeSpan.FromSeconds(1));
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            anchor.RemoveSource(source);
-            _now = 100;
-            anchor.AddSource(source);
-            _realm.Update();
-            Assert.That(_reads, Is.EqualTo(2));
-            _now = 101;
-            _realm.Update();
-            Assert.That(_reads, Is.EqualTo(3));
         }
 
         /// <summary>

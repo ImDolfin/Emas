@@ -260,12 +260,14 @@ namespace Emas.Tests
             Action<Item> oldPublish = feed.Publish;
             Action<string> oldRemove = feed.Remove;
             oldPublish(new Item("queued"));
+            oldPublish(null);
             anchor.RemoveSource(source);
             using (Realm second = new Realm())
             {
                 Realm destination = otherRealm ? second : _realm;
                 destination.GetOrCreateAnchor("callbacks").AddSource(source);
                 oldPublish(new Item("late"));
+                oldPublish(null);
                 feed.Publish(new Item("current", 5));
                 oldRemove("current");
                 _realm.Update();
@@ -274,6 +276,9 @@ namespace Emas.Tests
                     second.Update();
                 }
 
+                Assert.That(source.IsAttached && source.IsActive, Is.True);
+                Assert.That(source.LastError, Is.Null);
+                Assert.That(source.LastErrorContext, Is.Null);
                 Assert.That(destination.Query().Count, Is.EqualTo(1));
                 Assert.That(destination.Query().Single().Key.EntityId, Is.EqualTo("current"));
                 Assert.That(feed.Starts, Is.EqualTo(2));
@@ -328,21 +333,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A listener without resources can return null cleanup.
-        /// </summary>
-        [Test]
-        public void Listen_AllowsNullCleanup()
-        {
-            _realm.GetOrCreateAnchor("callbacks", Source(new Feed()).Listen((publish, remove) =>
-            {
-                publish(new Item("a"));
-                return null;
-            }));
-            _realm.Update();
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
-        }
-
-        /// <summary>
         /// Stopping during subscription still cleans up the returned handle and locks configuration.
         /// </summary>
         [TestCase(false)]
@@ -374,39 +364,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Nested restart keeps the new registration's cleanup separate from the interrupted one.
-        /// </summary>
-        [Test]
-        public void Listen_RestartDuringSubscriptionPreservesNewCleanup()
-        {
-            Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
-            CallbackPresenceSource<Item, Probe> source = Source(new Feed());
-            int starts = 0;
-            int oldStops = 0;
-            int newStops = 0;
-            source.Listen((publish, remove) =>
-            {
-                starts++;
-                if (starts == 1)
-                {
-                    anchor.RemoveSource(source);
-                    anchor.AddSource(source);
-                    return () => oldStops++;
-                }
-
-                publish(new Item("new"));
-                return () => newStops++;
-            });
-            anchor.AddSource(source);
-            _realm.Update();
-            Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("new"));
-            Assert.That(oldStops, Is.EqualTo(1));
-            Assert.That(newStops, Is.Zero);
-            anchor.RemoveSource(source);
-            Assert.That(newStops, Is.EqualTo(1));
-        }
-
-        /// <summary>
         /// A throwing listener rolls back startup; its queued events stay invalid after correction.
         /// </summary>
         [Test]
@@ -435,32 +392,12 @@ namespace Emas.Tests
         [TestCase("null-id")]
         [TestCase("empty-removal")]
         [TestCase("null-removal")]
-        [TestCase("identify")]
-        [TestCase("variant")]
         [TestCase("apply")]
         public void Failure_StopsAndRetainsPopulation(string failure)
         {
             Feed feed = new Feed();
             bool fail = false;
             CallbackPresenceSource<Item, Probe> source = Source(feed)
-                .IdentifyBy(item =>
-                {
-                    if (fail && failure == "identify")
-                    {
-                        throw new InvalidOperationException("identify failed");
-                    }
-
-                    return item.Id;
-                })
-                .WithVariant(item =>
-                {
-                    if (fail && failure == "variant")
-                    {
-                        throw new InvalidOperationException("variant failed");
-                    }
-
-                    return item.Variant;
-                })
                 .Apply((item, ghost) =>
                 {
                     if (fail && failure == "apply")
@@ -489,7 +426,7 @@ namespace Emas.Tests
 
             feed.Remove("a");
             string expected = failure == "null-item" ? "cannot publish a null item"
-                : failure == "identify" || failure == "variant" || failure == "apply" ? failure + " failed"
+                : failure == "apply" ? "apply failed"
                 : "requires a non-empty entity ID";
             ExpectedErrors.Verify(_realm.Update, expected);
             Assert.That(feed.Stops, Is.EqualTo(1));

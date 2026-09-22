@@ -3,72 +3,41 @@ using NUnit.Framework;
 namespace Emas.Tests
 {
     /// <summary>
-    /// Tests detail level values and comparisons.
+    /// Verifies detail values, equality, ordering and display names.
     /// </summary>
-    public class DetailLevelTests
+    public sealed class DetailLevelTests
     {
         /// <summary>
-        /// Runs the Presets_HaveExpectedLevels test.
+        /// Presets and application-defined detail levels retain their numeric values.
         /// </summary>
         [Test]
-        public void Presets_HaveExpectedLevels()
+        public void Values_PreservePresetAndCustomLevels()
         {
             Assert.That(DetailLevel.None.Level, Is.EqualTo(0));
             Assert.That(DetailLevel.Minimal.Level, Is.EqualTo(1));
             Assert.That(DetailLevel.Reduced.Level, Is.EqualTo(2));
             Assert.That(DetailLevel.Full.Level, Is.EqualTo(3));
+            Assert.That(new DetailLevel(7).Level, Is.EqualTo(7));
         }
 
         /// <summary>
-        /// Runs the CustomDetailLevel_PreservesLevel test.
+        /// Equality and hashing depend only on the numeric level, including preset values.
         /// </summary>
         [Test]
-        public void CustomDetailLevel_PreservesLevel()
-        {
-            DetailLevel detailLevel = new DetailLevel(7);
-            Assert.That(detailLevel.Level, Is.EqualTo(7));
-        }
-
-        /// <summary>
-        /// Runs the Equality_SameLevel_AreEqual test.
-        /// </summary>
-        [Test]
-        public void Equality_SameLevel_AreEqual()
-        {
-            DetailLevel a = new DetailLevel(2);
-            DetailLevel b = new DetailLevel(2);
-
-            Assert.That(a, Is.EqualTo(b));
-            Assert.That(a == b, Is.True);
-            Assert.That(a != b, Is.False);
-        }
-
-        /// <summary>
-        /// Runs the Equality_DifferentLevel_AreNotEqual test.
-        /// </summary>
-        [Test]
-        public void Equality_DifferentLevel_AreNotEqual()
-        {
-            DetailLevel a = DetailLevel.Minimal;
-            DetailLevel b = DetailLevel.Full;
-
-            Assert.That(a, Is.Not.EqualTo(b));
-            Assert.That(a == b, Is.False);
-            Assert.That(a != b, Is.True);
-        }
-
-        /// <summary>
-        /// Runs the Equality_MatchesPreset test.
-        /// </summary>
-        [Test]
-        public void Equality_MatchesPreset()
+        public void Equality_AndHashingUseLevel()
         {
             DetailLevel custom = new DetailLevel(3);
             Assert.That(custom, Is.EqualTo(DetailLevel.Full));
+            Assert.That(custom == DetailLevel.Full, Is.True);
+            Assert.That(custom != DetailLevel.Full, Is.False);
+            Assert.That(custom.GetHashCode(), Is.EqualTo(DetailLevel.Full.GetHashCode()));
+            Assert.That(custom, Is.Not.EqualTo(DetailLevel.Minimal));
+            Assert.That(custom == DetailLevel.Minimal, Is.False);
+            Assert.That(custom != DetailLevel.Minimal, Is.True);
         }
 
         /// <summary>
-        /// Runs the Comparison_OrdersByLevel test.
+        /// Comparison methods and operators consistently order lower, equal and higher levels.
         /// </summary>
         [Test]
         public void Comparison_OrdersByLevel()
@@ -77,66 +46,27 @@ namespace Emas.Tests
             Assert.That(DetailLevel.Minimal < DetailLevel.Reduced, Is.True);
             Assert.That(DetailLevel.Reduced < DetailLevel.Full, Is.True);
             Assert.That(DetailLevel.Full > DetailLevel.None, Is.True);
-        }
-
-        /// <summary>
-        /// Runs the Comparison_LessOrEqual_GreaterOrEqual test.
-        /// </summary>
-        [Test]
-        public void Comparison_LessOrEqual_GreaterOrEqual()
-        {
-            DetailLevel a = new DetailLevel(2);
-            DetailLevel b = new DetailLevel(2);
-            DetailLevel c = new DetailLevel(3);
-
-            Assert.That(a <= b, Is.True);
-            Assert.That(a >= b, Is.True);
-            Assert.That(a <= c, Is.True);
-            Assert.That(c >= a, Is.True);
-        }
-
-        /// <summary>
-        /// Runs the CompareTo_ReturnsCorrectOrdering test.
-        /// </summary>
-        [Test]
-        public void CompareTo_ReturnsCorrectOrdering()
-        {
+            DetailLevel same = new DetailLevel(2);
+            Assert.That(same <= DetailLevel.Reduced, Is.True);
+            Assert.That(same >= DetailLevel.Reduced, Is.True);
+            Assert.That(same <= DetailLevel.Full, Is.True);
+            Assert.That(DetailLevel.Full >= same, Is.True);
             Assert.That(DetailLevel.None.CompareTo(DetailLevel.Full), Is.LessThan(0));
             Assert.That(DetailLevel.Full.CompareTo(DetailLevel.None), Is.GreaterThan(0));
-            Assert.That(DetailLevel.Minimal.CompareTo(DetailLevel.Minimal), Is.EqualTo(0));
+            Assert.That(same.CompareTo(DetailLevel.Reduced), Is.Zero);
         }
 
         /// <summary>
-        /// Runs the GetHashCode_SameLevelSameHash test.
+        /// Presets use readable names while custom levels expose their numeric value.
         /// </summary>
         [Test]
-        public void GetHashCode_SameLevelSameHash()
-        {
-            DetailLevel a = new DetailLevel(5);
-            DetailLevel b = new DetailLevel(5);
-            Assert.That(a.GetHashCode(), Is.EqualTo(b.GetHashCode()));
-        }
-
-        /// <summary>
-        /// Runs the ToString_PresetsShowNames test.
-        /// </summary>
-        [Test]
-        public void ToString_PresetsShowNames()
+        public void Formatting_DescribesPresetAndCustomLevels()
         {
             Assert.That(DetailLevel.None.ToString(), Does.Contain("None"));
             Assert.That(DetailLevel.Minimal.ToString(), Does.Contain("Minimal"));
             Assert.That(DetailLevel.Reduced.ToString(), Does.Contain("Reduced"));
             Assert.That(DetailLevel.Full.ToString(), Does.Contain("Full"));
-        }
-
-        /// <summary>
-        /// Runs the ToString_CustomShowsLevel test.
-        /// </summary>
-        [Test]
-        public void ToString_CustomShowsLevel()
-        {
-            DetailLevel detailLevel = new DetailLevel(7);
-            Assert.That(detailLevel.ToString(), Does.Contain("7"));
+            Assert.That(new DetailLevel(7).ToString(), Does.Contain("7"));
         }
     }
 }

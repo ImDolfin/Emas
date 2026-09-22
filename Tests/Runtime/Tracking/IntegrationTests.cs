@@ -125,9 +125,10 @@ namespace Emas.Tests
             Assert.Throws<InvalidOperationException>(() => source.IdentifyBy(id => "changed"));
             Assert.Throws<InvalidOperationException>(() => source.Apply((item, ghost) => ghost.Value = 99));
             Assert.Throws<InvalidOperationException>(() => source.WithVariant(item => new Variant("changed")));
+            Assert.Throws<InvalidOperationException>(() => source.PollEvery(TimeSpan.FromSeconds(1)));
             anchor.RemoveSource(source);
             source.ReadFrom(() => new[] { "b" }).IdentifyBy(id => id)
-                .Apply((item, ghost) => ghost.Value = 3).WithVariant(item => new Variant("new"));
+                .Apply((item, ghost) => ghost.Value = 3).WithVariant(item => new Variant("new")).PollEvery(TimeSpan.Zero);
             anchor.AddSource(source);
             Probe ghost = (Probe)_realm.Query().Single();
             Assert.That(ghost.Key.EntityId, Is.EqualTo("b"));
@@ -217,6 +218,11 @@ namespace Emas.Tests
             string expected = failure == "null" ? "must return a complete snapshot, not null"
                 : failure == "enumeration" ? "snapshot failed" : "contains an empty or duplicate entity ID";
             ExpectedErrors.Verify(_realm.Update, expected);
+            if (failure == "enumeration")
+            {
+                Assert.That(source.LastErrorContext, Does.Contain("ReadFrom").And.Not.Contain("entity '"));
+            }
+
             Assert.That(_realm.GetOwnedGhosts(source).Count, Is.EqualTo(2));
             Assert.That(retained.IsAvailable, Is.False);
             anchor.ReplaceSource(source, Source(() => new[] { "a" }));

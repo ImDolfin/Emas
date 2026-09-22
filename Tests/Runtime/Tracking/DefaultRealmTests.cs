@@ -10,15 +10,6 @@ namespace Emas.Tests
     public sealed class DefaultRealmTests
     {
         /// <summary>
-        /// Repeated access returns the live shared realm.
-        /// </summary>
-        [Test]
-        public void Default_ReusesLiveRealm()
-        {
-            Assert.That(Realm.Default, Is.SameAs(Realm.Default));
-        }
-
-        /// <summary>
         /// A disposed shared realm is replaced on next access.
         /// </summary>
         [Test]

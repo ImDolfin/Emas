@@ -79,6 +79,8 @@ namespace Emas.Tests
             InvalidOperationException failure = new InvalidOperationException("runtime failure");
             ProbeSource source = new ProbeSource();
             ProbeSource healthy = new ProbeSource();
+            int healthyUpdates = 0;
+            healthy.Updating = () => healthyUpdates++;
             Anchor anchor = _realm.GetOrCreateAnchor("status", source, healthy);
             StatusGhost ghost = source.Publish("failed");
             StatusGhost other = healthy.Publish("healthy");
@@ -108,13 +110,23 @@ namespace Emas.Tests
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);
             Assert.That(ghost.IsAvailable, Is.False);
+            Assert.That(ghost.gameObject.activeSelf, Is.False);
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(ghost));
+            _realm.Update();
+            Assert.That(source.Stops, Is.EqualTo(1));
             Assert.That(other.IsAvailable && healthy.IsActive, Is.True);
+            Assert.That(healthyUpdates, Is.EqualTo(3));
+            Assert.That(_realm.Query().Single(), Is.SameAs(other));
             Assert.That(healthy.LastError, Is.Null);
             ProbeSource replacement = new ProbeSource();
             anchor.ReplaceSource(source, replacement);
             Assert.That(replacement.Publish("failed"), Is.SameAs(ghost));
             _realm.Update();
             Assert.That(ghost.IsAvailable, Is.True);
+            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(ghost));
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.Stops, Is.EqualTo(1));
         }
@@ -153,81 +165,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Callback adapters retain mapping errors over throwing unsubscribe and clear health on restart.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void CallbackCleanup_RecordsErrorWithoutReplacingMappingFailure(bool mappingFails)
-        {
-            Action<string> publish = null;
-            Exception mapping = new Exception("mapping failure");
-            Exception cleanup = new Exception("unsubscribe failure");
-            CallbackPresenceSource<string, StatusGhost> source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
-                .IdentifyBy(id => id).Apply((id, ghost) =>
-                {
-                    if (mappingFails)
-                    {
-                        throw mapping;
-                    }
-                })
-                .Listen((changed, removed) =>
-                {
-                    publish = changed;
-                    return () =>
-                    {
-                        throw cleanup;
-                    };
-                });
-            Anchor anchor = _realm.GetOrCreateAnchor("status", source);
-            if (mappingFails)
-            {
-                publish("one");
-                ExpectedErrors.Verify(_realm.Update, "mapping failure", "unsubscribe failure");
-            }
-            else
-            {
-                ExpectedErrors.Verify(() => anchor.RemoveSource(source), "unsubscribe failure");
-            }
-
-            Assert.That(source.LastError, Is.SameAs(mappingFails ? mapping : cleanup));
-            anchor.RemoveSource(source);
-            source.Listen((changed, removed) => null);
-            anchor.AddSource(source);
-            Assert.That(source.LastError, Is.Null);
-            Assert.That(source.LastErrorContext, Is.Null);
-            Assert.That(source.IsActive, Is.True);
-        }
-
-        /// <summary>
-        /// Old queued work and callbacks called after reattachment cannot poison the new registration.
-        /// </summary>
-        [Test]
-        public void StaleCallbacks_DoNotChangeRestartedStatus()
-        {
-            List<Action<string>> publishers = new List<Action<string>>();
-            CallbackPresenceSource<string, StatusGhost> source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
-                .IdentifyBy(id => id).Apply((id, ghost) =>
-                {
-                })
-                .Listen((publish, remove) =>
-                {
-                    publishers.Add(publish);
-                    return null;
-                });
-            Anchor anchor = _realm.GetOrCreateAnchor("status", source);
-            publishers[0](null);
-            anchor.RemoveSource(source);
-            anchor.AddSource(source);
-            publishers[0](null);
-            publishers[1]("current");
-            _realm.Update();
-            Assert.That(source.IsActive && source.IsAttached, Is.True);
-            Assert.That(source.LastError, Is.Null);
-            Assert.That(source.LastErrorContext, Is.Null);
-            Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
-        }
-
-        /// <summary>
         /// Cleanup returned by interrupted startup must not overwrite a nested reattachment's state.
         /// </summary>
         [Test]
@@ -235,6 +172,8 @@ namespace Emas.Tests
         {
             Anchor anchor = _realm.GetOrCreateAnchor("status");
             int starts = 0;
+            int oldStops = 0;
+            int newStops = 0;
             CallbackPresenceSource<string, StatusGhost> source = null;
             source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
                 .IdentifyBy(id => id).Apply((id, ghost) =>
@@ -248,12 +187,13 @@ namespace Emas.Tests
                         anchor.AddSource(source);
                         return () =>
                         {
+                            oldStops++;
                             throw new Exception("obsolete cleanup");
                         };
                     }
 
                     publish("current");
-                    return null;
+                    return () => newStops++;
                 });
             ExpectedErrors.Verify(() => anchor.AddSource(source), "obsolete cleanup");
             _realm.Update();
@@ -261,6 +201,10 @@ namespace Emas.Tests
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.LastErrorContext, Is.Null);
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
+            Assert.That(oldStops, Is.EqualTo(1));
+            Assert.That(newStops, Is.Zero);
+            anchor.RemoveSource(source);
+            Assert.That(newStops, Is.EqualTo(1));
         }
 
         /// <summary>

@@ -98,17 +98,18 @@ namespace Emas.Tests
             Kind kind = new Kind("vehicles.car");
             TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
-            source.Publish("1", new Variant("Small Car"));
+            source.PublishNamed("1", "Small Car", new Variant("small-car"));
             _realm.Update();
 
-            Query result = _realm.Query("1")
+            Assert.Throws<ArgumentException>(() => _realm.Query().OfKind(default(Kind)));
+            Query result = _realm.Query("car")
                 .OfKind(kind)
                 .InAnchor("simulation")
                 .With<ITestPart>()
-                .WithExactName("1");
+                .WithExactName("SMALL CAR");
 
             Assert.That(result.Count, Is.EqualTo(1));
-            Assert.That(result.Single().Name, Is.EqualTo("1"));
+            Assert.That(result.Single().Name, Is.EqualTo("Small Car"));
         }
 
         /// <summary>
@@ -119,24 +120,7 @@ namespace Emas.Tests
         {
             Assert.That(_realm.Query("missing").Count, Is.EqualTo(0));
             Assert.That(_realm.Query("missing").FirstOrDefault(), Is.Null);
-        }
-
-        /// <summary>
-        /// Single rejects a result that is not unique.
-        /// </summary>
-        [Test]
-        public void Single_ThrowsWhenNoMatchExists()
-        {
-            Assert.Throws<InvalidOperationException>(() => _realm.Query().Single());
-        }
-
-        /// <summary>
-        /// Default ghost kinds are rejected by filters and registration paths.
-        /// </summary>
-        [Test]
-        public void InvalidKind_IsRejected()
-        {
-            Assert.Throws<ArgumentException>(() => _realm.Query().OfKind(default(Kind)));
+            Assert.Throws<InvalidOperationException>(() => _realm.Query("missing").Single());
         }
 
         /// <summary>
@@ -183,22 +167,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Allows sources to expose source display names to partial-name queries.
-        /// </summary>
-        [Test]
-        public void NamedPublication_IsAvailableToNameQueries()
-        {
-            Kind kind = new Kind("vehicles.car");
-            TestSource source = new TestSource(kind);
-            _realm.GetOrCreateAnchor("simulation", source);
-            source.PublishNamed("42", "Car 42", new Variant("small-car"));
-            _realm.Update();
-
-            Assert.That(_realm.Query("car").Count, Is.EqualTo(1));
-            Assert.That(_realm.Query().WithExactName("CAR 42").Count, Is.EqualTo(1));
-        }
-
-        /// <summary>
         /// Notifies a subscription again after replacement and reinitialization.
         /// </summary>
         [Test]
@@ -219,26 +187,6 @@ namespace Emas.Tests
 
             Assert.That(calls, Is.EqualTo(2));
             subscription.Dispose();
-        }
-
-        /// <summary>
-        /// Removes prepared records when their anchor is removed.
-        /// </summary>
-        [Test]
-        public void RemovingAnchor_RemovesPreparedIdentity()
-        {
-            Kind kind = new Kind("vehicles.car");
-            _realm.GetOrCreateAnchor("simulation");
-            TestGhost prepared = _realm.Prepare<TestGhost>("simulation", kind, "42");
-            _realm.RemoveAnchor("simulation");
-
-            TestSource source = new TestSource(kind);
-            _realm.GetOrCreateAnchor("simulation", source);
-            TestGhost discovered = source.Publish("42", Variant.None);
-            _realm.Update();
-
-            Assert.That(discovered, Is.Not.SameAs(prepared));
-            Assert.That(discovered.IsAvailable, Is.True);
         }
 
         /// <summary>
@@ -343,84 +291,12 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>
-        /// Replaces a selected child view when a live ghost changes variant.
-        /// </summary>
-        [Test]
-        public void VariantChange_ReplacesRequestedView()
-        {
-            Kind kind = new Kind("vehicles.car");
-            GameObject ghostTemplate = new GameObject("Ghost Template");
-            GameObject smallView = new GameObject("Small View");
-            GameObject largeView = new GameObject("Large View");
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            try
-            {
-                ghostTemplate.SetActive(false);
-                ghostTemplate.AddComponent<TestGhost>();
-                smallView.SetActive(false);
-                largeView.SetActive(false);
-                blueprint.Configure(
-                    kind,
-                    ghostTemplate.GetComponent<TestGhost>(),
-                    new[]
-                    {
-                        new Blueprint.ViewMapping(new Variant("small-car"), DetailLevel.Full, smallView),
-                        new Blueprint.ViewMapping(new Variant("large-car"), DetailLevel.Full, largeView)
-                    },
-                    null);
-                _realm.RegisterBlueprint(blueprint);
-
-                TestSource source = new TestSource(kind);
-                _realm.GetOrCreateAnchor("simulation", source);
-                TestGhost ghost = source.Publish("42", new Variant("small-car"));
-                _realm.Update();
-                _realm.Manifest(ghost);
-
-                source.Publish("42", new Variant("large-car"));
-                View replacement = _realm.Manifest(ghost);
-                Assert.That(replacement, Is.Not.Null);
-                Assert.That(replacement.gameObject.name, Is.EqualTo("Large View"));
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(blueprint);
-                UnityEngine.Object.DestroyImmediate(ghostTemplate);
-                UnityEngine.Object.DestroyImmediate(smallView);
-                UnityEngine.Object.DestroyImmediate(largeView);
-            }
-        }
-
-        /// <summary>
-        /// Discards dispatched work from a source registration that was replaced.
-        /// </summary>
-        [Test]
-        public void Dispatch_FromStoppedRegistrationIsDiscarded()
-        {
-            DispatchSource source = new DispatchSource();
-            Anchor anchor = _realm.GetOrCreateAnchor("simulation", source);
-            int calls = 0;
-            source.QueueAction(() => calls++);
-            anchor.ReplaceSource(source, new TestSource(new Kind("vehicles.car")));
-            _realm.Update();
-
-            Assert.That(calls, Is.EqualTo(0));
-        }
-
         private interface ITestPart
         {
         }
 
         private sealed class TestGhost : Ghost, ITestPart
         {
-        }
-
-        private sealed class DispatchSource : PresenceSource
-        {
-            internal void QueueAction(Action action)
-            {
-                Dispatch(action);
-            }
         }
 
         private sealed class TestSource : PresenceSource

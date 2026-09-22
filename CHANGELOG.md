@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Removed overlapping tests and consolidated related value checks; retained distinct lifecycle, failure and sample regressions.
+
 - Added `Realm.TryGetGhost(key, out ghost)` for exact identity lookup, including retained unavailable ghosts.
 - Added optional `PollingPresenceSource.PollEvery(TimeSpan)` with immediate startup, unscaled main-thread timing, fresh restart deadlines and no catch-up bursts.
 

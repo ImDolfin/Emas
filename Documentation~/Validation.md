@@ -30,13 +30,13 @@ Verified on **2026-09-22**, package **0.1.0**, Windows Mono:
 
 | Editor | Test Framework | EditMode | PlayMode | Windows player |
 | --- | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 218 passed | 218 passed |
-| 6000.3.24f1 / Unity 6.3 LTS (`4e7b9b5b6244`) | 1.6.0 | 9 passed | 218 passed | 218 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 184 passed | 184 passed |
+| 6000.3.24f1 / Unity 6.3 LTS (`4e7b9b5b6244`) | 1.6.0 | 9 passed | 184 passed | 184 passed |
 
-No failed or skipped tests in the final suites. Unity 2022 used the prepared repository project; Unity 6 used isolated copies of its Assets, Packages and ProjectSettings. The repository project remains on Unity 2022.3. The first Unity 6 player attempt crashed loading its generated test scene; rebuilding its isolated build caches produced the passing final suite.
+No failed or skipped tests in the final suites. Unity 2022 used the prepared repository project; Unity 6 used isolated copies of its Assets, Packages and ProjectSettings. The repository project remains on Unity 2022.3.
 
-New regressions cover exact ghost lookup across availability, failure, replacement and removal; polling deadlines, independent intervals, skipped catch-up reads, configuration locking, restart and unscaled time. Coverage also includes explicit tracking stop and source restart, retained roots/views, stale callbacks, paired query arrivals/departures, destroyed-object departure keys, filter changes, reentrant consumers, labelled failure context and primary-error retention. Quiet-log regressions cover expected-message ordering, missing and unexpected messages, duplicates, nesting and logger restoration after failure. Existing checks cover callback FIFO/budgeting, replacement recovery, read-only snapshots, shared Inspector validation and passive diagnostics. Player tests exercise both quick starts and the larger example: views, explicit removal, disable/re-enable cleanup, interface consumption and stable identities across replacement. EditMode checks also detect differences between shipped and imported samples.
+Coverage includes source and ghost lifetimes, failure recovery, stale callbacks, query observations, identity lookup, polling intervals and callback ordering/budgets. Player tests exercise all samples; EditMode checks cover Inspectors, passive diagnostics and shipped/imported sample consistency. Expected-error capture has dedicated logging regressions.
 
 A fresh Unity 2022.3 consuming project imported all three samples through Package Manager with its manifest unchanged and no `testables` entry. All **3 sample smoke tests passed**. Package test opt-in remains separate from ordinary installation.
 
-The latest suite reports are in the ignored `Tests/Unity~/TestResults/LookupPolling/` directory; fresh-install reports are in `Tests/Unity~/TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.
+The latest suite reports are in the ignored `Tests/Unity~/TestResults/TestCleanup/` directory; fresh-install reports are in `Tests/Unity~/TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.
