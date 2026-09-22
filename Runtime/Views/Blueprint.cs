@@ -41,7 +41,7 @@ namespace Emas
 
         /// <summary>Configures the blueprint for code-driven tests or authoring tools.</summary>
         /// <param name="kind">The ghost kind.</param>
-        /// <param name="ghostPrefab">The ghost prefab.</param>
+        /// <param name="ghostPrefab">The optional root prefab; null creates the requested Ghost component automatically.</param>
         /// <param name="views">The variant and detail level mappings.</param>
         /// <param name="fallbackViewPrefab">The optional fallback prefab.</param>
         /// <exception cref="ArgumentException">Thrown when the kind or view mappings are invalid.</exception>
@@ -53,14 +53,10 @@ namespace Emas
             }
 
             var copiedViews = views == null ? new List<ViewMapping>() : new List<ViewMapping>(views);
-            var indices = new Dictionary<string, int>(StringComparer.Ordinal);
-            for (var index = 0; index < copiedViews.Count; index++)
+            var error = GetConfigurationError(kind, copiedViews);
+            if (error != null)
             {
-                var error = GetMappingError(copiedViews[index], index, indices);
-                if (error != null)
-                {
-                    throw new ArgumentException(error, nameof(views));
-                }
+                throw new ArgumentException(error, nameof(views));
             }
 
             _kindId = kind.Id;
@@ -69,30 +65,30 @@ namespace Emas
             _fallbackViewPrefab = fallbackViewPrefab;
         }
 
-        private void OnValidate()
+        internal string GetConfigurationError()
         {
-            if (string.IsNullOrEmpty(_kindId))
-            {
-                Debug.LogError("Emas blueprint requires a non-empty kind ID.", this);
-            }
-            if (_ghostPrefab == null)
-            {
-                Debug.LogWarning("Emas blueprint has no ghost prefab; default roots will be used.", this);
-            }
-            if (_views == null)
-            {
-                _views = new List<ViewMapping>();
-            }
+            return GetConfigurationError(Kind, _views);
+        }
 
-            var indices = new Dictionary<string, int>(StringComparer.Ordinal);
-            for (var index = 0; index < _views.Count; index++)
+        private static string GetConfigurationError(Kind kind, IReadOnlyList<ViewMapping> views)
+        {
+            if (!kind.IsValid)
             {
-                var error = GetMappingError(_views[index], index, indices);
-                if (error != null)
+                return "Emas blueprint requires a non-empty kind ID.";
+            }
+            var indices = new Dictionary<string, int>(StringComparer.Ordinal);
+            if (views != null)
+            {
+                for (var index = 0; index < views.Count; index++)
                 {
-                    Debug.LogError(error, this);
+                    var error = GetMappingError(views[index], index, indices);
+                    if (error != null)
+                    {
+                        return error;
+                    }
                 }
             }
+            return null;
         }
 
         private static string GetMappingError(ViewMapping mapping, int index, Dictionary<string, int> indices)

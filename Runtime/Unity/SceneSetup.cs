@@ -30,16 +30,21 @@ namespace Emas
         /// <summary>Starts sources under this transform using the Inspector settings.</summary>
         /// <param name="sources">Application sources to attach.</param>
         /// <returns>The owned anchor, also usable for source replacement.</returns>
-        /// <remarks>Call once while enabled. Disabling cleans up; call again after re-enabling to restart.</remarks>
+        /// <exception cref="InvalidOperationException">Disabled, already tracking, invalid settings, duplicate anchor ID or interrupted startup.</exception>
+        /// <exception cref="ArgumentNullException">A source entry is null.</exception>
+        /// <remarks>Call once while enabled. Disabling cleans up; call again after re-enabling to restart.
+        /// Startup exceptions propagate after cleaning up this attempt. Sources may throw application-specific errors.
+        /// SDK clients remain application-owned. Registered blueprints persist until the default realm is disposed.</remarks>
         public Anchor Track(params PresenceSource[] sources)
         {
             if ((!enabled || !gameObject.activeInHierarchy) || _starting || _anchor != null)
             {
                 throw new InvalidOperationException("SceneSetup must be enabled and not already tracking.");
             }
-            if (string.IsNullOrEmpty(_anchorId))
+            var error = GetConfigurationError();
+            if (error != null)
             {
-                throw new InvalidOperationException("SceneSetup requires a non-empty anchor ID.");
+                throw new InvalidOperationException(error);
             }
             var realm = Realm.Default;
             if (realm.ContainsAnchor(_anchorId))
@@ -48,28 +53,9 @@ namespace Emas
             }
             _viewKinds.Clear();
             var blueprints = _blueprints ?? new Blueprint[0];
-            for (var index = 0; index < blueprints.Length; index++)
+            foreach (var blueprint in blueprints)
             {
-                var blueprint = blueprints[index];
-                string error = null;
-                if (blueprint == null)
-                {
-                    error = "SceneSetup blueprint at index " + index + " is null. Assign a blueprint or remove the entry.";
-                }
-                else if (!blueprint.Kind.IsValid)
-                {
-                    error = "SceneSetup blueprint at index " + index + " ('" + blueprint.name + "') requires a non-empty kind ID.";
-                }
-                else if (!_viewKinds.Add(blueprint.Kind))
-                {
-                    error = "SceneSetup blueprint at index " + index + " ('" + blueprint.name
-                        + "') duplicates kind '" + blueprint.Kind.Id + "'. Assign one blueprint per kind.";
-                }
-                if (error != null)
-                {
-                    _viewKinds.Clear();
-                    throw new InvalidOperationException(error);
-                }
+                _viewKinds.Add(blueprint.Kind);
             }
 
             _starting = true;
@@ -123,6 +109,36 @@ namespace Emas
             {
                 _starting = false;
             }
+        }
+
+        internal string GetConfigurationError()
+        {
+            if (string.IsNullOrEmpty(_anchorId))
+            {
+                return "SceneSetup requires a non-empty anchor ID.";
+            }
+            var kinds = new HashSet<Kind>();
+            var blueprints = _blueprints ?? new Blueprint[0];
+            for (var index = 0; index < blueprints.Length; index++)
+            {
+                var blueprint = blueprints[index];
+                var entry = "SceneSetup blueprint at index " + index;
+                if (blueprint == null)
+                {
+                    return entry + " is null. Assign a blueprint or remove the entry.";
+                }
+                var error = blueprint.GetConfigurationError();
+                if (error != null)
+                {
+                    return entry + " ('" + blueprint.name + "'): " + error;
+                }
+                if (!kinds.Add(blueprint.Kind))
+                {
+                    return entry + " ('" + blueprint.name + "') duplicates kind '"
+                        + blueprint.Kind.Id + "'. Assign one blueprint per kind.";
+                }
+            }
+            return null;
         }
 
         private void OnDisable()

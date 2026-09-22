@@ -1,6 +1,6 @@
 # API reference
 
-Runtime APIs use the `Emas` namespace. `Realm.Default` is updated automatically by Unity; an isolated `Realm` implements `IDisposable` and advances through explicit `Update()`.
+Runtime APIs use the `Emas` namespace. All operations use the Unity thread except callback-source publish/remove delegates and protected `Dispatch`. `Realm.Default` is updated automatically by Unity; an isolated `Realm` implements `IDisposable` and advances through explicit `Update()`.
 
 ## Fast integration
 
@@ -25,7 +25,7 @@ For callbacks, configure `.IdentifyBy(idSelector)`, `.Apply(copyData)` and `.Lis
 | Scheduling | Any thread can publish; all events use the bounded FIFO queue. Selectors and mapping run on a later realm update |
 | Identity | Repeated IDs update the same ghost; unknown removals do nothing; untouched entities remain |
 | Lifetime | Subscribe once per attachment; cleanup once on stop, including interrupted startup. Old callbacks cannot affect a restarted registration |
-| Failure | Null items, empty/null IDs or selector/mapping exceptions stop the source, unsubscribe, retain unavailable ghosts and discard queued work. Cleanup exceptions are logged |
+| Failure | Null items, empty/null IDs or selector/mapping exceptions stop the source, unsubscribe, retain unavailable ghosts and discard queued work. Cleanup exceptions are logged and retained when no primary failure exists |
 | Replacement | Preserve compatible roots; each becomes available when republished. Unreported identities are not deleted |
 | Adapter responsibilities | Keep payloads unchanged until processed; copy mutable SDK data. Order initial publications with live events and undo partial subscriptions before throwing |
 
@@ -37,7 +37,8 @@ Subscription and cleanup run on the Unity thread. Initial items may be published
 
 | Operation | Contract |
 | --- | --- |
-| `RegisterBlueprint(blueprint)` | Register prefab/view configuration by kind |
+| `Realm.Anchors` / `Anchor.Sources` | Copied, read-only membership snapshots; earlier snapshots stay unchanged; disposed owners return empty snapshots. Objects retain their own lifetimes |
+| `RegisterBlueprint(blueprint)` | Validate and register prefab/view configuration by kind; assets stay application-owned |
 | `GetOrCreateAnchor(id, params PresenceSource[] sources)` | Create or reuse an anchor and attach/start supplied sources; overload accepts a `Transform` frame, which must match when reusing |
 | `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
 | `Query(partialName = null)` | Describe filters over available ghosts |
@@ -52,7 +53,10 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddSource`, `RemoveSource`, `Re
 
 | Member | Use |
 | --- | --- |
-| `OnStart`, `OnUpdate`, `OnStop` | Override source lifecycle hooks |
+| `IsAttached` | An anchor still owns this source, including a failed registration |
+| `IsActive` | The current attachment is starting or accepting updates |
+| `LastError` | First failure from the latest attachment; cleared before startup, retained after stopping/detachment, never overwritten by cleanup or an old registration |
+| `OnStart`, `OnUpdate`, `OnStop` | Override lifecycle hooks; cleanup runs once for a started attachment, including startup failure |
 | `GetOrCreate<TGhost>(entityId, kind, variant = null)` | Obtain a stable owned ghost; another overload accepts a display name |
 | `Remove(kind, entityId)` | Remove one owned ghost |
 | `Dispatch(action)` | Queue main-thread source work; stopped/stale registrations cannot execute it |
@@ -60,7 +64,7 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddSource`, `RemoveSource`, `Re
 | `IGhost.Key`, `Name`, `Variant`, `IsAvailable` | Read identity, label, appearance and availability |
 | `IGhost.TryGet<T>(out part)` | Resolve a root component contract; excludes view children and rejects ambiguous providers |
 
-Source-specific types and coordinate conversion stay in application sources. One source owns each identity; an application source can compose multiple feeds.
+Application interfaces should be read-only; concrete ghost setters are for source mapping. `Ghost` supplies `IGhost`; root activation happens after publication, so `Awake` must not assume mapped data. Source-specific types and coordinate conversion stay in application sources. One source owns each identity; an application source can compose multiple feeds.
 
 ## Queries and subscriptions
 
@@ -113,3 +117,5 @@ Selection: **exact variant/detail level > highest lower positive detail level fo
 Views require an available ghost and a positive request. View binding finishes before activation. Requests made during source changes/finalization defer refresh, so `Manifest` may return the previous view or null until that phase completes. Requests outside those phases refresh immediately.
 
 Source: [realm](../Runtime/Realm.cs), [queries](../Runtime/Queries/Query.cs), [blueprints](../Runtime/Views/Blueprint.cs).
+
+Integration policy: [Guidelines](Guidelines.md). Authoring errors appear in Blueprint/SceneSetup Inspectors using the same validation as runtime registration. **Window > Emas** passively shows existing default-realm anchors, per-source health, available/owned counts and failure details; isolated realms can be inspected through the snapshot APIs.

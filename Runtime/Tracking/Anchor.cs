@@ -5,6 +5,7 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Represents one scene coordinate frame and its sources.</summary>
+    /// <remarks>Owned by its realm; all operations use the Unity thread. Dispose stops sources and removes owned and prepared ghosts.</remarks>
     public sealed class Anchor : IDisposable
     {
         private readonly List<PresenceSource> _sources = new List<PresenceSource>();
@@ -37,8 +38,19 @@ namespace Emas
         /// <value>The anchor scene transform.</value>
         public Transform Transform { get; private set; }
 
+        /// <summary>Gets a copied, read-only snapshot of the registered sources, including failed ones.</summary>
+        /// <remarks>Read on the Unity thread. Earlier snapshots do not change; disposed anchors return an empty snapshot.</remarks>
+        public IReadOnlyList<PresenceSource> Sources
+        {
+            get { return new List<PresenceSource>(_sources).AsReadOnly(); }
+        }
+
         /// <summary>Adds and starts a source.</summary>
         /// <param name="source">The source to add.</param>
+        /// <remarks>Already present on this anchor is a no-op. Startup failure rolls back new ghosts, detaches the source and rethrows the primary error.</remarks>
+        /// <exception cref="ArgumentNullException">The source is null.</exception>
+        /// <exception cref="InvalidOperationException">The source belongs to another anchor, or startup rejects its configuration.</exception>
+        /// <exception cref="ObjectDisposedException">The anchor or realm was disposed.</exception>
         public void AddSource(PresenceSource source)
         {
             ThrowIfDisposed();
@@ -58,17 +70,22 @@ namespace Emas
             }
             var previous = Realm.CaptureGhosts();
             _sources.Add(source);
+            var generation = source.RegistrationGeneration + 1;
             try
             {
                 source.Attach(this);
             }
             catch
             {
-                _sources.Remove(source);
-                if (source.IsAttachedTo(this))
+                // Startup callbacks may remove and reattach the same instance before throwing.
+                if (source.RegistrationGeneration == generation)
                 {
-                    source.Detach();
-                    Realm.RollbackSource(source, previous);
+                    _sources.Remove(source);
+                    if (source.IsAttachedTo(this))
+                    {
+                        source.Detach();
+                        Realm.RollbackSource(source, previous);
+                    }
                 }
                 throw;
             }
@@ -76,6 +93,8 @@ namespace Emas
 
         /// <summary>Stops and removes a source and its owned ghosts.</summary>
         /// <param name="source">The source to remove.</param>
+        /// <remarks>Null and unknown sources are ignored. Cleanup errors are logged and retained in LastError; removal still completes.</remarks>
+        /// <exception cref="ObjectDisposedException">The anchor or realm was disposed.</exception>
         public void RemoveSource(PresenceSource source)
         {
             ThrowIfDisposed();
@@ -98,6 +117,11 @@ namespace Emas
         /// <summary>Replaces one source while preserving its compatible ghosts.</summary>
         /// <param name="current">The source being replaced.</param>
         /// <param name="replacement">The replacement source.</param>
+        /// <remarks>Transferred ghosts become unavailable until republished. Failed startup retains the replacement and unavailable identities for recovery.</remarks>
+        /// <exception cref="ArgumentNullException">Either source is null.</exception>
+        /// <exception cref="ArgumentException">Both arguments refer to the same source.</exception>
+        /// <exception cref="InvalidOperationException">The current source is absent, replacement is attached, or replacement startup fails.</exception>
+        /// <exception cref="ObjectDisposedException">The anchor or realm was disposed.</exception>
         public void ReplaceSource(PresenceSource current, PresenceSource replacement)
         {
             ThrowIfDisposed();
@@ -143,6 +167,7 @@ namespace Emas
                 Realm.RemoveSourceGhosts(replacement);
                 return;
             }
+            var generation = replacement.RegistrationGeneration + 1;
             try
             {
                 replacement.Attach(this);
@@ -150,7 +175,7 @@ namespace Emas
             catch
             {
                 // Preserve transferred identities, but never expose partially initialized data.
-                if (replacement.IsAttachedTo(this))
+                if (replacement.IsAttachedTo(this) && replacement.RegistrationGeneration == generation)
                 {
                     Realm.MarkUnavailable(replacement);
                 }

@@ -1,69 +1,107 @@
 # Getting started
 
-Emas connects source data to scene ghosts and optional views. Requires Unity 2022.3+.
+Emas turns application data into stable scene ghosts with optional visual children. Use Unity 2022.3 or newer; see [validated versions](Validation.md#results).
 
-## Run the quick start
+## Run the sample
 
-1. Add this repository's `package.json` through **Package Manager > Add package from disk**.
-2. Import the **Quick start** sample.
-3. Open its `QuickStart.unity` scene and press Play. One cube follows the source position.
+Add `package.json` through **Package Manager > Add package from disk**, import **Quick start**, open its `QuickStart.unity` scene and press Play. One cube moves along its anchor's X axis. Disable and re-enable the Tracking object to exercise cleanup and restart.
 
-The imported scene is under `Assets/Samples/Emas/0.1.0/Quick start/`. The [sample source](../Samples~/Minimal/Bootstrap.cs) contains one setup call; its blueprint and prefab are assigned in the Inspector.
+## Build the same integration
 
-## Connect your source
+These three files are the complete [Quick start](../Samples~/Minimal/) code, without XML comments. Put them in separate files in your application assembly, referencing `Emas.Runtime` if you use an assembly definition. If you imported the sample, edit those files instead of creating duplicate types.
 
-1. Write a `Ghost` subclass with the data or behavior your application needs. Put its `Kind` constant on that class.
-2. Add **Emas > Scene Setup** to a scene object. Give it a unique anchor ID, assign blueprints, and enable **Automatic Views** if wanted.
-3. Call `Track` from your bootstrap's `OnEnable`:
+### Reading.cs
 
 ```csharp
-GetComponent<SceneSetup>().Track(
-    new PollingPresenceSource<SdkItem, Car>(Car.Kind)
-        .ReadFrom(() => client.ReadAll())
-        .IdentifyBy(item => item.Id)
-        .Apply((item, ghost) => ghost.SetPosition(item.Position)));
-```
+using UnityEngine;
 
-`SdkItem`, `Car` and `client` are your application types. The selectors supply identity and copy data; optional `.WithVariant(item => ...)` selects an appearance. No custom source class is needed for this polling path.
-
-**Return a complete snapshot each time.** An empty collection removes the population. Null, duplicate/empty IDs or an exception stop that source and retain its existing ghosts as unavailable. For individual changes and removals, use `CallbackPresenceSource` below.
-
-`SceneSetup` registers its blueprints, creates the anchor under its transform and requests views for configured kinds. Disabling it removes its anchor, ghosts, views and subscription. Re-enable and call `Track` again to restart; toggling the sample's whole Tracking object does this through its bootstrap. Blueprint registrations remain shared realm configuration.
-
-## Connect SDK events
-
-```csharp
-GetComponent<SceneSetup>().Track(
-    new CallbackPresenceSource<SdkItem, Car>(Car.Kind)
-        .IdentifyBy(item => item.Id)
-        .Apply((item, ghost) => ghost.SetPosition(item.Position))
-        .Listen((publish, remove) =>
+namespace Emas.Minimal
+{
+    public sealed class Reading
+    {
+        public Reading(string id, Vector3 position)
         {
-            client.Changed += publish;
-            client.Removed += remove;
-            return () =>
-            {
-                client.Changed -= publish;
-                client.Removed -= remove;
-            };
-        }));
+            Id = id;
+            Position = position;
+        }
+
+        public string Id { get; private set; }
+
+        public Vector3 Position { get; private set; }
+    }
+}
 ```
 
-`Changed` supplies one item; `Removed` supplies its ID. Publishing creates or updates that entity; untouched entities remain present. Callbacks may arrive on any thread and are applied on a later realm update. Copy mutable SDK objects before publishing; each item must remain unchanged until processed.
+### Marker.cs
 
-`Listen` runs once per attachment and may publish existing entities before returning. Your adapter must order initial data with live events and undo partial subscriptions if startup throws. Its returned cleanup runs when tracking stops; return null only when no cleanup is needed. Emas does not dispose your SDK client.
+```csharp
+using UnityEngine;
 
-Import **Callback quick start** and open `Callbacks.unity` for a runnable example with initial publication, explicit removal and restart. See its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for initial-data and unsubscribe wiring.
+namespace Emas.Minimal
+{
+    public sealed class Marker : Ghost
+    {
+        public static readonly Kind Kind = new Kind("minimal.marker");
 
-## Optional features
+        public void SetPosition(Vector3 position)
+        {
+            transform.localPosition = position;
+        }
+    }
+}
+```
 
-| Need | Use |
+### Bootstrap.cs
+
+```csharp
+using UnityEngine;
+
+namespace Emas.Minimal
+{
+    public sealed class Bootstrap : MonoBehaviour
+    {
+        private void OnEnable()
+        {
+            GetComponent<SceneSetup>().Track(new PollingPresenceSource<Reading, Marker>(Marker.Kind)
+                .ReadFrom(() => new[] { new Reading(id: "one", position: new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f)) })
+                .IdentifyBy(item => item.Id)
+                .Apply((item, ghost) => ghost.SetPosition(item.Position)));
+        }
+    }
+}
+```
+
+`Reading` stands in for your SDK payload. Replace `ReadFrom` with a complete collection from your client and map its data in `Apply`. `IdentifyBy` must return stable, non-empty IDs. Positions here are **anchor-local**, not world coordinates.
+
+### Configure the scene and view
+
+1. Create a cube prefab for the visual child. Keep its local position/rotation at zero and scale at one.
+2. Create **Assets > Create > Emas > Blueprint**. Set **Kind Id** to `minimal.marker` and **Fallback View Prefab** to the cube prefab. Leave **Ghost Prefab** and **Views** empty.
+3. Create a scene object named Tracking. Add **Emas > Scene Setup** and the `Bootstrap` component. Set a unique **Anchor Id**, assign the blueprint and leave **Automatic Views** enabled.
+4. Press Play. Emas creates a `Marker` root beneath the anchor, updates its data and attaches the cube view. Move Tracking to see the coordinate frame move with it.
+
+Unity advances `Realm.Default` automatically. `SceneSetup` removes its anchor, ghosts and views when disabled; the bootstrap calls `Track` again on re-enable. Toggle the whole Tracking object so both components share that lifetime. An empty blueprint list is valid for data-only tracking.
+
+For interface-based consumers, query subscriptions and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>`; the application owns those interfaces.
+
+## Choose a source
+
+| Source | Choose when | What deletion means |
+| --- | --- | --- |
+| `PollingPresenceSource` | The SDK can return the complete current population on startup and each update | Omitted IDs disappear after a successful read; an empty collection removes all |
+| `CallbackPresenceSource` | The SDK supplies individual changes and removals | Only an explicit remove callback deletes an ID |
+| Custom `PresenceSource` | The integration needs its own lifecycle or multiple feeds | Call protected `Remove` yourself |
+
+The callback builder uses `IdentifyBy`, `Apply` and `Listen`. `Listen` receives publish/remove callbacks and returns an unsubscribe action. Publish initial data inside `Listen`; every event is deferred to a later realm update. Import **Callback quick start**, open `Callbacks.unity`, and inspect its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for complete wiring, initial population and cleanup.
+
+Keep callback payloads unchanged until processed. SDK ownership, coordinate conversion and recovery are covered in [Guidelines](Guidelines.md); exact scheduling and failure contracts are in [API](API.md).
+
+## Troubleshooting
+
+| Symptom | Check |
 | --- | --- |
-| Data-only tracking | Leave blueprints empty; views and custom interfaces are optional |
-| Consume available entities | `Realm.Default.Query().OfKind(Car.Kind)` |
-| SDK push callbacks or delta updates | `CallbackPresenceSource` with `Listen` |
-| Custom integration lifecycle | Subclass `PresenceSource`; marshal worker callbacks through `Dispatch` |
-| Explicit lifetime or update control | Use `Realm` and `GetOrCreateAnchor` directly |
-| Multiple sources and replacement | Import the **Emas sample** and open its `Scenes/Example.unity` |
-
-Unity advances the default realm automatically. Do not also call `Update()` every frame. See [API](API.md) for contracts and [architecture](Architecture.md) for update order and cleanup.
+| Nothing appears | Check Blueprint and SceneSetup Inspector errors, matching kind IDs and the view prefab. A ghost can be available without a view. |
+| A source stops | Open **Window > Emas** during Play Mode. Inspect its status and failure details, or read `source.LastError`. Fix the cause and explicitly replace/restart it. |
+| Polling entities disappear | Return the full population, not only changes. Null, duplicate/empty IDs and mapping exceptions stop the source. |
+| Restart creates duplicates | Unsubscribe in callback cleanup; dispose consumer query subscriptions when their owner stops. |
+| No tests appear | Open the prepared **`Tests/Unity~`** project through Unity Hub. Package import alone does not opt a consumer into tests. See [Validation](Validation.md). |

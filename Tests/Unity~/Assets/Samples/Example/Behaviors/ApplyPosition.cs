@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Applies a root position interface to the Unity transform.</summary>
+    /// <summary>Applies anchor-local position from a read-only root contract.</summary>
 
     public sealed class ApplyPosition : MonoBehaviour
     {
@@ -10,14 +10,10 @@ namespace Emas.Sample
 
         private void Awake()
         {
-            var components = GetComponents<MonoBehaviour>();
-            for (var index = 0; index < components.Length; index++)
+            IGhost ghost = GetComponent<Ghost>();
+            if (ghost != null)
             {
-                _position = components[index] as I3DPosition;
-                if (_position != null)
-                {
-                    break;
-                }
+                ghost.TryGet<I3DPosition>(out _position);
             }
         }
 

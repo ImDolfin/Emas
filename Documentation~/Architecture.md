@@ -48,6 +48,8 @@ Successful startup outside an update finalizes directly populated ghosts immedia
 
 Availability loss deactivates the root and excludes it from queries; retained data may be stale. Demanifesting only removes the visual child. Recovery is explicit through an active source republishing identities.
 
+Sources retain the first failure in `LastError`; cleanup errors cannot hide it and old registrations cannot change a restarted source's status. See [status contracts](API.md#presencesource-and-ghost-contracts).
+
 Realm/anchor disposal is idempotent. Further mutations throw `ObjectDisposedException`; disposed-realm queries are empty and `Update()` is a no-op. Anchor disposal unregisters records immediately, before Unity's deferred destruction.
 
 ## Callback safety and internal boundaries
@@ -77,7 +79,8 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | Blueprint, detail level and view lifecycle |
 | `Runtime/Unity/` | Scene setup, automatic runner and nested scene effects |
-| `Editor/Diagnostics/` | Emas diagnostics window |
+| `Editor/Diagnostics/` | Passive default-realm diagnostics |
+| `Editor/Inspectors/` | Blueprint and SceneSetup authoring validation |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
 | `Samples~/Minimal/` / `Samples~/Callbacks/` | Polling and callback quick starts |
 | `Samples~/Example/` | Contracts, entities, behaviors and source integrations |

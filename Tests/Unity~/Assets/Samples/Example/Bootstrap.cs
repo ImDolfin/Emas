@@ -20,11 +20,14 @@ namespace Emas.Sample
         private CockpitMarker _cockpitMarker;
         private GameObject _ground;
         private readonly List<GameObject> _runtimeObjects = new List<GameObject>();
+        private readonly List<Material> _runtimeMaterials = new List<Material>();
         private readonly List<Blueprint> _runtimeBlueprints = new List<Blueprint>();
 
         /// <summary>Starts the sample anchor and its sources.</summary>
-        private void Start()
+        private void OnEnable()
         {
+            _sourceReplaced = false;
+            _replacementTimer = 0f;
             _cockpitFeed = new SimulatedCockpitFeed();
             ConfigureCamera();
             RegisterCarBlueprint();
@@ -36,19 +39,33 @@ namespace Emas.Sample
                 _firstCarSource,
                 new SimulatedAircraftSource());
 
-            _carSubscription = Realm.Default.Query()
+            var realm = _anchor.Realm;
+            _carSubscription = realm.Query()
+                .InAnchor(AnchorId)
                 .OfKind(SampleKinds.Car)
                 .With<I3DPosition>()
                 .With<IArticulate>()
-                .OnAvailable(ghost => Realm.Default.Manifest(ghost));
+                .OnAvailable(ghost => realm.Manifest(ghost));
 
-            _aircraftSubscription = Realm.Default.Query()
+            _aircraftSubscription = realm.Query()
+                .InAnchor(AnchorId)
                 .OfKind(SampleKinds.Aircraft)
                 .With<I3DPosition>()
-                .OnAvailable(ghost => Realm.Default.Manifest(ghost));
+                .OnAvailable(ghost => realm.Manifest(ghost));
 
             CreateDemoEnvironment();
             CreateCockpitDemo();
+        }
+
+        /// <summary>Switches to SDK Two while retaining compatible car ghosts and their consumers.</summary>
+        /// <remarks>Safe to call repeatedly. The sample also switches automatically after four seconds.</remarks>
+        public void ReplaceCarSource()
+        {
+            if (_anchor != null && !_sourceReplaced)
+            {
+                _anchor.ReplaceSource(_firstCarSource, new SdkTwoCarSource());
+                _sourceReplaced = true;
+            }
         }
 
         /// <summary>Updates the replacement demonstration and moving cockpit marker.</summary>
@@ -57,8 +74,7 @@ namespace Emas.Sample
             _replacementTimer += Time.deltaTime;
             if (!_sourceReplaced && _replacementTimer >= 4.0f)
             {
-                _anchor.ReplaceSource(_firstCarSource, new SdkTwoCarSource());
-                _sourceReplaced = true;
+                ReplaceCarSource();
             }
 
             if (_cockpitScreen != null)
@@ -78,7 +94,7 @@ namespace Emas.Sample
         }
 
         /// <summary>Stops sample subscriptions, anchors and generated objects.</summary>
-        private void OnDestroy()
+        private void OnDisable()
         {
             if (_carSubscription != null)
             {
@@ -92,7 +108,11 @@ namespace Emas.Sample
                 _aircraftSubscription = null;
             }
 
-            Realm.Default.RemoveAnchor(AnchorId);
+            if (_anchor != null)
+            {
+                _anchor.Dispose();
+                _anchor = null;
+            }
             if (_cockpitScreen != null)
             {
                 Destroy(_cockpitScreen.gameObject);
@@ -123,12 +143,20 @@ namespace Emas.Sample
                     Destroy(_runtimeObjects[index]);
                 }
             }
+            foreach (var material in _runtimeMaterials)
+            {
+                Destroy(material);
+            }
+            _runtimeMaterials.Clear();
+            _runtimeObjects.Clear();
+            _runtimeBlueprints.Clear();
+            _cockpitFeed = null;
         }
 
         private void OnGUI()
         {
-            var cars = Realm.Default.Query().OfKind(SampleKinds.Car).Count;
-            var aircraft = Realm.Default.Query().OfKind(SampleKinds.Aircraft).Count;
+            var cars = _anchor.Realm.Query().InAnchor(AnchorId).OfKind(SampleKinds.Car).Count;
+            var aircraft = _anchor.Realm.Query().InAnchor(AnchorId).OfKind(SampleKinds.Aircraft).Count;
             GUI.color = Color.white;
             GUI.Label(
                 new Rect(16.0f, 16.0f, 900.0f, 28.0f),
@@ -356,12 +384,14 @@ namespace Emas.Sample
             return target;
         }
 
-        private static void SetColor(GameObject target, Color color)
+        private void SetColor(GameObject target, Color color)
         {
             var renderer = target.GetComponent<Renderer>();
             if (renderer != null)
             {
-                renderer.material.color = color;
+                var material = renderer.material;
+                material.color = color;
+                _runtimeMaterials.Add(material);
             }
         }
     }

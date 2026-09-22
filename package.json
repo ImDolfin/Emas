@@ -5,18 +5,13 @@
   "description": "Emas: entity tracking and optional views for Unity.",
   "unity": "2022.3",
   "unityRelease": "0f1",
-  "documentationUrl": "Documentation~/GettingStarted.md",
-  "changelogUrl": "CHANGELOG.md",
-  "licensesUrl": "",
   "keywords": [
     "entity",
     "views",
     "simulation"
   ],
   "author": {
-    "name": "Emas",
-    "email": "",
-    "url": ""
+    "name": "Emas"
   },
   "type": "library",
   "dependencies": {},
@@ -36,5 +31,6 @@
       "description": "A source-independent vehicle and aircraft discovery example.",
       "path": "Samples~/Example"
     }
-  ]
+  ],
+  "license": "MIT"
 }

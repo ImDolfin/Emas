@@ -16,10 +16,12 @@ namespace Emas
         private Func<TSource, Variant> _variant;
         private Func<Action<TSource>, Action<string>, Action> _subscribe;
         private Action _unsubscribe;
+        private long _unsubscribeGeneration;
         private int _subscribeDepth;
 
         /// <summary>Creates a callback source for one entity kind. Configure it before tracking.</summary>
         /// <param name="kind">The kind assigned to every ghost from this source.</param>
+        /// <exception cref="ArgumentException">The kind is empty or invalid.</exception>
         public CallbackPresenceSource(Kind kind)
         {
             if (!kind.IsValid)
@@ -32,6 +34,8 @@ namespace Emas
         /// <summary>Sets the stable identity selector, executed on the realm update thread.</summary>
         /// <param name="identify">Returns a non-empty entity ID. Repeated IDs update the same ghost.</param>
         /// <returns>This source for further configuration.</returns>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
         public CallbackPresenceSource<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
         {
             ThrowIfConfiguringWhileTracking();
@@ -42,6 +46,8 @@ namespace Emas
         /// <summary>Sets the callback that copies a source item's data into its ghost on the realm update thread.</summary>
         /// <param name="apply">Receives the source item first and its stable ghost second.</param>
         /// <returns>This source for further configuration.</returns>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
         public CallbackPresenceSource<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
         {
             ThrowIfConfiguringWhileTracking();
@@ -52,6 +58,8 @@ namespace Emas
         /// <summary>Optionally selects each published ghost's appearance. Omit to preserve existing appearances.</summary>
         /// <param name="variant">Runs on the realm update thread; Variant.None clears the appearance.</param>
         /// <returns>This source for further configuration.</returns>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
         public CallbackPresenceSource<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
         {
             ThrowIfConfiguringWhileTracking();
@@ -63,6 +71,8 @@ namespace Emas
         /// <param name="subscribe">Receives publish and remove-by-ID callbacks, callable from any thread. Returns an unsubscribe action, or null if cleanup is unnecessary.</param>
         /// <returns>This source for further configuration.</returns>
         /// <remarks>Subscription and cleanup run on the Unity thread. Initial items may be published during subscription; all events are deferred. Undo partial subscriptions before throwing. The SDK client remains application-owned.</remarks>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
         public CallbackPresenceSource<TSource, TGhost> Listen(Func<Action<TSource>, Action<string>, Action> subscribe)
         {
             ThrowIfConfiguringWhileTracking();
@@ -108,7 +118,7 @@ namespace Emas
                 // Availability-loss callbacks can reattach us before the old failure finishes stopping.
                 var previousCleanup = _unsubscribe;
                 _unsubscribe = null;
-                Cleanup(previousCleanup);
+                Cleanup(previousCleanup, _unsubscribeGeneration);
                 if (!IsRegistration(realm, generation))
                 {
                     return;
@@ -119,11 +129,12 @@ namespace Emas
                 if (IsRegistration(realm, generation))
                 {
                     _unsubscribe = cleanup;
+                    _unsubscribeGeneration = generation;
                 }
                 else
                 {
                     // Startup may synchronously stop or restart tracking before returning cleanup.
-                    Cleanup(cleanup);
+                    Cleanup(cleanup, generation);
                 }
             }
             finally
@@ -142,10 +153,10 @@ namespace Emas
             }
             var cleanup = _unsubscribe;
             _unsubscribe = null;
-            Cleanup(cleanup);
+            Cleanup(cleanup, _unsubscribeGeneration);
         }
 
-        private static void Cleanup(Action cleanup)
+        private void Cleanup(Action cleanup, long generation)
         {
             try
             {
@@ -156,6 +167,7 @@ namespace Emas
             }
             catch (Exception exception)
             {
+                RecordError(exception, generation);
                 Debug.LogException(exception);
             }
         }

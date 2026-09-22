@@ -5,6 +5,7 @@ using System.Collections.Generic;
 namespace Emas
 {
     /// <summary>Describes filters used to select tracked ghosts.</summary>
+    /// <remarks>Immutable filters evaluated on the Unity thread. Results contain only available ghosts, with no ordering guarantee.</remarks>
     public sealed class Query : IEnumerable<IGhost>
     {
         private readonly Realm _realm;
@@ -34,6 +35,7 @@ namespace Emas
         /// <summary>Restricts the query to a kind.</summary>
         /// <param name="kind">The required kind.</param>
         /// <returns>A query containing the added filter.</returns>
+        /// <exception cref="ArgumentException">The kind is invalid.</exception>
         public Query OfKind(Kind kind)
         {
             if (!kind.IsValid)
@@ -110,6 +112,10 @@ namespace Emas
         /// <summary>Subscribes to ghosts that become matches.</summary>
         /// <param name="callback">The callback invoked for current and future matches.</param>
         /// <returns>A subscription that stops future callbacks when disposed.</returns>
+        /// <remarks>Current matches may notify synchronously. Each ghost notifies once while it remains a match; recovery can notify again.
+        /// Dispose the returned subscription when the consumer stops. Callback exceptions are logged and isolated.</remarks>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public IDisposable OnAvailable(Action<IGhost> callback)
         {
             if (callback == null)

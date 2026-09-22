@@ -4,6 +4,8 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Provides stable identity and root-component access for one ghost.</summary>
+    /// <remarks>Read on the Unity thread. Emas owns identity and availability; sources mutate application data through concrete Ghost methods.
+    /// Consumers use read-only application interfaces and must not assume retained data is current while IsAvailable is false.</remarks>
     public interface IGhost
     {
         /// <summary>Gets the stable ghost key.</summary>
@@ -26,6 +28,7 @@ namespace Emas
         /// <typeparam name="T">The requested interface type.</typeparam>
         /// <param name="part">Receives the matching component, when found.</param>
         /// <returns>True when exactly one matching component exists.</returns>
+        /// <remarks>Only root MonoBehaviours participate. No match returns false; multiple matches also log an error. No component is added.</remarks>
         bool TryGet<T>(out T part) where T : class;
     }
 }

@@ -105,6 +105,79 @@ namespace Emas.Tests.Samples
             Assert.That(Population(anchor).Count, Is.Zero);
         }
 
+        /// <summary>The larger example consumes read-only contracts and preserves roots across source replacement in players.</summary>
+        [UnityTest]
+        public IEnumerator Example_ConsumesContractsReplacesSourceAndDisposesSubscriptions()
+        {
+            yield return Load("Assets/Samples/Example/Scenes/Example.unity");
+            var bootstrap = Find<Emas.Sample.Bootstrap>();
+            var cars = Realm.Default.Query().InAnchor("sample").OfKind(Emas.Sample.SampleKinds.Car);
+            var materials = new System.Collections.Generic.List<Material>();
+            var roots = new System.Collections.Generic.Dictionary<Key, IGhost>();
+            foreach (var ghost in cars)
+            {
+                roots.Add(ghost.Key, ghost);
+                foreach (var renderer in ((Ghost)ghost).GetComponentsInChildren<Renderer>())
+                {
+                    materials.Add(renderer.sharedMaterial);
+                }
+                AssertCarView(ghost);
+            }
+            Assert.That(roots.Count, Is.GreaterThan(0));
+            var anchor = Realm.Default.Anchors[0];
+            var originalSource = anchor.Sources[0];
+            bootstrap.ReplaceCarSource();
+            yield return null;
+            yield return null;
+            Assert.That(originalSource.IsAttached || originalSource.IsActive, Is.False);
+            Assert.That(anchor.Sources[0], Is.TypeOf<Emas.Sample.SdkTwoCarSource>());
+            Assert.That(cars.Count, Is.EqualTo(roots.Count));
+            foreach (var ghost in cars)
+            {
+                Assert.That(ghost, Is.SameAs(roots[ghost.Key]));
+                AssertCarView(ghost);
+            }
+            bootstrap.gameObject.SetActive(false);
+            Assert.That(cars.Count, Is.Zero);
+            Assert.That(anchor.Sources, Is.Empty);
+            foreach (var name in new[] { "_carSubscription", "_aircraftSubscription" })
+            {
+                Assert.That(typeof(Emas.Sample.Bootstrap).GetField(name,
+                    BindingFlags.Instance | BindingFlags.NonPublic).GetValue(bootstrap), Is.Null);
+            }
+            yield return null;
+            foreach (var material in materials)
+            {
+                Assert.That(material == null, Is.True, "Generated materials must be released on disable.");
+            }
+            bootstrap.gameObject.SetActive(true);
+            yield return null;
+            yield return null;
+            Assert.That(cars.Count, Is.EqualTo(roots.Count));
+            foreach (var ghost in cars)
+            {
+                Assert.That(ghost, Is.Not.SameAs(roots[ghost.Key]));
+                AssertCarView(ghost);
+            }
+        }
+
+        private static void AssertCarView(IGhost ghost)
+        {
+            Emas.Sample.I3DPosition position;
+            Emas.Sample.IArticulate articulation;
+            Assert.That(ghost.TryGet(out position), Is.True);
+            Assert.That(ghost.TryGet(out articulation), Is.True);
+            var root = (Ghost)ghost;
+            Assert.That(root.transform.localPosition, Is.EqualTo(position.Position));
+            var view = root.GetComponentInChildren<View>();
+            Assert.That(view, Is.Not.Null);
+            Assert.That(view.Ghost, Is.SameAs(ghost));
+            Assert.That(view.GetComponent<Emas.Sample.VehicleLogic>(), Is.Not.Null);
+            Assert.That(view.GetComponent<Emas.Sample.ArticulationLogic>(), Is.Not.Null);
+            Assert.That(Quaternion.Angle(view.transform.localRotation,
+                Quaternion.Euler(0f, articulation.Steering * 12f, 0f)), Is.LessThan(0.01f));
+        }
+
         private IEnumerator Load(string path)
         {
             yield return SceneManager.LoadSceneAsync(path, LoadSceneMode.Additive);

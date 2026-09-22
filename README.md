@@ -21,6 +21,7 @@ This project already includes the samples and test configuration. No manifest ed
 ## Documentation
 
 - [Getting started](Documentation~/GettingStarted.md): install and integrate a source.
+- [Guidelines](Documentation~/Guidelines.md): contracts, ownership and contributions.
 - [API reference](Documentation~/API.md): operations and behavior contracts.
 - [Architecture](Documentation~/Architecture.md): ownership, update phases and lifecycle diagrams.
 - [Validation](Documentation~/Validation.md): Unity Test Runner setup, results and limits.

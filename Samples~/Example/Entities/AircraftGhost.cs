@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas.Sample
@@ -16,7 +14,8 @@ namespace Emas.Sample
             get { return _position; }
         }
 
-        /// <inheritdoc />
+        /// <summary>Copies source position into this ghost.</summary>
+        /// <param name="position">Position converted to the owning anchor's local frame.</param>
         public void SetPosition(Vector3 position)
         {
             _position = position;

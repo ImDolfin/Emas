@@ -5,6 +5,7 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Owns anchors, ghosts, blueprints, views and query subscriptions.</summary>
+    /// <remarks>All operations use the Unity thread. Dispose isolated realms when their owner stops; Unity advances Realm.Default automatically.</remarks>
     public sealed class Realm : IDisposable
     {
         /// <summary>Gets the shared realm advanced automatically by Unity.</summary>
@@ -12,6 +13,21 @@ namespace Emas
         public static Realm Default
         {
             get { return DefaultRuntime.Realm; }
+        }
+
+        /// <summary>Gets a copied, read-only snapshot of this realm's anchors.</summary>
+        /// <remarks>Read on the Unity thread. Earlier snapshots do not change; disposed realms return an empty snapshot.
+        /// The referenced anchors retain their own lifetimes. No ordering is guaranteed.</remarks>
+        public IReadOnlyList<Anchor> Anchors
+        {
+            get
+            {
+                if (_disposed)
+                {
+                    return Array.AsReadOnly(Array.Empty<Anchor>());
+                }
+                return new List<Anchor>(_anchors.Values).AsReadOnly();
+            }
         }
 
         private readonly Dictionary<string, Anchor> _anchors = new Dictionary<string, Anchor>();
@@ -59,12 +75,21 @@ namespace Emas
 
         /// <summary>Registers a blueprint by kind.</summary>
         /// <param name="blueprint">The blueprint to register.</param>
+        /// <remarks>Assets remain application-owned. A later registration of the same kind replaces its configuration.</remarks>
+        /// <exception cref="ArgumentException">The blueprint is null or its kind/view mappings are invalid.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void RegisterBlueprint(Blueprint blueprint)
         {
             ThrowIfDisposed();
-            if (blueprint == null || !blueprint.Kind.IsValid)
+            if (blueprint == null)
             {
                 throw new ArgumentException("A valid blueprint is required.", nameof(blueprint));
+            }
+
+            var error = blueprint.GetConfigurationError();
+            if (error != null)
+            {
+                throw new ArgumentException(error, nameof(blueprint));
             }
 
             _blueprints[blueprint.Kind.Id] = blueprint;
@@ -74,6 +99,9 @@ namespace Emas
         /// <param name="id">The anchor identifier.</param>
         /// <param name="sources">The sources to attach and start, including on an existing anchor.</param>
         /// <returns>The existing or new anchor.</returns>
+        /// <exception cref="ArgumentException">The anchor ID is empty.</exception>
+        /// <exception cref="InvalidOperationException">An existing anchor uses another frame, or source attachment fails.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public Anchor GetOrCreateAnchor(string id, params PresenceSource[] sources)
         {
             return GetOrCreateAnchor(id, null, sources);
@@ -84,6 +112,9 @@ namespace Emas
         /// <param name="frame">The optional parent transform.</param>
         /// <param name="sources">The sources to attach and start, including on an existing anchor.</param>
         /// <returns>The existing or new anchor.</returns>
+        /// <exception cref="ArgumentException">The anchor ID is empty.</exception>
+        /// <exception cref="InvalidOperationException">An existing anchor uses another frame, or source attachment fails.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public Anchor GetOrCreateAnchor(string id, Transform frame, params PresenceSource[] sources)
         {
             ThrowIfDisposed();
@@ -134,6 +165,9 @@ namespace Emas
 
         /// <summary>Removes and disposes an anchor.</summary>
         /// <param name="id">The anchor identifier.</param>
+        /// <remarks>Unknown IDs are ignored.</remarks>
+        /// <exception cref="ArgumentNullException">The ID is null.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void RemoveAnchor(string id)
         {
             ThrowIfDisposed();
@@ -173,6 +207,10 @@ namespace Emas
         /// <param name="entityId">The source entity identifier.</param>
         /// <param name="variant">The appearance; null retains an existing value, and None clears it.</param>
         /// <returns>The prepared ghost.</returns>
+        /// <remarks>The anchor must exist. Preparation never makes a ghost available or assigns a source.</remarks>
+        /// <exception cref="ArgumentException">The kind or entity ID is invalid.</exception>
+        /// <exception cref="InvalidOperationException">The anchor does not exist.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public TGhost Prepare<TGhost>(string anchorId, Kind kind, string entityId, Variant? variant = null) where TGhost : Ghost
         {
             return GetOrCreate<TGhost>(null, anchorId, entityId, kind, variant, null);
@@ -181,6 +219,8 @@ namespace Emas
         /// <summary>Requests a view at Full detail when no view request exists, or refreshes the existing request.</summary>
         /// <param name="ghost">The ghost.</param>
         /// <returns>The view component, or null when no prefab resolves.</returns>
+        /// <remarks>Null, foreign and removed ghosts return null. Detail level None clears the request.</remarks>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public View Manifest(IGhost ghost)
         {
             ThrowIfDisposed();
@@ -200,6 +240,8 @@ namespace Emas
         /// <param name="detailLevel">The desired detail level.</param>
         /// <returns>The view component, or null when no prefab resolves.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the detail level is negative.</exception>
+        /// <remarks>Null, foreign and removed ghosts return null. Detail level None clears the request.</remarks>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public View Manifest(IGhost ghost, DetailLevel detailLevel)
         {
             ThrowIfDisposed();
@@ -226,6 +268,8 @@ namespace Emas
 
         /// <summary>Removes a ghost's view while retaining its ghost.</summary>
         /// <param name="ghost">The ghost to demanifest.</param>
+        /// <remarks>Null, foreign and removed ghosts are ignored; source availability is unchanged.</remarks>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void Demanifest(IGhost ghost)
         {
             ThrowIfDisposed();
@@ -246,6 +290,8 @@ namespace Emas
         /// <param name="ghost">The ghost whose view should change.</param>
         /// <param name="detailLevel">The desired detail level.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the detail level is negative.</exception>
+        /// <remarks>Does not create a request for a never-requested ghost. Null, foreign and removed ghosts are ignored.</remarks>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void SetDetailLevel(IGhost ghost, DetailLevel detailLevel)
         {
             ThrowIfDisposed();
@@ -278,6 +324,7 @@ namespace Emas
 
         /// <summary>Applies a bounded source batch, finalizes availability, refreshes views, then notifies subscribers.</summary>
         /// <remarks>Processes at most 256 queued actions present at update entry. Newly queued actions wait for a later update. A disposed realm does nothing.</remarks>
+        /// <exception cref="InvalidOperationException">Called inside another update, source callback or finalization phase.</exception>
         public void Update()
         {
             if (_disposed)

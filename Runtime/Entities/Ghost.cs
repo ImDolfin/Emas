@@ -5,6 +5,9 @@ namespace Emas
 {
     /// <summary>Base component for application-defined ghost components.</summary>
 
+    /// <remarks>Subclass to store application data and implement read-only contracts. Emas creates/destroys roots and sets their metadata.
+    /// Roots activate after successful publication and deactivate on availability loss; Awake may run before source mapping.
+    /// Keep source mutation methods on the concrete subclass. Views are optional children, independent of root behaviors.</remarks>
     public abstract class Ghost : MonoBehaviour, IGhost
     {
         [SerializeField] private string _anchorId;

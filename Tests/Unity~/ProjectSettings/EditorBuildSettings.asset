@@ -11,4 +11,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Samples/Callbacks/Callbacks.unity
     guid: cdf1c667fe8b461baad4cce6e290ecd1
+  - enabled: 1
+    path: Assets/Samples/Example/Scenes/Example.unity
+    guid: 23e0445bad8e85e4e93e1622bf0d8304
   m_configObjects: {}

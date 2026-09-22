@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas.Sample
@@ -23,13 +21,15 @@ namespace Emas.Sample
             get { return _steering; }
         }
 
-        /// <inheritdoc />
+        /// <summary>Copies source position into this ghost.</summary>
+        /// <param name="position">Position converted to the owning anchor's local frame.</param>
         public void SetPosition(Vector3 position)
         {
             _position = position;
         }
 
-        /// <inheritdoc />
+        /// <summary>Copies source steering into this ghost.</summary>
+        /// <param name="steering">Normalized steering, from -1 to 1.</param>
         public void SetArticulation(float steering)
         {
             _steering = steering;

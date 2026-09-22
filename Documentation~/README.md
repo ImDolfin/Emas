@@ -5,6 +5,7 @@ Emas tracks source entities as scene-owned ghosts with optional views. Requires 
 | Document | Contents |
 | --- | --- |
 | [Getting started](GettingStarted.md) | Install, run the sample, integrate a source |
+| [Guidelines](Guidelines.md) | Application contracts, ownership, recovery and contribution rules |
 | [API reference](API.md) | Operations, filters, typed values and view selection |
 | [Architecture](Architecture.md) | Ownership, update order, failures and cleanup |
 | [Validation](Validation.md) | Tested configuration, results and limits |

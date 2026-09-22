@@ -1,19 +1,11 @@
-using System;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Provides source-independent three-dimensional position data.</summary>
-
+    /// <summary>Application-owned, read-only position contract shared by sources and consumers.</summary>
     public interface I3DPosition
     {
-        /// <summary>Gets the current world-relative position.</summary>
-        /// <value>The source-independent position.</value>
+        /// <summary>Gets the position in the owning anchor's local coordinate frame.</summary>
         Vector3 Position { get; }
-
-        /// <summary>Sets the current world-relative position.</summary>
-        /// <param name="position">The new position.</param>
-        void SetPosition(Vector3 position);
     }
 }

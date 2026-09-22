@@ -2,6 +2,12 @@
 
 ## 0.1.0
 
+- Added read-only source health (`IsAttached`, `IsActive`, `LastError`) and copied anchor/source snapshots, with generation-safe failure reporting.
+- Added passive diagnostics and Blueprint/SceneSetup Inspectors sharing runtime validation; optional ghost prefabs no longer produce warnings.
+- Made example contracts read-only; expanded source replacement and cleanup demonstrations, integration guidance and Unity regression coverage.
+- Validated Unity 2022.3.62f3 and Unity 6.3 LTS (6000.3.24f1), including Windows Mono players and fresh sample imports.
+- Declared the MIT license and removed empty author and invalid URL metadata; installation remains passive.
+
 - Added a preconfigured Unity test project with imported samples and native Test Runner checks; clarified opening it through Unity Hub and testing packages in existing projects.
 - Added `CallbackPresenceSource` for event-driven integration, registration-safe dispatch and unsubscribe cleanup, with a runnable Callback quick start sample.
 - Clarified detail-level, prefab selection and anchor reuse APIs; added Inspector guidance and specific configuration errors.

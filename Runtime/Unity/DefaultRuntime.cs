@@ -16,6 +16,12 @@ namespace Emas
             }
         }
 
+        internal static bool TryGetRealm(out Realm realm)
+        {
+            realm = _realm != null && !_realm.IsDisposed ? _realm : null;
+            return realm != null;
+        }
+
         private static void EnsureRealm()
         {
             if (_realm != null && !_realm.IsDisposed)

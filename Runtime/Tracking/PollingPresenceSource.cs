@@ -20,6 +20,7 @@ namespace Emas
 
         /// <summary>Creates a polling source for one entity kind. Configure its callbacks before tracking.</summary>
         /// <param name="kind">The kind assigned to every ghost from this source.</param>
+        /// <exception cref="ArgumentException">The kind is empty or invalid.</exception>
         public PollingPresenceSource(Kind kind)
         {
             if (!kind.IsValid)
@@ -32,6 +33,8 @@ namespace Emas
         /// <summary>Sets the callback that reads the complete current population on startup and each update.</summary>
         /// <param name="read">Returns all current items; an empty collection removes the population, null is an error.</param>
         /// <returns>This source for further configuration.</returns>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
         public PollingPresenceSource<TSource, TGhost> ReadFrom(Func<IEnumerable<TSource>> read)
         {
             ThrowIfConfiguringWhileTracking();
@@ -42,6 +45,8 @@ namespace Emas
         /// <summary>Sets the stable identity selector used to match items to existing ghosts.</summary>
         /// <param name="identify">Returns a non-empty ID unique within each read.</param>
         /// <returns>This source for further configuration.</returns>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
         public PollingPresenceSource<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
         {
             ThrowIfConfiguringWhileTracking();
@@ -52,6 +57,8 @@ namespace Emas
         /// <summary>Sets the callback that copies each source item's data into its ghost.</summary>
         /// <param name="apply">Receives the source item first and its stable ghost second.</param>
         /// <returns>This source for further configuration.</returns>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
         public PollingPresenceSource<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
         {
             ThrowIfConfiguringWhileTracking();
@@ -62,6 +69,8 @@ namespace Emas
         /// <summary>Optionally selects each ghost's appearance. Omit this step to preserve existing appearances.</summary>
         /// <param name="variant">Returns the appearance for an item; Variant.None clears its appearance.</param>
         /// <returns>This source for further configuration.</returns>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
         public PollingPresenceSource<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
         {
             ThrowIfConfiguringWhileTracking();
