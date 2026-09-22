@@ -7,7 +7,7 @@ namespace Emas
     /// <summary>Describes filters used to select tracked ghosts.</summary>
     public sealed class Query : IEnumerable<IGhost>
     {
-        private readonly Context _context;
+        private readonly Realm _realm;
         private readonly string _partialName;
         private readonly string _exactName;
         private readonly string _originId;
@@ -15,14 +15,14 @@ namespace Emas
         private readonly Variant? _variant;
         private readonly List<Func<IGhost, bool>> _parts;
 
-        internal Query(Context context, string partialName)
-            : this(context, partialName, null, null, null, null, new List<Func<IGhost, bool>>())
+        internal Query(Realm realm, string partialName)
+            : this(realm, partialName, null, null, null, null, new List<Func<IGhost, bool>>())
         {
         }
 
-        private Query(Context context, string partialName, string exactName, string originId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
+        private Query(Realm realm, string partialName, string exactName, string originId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
         {
-            _context = context;
+            _realm = realm;
             _partialName = partialName;
             _exactName = exactName;
             _originId = originId;
@@ -117,7 +117,7 @@ namespace Emas
                 throw new ArgumentNullException(nameof(callback));
             }
 
-            return _context.Subscribe(this, callback);
+            return _realm.Subscribe(this, callback);
         }
 
         /// <inheritdoc />
@@ -132,9 +132,9 @@ namespace Emas
             return GetEnumerator();
         }
 
-        internal Context Context
+        internal Realm Realm
         {
-            get { return _context; }
+            get { return _realm; }
         }
 
         internal bool Matches(IGhost ghost)
@@ -188,16 +188,16 @@ namespace Emas
 
         private List<IGhost> Evaluate()
         {
-            return _context.Evaluate(this);
+            return _realm.Evaluate(this);
         }
 
-        internal Query Rebind(Context context)
+        internal Query Rebind(Realm realm)
         {
-            return new Query(context, _partialName, _exactName, _originId, _kind, _variant, _parts);
+            return new Query(realm, _partialName, _exactName, _originId, _kind, _variant, _parts);
         }
         private Query Copy(string partialName, string exactName, string originId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
         {
-            return new Query(_context, partialName, exactName, originId, kind, variant, new List<Func<IGhost, bool>>(parts));
+            return new Query(_realm, partialName, exactName, originId, kind, variant, new List<Func<IGhost, bool>>(parts));
         }
     }
 }

@@ -18,12 +18,12 @@ namespace Emas.Editor
             GUILayout.Label("Emas v" + Package.Version, EditorStyles.boldLabel);
             if (!Application.isPlaying)
             {
-                EditorGUILayout.HelpBox("Enter Play Mode to inspect the default Emas context.", MessageType.Info);
+                EditorGUILayout.HelpBox("Enter Play Mode to inspect the default Emas realm.", MessageType.Info);
                 return;
             }
 
-            var context = Context.Default;
-            EditorGUILayout.LabelField("Available ghosts", context.Query().Count.ToString());
+            var realm = Realm.Default;
+            EditorGUILayout.LabelField("Available ghosts", realm.Query().Count.ToString());
             EditorGUILayout.LabelField("Tracked car-like data", "Use application kinds and interfaces in the query API.");
             if (GUILayout.Button("Refresh"))
             {

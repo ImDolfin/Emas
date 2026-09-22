@@ -1,6 +1,20 @@
 # API reference
 
-Runtime APIs use the `Emas` namespace. `Context.Default` is updated automatically by Unity; an isolated `Context` implements `IDisposable` and advances through explicit `Update()`.
+Runtime APIs use the `Emas` namespace. `Realm.Default` is updated automatically by Unity; an isolated `Realm` implements `IDisposable` and advances through explicit `Update()`.
+
+## Fast integration
+
+| API | Contract |
+| --- | --- |
+| `PollingCoordinator<TSource, TGhost>(kind)` | Poll on startup and every update; create/update entities and remove those absent from a successful complete snapshot |
+| `SceneSetup.Track(params coordinators)` | Register Inspector blueprints and start one owned origin under the component transform |
+| `SceneSetup.Origin` | Current owned origin, or null when stopped; use it for source replacement |
+
+Configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an origin.
+
+Polling requires a non-null full snapshot and unique, non-empty IDs. The entire read is validated before mapping; departures run only after all mapping callbacks succeed. Failures use normal coordinator stop/unavailability behavior. SDK clients remain application-owned.
+
+`SceneSetup` must be enabled and its origin ID unused. Call `Track` once per enabled lifetime. Automatic views apply only to its assigned blueprint kinds. Disable cleans up tracking and subscriptions; re-enable requires another `Track` call. Blueprint registrations remain in the shared realm.
 
 ## Tracking and lifecycle
 
@@ -10,12 +24,12 @@ Runtime APIs use the `Emas` namespace. `Context.Default` is updated automaticall
 | `CreateOriginFor(id, params coordinators)` | Create an origin and start its coordinators; overload accepts a `Transform` frame |
 | `Prepare<TGhost>(originId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
 | `Query(partialName = null)` | Describe filters over available ghosts |
-| `Query(description)` | Rebind an existing query description to this context |
+| `Query(description)` | Rebind an existing query description to this realm |
 | `RemoveOrigin(id)` | Stop its coordinators and remove all its records, including prepared ghosts |
-| `Update()` | Advance an explicitly managed context; the default context advances automatically |
-| `context.Dispose()` | Release the context and all owned state |
+| `Update()` | Advance an explicitly managed realm; the default realm advances automatically |
+| `realm.Dispose()` | Release the realm and all owned state |
 
-An `Origin` exposes `Id`, `Transform`, `Context`, `AddCoordinator`, `RemoveCoordinator`, `ReplaceCoordinator(current, replacement)` and `Dispose()`. Replacement retains compatible identities; removal destroys the removed coordinator's population. See [lifecycle rules](Architecture.md#failure-and-cleanup).
+An `Origin` exposes `Id`, `Transform`, `Realm`, `AddCoordinator`, `RemoveCoordinator`, `ReplaceCoordinator(current, replacement)` and `Dispose()`. Replacement retains compatible identities; removal destroys the removed coordinator's population. See [lifecycle rules](Architecture.md#failure-and-cleanup).
 
 ## Coordinator and ghost contracts
 
@@ -79,4 +93,4 @@ Selection: **exact variant/degree > highest lower positive degree for that varia
 
 Views require an available ghost and a positive request. View binding finishes before activation. Requests made during source changes/finalization defer refresh, so `Manifest` may return the previous view or null until that phase completes. Requests outside those phases refresh immediately.
 
-Source: [context](../Runtime/Context.cs), [queries](../Runtime/Queries/Query.cs), [blueprints](../Runtime/Views/Blueprint.cs).
+Source: [realm](../Runtime/Realm.cs), [queries](../Runtime/Queries/Query.cs), [blueprints](../Runtime/Views/Blueprint.cs).

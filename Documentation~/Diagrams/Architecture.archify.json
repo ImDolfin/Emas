@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Emas: Context, Ghosts and Optional Views",
+    "title": "Emas: Realm, Ghosts and Optional Views",
     "locale": "en",
     "quality_profile": "showcase",
     "viewBox": [
@@ -32,23 +32,23 @@
         "focus": [
           "network",
           "coordinator",
-          "context",
+          "realm",
           "ghost",
           "origin"
         ],
-        "note": "Coordinators publish via GetOrCreate<TGhost>. Context creates roots beneath the origin and activates them after initialization."
+        "note": "Coordinators publish via GetOrCreate<TGhost>. Realm creates roots beneath the origin and activates them after initialization."
       },
       {
         "id": "query-and-view",
         "label": "Query + views",
         "focus": [
           "application",
-          "context",
+          "realm",
           "ghost",
           "blueprint",
           "view"
         ],
-        "note": "Queries match available ghosts only. The context owns Manifest, Demanifest and view refresh; the view is a child of the ghost."
+        "note": "Queries match available ghosts only. The realm owns Manifest, Demanifest and view refresh; the view is a child of the ghost."
       },
       {
         "id": "root-behaviors",
@@ -65,7 +65,7 @@
         "label": "Update phases",
         "focus": [
           "coordinator",
-          "context",
+          "realm",
           "ghost",
           "view",
           "application"
@@ -104,9 +104,9 @@
       ]
     },
     {
-      "id": "context",
+      "id": "realm",
       "type": "backend",
-      "label": "Context",
+      "label": "Realm",
       "sublabel": "Ghosts / views / availability",
       "pos": [
         620,
@@ -135,7 +135,7 @@
       "id": "view",
       "type": "frontend",
       "label": "View",
-      "sublabel": "Context-managed view child",
+      "sublabel": "Realm-managed view child",
       "pos": [
         1200,
         305
@@ -149,7 +149,7 @@
       "id": "application",
       "type": "frontend",
       "label": "Application",
-      "sublabel": "Context.Default or isolated",
+      "sublabel": "Realm.Default or isolated",
       "pos": [
         620,
         65
@@ -213,13 +213,13 @@
     {
       "id": "publish",
       "from": "coordinator",
-      "to": "context",
+      "to": "realm",
       "label": "GetOrCreate<T>",
       "variant": "emphasis"
     },
     {
       "id": "create-root",
-      "from": "context",
+      "from": "realm",
       "to": "ghost",
       "label": "Create / reuse",
       "variant": "emphasis"
@@ -234,7 +234,7 @@
     {
       "id": "api",
       "from": "application",
-      "to": "context",
+      "to": "realm",
       "label": "Query / Manifest",
       "labelDy": 90
     },
@@ -247,7 +247,7 @@
     },
     {
       "id": "own-origin",
-      "from": "context",
+      "from": "realm",
       "to": "origin",
       "label": "Owns lifetime",
       "labelDy": 90

@@ -31,21 +31,21 @@ namespace Emas.Sample
             RegisterAircraftBlueprint();
 
             _firstCarSource = new SdkOneCarCoordinator();
-            _origin = Context.Default.CreateOriginFor(
+            _origin = Realm.Default.CreateOriginFor(
                 OriginId,
                 _firstCarSource,
                 new SimulatedAircraftCoordinator());
 
-            _carSubscription = Context.Default.Query()
+            _carSubscription = Realm.Default.Query()
                 .OfKind(SampleKinds.Car)
                 .With<I3DPosition>()
                 .With<IArticulate>()
-                .OnAvailable(ghost => Context.Default.Manifest(ghost));
+                .OnAvailable(ghost => Realm.Default.Manifest(ghost));
 
-            _aircraftSubscription = Context.Default.Query()
+            _aircraftSubscription = Realm.Default.Query()
                 .OfKind(SampleKinds.Aircraft)
                 .With<I3DPosition>()
-                .OnAvailable(ghost => Context.Default.Manifest(ghost));
+                .OnAvailable(ghost => Realm.Default.Manifest(ghost));
 
             CreateDemoEnvironment();
             CreateCockpitDemo();
@@ -92,7 +92,7 @@ namespace Emas.Sample
                 _aircraftSubscription = null;
             }
 
-            Context.Default.RemoveOrigin(OriginId);
+            Realm.Default.RemoveOrigin(OriginId);
             if (_cockpitScreen != null)
             {
                 Destroy(_cockpitScreen.gameObject);
@@ -127,8 +127,8 @@ namespace Emas.Sample
 
         private void OnGUI()
         {
-            var cars = Context.Default.Query().OfKind(SampleKinds.Car).Count;
-            var aircraft = Context.Default.Query().OfKind(SampleKinds.Aircraft).Count;
+            var cars = Realm.Default.Query().OfKind(SampleKinds.Car).Count;
+            var aircraft = Realm.Default.Query().OfKind(SampleKinds.Aircraft).Count;
             GUI.color = Color.white;
             GUI.Label(
                 new Rect(16.0f, 16.0f, 900.0f, 28.0f),
@@ -241,13 +241,13 @@ namespace Emas.Sample
                 ghostTemplate.GetComponent<CarGhost>(),
                 new[]
                 {
-                    new Blueprint.ViewMapping(CarVariants.SmallCar, DetailLevel.Full, smallCar),
-                    new Blueprint.ViewMapping(CarVariants.LargeCar, DetailLevel.Full, largeCar),
-                    new Blueprint.ViewMapping(CarVariants.Truck, DetailLevel.Full, truck)
+                    new Blueprint.ViewMapping(variant: CarVariants.SmallCar, degree: DetailLevel.Full, prefab: smallCar),
+                    new Blueprint.ViewMapping(variant: CarVariants.LargeCar, degree: DetailLevel.Full, prefab: largeCar),
+                    new Blueprint.ViewMapping(variant: CarVariants.Truck, degree: DetailLevel.Full, prefab: truck)
                 },
                 unknown);
             _runtimeBlueprints.Add(blueprint);
-            Context.Default.RegisterBlueprint(blueprint);
+            Realm.Default.RegisterBlueprint(blueprint);
         }
 
         private void RegisterAircraftBlueprint()
@@ -268,13 +268,13 @@ namespace Emas.Sample
                 new[]
                 {
                     new Blueprint.ViewMapping(
-                        AircraftVariants.Trainer,
-                        DetailLevel.Full,
-                        view)
+                        variant: AircraftVariants.Trainer,
+                        degree: DetailLevel.Full,
+                        prefab: view)
                 },
                 view);
             _runtimeBlueprints.Add(blueprint);
-            Context.Default.RegisterBlueprint(blueprint);
+            Realm.Default.RegisterBlueprint(blueprint);
         }
 
         private GameObject CreateCarViewTemplate(string name, Color color, Vector3 bodyScale)

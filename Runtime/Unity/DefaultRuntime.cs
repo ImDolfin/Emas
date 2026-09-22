@@ -4,26 +4,26 @@ namespace Emas
 {
     internal static class DefaultRuntime
     {
-        private static Context _context;
+        private static Realm _realm;
         private static Runner _runner;
 
-        internal static Context Context
+        internal static Realm Realm
         {
             get
             {
-                EnsureContext();
-                return _context;
+                EnsureRealm();
+                return _realm;
             }
         }
 
-        private static void EnsureContext()
+        private static void EnsureRealm()
         {
-            if (_context != null && !_context.IsDisposed)
+            if (_realm != null && !_realm.IsDisposed)
             {
                 return;
             }
 
-            _context = new Context();
+            _realm = new Realm();
             if (_runner == null)
             {
                 var runnerObject = new GameObject("[Emas Runner]");
@@ -37,9 +37,9 @@ namespace Emas
         {
             private void Update()
             {
-                if (_context != null)
+                if (_realm != null)
                 {
-                    _context.Update();
+                    _realm.Update();
                 }
             }
         }
@@ -52,17 +52,17 @@ namespace Emas
                 Object.Destroy(_runner.gameObject);
                 _runner = null;
             }
-            if (_context != null)
+            if (_realm != null)
             {
-                _context.Dispose();
-                _context = null;
+                _realm.Dispose();
+                _realm = null;
             }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Initialize()
         {
-            EnsureContext();
+            EnsureRealm();
         }
     }
 }

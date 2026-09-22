@@ -5,20 +5,20 @@ using UnityEngine;
 namespace Emas.Tests
 {
     /// <summary>Exercises identity, automatic ghost creation and query behavior.</summary>
-    public sealed class ContextTests
+    public sealed class RealmTests
     {
-        private Context _context;
+        private Realm _realm;
 
         [SetUp]
         public void SetUp()
         {
-            _context = new Context();
+            _realm = new Realm();
         }
 
         [TearDown]
         public void TearDown()
         {
-            _context.Dispose();
+            _realm.Dispose();
         }
 
         /// <summary>Different kinds may use the same source identifier.</summary>
@@ -27,15 +27,15 @@ namespace Emas.Tests
         {
             var first = new TestCoordinator(new Kind("vehicles.car"));
             var second = new TestCoordinator(new Kind("vehicles.aircraft"));
-            _context.CreateOriginFor("simulation", first, second);
+            _realm.CreateOriginFor("simulation", first, second);
 
             first.Publish("42", new Variant("car"));
             second.Publish("42", new Variant("aircraft"));
-            _context.Update();
+            _realm.Update();
 
-            Assert.That(_context.Query().Count, Is.EqualTo(2));
-            Assert.That(_context.Query().OfKind(first.Kind).Count, Is.EqualTo(1));
-            Assert.That(_context.Query().OfKind(second.Kind).Count, Is.EqualTo(1));
+            Assert.That(_realm.Query().Count, Is.EqualTo(2));
+            Assert.That(_realm.Query().OfKind(first.Kind).Count, Is.EqualTo(1));
+            Assert.That(_realm.Query().OfKind(second.Kind).Count, Is.EqualTo(1));
         }
 
         /// <summary>Prepared ghosts remain unavailable until the source initializes them.</summary>
@@ -43,19 +43,19 @@ namespace Emas.Tests
         public void Prepare_IsUnavailableUntilCoordinatorUsesIt()
         {
             var kind = new Kind("vehicles.car");
-            _context.CreateOriginFor("simulation");
-            var prepared = _context.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
+            _realm.CreateOriginFor("simulation");
+            var prepared = _realm.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
             Assert.That(prepared.IsAvailable, Is.False);
-            Assert.That(_context.Query().Count, Is.EqualTo(0));
+            Assert.That(_realm.Query().Count, Is.EqualTo(0));
 
             var coordinator = new TestCoordinator(kind);
-            _context.CreateOriginFor("simulation", coordinator);
+            _realm.CreateOriginFor("simulation", coordinator);
             var initialized = coordinator.Publish("42", new Variant("car"));
-            _context.Update();
+            _realm.Update();
 
             Assert.That(initialized, Is.SameAs(prepared));
             Assert.That(initialized.IsAvailable, Is.True);
-            Assert.That(_context.Query().OfKind(kind).With<ITestPart>().Count, Is.EqualTo(1));
+            Assert.That(_realm.Query().OfKind(kind).With<ITestPart>().Count, Is.EqualTo(1));
         }
 
         /// <summary>Subscriptions report current and later available matches once each.</summary>
@@ -64,19 +64,19 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var coordinator = new TestCoordinator(kind);
-            _context.CreateOriginFor("simulation", coordinator);
+            _realm.CreateOriginFor("simulation", coordinator);
             coordinator.Publish("1", new Variant("one"));
-            _context.Update();
+            _realm.Update();
 
             var calls = 0;
-            var subscription = _context.Query().OfKind(kind).OnAvailable(ghost => calls++);
+            var subscription = _realm.Query().OfKind(kind).OnAvailable(ghost => calls++);
             Assert.That(calls, Is.EqualTo(1));
 
             coordinator.Publish("2", new Variant("two"));
-            _context.Update();
+            _realm.Update();
             Assert.That(calls, Is.EqualTo(2));
 
-            _context.Update();
+            _realm.Update();
             Assert.That(calls, Is.EqualTo(2));
             subscription.Dispose();
         }
@@ -87,11 +87,11 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var coordinator = new TestCoordinator(kind);
-            _context.CreateOriginFor("simulation", coordinator);
+            _realm.CreateOriginFor("simulation", coordinator);
             coordinator.Publish("1", new Variant("Small Car"));
-            _context.Update();
+            _realm.Update();
 
-            var result = _context.Query("1")
+            var result = _realm.Query("1")
                 .OfKind(kind)
                 .InOrigin("simulation")
                 .With<ITestPart>()
@@ -105,60 +105,60 @@ namespace Emas.Tests
         [Test]
         public void EmptyQuery_ReturnsEmptyAndNullFirst()
         {
-            Assert.That(_context.Query("missing").Count, Is.EqualTo(0));
-            Assert.That(_context.Query("missing").FirstOrDefault(), Is.Null);
+            Assert.That(_realm.Query("missing").Count, Is.EqualTo(0));
+            Assert.That(_realm.Query("missing").FirstOrDefault(), Is.Null);
         }
 
         /// <summary>Single rejects a result that is not unique.</summary>
         [Test]
         public void Single_ThrowsWhenNoMatchExists()
         {
-            Assert.Throws<InvalidOperationException>(() => _context.Query().Single());
+            Assert.Throws<InvalidOperationException>(() => _realm.Query().Single());
         }
 
         /// <summary>Default ghost kinds are rejected by filters and registration paths.</summary>
         [Test]
         public void InvalidKind_IsRejected()
         {
-            Assert.Throws<ArgumentException>(() => _context.Query().OfKind(default(Kind)));
+            Assert.Throws<ArgumentException>(() => _realm.Query().OfKind(default(Kind)));
         }
 
-        /// <summary>Reuses a query description against a different context.</summary>
+        /// <summary>Reuses a query description against a different realm.</summary>
         [Test]
-        public void QueryDescription_CanBeReusedAcrossContexts()
+        public void QueryDescription_CanBeReusedAcrossRealms()
         {
             var kind = new Kind("vehicles.car");
-            var description = _context.Query().OfKind(kind).With<ITestPart>();
-            using (var other = new Context())
+            var description = _realm.Query().OfKind(kind).With<ITestPart>();
+            using (var other = new Realm())
             {
                 Assert.That(other.Query(description).Count, Is.EqualTo(0));
             }
         }
 
-        /// <summary>Rejects a ghost object that belongs to another context.</summary>
+        /// <summary>Rejects a ghost object that belongs to another realm.</summary>
         [Test]
-        public void Manifest_DoesNotAcceptEqualKeyFromAnotherContext()
+        public void Manifest_DoesNotAcceptEqualKeyFromAnotherRealm()
         {
             var kind = new Kind("vehicles.car");
             var firstCoordinator = new TestCoordinator(kind);
-            var secondContext = new Context();
+            var secondRealm = new Realm();
             try
             {
-                _context.CreateOriginFor("simulation", firstCoordinator);
+                _realm.CreateOriginFor("simulation", firstCoordinator);
                 var firstGhost = firstCoordinator.Publish("42", new Variant("small-car"));
-                _context.Update();
+                _realm.Update();
 
                 var secondCoordinator = new TestCoordinator(kind);
-                secondContext.CreateOriginFor("simulation", secondCoordinator);
+                secondRealm.CreateOriginFor("simulation", secondCoordinator);
                 secondCoordinator.Publish("42", new Variant("small-car"));
-                secondContext.Update();
+                secondRealm.Update();
 
-                Assert.That(_context.Manifest(secondCoordinator.LastPublished), Is.Null);
+                Assert.That(_realm.Manifest(secondCoordinator.LastPublished), Is.Null);
                 Assert.That(firstGhost, Is.Not.Null);
             }
             finally
             {
-                secondContext.Dispose();
+                secondRealm.Dispose();
             }
         }
 
@@ -168,12 +168,12 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var coordinator = new TestCoordinator(kind);
-            _context.CreateOriginFor("simulation", coordinator);
+            _realm.CreateOriginFor("simulation", coordinator);
             coordinator.PublishNamed("42", "Car 42", new Variant("small-car"));
-            _context.Update();
+            _realm.Update();
 
-            Assert.That(_context.Query("car").Count, Is.EqualTo(1));
-            Assert.That(_context.Query().WithExactName("CAR 42").Count, Is.EqualTo(1));
+            Assert.That(_realm.Query("car").Count, Is.EqualTo(1));
+            Assert.That(_realm.Query().WithExactName("CAR 42").Count, Is.EqualTo(1));
         }
 
         /// <summary>Notifies a subscription again after replacement and reinitialization.</summary>
@@ -182,16 +182,16 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var first = new TestCoordinator(kind);
-            var origin = _context.CreateOriginFor("simulation", first);
+            var origin = _realm.CreateOriginFor("simulation", first);
             first.Publish("42", new Variant("small-car"));
-            _context.Update();
+            _realm.Update();
 
             var calls = 0;
-            var subscription = _context.Query().OfKind(kind).OnAvailable(ghost => calls++);
+            var subscription = _realm.Query().OfKind(kind).OnAvailable(ghost => calls++);
             var replacement = new TestCoordinator(kind);
             origin.ReplaceCoordinator(first, replacement);
             replacement.Publish("42", new Variant("small-car"));
-            _context.Update();
+            _realm.Update();
 
             Assert.That(calls, Is.EqualTo(2));
             subscription.Dispose();
@@ -202,14 +202,14 @@ namespace Emas.Tests
         public void RemovingOrigin_RemovesPreparedIdentity()
         {
             var kind = new Kind("vehicles.car");
-            _context.CreateOriginFor("simulation");
-            var prepared = _context.Prepare<TestGhost>("simulation", kind, "42");
-            _context.RemoveOrigin("simulation");
+            _realm.CreateOriginFor("simulation");
+            var prepared = _realm.Prepare<TestGhost>("simulation", kind, "42");
+            _realm.RemoveOrigin("simulation");
 
             var coordinator = new TestCoordinator(kind);
-            _context.CreateOriginFor("simulation", coordinator);
+            _realm.CreateOriginFor("simulation", coordinator);
             var discovered = coordinator.Publish("42", Variant.None);
-            _context.Update();
+            _realm.Update();
 
             Assert.That(discovered, Is.Not.SameAs(prepared));
             Assert.That(discovered.IsAvailable, Is.True);
@@ -221,13 +221,13 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var coordinator = new TestCoordinator(kind);
-            _context.CreateOriginFor("simulation", coordinator);
+            _realm.CreateOriginFor("simulation", coordinator);
             coordinator.PublishNamed("42", "Car 42", new Variant("small-car"));
             coordinator.PublishNamed("42", "Car 42 updated", null);
-            _context.Update();
+            _realm.Update();
 
-            Assert.That(_context.Query().WithVariant(new Variant("small-car")).Count, Is.EqualTo(1));
-            Assert.That(_context.Query().WithExactName("Car 42 updated").Count, Is.EqualTo(1));
+            Assert.That(_realm.Query().WithVariant(new Variant("small-car")).Count, Is.EqualTo(1));
+            Assert.That(_realm.Query().WithExactName("Car 42 updated").Count, Is.EqualTo(1));
         }
         /// <summary>Removes a requested view for None while retaining the available ghost.</summary>
         [Test]
@@ -251,22 +251,22 @@ namespace Emas.Tests
                         new Blueprint.ViewMapping(new Variant("small-car"), DetailLevel.Minimal, viewPrefab)
                     },
                     null);
-                _context.RegisterBlueprint(blueprint);
+                _realm.RegisterBlueprint(blueprint);
 
                 var coordinator = new TestCoordinator(kind);
-                _context.CreateOriginFor("simulation", coordinator);
+                _realm.CreateOriginFor("simulation", coordinator);
                 var ghost = coordinator.Publish("42", new Variant("small-car"));
-                _context.Update();
+                _realm.Update();
 
-                var view = _context.Manifest(ghost);
+                var view = _realm.Manifest(ghost);
                 Assert.That(view, Is.Not.Null);
-                _context.SetDegree(ghost, DetailLevel.Minimal);
-                Assert.That(_context.Manifest(ghost), Is.SameAs(view));
+                _realm.SetDegree(ghost, DetailLevel.Minimal);
+                Assert.That(_realm.Manifest(ghost), Is.SameAs(view));
                 Assert.That(view.Degree, Is.EqualTo(DetailLevel.Minimal));
 
-                _context.Manifest(ghost, DetailLevel.None);
-                Assert.That(_context.Query().OfKind(kind).Count, Is.EqualTo(1));
-                Assert.That(_context.Manifest(ghost, DetailLevel.None), Is.Null);
+                _realm.Manifest(ghost, DetailLevel.None);
+                Assert.That(_realm.Query().OfKind(kind).Count, Is.EqualTo(1));
+                Assert.That(_realm.Manifest(ghost, DetailLevel.None), Is.Null);
             }
             finally
             {
@@ -300,16 +300,16 @@ namespace Emas.Tests
                         new Blueprint.ViewMapping(new Variant("large-car"), DetailLevel.Full, largeView)
                     },
                     null);
-                _context.RegisterBlueprint(blueprint);
+                _realm.RegisterBlueprint(blueprint);
 
                 var coordinator = new TestCoordinator(kind);
-                _context.CreateOriginFor("simulation", coordinator);
+                _realm.CreateOriginFor("simulation", coordinator);
                 var ghost = coordinator.Publish("42", new Variant("small-car"));
-                _context.Update();
-                _context.Manifest(ghost);
+                _realm.Update();
+                _realm.Manifest(ghost);
 
                 coordinator.Publish("42", new Variant("large-car"));
-                var replacement = _context.Manifest(ghost);
+                var replacement = _realm.Manifest(ghost);
                 Assert.That(replacement, Is.Not.Null);
                 Assert.That(replacement.gameObject.name, Is.EqualTo("Large View"));
             }
@@ -327,11 +327,11 @@ namespace Emas.Tests
         public void Dispatch_FromStoppedRegistrationIsDiscarded()
         {
             var coordinator = new DispatchCoordinator();
-            var origin = _context.CreateOriginFor("simulation", coordinator);
+            var origin = _realm.CreateOriginFor("simulation", coordinator);
             var calls = 0;
             coordinator.QueueAction(() => calls++);
             origin.ReplaceCoordinator(coordinator, new TestCoordinator(new Kind("vehicles.car")));
-            _context.Update();
+            _realm.Update();
 
             Assert.That(calls, Is.EqualTo(0));
         }

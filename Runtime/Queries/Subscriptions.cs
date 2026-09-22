@@ -4,16 +4,16 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Owns match intervals; callbacks may remove ghosts, dispose subscriptions or dispose the context.
+    // Owns match intervals; callbacks may remove ghosts, dispose subscriptions or dispose the realm.
     internal sealed class Subscriptions
     {
-        private readonly Context _context;
+        private readonly Realm _realm;
         private readonly List<Subscription> _items = new List<Subscription>();
         private bool _notifying;
 
-        internal Subscriptions(Context context)
+        internal Subscriptions(Realm realm)
         {
-            _context = context;
+            _realm = realm;
         }
 
         internal IDisposable Subscribe(Query query, Action<IGhost> callback, bool notifyImmediately)
@@ -55,7 +55,7 @@ namespace Emas
                 var items = new List<Subscription>(_items);
                 for (var index = 0; index < items.Count; index++)
                 {
-                    if (_context.IsDisposed)
+                    if (_realm.IsDisposed)
                     {
                         break;
                     }
@@ -79,11 +79,11 @@ namespace Emas
 
         private void Notify(Subscription subscription)
         {
-            if (subscription.Disposed || _context.IsDisposed)
+            if (subscription.Disposed || _realm.IsDisposed)
             {
                 return;
             }
-            var matches = _context.Evaluate(subscription.Query);
+            var matches = _realm.Evaluate(subscription.Query);
             var keys = subscription.MatchKeys;
             keys.Clear();
             for (var index = 0; index < matches.Count; index++)
@@ -94,13 +94,13 @@ namespace Emas
             subscription.Seen.IntersectWith(keys);
             for (var index = 0; index < matches.Count; index++)
             {
-                if (subscription.Disposed || _context.IsDisposed)
+                if (subscription.Disposed || _realm.IsDisposed)
                 {
                     break;
                 }
                 var ghost = matches[index];
                 // A preceding callback can remove or invalidate another match in this snapshot.
-                if (!_context.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
+                if (!_realm.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
                 {
                     continue;
                 }

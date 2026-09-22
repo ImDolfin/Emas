@@ -5,10 +5,10 @@ A Unity 2022.3+ package that tracks source entities as scene-owned ghosts and cr
 ## Try it
 
 1. Add this repository's `package.json` through **Package Manager > Add package from disk**.
-2. Import the **Emas sample**.
-3. Open the imported `Example/Scenes/Example.unity` scene and press Play.
+2. Import the **Quick start** sample.
+3. Open its `QuickStart.unity` scene and press Play.
 
-The sample shows cars, aircraft and a cockpit marker, with car source replacement after four seconds.
+The quick start shows one moving marker with Inspector-configured tracking. The larger Emas sample demonstrates multiple sources and replacement.
 
 ## Documentation
 

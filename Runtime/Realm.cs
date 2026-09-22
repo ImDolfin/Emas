@@ -5,13 +5,13 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Owns origins, ghosts, blueprints, views and query subscriptions.</summary>
-    public sealed class Context : IDisposable
+    public sealed class Realm : IDisposable
     {
-        /// <summary>Gets the shared context advanced automatically by Unity.</summary>
-        /// <value>The live default context; a disposed default is recreated on access.</value>
-        public static Context Default
+        /// <summary>Gets the shared realm advanced automatically by Unity.</summary>
+        /// <value>The live default realm; a disposed default is recreated on access.</value>
+        public static Realm Default
         {
-            get { return DefaultRuntime.Context; }
+            get { return DefaultRuntime.Realm; }
         }
 
         private readonly Dictionary<string, Origin> _origins = new Dictionary<string, Origin>();
@@ -29,8 +29,8 @@ namespace Emas
         private bool _updating;
         private bool _disposed;
 
-        /// <summary>Creates an isolated context advanced explicitly with Update.</summary>
-        public Context()
+        /// <summary>Creates an isolated realm advanced explicitly with Update.</summary>
+        public Realm()
         {
             _subscriptions = new Subscriptions(this);
             _views = new ViewManager(_ghosts, _scene);
@@ -48,8 +48,13 @@ namespace Emas
         {
             if (_disposed)
             {
-                throw new ObjectDisposedException(nameof(Context));
+                throw new ObjectDisposedException(nameof(Realm));
             }
+        }
+
+        internal bool ContainsOrigin(string id)
+        {
+            return _origins.ContainsKey(id);
         }
 
         /// <summary>Registers a blueprint by kind.</summary>
@@ -147,9 +152,9 @@ namespace Emas
             return new Query(this, partialName);
         }
 
-        /// <summary>Uses an existing immutable query description in this context.</summary>
+        /// <summary>Uses an existing immutable query description in this realm.</summary>
         /// <param name="description">The query description.</param>
-        /// <returns>A query bound to this context.</returns>
+        /// <returns>A query bound to this realm.</returns>
         /// <exception cref="ArgumentNullException">Thrown when the description is null.</exception>
         public Query Query(Query description)
         {
@@ -272,7 +277,7 @@ namespace Emas
         }
 
         /// <summary>Applies a bounded source batch, finalizes availability, refreshes views, then notifies subscribers.</summary>
-        /// <remarks>Processes at most 256 queued actions present at update entry. Newly queued actions wait for a later update. A disposed context does nothing.</remarks>
+        /// <remarks>Processes at most 256 queued actions present at update entry. Newly queued actions wait for a later update. A disposed realm does nothing.</remarks>
         public void Update()
         {
             if (_disposed)
@@ -281,7 +286,7 @@ namespace Emas
             }
             if (_updating || _sourceDepth > 0 || _finalizing)
             {
-                throw new InvalidOperationException("Emas context updates cannot be reentrant.");
+                throw new InvalidOperationException("Emas realm updates cannot be reentrant.");
             }
             _updating = true;
             try

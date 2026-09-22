@@ -17,12 +17,12 @@ namespace Emas.Sample
             {
                 var position = SampleMotion.GetCarPosition(index, elapsedSeconds);
                 yield return new SdkOneVehicleProxy(
-                    index.ToString(),
-                    index % 3,
-                    position.x,
-                    position.y,
-                    position.z,
-                    SampleMotion.GetCarSteering(index, elapsedSeconds));
+                    identifier: index.ToString(),
+                    typeCode: index % 3,
+                    positionX: position.x,
+                    positionY: position.y,
+                    positionZ: position.z,
+                    steering: SampleMotion.GetCarSteering(index, elapsedSeconds));
             }
         }
     }

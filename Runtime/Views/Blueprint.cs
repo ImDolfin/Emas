@@ -190,7 +190,7 @@ namespace Emas
 
             /// <summary>Creates a mapping.</summary>
             /// <param name="variant">The variant identifier.</param>
-            /// <param name="degree">The degree.</param>
+            /// <param name="degree">The detail level at which this prefab is selected.</param>
             /// <param name="prefab">The view prefab.</param>
             public ViewMapping(Variant variant, DetailLevel degree, GameObject prefab)
             {

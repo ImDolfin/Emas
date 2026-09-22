@@ -4,10 +4,12 @@ Emas owns identity, availability and optional views. Applications own source int
 
 [Architecture diagram](Diagrams/Architecture.html) / [Lifecycle diagram](Diagrams/Lifecycle.html)
 
+`SceneSetup` is an optional Inspector-configured owner around the default realm. `PollingCoordinator` adapts complete source snapshots through selectors; both use the same tracking and lifecycle path described below.
+
 ## Ownership
 
 ```text
-Context
+Realm
   Origin (scene frame; one or more coordinators)
     Ghost (identity, application data, root behaviors)
       View (optional visual child)
@@ -29,7 +31,7 @@ Newly queued actions wait for a later update. The budget limits action count, no
 
 Successful startup outside an update finalizes its population immediately. Variant changes and explicit view requests inside source/finalization callbacks defer refresh until source data is complete. Explicit requests outside those phases retain immediate behavior.
 
-`Context.Default` provides an automatically updated default context. An isolated context uses explicit `Update()` instead. Unity object operations belong on the main thread; SDK callbacks use coordinator `Dispatch`.
+`Realm.Default` provides an automatically updated default realm. An isolated realm uses explicit `Update()` instead. Unity object operations belong on the main thread; SDK callbacks use coordinator `Dispatch`.
 
 ## Failure and cleanup
 
@@ -42,11 +44,11 @@ Successful startup outside an update finalizes its population immediately. Varia
 | Attach an already registered coordinator | Reject without changing its original population |
 | Remove ghost/coordinator | Remove the selected identity/owned population and associated views |
 | Dispose/remove origin or unload its scene | Remove owned and prepared records; stop coordinators |
-| Dispose context | Remove origins, records, views, subscriptions, blueprints and queued work |
+| Dispose realm | Remove origins, records, views, subscriptions, blueprints and queued work |
 
 Availability loss deactivates the root and excludes it from queries; retained data may be stale. Demanifesting only removes the visual child. Recovery is explicit through an active coordinator republishing identities.
 
-Context/origin disposal is idempotent. Further mutations throw `ObjectDisposedException`; disposed-context queries are empty and `Update()` is a no-op. Origin disposal unregisters records immediately, before Unity's deferred destruction.
+Realm/origin disposal is idempotent. Further mutations throw `ObjectDisposedException`; disposed-realm queries are empty and `Update()` is a no-op. Origin disposal unregisters records immediately, before Unity's deferred destruction.
 
 ## Callback safety and internal boundaries
 
@@ -54,7 +56,7 @@ Registry traversal uses snapshots and rechecks membership/registration after cal
 
 | Component | Responsibility |
 | --- | --- |
-| [Context](../Runtime/Context.cs) | Orchestrate origins, configuration and update phases |
+| [Realm](../Runtime/Realm.cs) | Orchestrate origins, configuration and update phases |
 | [Registry](../Runtime/Tracking/Registry.cs) | Store identity, ownership and pending state |
 | [ViewManager](../Runtime/Views/ViewManager.cs) | Stage, bind, refresh and destroy views |
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
@@ -69,12 +71,12 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 
 | Folder | Contents |
 | --- | --- |
-| `Runtime/` | `Context` entry point and package metadata |
+| `Runtime/` | `Realm` entry point and package metadata |
 | `Runtime/Entities/` | Ghost contract, component and identity values |
 | `Runtime/Tracking/` | Origins, coordinators and ownership storage |
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | Blueprint, detail level and view lifecycle |
-| `Runtime/Unity/` | Automatic runner and nested scene effects |
+| `Runtime/Unity/` | Scene setup, automatic runner and nested scene effects |
 | `Editor/Diagnostics/` | Emas diagnostics window |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
 | `Samples~/Example/` | Contracts, entities, behaviors and source integrations |

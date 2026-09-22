@@ -24,7 +24,7 @@ The codebase is C# and follows the standard Unity Package Manager layout.
 - **Runtime → Editor dependency is forbidden.** Editor assemblies may reference Runtime, never the reverse.
 - All public APIs live under the `Emas` namespace (runtime) or `Emas.Editor` namespace (editor).
 
-Runtime entry point: `Context.Default`. Keep short role names in namespace `Emas`; do not add system-name prefixes. Group runtime files under `Entities`, `Tracking`, `Queries`, `Views` and `Unity`, with one top-level type per file. Tests mirror these responsibilities. The package ID is `com.emas.core`. Use current Emas names throughout; do not add legacy aliases or compatibility annotations.
+Runtime entry point: `Realm.Default`. Keep short role names in namespace `Emas`; do not add system-name prefixes. Group runtime files under `Entities`, `Tracking`, `Queries`, `Views` and `Unity`, with one top-level type per file. Tests mirror these responsibilities. The package ID is `com.emas.core`. Use current Emas names throughout; do not add legacy aliases or compatibility annotations.
 
 ## Coding Conventions
 

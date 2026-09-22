@@ -1,56 +1,43 @@
 # Getting started
 
-Emas separates source integration, entity data and presentation: a coordinator updates a ghost; a blueprint supplies its optional view.
+Emas connects source data to scene ghosts and optional views. Requires Unity 2022.3+.
 
-## Install and run
+## Run the quick start
 
-1. In a Unity 2022.3+ project, choose **Package Manager > Add package from disk** and select this repository's `package.json`.
-2. Import the **Emas sample** from the package's Samples section.
-3. Open `Assets/Samples/Emas/0.1.0/Example/Scenes/Example.unity` and press Play.
+1. Add this repository's `package.json` through **Package Manager > Add package from disk**.
+2. Import the **Quick start** sample.
+3. Open its `QuickStart.unity` scene and press Play. One cube follows the source position.
 
-The sample shows ten cars, three aircraft and a cockpit marker. After four seconds, another simulated SDK takes over the cars while their ghost identities survive. Primitive templates are generated at runtime; no external SDK or model assets are required.
+The imported scene is under `Assets/Samples/Emas/0.1.0/Quick start/`. The [sample source](../Samples~/Minimal/Bootstrap.cs) contains one setup call; its blueprint and prefab are assigned in the Inspector.
 
-## Integrate a source
+## Connect your source
 
-| Application component | Responsibility |
+1. Write a `Ghost` subclass with the data or behavior your application needs. Put its `Kind` constant on that class.
+2. Add **Emas > Scene Setup** to a scene object. Give it a unique origin ID, assign blueprints, and enable **Automatic Views** if wanted.
+3. Call `Track` from your bootstrap's `OnEnable`:
+
+```csharp
+GetComponent<SceneSetup>().Track(
+    new PollingCoordinator<SdkItem, Car>(Car.Kind)
+        .ReadFrom(() => client.ReadAll())
+        .IdentifyBy(item => item.Id)
+        .Apply((item, ghost) => ghost.SetPosition(item.Position)));
+```
+
+`SdkItem`, `Car` and `client` are your application types. The selectors supply identity and copy data; optional `.WithVariant(item => ...)` selects an appearance. No custom coordinator class is needed for this polling path.
+
+**Return a complete snapshot each time.** An empty collection removes the population. Null, duplicate/empty IDs or an exception stop that source and retain its existing ghosts as unavailable. A partial/delta feed must use a custom `Coordinator` instead.
+
+`SceneSetup` registers its blueprints, creates the origin under its transform and requests views for configured kinds. Disabling it removes its origin, ghosts, views and subscription. Re-enable and call `Track` again to restart; toggling the sample's whole Tracking object does this through its bootstrap. Blueprint registrations remain shared realm configuration.
+
+## Optional features
+
+| Need | Use |
 | --- | --- |
-| `Kind` / `Variant` constants | Identify populations and appearances |
-| `Ghost` subclass | Hold source-independent data and implement consumer interfaces |
-| `Coordinator` subclass | Read the SDK, convert values, publish changes and remove departures |
-| `Blueprint` asset | Assign the kind, optional ghost prefab and view mappings |
+| Data-only tracking | Leave blueprints empty; views and custom interfaces are optional |
+| Consume available entities | `Realm.Default.Query().OfKind(Car.Kind)` |
+| SDK push callbacks or delta updates | Subclass `Coordinator`; marshal worker callbacks through `Dispatch` |
+| Explicit lifetime or update control | Use `Realm` and `CreateOriginFor` directly |
+| Multiple sources and replacement | Import the **Emas sample** and open its `Scenes/Example.unity` |
 
-Inside a coordinator's `OnUpdate()`, publish each source entity and finish assigning its data:
-
-```csharp
-var car = GetOrCreate<CarGhost>(
-    proxy.Id, VehicleKinds.Car, CarVariants.SmallCar);
-car.SetPosition(ConvertPosition(proxy));
-```
-
-`CarGhost`, the named constants and conversion are application-defined. See the [sample source](../Samples~/Example/Bootstrap.cs) for working implementations. Use `Remove(kind, entityId)` for departures. Background SDK callbacks must enqueue copied values through `Dispatch`, rather than mutate Unity objects directly.
-
-Register the blueprint and start tracking from application setup:
-
-```csharp
-Context.Default.RegisterBlueprint(carBlueprint);
-var origin = Context.Default.CreateOriginFor("simulation", carCoordinator);
-```
-
-Unity updates the default context automatically. Do not also call `Context.Default.Update()` each frame.
-
-## Consume ghosts and request views
-
-```csharp
-var cars = Context.Default.Query().OfKind(VehicleKinds.Car).With<I3DPosition>();
-var subscription = cars.OnAvailable(ghost => Context.Default.Manifest(ghost));
-```
-
-Queries return available ghosts only. `With<T>()` checks root components; view children do not satisfy it. Root behaviors continue without a view. Put presentation-only behaviors on the view prefab.
-
-Dispose `subscription` when the consumer stops. `Context.Default.Demanifest(ghost)` removes only the view; `Context.Default.RemoveOrigin("simulation")` ends tracking and removes the population.
-
-## Testing
-
-Access the shared context through `Context.Default`. Disposing it is supported; the next access creates a fresh default. Use an isolated `Context`, attach a fake coordinator and call `Update()` explicitly in Unity tests. No authored scene or live SDK is needed. Test plain consumer interfaces separately with ordinary fakes. Run package tests in **Window > General > Test Runner**.
-
-See [API reference](API.md) for selection and query rules, and [Architecture](Architecture.md) for timing, replacement and disposal.
+Unity advances the default realm automatically. Do not also call `Update()` every frame. See [API](API.md) for contracts and [architecture](Architecture.md) for update order and cleanup.

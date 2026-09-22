@@ -16,10 +16,10 @@ namespace Emas.Sample
             for (var index = 0; index < 10; index++)
             {
                 yield return new SdkTwoVehicleProxy(
-                    index,
-                    index % 3,
-                    SampleMotion.GetCarPosition(index, elapsedSeconds),
-                    SampleMotion.GetCarSteering(index, elapsedSeconds));
+                    id: index,
+                    modelCode: index % 3,
+                    coordinates: SampleMotion.GetCarPosition(index, elapsedSeconds),
+                    wheelAngle: SampleMotion.GetCarSteering(index, elapsedSeconds));
             }
         }
     }

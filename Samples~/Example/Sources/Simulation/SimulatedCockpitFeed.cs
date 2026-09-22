@@ -15,7 +15,7 @@ namespace Emas.Sample
         {
             var x = 0.5f + Mathf.Sin(elapsedSeconds * 1.15f) * 0.36f;
             var y = 0.5f + Mathf.Cos(elapsedSeconds * 1.55f) * 0.30f;
-            return new CockpitMarkerData("screen", new Vector2(x, y));
+            return new CockpitMarkerData(screenId: "screen", normalizedTopLeft: new Vector2(x, y));
         }
     }
 }

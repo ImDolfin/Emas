@@ -16,8 +16,8 @@ namespace Emas.Sample
             for (var index = 0; index < 3; index++)
             {
                 yield return new SimulatedAircraftProxy(
-                    index.ToString(),
-                    SampleMotion.GetAircraftPosition(index, elapsedSeconds));
+                    identifier: index.ToString(),
+                    position: SampleMotion.GetAircraftPosition(index, elapsedSeconds));
             }
         }
     }

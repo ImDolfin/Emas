@@ -11,9 +11,9 @@ namespace Emas
         private readonly GameObject _gameObject;
         private bool _disposed;
 
-        internal Origin(Context context, string id, Transform frame)
+        internal Origin(Realm realm, string id, Transform frame)
         {
-            Context = context;
+            Realm = realm;
             Id = id;
             _gameObject = new GameObject("[Emas Origin] " + id);
             Transform = _gameObject.transform;
@@ -25,9 +25,9 @@ namespace Emas
             }
         }
 
-        /// <summary>Gets the owning context.</summary>
-        /// <value>The context that owns this origin.</value>
-        public Context Context { get; private set; }
+        /// <summary>Gets the owning realm.</summary>
+        /// <value>The realm that owns this origin.</value>
+        public Realm Realm { get; private set; }
 
         /// <summary>Gets the stable origin identifier.</summary>
         /// <value>The exact origin identifier.</value>
@@ -56,7 +56,7 @@ namespace Emas
             {
                 throw new InvalidOperationException("The coordinator is already attached to an origin.");
             }
-            var previous = Context.CaptureGhosts();
+            var previous = Realm.CaptureGhosts();
             _coordinators.Add(coordinator);
             try
             {
@@ -68,7 +68,7 @@ namespace Emas
                 if (coordinator.IsAttachedTo(this))
                 {
                     coordinator.Detach();
-                    Context.RollbackCoordinator(coordinator, previous);
+                    Realm.RollbackCoordinator(coordinator, previous);
                 }
                 throw;
             }
@@ -92,7 +92,7 @@ namespace Emas
             {
                 Debug.LogException(exception);
             }
-            Context.RemoveCoordinatorGhosts(coordinator);
+            Realm.RemoveCoordinatorGhosts(coordinator);
         }
 
         /// <summary>Replaces one coordinator while preserving its compatible ghosts.</summary>
@@ -134,13 +134,13 @@ namespace Emas
 
             if (_disposed || !_coordinators.Contains(replacement))
             {
-                Context.RemoveCoordinatorGhosts(current);
+                Realm.RemoveCoordinatorGhosts(current);
                 return;
             }
-            Context.TransferCoordinator(current, replacement);
+            Realm.TransferCoordinator(current, replacement);
             if (_disposed || !_coordinators.Contains(replacement))
             {
-                Context.RemoveCoordinatorGhosts(replacement);
+                Realm.RemoveCoordinatorGhosts(replacement);
                 return;
             }
             try
@@ -152,7 +152,7 @@ namespace Emas
                 // Preserve transferred identities, but never expose partially initialized data.
                 if (replacement.IsAttachedTo(this))
                 {
-                    Context.MarkUnavailable(replacement);
+                    Realm.MarkUnavailable(replacement);
                 }
                 throw;
             }
@@ -169,8 +169,8 @@ namespace Emas
             _disposed = true;
             var coordinators = new List<Coordinator>(_coordinators);
             _coordinators.Clear();
-            // Remove registration and records before scene callbacks can reenter the context.
-            Context.NotifyOriginDisposed(this);
+            // Remove registration and records before scene callbacks can reenter the realm.
+            Realm.NotifyOriginDisposed(this);
             for (var index = coordinators.Count - 1; index >= 0; index--)
             {
                 try
@@ -181,17 +181,17 @@ namespace Emas
                 {
                     Debug.LogException(exception);
                 }
-                Context.RemoveCoordinatorGhosts(coordinators[index]);
+                Realm.RemoveCoordinatorGhosts(coordinators[index]);
             }
             if (_gameObject != null)
             {
-                Context.DestroySceneObject(_gameObject);
+                Realm.DestroySceneObject(_gameObject);
             }
         }
 
         internal void ThrowIfDisposed()
         {
-            Context.ThrowIfDisposed();
+            Realm.ThrowIfDisposed();
             if (_disposed)
             {
                 throw new ObjectDisposedException(nameof(Origin));
@@ -213,14 +213,14 @@ namespace Emas
                 _origin = null;
                 if (origin != null)
                 {
-                    origin.Context.NotifyOriginDestroyed(origin);
+                    origin.Realm.NotifyOriginDestroyed(origin);
                 }
             }
         }
 
         internal IReadOnlyList<IGhost> GetOwnedGhosts(Coordinator coordinator)
         {
-            return Context.GetOwnedGhosts(coordinator);
+            return Realm.GetOwnedGhosts(coordinator);
         }
 
         internal void Tick()

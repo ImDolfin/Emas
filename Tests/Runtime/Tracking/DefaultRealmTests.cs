@@ -4,40 +4,40 @@ using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
-    /// <summary>Verifies the shared context entry point and its Unity update integration.</summary>
-    public sealed class DefaultContextTests
+    /// <summary>Verifies the shared realm entry point and its Unity update integration.</summary>
+    public sealed class DefaultRealmTests
     {
-        /// <summary>Repeated access returns the live shared context.</summary>
+        /// <summary>Repeated access returns the live shared realm.</summary>
         [Test]
-        public void Default_ReusesLiveContext()
+        public void Default_ReusesLiveRealm()
         {
-            Assert.That(Context.Default, Is.SameAs(Context.Default));
+            Assert.That(Realm.Default, Is.SameAs(Realm.Default));
         }
 
-        /// <summary>A disposed shared context is replaced on next access.</summary>
+        /// <summary>A disposed shared realm is replaced on next access.</summary>
         [Test]
-        public void Default_RecreatesDisposedContext()
+        public void Default_RecreatesDisposedRealm()
         {
-            var previous = Context.Default;
+            var previous = Realm.Default;
             previous.Dispose();
-            var current = Context.Default;
+            var current = Realm.Default;
             Assert.That(current, Is.Not.SameAs(previous));
             Assert.That(current.IsDisposed, Is.False);
         }
 
-        /// <summary>Unity advances a coordinator without a manual context update.</summary>
+        /// <summary>Unity advances a coordinator without a manual realm update.</summary>
         [UnityTest]
         public IEnumerator Default_UpdatesAutomatically()
         {
-            var context = Context.Default;
+            var realm = Realm.Default;
             var source = new CountingSource();
-            var origin = context.CreateOriginFor("tests.default", source);
+            var origin = realm.CreateOriginFor("tests.default", source);
             try
             {
                 yield return null;
                 yield return null;
                 Assert.That(source.Updates, Is.GreaterThan(0));
-                Assert.That(Context.Default, Is.SameAs(context));
+                Assert.That(Realm.Default, Is.SameAs(realm));
             }
             finally
             {

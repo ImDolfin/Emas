@@ -71,7 +71,7 @@ namespace Emas
                 throw new InvalidOperationException("The coordinator is not active on an origin.");
             }
             _origin.ThrowIfDisposed();
-            return _origin.Context.GetOrCreate<TGhost>(this, _origin.Id, entityId, kind, variant, name);
+            return _origin.Realm.GetOrCreate<TGhost>(this, _origin.Id, entityId, kind, variant, name);
         }
 
         /// <summary>Removes one ghost owned by this coordinator.</summary>
@@ -82,7 +82,7 @@ namespace Emas
             if (_origin != null && _started)
             {
                 _origin.ThrowIfDisposed();
-                _origin.Context.RemoveGhost(this, new Key(_origin.Id, kind, entityId));
+                _origin.Realm.RemoveGhost(this, new Key(_origin.Id, kind, entityId));
             }
         }
 
@@ -97,7 +97,7 @@ namespace Emas
                 {
                     return;
                 }
-                _origin.Context.Dispatch(this, _registrationGeneration, action);
+                _origin.Realm.Dispatch(this, _registrationGeneration, action);
             }
         }
 
@@ -142,11 +142,11 @@ namespace Emas
             }
         }
 
-        internal bool IsRegistration(Context context, long generation)
+        internal bool IsRegistration(Realm realm, long generation)
         {
             lock (_registrationLock)
             {
-                return _started && _origin != null && _origin.Context == context
+                return _started && _origin != null && _origin.Realm == realm
                     && _registrationGeneration == generation;
             }
         }
@@ -167,10 +167,10 @@ namespace Emas
             var generation = RegistrationGeneration;
             try
             {
-                origin.Context.ApplySourceChanges(OnStart);
-                if (IsRegistration(origin.Context, generation))
+                origin.Realm.ApplySourceChanges(OnStart);
+                if (IsRegistration(origin.Realm, generation))
                 {
-                    origin.Context.FinalizeCoordinator(this);
+                    origin.Realm.FinalizeCoordinator(this);
                 }
             }
             catch
@@ -187,21 +187,21 @@ namespace Emas
         {
             var origin = _origin;
             var generation = RegistrationGeneration;
-            if (origin == null || !IsRegistration(origin.Context, generation))
+            if (origin == null || !IsRegistration(origin.Realm, generation))
             {
                 return;
             }
             try
             {
-                origin.Context.ApplySourceChanges(OnUpdate);
-                if (IsRegistration(origin.Context, generation))
+                origin.Realm.ApplySourceChanges(OnUpdate);
+                if (IsRegistration(origin.Realm, generation))
                 {
-                    origin.Context.FinalizeCoordinator(this);
+                    origin.Realm.FinalizeCoordinator(this);
                 }
             }
             catch (Exception exception)
             {
-                if (IsRegistration(origin.Context, generation))
+                if (IsRegistration(origin.Realm, generation))
                 {
                     HandleFailure(exception);
                 }
@@ -236,7 +236,7 @@ namespace Emas
             }
             if (origin != null)
             {
-                origin.Context.MarkUnavailable(this);
+                origin.Realm.MarkUnavailable(this);
             }
             try
             {

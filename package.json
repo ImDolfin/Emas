@@ -22,6 +22,11 @@
   "dependencies": {},
   "samples": [
     {
+      "displayName": "Quick start",
+      "description": "One source, one marker and Inspector-configured tracking.",
+      "path": "Samples~/Minimal"
+    },
+    {
       "displayName": "Emas sample",
       "description": "A source-independent vehicle and aircraft discovery example.",
       "path": "Samples~/Example"

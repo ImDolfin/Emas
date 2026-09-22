@@ -61,9 +61,9 @@ namespace Emas.Tests
         [Test]
         public void Query_MatchesTypedAppearanceAndNone()
         {
-            using (var context = new Context())
+            using (var realm = new Realm())
             {
-                var original = context.Query();
+                var original = realm.Query();
                 var selected = original.WithVariant(new Variant("cars.small"));
                 var small = new FakeGhost(new Variant("cars.small"));
                 var large = new FakeGhost(new Variant("cars.large"));
