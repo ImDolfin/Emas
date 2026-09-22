@@ -7,32 +7,40 @@ using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
-    /// <summary>Checks public source health and collection snapshots across registration lifetimes.</summary>
+    /// <summary>
+    /// Checks public source health and collection snapshots across registration lifetimes.
+    /// </summary>
     public sealed class SourceStatusTests
     {
         private Realm _realm;
 
-        /// <summary>Creates an isolated realm.</summary>
+        /// <summary>
+        /// Creates an isolated realm.
+        /// </summary>
         [SetUp]
         public void SetUp()
         {
             _realm = new Realm();
         }
 
-        /// <summary>Releases all sources and scene objects.</summary>
+        /// <summary>
+        /// Releases all sources and scene objects.
+        /// </summary>
         [TearDown]
         public void TearDown()
         {
             _realm.Dispose();
         }
 
-        /// <summary>Startup sees an active attachment; failure is retained after rollback and cleared before retry.</summary>
+        /// <summary>
+        /// Startup sees an active attachment; failure is retained after rollback and cleared before retry.
+        /// </summary>
         [Test]
         public void StartupFailure_RetainsPrimaryErrorAndClearsBeforeRetry()
         {
-            var primary = new InvalidOperationException("startup failure");
-            var source = new ProbeSource();
-            var anchor = _realm.GetOrCreateAnchor("status");
+            InvalidOperationException primary = new InvalidOperationException("startup failure");
+            ProbeSource source = new ProbeSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("status");
             Assert.That(source.IsAttached, Is.False);
             Assert.That(source.IsActive, Is.False);
             Assert.That(source.LastError, Is.Null);
@@ -42,7 +50,10 @@ namespace Emas.Tests
                 Assert.That(source.LastError, Is.Null);
                 throw primary;
             };
-            source.Stopping = () => { throw new Exception("cleanup failure"); };
+            source.Stopping = () =>
+            {
+                throw new Exception("cleanup failure");
+            };
             Expect("cleanup failure");
             Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source)), Is.SameAs(primary));
             Assert.That(source.LastError, Is.SameAs(primary));
@@ -58,28 +69,40 @@ namespace Emas.Tests
             Assert.That(source.Stops, Is.EqualTo(2));
         }
 
-        /// <summary>Update and queued failures stop only the owner and retain the primary error over cleanup.</summary>
+        /// <summary>
+        /// Update and queued failures stop only the owner and retain the primary error over cleanup.
+        /// </summary>
         [TestCase(false)]
         [TestCase(true)]
         public void RuntimeFailure_RetainsUnavailableGhostAndIsolatesHealthySource(bool dispatched)
         {
-            var failure = new InvalidOperationException("runtime failure");
-            var source = new ProbeSource();
-            var healthy = new ProbeSource();
-            var anchor = _realm.GetOrCreateAnchor("status", source, healthy);
-            var ghost = source.Publish("failed");
-            var other = healthy.Publish("healthy");
+            InvalidOperationException failure = new InvalidOperationException("runtime failure");
+            ProbeSource source = new ProbeSource();
+            ProbeSource healthy = new ProbeSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("status", source, healthy);
+            StatusGhost ghost = source.Publish("failed");
+            StatusGhost other = healthy.Publish("healthy");
             _realm.Update();
-            source.Stopping = () => { throw new Exception("cleanup failure"); };
+            source.Stopping = () =>
+            {
+                throw new Exception("cleanup failure");
+            };
             if (dispatched)
             {
-                source.Enqueue(() => { throw failure; });
+                source.Enqueue(() =>
+                {
+                    throw failure;
+                });
                 source.Enqueue(() => Assert.Fail("Work after failure must be discarded."));
             }
             else
             {
-                source.Updating = () => { throw failure; };
+                source.Updating = () =>
+                {
+                    throw failure;
+                };
             }
+
             Expect("runtime failure");
             Expect("cleanup failure");
             _realm.Update();
@@ -89,7 +112,7 @@ namespace Emas.Tests
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(other.IsAvailable && healthy.IsActive, Is.True);
             Assert.That(healthy.LastError, Is.Null);
-            var replacement = new ProbeSource();
+            ProbeSource replacement = new ProbeSource();
             anchor.ReplaceSource(source, replacement);
             Assert.That(replacement.Publish("failed"), Is.SameAs(ghost));
             _realm.Update();
@@ -98,14 +121,22 @@ namespace Emas.Tests
             Assert.That(source.Stops, Is.EqualTo(1));
         }
 
-        /// <summary>Normal teardown records a cleanup-only failure without preventing detachment.</summary>
+        /// <summary>
+        /// Normal teardown records a cleanup-only failure without preventing detachment.
+        /// </summary>
         [TestCase(false)]
         [TestCase(true)]
         public void CleanupFailure_IsRetainedAfterRemoveOrDispose(bool dispose)
         {
-            var failure = new Exception("cleanup only");
-            var source = new ProbeSource { Stopping = () => { throw failure; } };
-            var anchor = _realm.GetOrCreateAnchor("status", source);
+            Exception failure = new Exception("cleanup only");
+            ProbeSource source = new ProbeSource
+            {
+                Stopping = () =>
+                {
+                    throw failure;
+                }
+            };
+            Anchor anchor = _realm.GetOrCreateAnchor("status", source);
             Expect("cleanup only");
             if (dispose)
             {
@@ -115,20 +146,23 @@ namespace Emas.Tests
             {
                 anchor.RemoveSource(source);
             }
+
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.IsAttached || source.IsActive, Is.False);
             Assert.That(source.Stops, Is.EqualTo(1));
         }
 
-        /// <summary>Callback adapters retain mapping errors over throwing unsubscribe and clear health on restart.</summary>
+        /// <summary>
+        /// Callback adapters retain mapping errors over throwing unsubscribe and clear health on restart.
+        /// </summary>
         [TestCase(false)]
         [TestCase(true)]
         public void CallbackCleanup_RecordsErrorWithoutReplacingMappingFailure(bool mappingFails)
         {
             Action<string> publish = null;
-            var mapping = new Exception("mapping failure");
-            var cleanup = new Exception("unsubscribe failure");
-            var source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
+            Exception mapping = new Exception("mapping failure");
+            Exception cleanup = new Exception("unsubscribe failure");
+            CallbackPresenceSource<string, StatusGhost> source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
                 .IdentifyBy(id => id).Apply((id, ghost) =>
                 {
                     if (mappingFails)
@@ -136,8 +170,15 @@ namespace Emas.Tests
                         throw mapping;
                     }
                 })
-                .Listen((changed, removed) => { publish = changed; return () => { throw cleanup; }; });
-            var anchor = _realm.GetOrCreateAnchor("status", source);
+                .Listen((changed, removed) =>
+                {
+                    publish = changed;
+                    return () =>
+                    {
+                        throw cleanup;
+                    };
+                });
+            Anchor anchor = _realm.GetOrCreateAnchor("status", source);
             if (mappingFails)
             {
                 publish("one");
@@ -150,6 +191,7 @@ namespace Emas.Tests
                 Expect("unsubscribe failure");
                 anchor.RemoveSource(source);
             }
+
             Assert.That(source.LastError, Is.SameAs(mappingFails ? mapping : cleanup));
             anchor.RemoveSource(source);
             source.Listen((changed, removed) => null);
@@ -158,15 +200,23 @@ namespace Emas.Tests
             Assert.That(source.IsActive, Is.True);
         }
 
-        /// <summary>Old queued work and callbacks called after reattachment cannot poison the new registration.</summary>
+        /// <summary>
+        /// Old queued work and callbacks called after reattachment cannot poison the new registration.
+        /// </summary>
         [Test]
         public void StaleCallbacks_DoNotChangeRestartedStatus()
         {
-            var publishers = new List<Action<string>>();
-            var source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
-                .IdentifyBy(id => id).Apply((id, ghost) => { })
-                .Listen((publish, remove) => { publishers.Add(publish); return null; });
-            var anchor = _realm.GetOrCreateAnchor("status", source);
+            List<Action<string>> publishers = new List<Action<string>>();
+            CallbackPresenceSource<string, StatusGhost> source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
+                .IdentifyBy(id => id).Apply((id, ghost) =>
+                {
+                })
+                .Listen((publish, remove) =>
+                {
+                    publishers.Add(publish);
+                    return null;
+                });
+            Anchor anchor = _realm.GetOrCreateAnchor("status", source);
             publishers[0](null);
             anchor.RemoveSource(source);
             anchor.AddSource(source);
@@ -178,23 +228,31 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
         }
 
-        /// <summary>Cleanup returned by interrupted startup must not overwrite a nested reattachment's state.</summary>
+        /// <summary>
+        /// Cleanup returned by interrupted startup must not overwrite a nested reattachment's state.
+        /// </summary>
         [Test]
         public void InterruptedStartup_OldCleanupCannotPoisonNewAttachment()
         {
-            var anchor = _realm.GetOrCreateAnchor("status");
-            var starts = 0;
+            Anchor anchor = _realm.GetOrCreateAnchor("status");
+            int starts = 0;
             CallbackPresenceSource<string, StatusGhost> source = null;
             source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
-                .IdentifyBy(id => id).Apply((id, ghost) => { })
+                .IdentifyBy(id => id).Apply((id, ghost) =>
+                {
+                })
                 .Listen((publish, remove) =>
                 {
                     if (++starts == 1)
                     {
                         anchor.RemoveSource(source);
                         anchor.AddSource(source);
-                        return () => { throw new Exception("obsolete cleanup"); };
+                        return () =>
+                        {
+                            throw new Exception("obsolete cleanup");
+                        };
                     }
+
                     publish("current");
                     return null;
                 });
@@ -206,15 +264,19 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
         }
 
-        /// <summary>An obsolete startup failure cannot detach or overwrite a nested successful registration.</summary>
+        /// <summary>
+        /// An obsolete startup failure cannot detach or overwrite a nested successful registration.
+        /// </summary>
         [Test]
         public void StartupThrowsAfterReattachment_PreservesNewRegistration()
         {
-            var anchor = _realm.GetOrCreateAnchor("status");
-            var starts = 0;
+            Anchor anchor = _realm.GetOrCreateAnchor("status");
+            int starts = 0;
             CallbackPresenceSource<string, StatusGhost> source = null;
             source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
-                .IdentifyBy(id => id).Apply((id, ghost) => { })
+                .IdentifyBy(id => id).Apply((id, ghost) =>
+                {
+                })
                 .Listen((publish, remove) =>
                 {
                     if (++starts == 1)
@@ -223,6 +285,7 @@ namespace Emas.Tests
                         anchor.AddSource(source);
                         throw new InvalidOperationException("obsolete startup");
                     }
+
                     publish("current");
                     return null;
                 });
@@ -234,17 +297,19 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
         }
 
-        /// <summary>Snapshots cannot mutate the owner, retain their membership and become empty on disposed owners.</summary>
+        /// <summary>
+        /// Snapshots cannot mutate the owner, retain their membership and become empty on disposed owners.
+        /// </summary>
         [Test]
         public void Collections_AreCopiedReadOnlySnapshots()
         {
-            var source = new ProbeSource();
-            var anchor = _realm.GetOrCreateAnchor("first", source);
-            var anchors = _realm.Anchors;
-            var sources = anchor.Sources;
+            ProbeSource source = new ProbeSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("first", source);
+            IReadOnlyList<Anchor> anchors = _realm.Anchors;
+            IReadOnlyList<PresenceSource> sources = anchor.Sources;
             Assert.Throws<NotSupportedException>(() => ((IList<Anchor>)anchors).Clear());
             Assert.Throws<NotSupportedException>(() => ((IList<PresenceSource>)sources).Clear());
-            var replacement = new ProbeSource();
+            ProbeSource replacement = new ProbeSource();
             anchor.ReplaceSource(source, replacement);
             replacement.Stopping = () => Assert.That(_realm.Anchors, Is.Empty);
             _realm.GetOrCreateAnchor("second", new ProbeSource
@@ -273,22 +338,27 @@ namespace Emas.Tests
             internal Action Updating;
             internal Action Stopping;
             internal int Stops;
+
             internal StatusGhost Publish(string id)
             {
                 return GetOrCreate<StatusGhost>(id, new Kind("status"));
             }
+
             internal void Enqueue(Action action)
             {
                 Dispatch(action);
             }
+
             protected override void OnStart()
             {
                 Starting?.Invoke();
             }
+
             protected override void OnUpdate()
             {
                 Updating?.Invoke();
             }
+
             protected override void OnStop()
             {
                 Stops++;
@@ -296,7 +366,9 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>A minimal component used to test source identity and availability.</summary>
+        /// <summary>
+        /// A minimal component used to test source identity and availability.
+        /// </summary>
         public sealed class StatusGhost : Ghost
         {
         }

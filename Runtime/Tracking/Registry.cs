@@ -13,18 +13,22 @@ namespace Emas
                 return _records.Values;
             }
         }
+
         internal void Add(Key key, Record record)
         {
             _records.Add(key, record);
         }
+
         internal bool TryGetValue(Key key, out Record record)
         {
             return _records.TryGetValue(key, out record);
         }
+
         internal void Remove(Key key)
         {
             _records.Remove(key);
         }
+
         internal List<Record> Snapshot()
         {
             return new List<Record>(_records.Values);
@@ -38,14 +42,15 @@ namespace Emas
 
         internal List<Record> OwnedBy(PresenceSource owner)
         {
-            var result = new List<Record>();
-            foreach (var record in _records.Values)
+            List<Record> result = new List<Record>();
+            foreach (Record record in _records.Values)
             {
                 if (record.Owner == owner)
                 {
                     result.Add(record);
                 }
             }
+
             return result;
         }
     }

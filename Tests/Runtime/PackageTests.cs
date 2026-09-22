@@ -2,10 +2,14 @@ using NUnit.Framework;
 
 namespace Emas.Tests
 {
-    /// <summary>Tests package metadata.</summary>
+    /// <summary>
+    /// Tests package metadata.
+    /// </summary>
     public class PackageTests
     {
-        /// <summary>Runs the Version_IsNotNullOrEmpty test.</summary>
+        /// <summary>
+        /// Runs the Version_IsNotNullOrEmpty test.
+        /// </summary>
         [Test]
         public void Version_IsNotNullOrEmpty()
         {

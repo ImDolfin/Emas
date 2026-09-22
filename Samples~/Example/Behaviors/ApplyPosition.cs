@@ -2,7 +2,9 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Applies anchor-local position from a read-only root contract.</summary>
+    /// <summary>
+    /// Applies anchor-local position from a read-only root contract.
+    /// </summary>
 
     public sealed class ApplyPosition : MonoBehaviour
     {

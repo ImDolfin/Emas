@@ -25,9 +25,17 @@ namespace Emas.Minimal
             Position = position;
         }
 
-        public string Id { get; private set; }
+        public string Id
+        {
+            get;
+            private set;
+        }
 
-        public Vector3 Position { get; private set; }
+        public Vector3 Position
+        {
+            get;
+            private set;
+        }
     }
 }
 ```

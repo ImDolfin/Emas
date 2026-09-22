@@ -3,10 +3,18 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    /// <summary>Publishes a complete source snapshot and removes entities absent from the next successful snapshot.</summary>
-    /// <typeparam name="TSource">The source item type.</typeparam>
-    /// <typeparam name="TGhost">The application ghost component.</typeparam>
-    /// <remarks>Configure while detached on the Unity thread. Reads on startup and each update. Use full snapshots, not delta batches.</remarks>
+    /// <summary>
+    /// Publishes a complete source snapshot and removes entities absent from the next successful snapshot.
+    /// </summary>
+    /// <typeparam name="TSource">
+    /// The source item type.
+    /// </typeparam>
+    /// <typeparam name="TGhost">
+    /// The application ghost component.
+    /// </typeparam>
+    /// <remarks>
+    /// Configure while detached on the Unity thread. Reads on startup and each update. Use full snapshots, not delta batches.
+    /// </remarks>
     public sealed class PollingPresenceSource<TSource, TGhost> : PresenceSource where TGhost : Ghost
     {
         private bool _polling;
@@ -18,23 +26,40 @@ namespace Emas
         private readonly List<Entry> _entries = new List<Entry>();
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
 
-        /// <summary>Creates a polling source for one entity kind. Configure its callbacks before tracking.</summary>
-        /// <param name="kind">The kind assigned to every ghost from this source.</param>
-        /// <exception cref="ArgumentException">The kind is empty or invalid.</exception>
+        /// <summary>
+        /// Creates a polling source for one entity kind. Configure its callbacks before tracking.
+        /// </summary>
+        /// <param name="kind">
+        /// The kind assigned to every ghost from this source.
+        /// </param>
+        /// <exception cref="ArgumentException">
+        /// The kind is empty or invalid.
+        /// </exception>
         public PollingPresenceSource(Kind kind)
         {
             if (!kind.IsValid)
             {
                 throw new ArgumentException("A polling source requires a valid kind.", nameof(kind));
             }
+
             _kind = kind;
         }
 
-        /// <summary>Sets the callback that reads the complete current population on startup and each update.</summary>
-        /// <param name="read">Returns all current items; an empty collection removes the population, null is an error.</param>
-        /// <returns>This source for further configuration.</returns>
-        /// <exception cref="ArgumentNullException">The callback is null.</exception>
-        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
+        /// <summary>
+        /// Sets the callback that reads the complete current population on startup and each update.
+        /// </summary>
+        /// <param name="read">
+        /// Returns all current items; an empty collection removes the population, null is an error.
+        /// </param>
+        /// <returns>
+        /// This source for further configuration.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        /// The callback is null.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The source is attached or a read/subscription is still executing.
+        /// </exception>
         public PollingPresenceSource<TSource, TGhost> ReadFrom(Func<IEnumerable<TSource>> read)
         {
             ThrowIfConfiguringWhileTracking();
@@ -42,11 +67,21 @@ namespace Emas
             return this;
         }
 
-        /// <summary>Sets the stable identity selector used to match items to existing ghosts.</summary>
-        /// <param name="identify">Returns a non-empty ID unique within each read.</param>
-        /// <returns>This source for further configuration.</returns>
-        /// <exception cref="ArgumentNullException">The callback is null.</exception>
-        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
+        /// <summary>
+        /// Sets the stable identity selector used to match items to existing ghosts.
+        /// </summary>
+        /// <param name="identify">
+        /// Returns a non-empty ID unique within each read.
+        /// </param>
+        /// <returns>
+        /// This source for further configuration.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        /// The callback is null.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The source is attached or a read/subscription is still executing.
+        /// </exception>
         public PollingPresenceSource<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
         {
             ThrowIfConfiguringWhileTracking();
@@ -54,11 +89,21 @@ namespace Emas
             return this;
         }
 
-        /// <summary>Sets the callback that copies each source item's data into its ghost.</summary>
-        /// <param name="apply">Receives the source item first and its stable ghost second.</param>
-        /// <returns>This source for further configuration.</returns>
-        /// <exception cref="ArgumentNullException">The callback is null.</exception>
-        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
+        /// <summary>
+        /// Sets the callback that copies each source item's data into its ghost.
+        /// </summary>
+        /// <param name="apply">
+        /// Receives the source item first and its stable ghost second.
+        /// </param>
+        /// <returns>
+        /// This source for further configuration.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        /// The callback is null.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The source is attached or a read/subscription is still executing.
+        /// </exception>
         public PollingPresenceSource<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
         {
             ThrowIfConfiguringWhileTracking();
@@ -66,11 +111,21 @@ namespace Emas
             return this;
         }
 
-        /// <summary>Optionally selects each ghost's appearance. Omit this step to preserve existing appearances.</summary>
-        /// <param name="variant">Returns the appearance for an item; Variant.None clears its appearance.</param>
-        /// <returns>This source for further configuration.</returns>
-        /// <exception cref="ArgumentNullException">The callback is null.</exception>
-        /// <exception cref="InvalidOperationException">The source is attached or a read/subscription is still executing.</exception>
+        /// <summary>
+        /// Optionally selects each ghost's appearance. Omit this step to preserve existing appearances.
+        /// </summary>
+        /// <param name="variant">
+        /// Returns the appearance for an item; Variant.None clears its appearance.
+        /// </param>
+        /// <returns>
+        /// This source for further configuration.
+        /// </returns>
+        /// <exception cref="ArgumentNullException">
+        /// The callback is null.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The source is attached or a read/subscription is still executing.
+        /// </exception>
         public PollingPresenceSource<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
         {
             ThrowIfConfiguringWhileTracking();
@@ -89,24 +144,28 @@ namespace Emas
         /// <inheritdoc />
         protected override void OnStart()
         {
-            var missing = new List<string>();
+            List<string> missing = new List<string>();
             if (_read == null)
             {
                 missing.Add(nameof(ReadFrom));
             }
+
             if (_identify == null)
             {
                 missing.Add(nameof(IdentifyBy));
             }
+
             if (_apply == null)
             {
                 missing.Add(nameof(Apply));
             }
+
             if (missing.Count > 0)
             {
                 throw new InvalidOperationException("Polling source is missing required steps: "
                     + string.Join(", ", missing) + ". Configure them before tracking.");
             }
+
             Poll();
         }
 
@@ -122,42 +181,51 @@ namespace Emas
             {
                 return;
             }
+
             _polling = true;
-            var generation = RegistrationGeneration;
+            long generation = RegistrationGeneration;
             _seen.Clear();
             _entries.Clear();
             try
             {
-                var snapshot = _read();
+                // Validate the complete population before applying any changes to ghosts.
+                IEnumerable<TSource> snapshot = _read();
                 if (snapshot == null)
                 {
                     throw new InvalidOperationException("A polling source must return a complete snapshot, not null.");
                 }
-                foreach (var item in snapshot)
+
+                foreach (TSource item in snapshot)
                 {
-                    var id = _identify(item);
+                    string id = _identify(item);
                     if (string.IsNullOrEmpty(id) || !_seen.Add(id))
                     {
                         throw new InvalidOperationException("A polling snapshot contains an empty or duplicate entity ID.");
                     }
+
                     _entries.Add(new Entry(item, id, _variant == null ? (Variant?)null : _variant(item)));
                 }
-                foreach (var entry in _entries)
+
+                // Map every item before deciding which existing ghosts have departed.
+                foreach (Entry entry in _entries)
                 {
                     if (!IsActive || RegistrationGeneration != generation)
                     {
                         return;
                     }
-                    var ghost = GetOrCreate<TGhost>(entry.Id, _kind, entry.Variant);
+
+                    TGhost ghost = GetOrCreate<TGhost>(entry.Id, _kind, entry.Variant);
                     _apply(entry.Item, ghost);
                 }
+
                 // Deletions happen only after the full read and all mapping callbacks succeed.
-                foreach (var ghost in OwnedGhosts)
+                foreach (IGhost ghost in OwnedGhosts)
                 {
                     if (!IsActive || RegistrationGeneration != generation)
                     {
                         return;
                     }
+
                     if (ghost.Key.Kind != _kind || !_seen.Contains(ghost.Key.EntityId))
                     {
                         Remove(ghost.Key.Kind, ghost.Key.EntityId);

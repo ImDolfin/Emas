@@ -27,20 +27,23 @@ namespace Emas
             {
                 return;
             }
+
             _applying = true;
             try
             {
                 while (_pending.Count > 0)
                 {
-                    var next = _pending.Dequeue();
+                    Effect next = _pending.Dequeue();
                     if (next.Target == null)
                     {
                         continue;
                     }
+
                     if (next.Target.activeSelf != next.Active)
                     {
                         next.Target.SetActive(next.Active);
                     }
+
                     if (next.Destroy && next.Target != null)
                     {
                         Object.Destroy(next.Target);

@@ -4,21 +4,31 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Publishes the same car ghosts from the second SDK shape.</summary>
+    /// <summary>
+    /// Publishes the same car ghosts from the second SDK shape.
+    /// </summary>
 
     public sealed class SdkTwoCarSource : PresenceSource
     {
         private readonly SdkTwoVehicleFeed _feed;
 
-        /// <summary>Creates a source with the default SDK Two feed.</summary>
+        /// <summary>
+        /// Creates a source with the default SDK Two feed.
+        /// </summary>
         public SdkTwoCarSource()
             : this(new SdkTwoVehicleFeed())
         {
         }
 
-        /// <summary>Creates a source with a supplied SDK Two feed.</summary>
-        /// <param name="feed">The source feed to poll.</param>
-        /// <exception cref="ArgumentNullException">Thrown when the feed is null.</exception>
+        /// <summary>
+        /// Creates a source with a supplied SDK Two feed.
+        /// </summary>
+        /// <param name="feed">
+        /// The source feed to poll.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when the feed is null.
+        /// </exception>
         public SdkTwoCarSource(SdkTwoVehicleFeed feed)
         {
             if (feed == null)
@@ -43,7 +53,7 @@ namespace Emas.Sample
 
         private void PublishAll(float elapsedSeconds)
         {
-            foreach (var proxy in _feed.ReadVehicles(elapsedSeconds))
+            foreach (SdkTwoVehicleProxy proxy in _feed.ReadVehicles(elapsedSeconds))
             {
                 Publish(proxy);
             }
@@ -51,7 +61,7 @@ namespace Emas.Sample
 
         private void Publish(SdkTwoVehicleProxy proxy)
         {
-            var car = GetOrCreate<CarGhost>(
+            CarGhost car = GetOrCreate<CarGhost>(
                 proxy.Id.ToString(),
                 SampleKinds.Car,
                 MapVariant(proxy.ModelCode),

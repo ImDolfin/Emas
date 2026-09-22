@@ -2,7 +2,9 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Applies a small view-only motion effect to a manifested vehicle.</summary>
+    /// <summary>
+    /// Applies a small view-only motion effect to a manifested vehicle.
+    /// </summary>
 
     public sealed class VehicleLogic : MonoBehaviour
     {
@@ -16,7 +18,7 @@ namespace Emas.Sample
                 return;
             }
 
-            var offset = Mathf.Sin(Time.time * 5.0f + _position.Position.x) * 0.035f;
+            float offset = Mathf.Sin(Time.time * 5.0f + _position.Position.x) * 0.035f;
             transform.localPosition = new Vector3(0.0f, offset, 0.0f);
         }
 

@@ -4,7 +4,9 @@ using UnityEngine;
 
 namespace Emas.Tests
 {
-    /// <summary>Exercises identity, automatic ghost creation and query behavior.</summary>
+    /// <summary>
+    /// Exercises identity, automatic ghost creation and query behavior.
+    /// </summary>
     public sealed class RealmTests
     {
         private Realm _realm;
@@ -21,12 +23,14 @@ namespace Emas.Tests
             _realm.Dispose();
         }
 
-        /// <summary>Different kinds may use the same source identifier.</summary>
+        /// <summary>
+        /// Different kinds may use the same source identifier.
+        /// </summary>
         [Test]
         public void SameEntityIdAcrossKinds_CreatesTwoGhosts()
         {
-            var first = new TestSource(new Kind("vehicles.car"));
-            var second = new TestSource(new Kind("vehicles.aircraft"));
+            TestSource first = new TestSource(new Kind("vehicles.car"));
+            TestSource second = new TestSource(new Kind("vehicles.aircraft"));
             _realm.GetOrCreateAnchor("simulation", first, second);
 
             first.Publish("42", new Variant("car"));
@@ -38,19 +42,21 @@ namespace Emas.Tests
             Assert.That(_realm.Query().OfKind(second.Kind).Count, Is.EqualTo(1));
         }
 
-        /// <summary>Prepared ghosts remain unavailable until the source initializes them.</summary>
+        /// <summary>
+        /// Prepared ghosts remain unavailable until the source initializes them.
+        /// </summary>
         [Test]
         public void Prepare_IsUnavailableUntilSourceUsesIt()
         {
-            var kind = new Kind("vehicles.car");
+            Kind kind = new Kind("vehicles.car");
             _realm.GetOrCreateAnchor("simulation");
-            var prepared = _realm.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
+            TestGhost prepared = _realm.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
             Assert.That(prepared.IsAvailable, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
 
-            var source = new TestSource(kind);
+            TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
-            var initialized = source.Publish("42", new Variant("car"));
+            TestGhost initialized = source.Publish("42", new Variant("car"));
             _realm.Update();
 
             Assert.That(initialized, Is.SameAs(prepared));
@@ -58,18 +64,20 @@ namespace Emas.Tests
             Assert.That(_realm.Query().OfKind(kind).With<ITestPart>().Count, Is.EqualTo(1));
         }
 
-        /// <summary>Subscriptions report current and later available matches once each.</summary>
+        /// <summary>
+        /// Subscriptions report current and later available matches once each.
+        /// </summary>
         [Test]
         public void Subscription_ReportsCurrentAndLateGhost()
         {
-            var kind = new Kind("vehicles.car");
-            var source = new TestSource(kind);
+            Kind kind = new Kind("vehicles.car");
+            TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
             source.Publish("1", new Variant("one"));
             _realm.Update();
 
-            var calls = 0;
-            var subscription = _realm.Query().OfKind(kind).OnAvailable(ghost => calls++);
+            int calls = 0;
+            IDisposable subscription = _realm.Query().OfKind(kind).OnAvailable(ghost => calls++);
             Assert.That(calls, Is.EqualTo(1));
 
             source.Publish("2", new Variant("two"));
@@ -81,17 +89,19 @@ namespace Emas.Tests
             subscription.Dispose();
         }
 
-        /// <summary>Partial names and interfaces combine as filters.</summary>
+        /// <summary>
+        /// Partial names and interfaces combine as filters.
+        /// </summary>
         [Test]
         public void Query_CombinesNameKindAndPartFilters()
         {
-            var kind = new Kind("vehicles.car");
-            var source = new TestSource(kind);
+            Kind kind = new Kind("vehicles.car");
+            TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
             source.Publish("1", new Variant("Small Car"));
             _realm.Update();
 
-            var result = _realm.Query("1")
+            Query result = _realm.Query("1")
                 .OfKind(kind)
                 .InAnchor("simulation")
                 .With<ITestPart>()
@@ -101,7 +111,9 @@ namespace Emas.Tests
             Assert.That(result.Single().Name, Is.EqualTo("1"));
         }
 
-        /// <summary>Empty queries return safe empty results.</summary>
+        /// <summary>
+        /// Empty queries return safe empty results.
+        /// </summary>
         [Test]
         public void EmptyQuery_ReturnsEmptyAndNullFirst()
         {
@@ -109,46 +121,54 @@ namespace Emas.Tests
             Assert.That(_realm.Query("missing").FirstOrDefault(), Is.Null);
         }
 
-        /// <summary>Single rejects a result that is not unique.</summary>
+        /// <summary>
+        /// Single rejects a result that is not unique.
+        /// </summary>
         [Test]
         public void Single_ThrowsWhenNoMatchExists()
         {
             Assert.Throws<InvalidOperationException>(() => _realm.Query().Single());
         }
 
-        /// <summary>Default ghost kinds are rejected by filters and registration paths.</summary>
+        /// <summary>
+        /// Default ghost kinds are rejected by filters and registration paths.
+        /// </summary>
         [Test]
         public void InvalidKind_IsRejected()
         {
             Assert.Throws<ArgumentException>(() => _realm.Query().OfKind(default(Kind)));
         }
 
-        /// <summary>Reuses a query description against a different realm.</summary>
+        /// <summary>
+        /// Reuses a query description against a different realm.
+        /// </summary>
         [Test]
         public void QueryDescription_CanBeReusedAcrossRealms()
         {
-            var kind = new Kind("vehicles.car");
-            var description = _realm.Query().OfKind(kind).With<ITestPart>();
-            using (var other = new Realm())
+            Kind kind = new Kind("vehicles.car");
+            Query description = _realm.Query().OfKind(kind).With<ITestPart>();
+            using (Realm other = new Realm())
             {
                 Assert.That(other.Query(description).Count, Is.EqualTo(0));
             }
         }
 
-        /// <summary>Rejects a ghost object that belongs to another realm.</summary>
+        /// <summary>
+        /// Rejects a ghost object that belongs to another realm.
+        /// </summary>
         [Test]
         public void Manifest_DoesNotAcceptEqualKeyFromAnotherRealm()
         {
-            var kind = new Kind("vehicles.car");
-            var firstSource = new TestSource(kind);
-            var secondRealm = new Realm();
+            Kind kind = new Kind("vehicles.car");
+            TestSource firstSource = new TestSource(kind);
+            Realm secondRealm = new Realm();
             try
             {
                 _realm.GetOrCreateAnchor("simulation", firstSource);
-                var firstGhost = firstSource.Publish("42", new Variant("small-car"));
+                TestGhost firstGhost = firstSource.Publish("42", new Variant("small-car"));
                 _realm.Update();
 
-                var secondSource = new TestSource(kind);
+                TestSource secondSource = new TestSource(kind);
                 secondRealm.GetOrCreateAnchor("simulation", secondSource);
                 secondSource.Publish("42", new Variant("small-car"));
                 secondRealm.Update();
@@ -162,12 +182,14 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Allows sources to expose source display names to partial-name queries.</summary>
+        /// <summary>
+        /// Allows sources to expose source display names to partial-name queries.
+        /// </summary>
         [Test]
         public void NamedPublication_IsAvailableToNameQueries()
         {
-            var kind = new Kind("vehicles.car");
-            var source = new TestSource(kind);
+            Kind kind = new Kind("vehicles.car");
+            TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
             source.PublishNamed("42", "Car 42", new Variant("small-car"));
             _realm.Update();
@@ -176,19 +198,21 @@ namespace Emas.Tests
             Assert.That(_realm.Query().WithExactName("CAR 42").Count, Is.EqualTo(1));
         }
 
-        /// <summary>Notifies a subscription again after replacement and reinitialization.</summary>
+        /// <summary>
+        /// Notifies a subscription again after replacement and reinitialization.
+        /// </summary>
         [Test]
         public void Subscription_ReportsReplacementRecovery()
         {
-            var kind = new Kind("vehicles.car");
-            var first = new TestSource(kind);
-            var anchor = _realm.GetOrCreateAnchor("simulation", first);
+            Kind kind = new Kind("vehicles.car");
+            TestSource first = new TestSource(kind);
+            Anchor anchor = _realm.GetOrCreateAnchor("simulation", first);
             first.Publish("42", new Variant("small-car"));
             _realm.Update();
 
-            var calls = 0;
-            var subscription = _realm.Query().OfKind(kind).OnAvailable(ghost => calls++);
-            var replacement = new TestSource(kind);
+            int calls = 0;
+            IDisposable subscription = _realm.Query().OfKind(kind).OnAvailable(ghost => calls++);
+            TestSource replacement = new TestSource(kind);
             anchor.ReplaceSource(first, replacement);
             replacement.Publish("42", new Variant("small-car"));
             _realm.Update();
@@ -197,30 +221,34 @@ namespace Emas.Tests
             subscription.Dispose();
         }
 
-        /// <summary>Removes prepared records when their anchor is removed.</summary>
+        /// <summary>
+        /// Removes prepared records when their anchor is removed.
+        /// </summary>
         [Test]
         public void RemovingAnchor_RemovesPreparedIdentity()
         {
-            var kind = new Kind("vehicles.car");
+            Kind kind = new Kind("vehicles.car");
             _realm.GetOrCreateAnchor("simulation");
-            var prepared = _realm.Prepare<TestGhost>("simulation", kind, "42");
+            TestGhost prepared = _realm.Prepare<TestGhost>("simulation", kind, "42");
             _realm.RemoveAnchor("simulation");
 
-            var source = new TestSource(kind);
+            TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
-            var discovered = source.Publish("42", Variant.None);
+            TestGhost discovered = source.Publish("42", Variant.None);
             _realm.Update();
 
             Assert.That(discovered, Is.Not.SameAs(prepared));
             Assert.That(discovered.IsAvailable, Is.True);
         }
 
-        /// <summary>Sets a named display value without changing the typed appearance.</summary>
+        /// <summary>
+        /// Sets a named display value without changing the typed appearance.
+        /// </summary>
         [Test]
         public void NamedPublication_CanRetainVariantWhenOmitted()
         {
-            var kind = new Kind("vehicles.car");
-            var source = new TestSource(kind);
+            Kind kind = new Kind("vehicles.car");
+            TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
             source.PublishNamed("42", "Car 42", new Variant("small-car"));
             source.PublishNamed("42", "Car 42 updated", null);
@@ -229,14 +257,17 @@ namespace Emas.Tests
             Assert.That(_realm.Query().WithVariant(new Variant("small-car")).Count, Is.EqualTo(1));
             Assert.That(_realm.Query().WithExactName("Car 42 updated").Count, Is.EqualTo(1));
         }
-        /// <summary>Removes a requested view for None while retaining the available ghost.</summary>
+
+        /// <summary>
+        /// Removes a requested view for None while retaining the available ghost.
+        /// </summary>
         [Test]
         public void ManifestNone_RemovesViewButRetainsGhost()
         {
-            var kind = new Kind("vehicles.car");
-            var ghostTemplate = new GameObject("Ghost Template");
-            var viewPrefab = new GameObject("Car View");
-            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            Kind kind = new Kind("vehicles.car");
+            GameObject ghostTemplate = new GameObject("Ghost Template");
+            GameObject viewPrefab = new GameObject("Car View");
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
             try
             {
                 ghostTemplate.SetActive(false);
@@ -253,12 +284,12 @@ namespace Emas.Tests
                     null);
                 _realm.RegisterBlueprint(blueprint);
 
-                var source = new TestSource(kind);
+                TestSource source = new TestSource(kind);
                 _realm.GetOrCreateAnchor("simulation", source);
-                var ghost = source.Publish("42", new Variant("small-car"));
+                TestGhost ghost = source.Publish("42", new Variant("small-car"));
                 _realm.Update();
 
-                var view = _realm.Manifest(ghost);
+                View view = _realm.Manifest(ghost);
                 Assert.That(view, Is.Not.Null);
                 _realm.SetDetailLevel(ghost, DetailLevel.Minimal);
                 Assert.That(_realm.Manifest(ghost), Is.SameAs(view));
@@ -276,14 +307,16 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>A lower-detail prefab keeps the caller's requested level on its instantiated view.</summary>
+        /// <summary>
+        /// A lower-detail prefab keeps the caller's requested level on its instantiated view.
+        /// </summary>
         [Test]
         public void View_ReportsRequestedDetailLevelWhenUsingLowerDetailPrefab()
         {
-            var kind = new Kind("vehicles.car");
-            var prefab = new GameObject("Minimal view");
+            Kind kind = new Kind("vehicles.car");
+            GameObject prefab = new GameObject("Minimal view");
             prefab.SetActive(false);
-            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
             try
             {
                 blueprint.Configure(kind, null, new[]
@@ -291,11 +324,11 @@ namespace Emas.Tests
                     new Blueprint.ViewMapping(Variant.None, DetailLevel.Minimal, prefab)
                 }, null);
                 _realm.RegisterBlueprint(blueprint);
-                var source = new TestSource(kind);
+                TestSource source = new TestSource(kind);
                 _realm.GetOrCreateAnchor("simulation", source);
-                var ghost = source.Publish("42", Variant.None);
+                TestGhost ghost = source.Publish("42", Variant.None);
                 _realm.Update();
-                var view = _realm.Manifest(ghost, DetailLevel.Full);
+                View view = _realm.Manifest(ghost, DetailLevel.Full);
                 Assert.That(view, Is.Not.Null);
                 Assert.That(view.gameObject.name, Is.EqualTo("Minimal view"));
                 Assert.That(view.RequestedDetailLevel, Is.EqualTo(DetailLevel.Full));
@@ -310,15 +343,17 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Replaces a selected child view when a live ghost changes variant.</summary>
+        /// <summary>
+        /// Replaces a selected child view when a live ghost changes variant.
+        /// </summary>
         [Test]
         public void VariantChange_ReplacesRequestedView()
         {
-            var kind = new Kind("vehicles.car");
-            var ghostTemplate = new GameObject("Ghost Template");
-            var smallView = new GameObject("Small View");
-            var largeView = new GameObject("Large View");
-            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            Kind kind = new Kind("vehicles.car");
+            GameObject ghostTemplate = new GameObject("Ghost Template");
+            GameObject smallView = new GameObject("Small View");
+            GameObject largeView = new GameObject("Large View");
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
             try
             {
                 ghostTemplate.SetActive(false);
@@ -336,14 +371,14 @@ namespace Emas.Tests
                     null);
                 _realm.RegisterBlueprint(blueprint);
 
-                var source = new TestSource(kind);
+                TestSource source = new TestSource(kind);
                 _realm.GetOrCreateAnchor("simulation", source);
-                var ghost = source.Publish("42", new Variant("small-car"));
+                TestGhost ghost = source.Publish("42", new Variant("small-car"));
                 _realm.Update();
                 _realm.Manifest(ghost);
 
                 source.Publish("42", new Variant("large-car"));
-                var replacement = _realm.Manifest(ghost);
+                View replacement = _realm.Manifest(ghost);
                 Assert.That(replacement, Is.Not.Null);
                 Assert.That(replacement.gameObject.name, Is.EqualTo("Large View"));
             }
@@ -356,19 +391,22 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Discards dispatched work from a source registration that was replaced.</summary>
+        /// <summary>
+        /// Discards dispatched work from a source registration that was replaced.
+        /// </summary>
         [Test]
         public void Dispatch_FromStoppedRegistrationIsDiscarded()
         {
-            var source = new DispatchSource();
-            var anchor = _realm.GetOrCreateAnchor("simulation", source);
-            var calls = 0;
+            DispatchSource source = new DispatchSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("simulation", source);
+            int calls = 0;
             source.QueueAction(() => calls++);
             anchor.ReplaceSource(source, new TestSource(new Kind("vehicles.car")));
             _realm.Update();
 
             Assert.That(calls, Is.EqualTo(0));
         }
+
         private interface ITestPart
         {
         }
@@ -384,6 +422,7 @@ namespace Emas.Tests
                 Dispatch(action);
             }
         }
+
         private sealed class TestSource : PresenceSource
         {
             internal TestSource(Kind kind)
@@ -391,11 +430,18 @@ namespace Emas.Tests
                 Kind = kind;
             }
 
-            internal Kind Kind { get; private set; }
+            internal Kind Kind
+            {
+                get;
+                private set;
+            }
 
             internal TestGhost LastPublished
             {
-                get { return _lastPublished; }
+                get
+                {
+                    return _lastPublished;
+                }
             }
 
             internal TestGhost Publish(string entityId, Variant variant)

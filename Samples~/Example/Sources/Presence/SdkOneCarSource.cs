@@ -4,21 +4,31 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Publishes car ghosts from the first SDK shape.</summary>
+    /// <summary>
+    /// Publishes car ghosts from the first SDK shape.
+    /// </summary>
 
     public sealed class SdkOneCarSource : PresenceSource
     {
         private readonly SdkOneVehicleFeed _feed;
 
-        /// <summary>Creates a source with the default SDK One feed.</summary>
+        /// <summary>
+        /// Creates a source with the default SDK One feed.
+        /// </summary>
         public SdkOneCarSource()
             : this(new SdkOneVehicleFeed())
         {
         }
 
-        /// <summary>Creates a source with a supplied SDK One feed.</summary>
-        /// <param name="feed">The source feed to poll.</param>
-        /// <exception cref="ArgumentNullException">Thrown when the feed is null.</exception>
+        /// <summary>
+        /// Creates a source with a supplied SDK One feed.
+        /// </summary>
+        /// <param name="feed">
+        /// The source feed to poll.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when the feed is null.
+        /// </exception>
         public SdkOneCarSource(SdkOneVehicleFeed feed)
         {
             if (feed == null)
@@ -43,7 +53,7 @@ namespace Emas.Sample
 
         private void PublishAll(float elapsedSeconds)
         {
-            foreach (var proxy in _feed.ReadVehicles(elapsedSeconds))
+            foreach (SdkOneVehicleProxy proxy in _feed.ReadVehicles(elapsedSeconds))
             {
                 Publish(proxy);
             }
@@ -51,7 +61,7 @@ namespace Emas.Sample
 
         private void Publish(SdkOneVehicleProxy proxy)
         {
-            var car = GetOrCreate<CarGhost>(
+            CarGhost car = GetOrCreate<CarGhost>(
                 proxy.Identifier,
                 SampleKinds.Car,
                 MapVariant(proxy.TypeCode),

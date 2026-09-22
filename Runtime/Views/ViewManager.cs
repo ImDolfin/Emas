@@ -20,8 +20,9 @@ namespace Emas
             {
                 return;
             }
+
             record.RefreshingView = true;
-            var version = record.ViewVersion;
+            long version = record.ViewVersion;
             record.ViewDirty = false;
             try
             {
@@ -30,17 +31,21 @@ namespace Emas
                     Destroy(record);
                     return;
                 }
+
                 if (!record.Ghost.IsAvailable || record.Blueprint == null)
                 {
                     return;
                 }
-                var prefab = record.Blueprint.ResolveViewPrefab(record.Ghost.Variant, record.RequestedDetailLevel);
+
+                GameObject prefab = record.Blueprint.ResolveViewPrefab(record.Ghost.Variant, record.RequestedDetailLevel);
                 if (prefab == null)
                 {
                     Destroy(record);
                     Debug.LogWarning("No Emas view prefab resolves for ghost " + record.Key + " at detail level " + record.RequestedDetailLevel + ".");
                     return;
                 }
+
+                // Rebind the existing child when the requested appearance resolves to the same prefab.
                 if (record.View != null && record.ViewPrefab == prefab)
                 {
                     record.View.Bind(record.Ghost, record.RequestedDetailLevel);
@@ -48,14 +53,18 @@ namespace Emas
                     {
                         _scene.SetActive(record.View.gameObject, true);
                     }
+
                     return;
                 }
+
                 Destroy(record);
                 if (!CanContinue(record, version))
                 {
                     return;
                 }
-                var staging = new GameObject("[Emas View Staging]");
+
+                // Bind the ghost before activation lets view components consume its data.
+                GameObject staging = new GameObject("[Emas View Staging]");
                 staging.SetActive(false);
                 staging.transform.SetParent(record.Ghost.transform, false);
                 GameObject instance = null;
@@ -63,11 +72,12 @@ namespace Emas
                 {
                     instance = Object.Instantiate(prefab, staging.transform, false);
                     instance.SetActive(false);
-                    var view = instance.GetComponent<View>();
+                    View view = instance.GetComponent<View>();
                     if (view == null)
                     {
                         view = instance.AddComponent<View>();
                     }
+
                     view.Bind(record.Ghost, record.RequestedDetailLevel);
                     instance.name = prefab.name;
                     instance.transform.SetParent(record.Ghost.transform, false);
@@ -76,12 +86,14 @@ namespace Emas
                         Object.Destroy(instance);
                         return;
                     }
+
                     record.ViewPrefab = prefab;
                     record.View = view;
                     if (record.Ghost.gameObject.activeInHierarchy)
                     {
                         _scene.SetActive(instance, true);
                     }
+
                     // OnEnable may remove the record, destroy the view or change the request.
                     if (!_ghosts.Contains(record) && instance != null)
                     {
@@ -95,10 +107,12 @@ namespace Emas
                         record.View = null;
                         record.ViewPrefab = null;
                     }
+
                     if (instance != null)
                     {
                         _scene.Destroy(instance);
                     }
+
                     throw;
                 }
                 finally
@@ -114,12 +128,12 @@ namespace Emas
 
         internal void Destroy(Record record)
         {
-            var view = record.View;
+            View view = record.View;
             record.View = null;
             record.ViewPrefab = null;
             if (view != null)
             {
-                var instance = view.gameObject;
+                GameObject instance = view.gameObject;
                 _scene.Destroy(instance);
             }
         }

@@ -3,21 +3,26 @@ using UnityEngine;
 
 namespace Emas.Callbacks
 {
-    /// <summary>Connects SDK events and their unsubscribe action to Inspector-configured tracking.</summary>
-    /// <remarks>This simulated feed raises events on Unity's main thread. SDK adapters must deliver events on that thread before calling Emas.</remarks>
+    /// <summary>
+    /// Connects SDK events and their unsubscribe action to Inspector-configured tracking.
+    /// </summary>
+    /// <remarks>
+    /// This simulated feed raises events on Unity's main thread. SDK adapters must deliver events on that thread before calling Emas.
+    /// </remarks>
     public sealed class Bootstrap : MonoBehaviour
     {
         private SimulatedFeed _feed;
 
         private void OnEnable()
         {
-            var feed = new SimulatedFeed();
+            SimulatedFeed feed = new SimulatedFeed();
             _feed = feed;
             GetComponent<SceneSetup>().Track(new CallbackPresenceSource<Reading, Marker>(Marker.Kind)
                 .IdentifyBy(item => item.Id)
                 .Apply((item, ghost) => ghost.SetPosition(item.Position))
                 .Listen((publish, remove) =>
                 {
+                    // Attach live listeners before publishing the feed's current item.
                     feed.Changed += publish;
                     feed.Removed += remove;
                     Action unsubscribe = () =>
@@ -31,6 +36,7 @@ namespace Emas.Callbacks
                         {
                             publish(feed.Current);
                         }
+
                         return unsubscribe;
                     }
                     catch

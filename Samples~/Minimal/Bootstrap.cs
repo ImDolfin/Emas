@@ -2,7 +2,9 @@ using UnityEngine;
 
 namespace Emas.Minimal
 {
-    /// <summary>Connects one source to the Inspector-configured SceneSetup.</summary>
+    /// <summary>
+    /// Connects one source to the Inspector-configured SceneSetup.
+    /// </summary>
     public sealed class Bootstrap : MonoBehaviour
     {
         private void OnEnable()

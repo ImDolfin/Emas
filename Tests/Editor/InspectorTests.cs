@@ -8,14 +8,18 @@ using UnityEngine.TestTools;
 
 namespace Emas.Editor.Tests
 {
-    /// <summary>Verifies shared authoring validation and passive diagnostics.</summary>
+    /// <summary>
+    /// Verifies shared authoring validation and passive diagnostics.
+    /// </summary>
     public sealed class InspectorTests
     {
-        /// <summary>Optional prefabs are quiet, invalid mappings are rejected by the Inspector and runtime alike.</summary>
+        /// <summary>
+        /// Optional prefabs are quiet, invalid mappings are rejected by the Inspector and runtime alike.
+        /// </summary>
         [Test]
         public void Blueprint_UsesSharedValidationAndOptionalDefaults()
         {
-            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
             UnityEditor.Editor editor = null;
             try
             {
@@ -24,14 +28,14 @@ namespace Emas.Editor.Tests
                 Assert.That(blueprint.GetConfigurationError(), Is.Null);
                 editor = UnityEditor.Editor.CreateEditor(blueprint);
                 Assert.That(editor, Is.TypeOf<BlueprintInspector>());
-                var serialized = new SerializedObject(blueprint);
-                var views = serialized.FindProperty("_views");
+                SerializedObject serialized = new SerializedObject(blueprint);
+                SerializedProperty views = serialized.FindProperty("_views");
                 views.arraySize = 1;
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                var error = blueprint.GetConfigurationError();
+                string error = blueprint.GetConfigurationError();
                 Assert.That(error, Does.Contain("index 0"));
                 Assert.That(error, Does.Contain("prefab"));
-                using (var realm = new Realm())
+                using (Realm realm = new Realm())
                 {
                     Assert.That(Assert.Throws<ArgumentException>(() => realm.RegisterBlueprint(blueprint)).Message, Does.Contain(error));
                 }
@@ -43,26 +47,28 @@ namespace Emas.Editor.Tests
             }
         }
 
-        /// <summary>Invalid scene entries produce actionable errors before any default realm is created.</summary>
+        /// <summary>
+        /// Invalid scene entries produce actionable errors before any default realm is created.
+        /// </summary>
         [Test]
         public void SceneSetup_ValidatesWithoutCreatingRealm()
         {
-            var go = new GameObject("setup validation");
-            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            GameObject go = new GameObject("setup validation");
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
             UnityEditor.Editor editor = null;
             try
             {
-                var setup = go.AddComponent<SceneSetup>();
+                SceneSetup setup = go.AddComponent<SceneSetup>();
                 editor = UnityEditor.Editor.CreateEditor(setup);
                 Assert.That(editor, Is.TypeOf<SceneSetupInspector>());
                 Assert.That(setup.GetConfigurationError(), Is.Null);
-                var serialized = new SerializedObject(setup);
+                SerializedObject serialized = new SerializedObject(setup);
                 serialized.FindProperty("_anchorId").stringValue = "";
                 serialized.ApplyModifiedPropertiesWithoutUndo();
                 Assert.That(setup.GetConfigurationError(), Does.Contain("anchor ID"));
                 Assert.That(Assert.Throws<InvalidOperationException>(() => setup.Track()).Message, Is.EqualTo(setup.GetConfigurationError()));
                 serialized.FindProperty("_anchorId").stringValue = "valid";
-                var entries = serialized.FindProperty("_blueprints");
+                SerializedProperty entries = serialized.FindProperty("_blueprints");
                 entries.arraySize = 1;
                 serialized.ApplyModifiedPropertiesWithoutUndo();
                 Assert.That(setup.GetConfigurationError(), Does.Contain("index 0 is null"));
@@ -85,7 +91,9 @@ namespace Emas.Editor.Tests
             }
         }
 
-        /// <summary>Returns to Edit Mode if an assertion interrupts a Play Mode inspection.</summary>
+        /// <summary>
+        /// Returns to Edit Mode if an assertion interrupts a Play Mode inspection.
+        /// </summary>
         [UnityTearDown]
         public IEnumerator TearDown()
         {
@@ -95,12 +103,14 @@ namespace Emas.Editor.Tests
             }
         }
 
-        /// <summary>Repeated diagnostics snapshots neither construct a realm nor tick an existing source.</summary>
+        /// <summary>
+        /// Repeated diagnostics snapshots neither construct a realm nor tick an existing source.
+        /// </summary>
         [UnityTest]
         public IEnumerator Diagnostics_ArePassiveAndReportSourceFailure()
         {
-            var field = typeof(DefaultRuntime).GetField("_realm", BindingFlags.Static | BindingFlags.NonPublic);
-            var previous = field.GetValue(null);
+            FieldInfo field = typeof(DefaultRuntime).GetField("_realm", BindingFlags.Static | BindingFlags.NonPublic);
+            object previous = field.GetValue(null);
             try
             {
                 field.SetValue(null, null);
@@ -112,15 +122,16 @@ namespace Emas.Editor.Tests
             {
                 field.SetValue(null, previous);
             }
+
             yield return new EnterPlayMode();
-            var realm = Realm.Default;
+            Realm realm = Realm.Default;
             try
             {
-                var source = new FailedSource(true);
-                var anchor = realm.GetOrCreateAnchor("diagnostic", new FailedSource());
+                FailedSource source = new FailedSource(true);
+                Anchor anchor = realm.GetOrCreateAnchor("diagnostic", new FailedSource());
                 Assert.Throws<InvalidOperationException>(() => anchor.ReplaceSource(anchor.Sources[0], source));
-                var first = DiagnosticsWindow.Capture();
-                var second = DiagnosticsWindow.Capture();
+                System.Collections.Generic.IReadOnlyList<DiagnosticsWindow.AnchorStatus> first = DiagnosticsWindow.Capture();
+                System.Collections.Generic.IReadOnlyList<DiagnosticsWindow.AnchorStatus> second = DiagnosticsWindow.Capture();
                 Assert.That(first.Count, Is.EqualTo(1));
                 Assert.That(first[0].Id, Is.EqualTo("diagnostic"));
                 Assert.That(first[0].Available, Is.Zero);
@@ -135,6 +146,7 @@ namespace Emas.Editor.Tests
             {
                 realm.Dispose();
             }
+
             yield return new ExitPlayMode();
         }
 
@@ -142,10 +154,12 @@ namespace Emas.Editor.Tests
         {
             internal int Updates;
             private readonly bool _fail;
+
             internal FailedSource(bool fail = false)
             {
                 _fail = fail;
             }
+
             protected override void OnStart()
             {
                 if (_fail)
@@ -153,6 +167,7 @@ namespace Emas.Editor.Tests
                     throw new InvalidOperationException("diagnostic failure");
                 }
             }
+
             protected override void OnUpdate()
             {
                 Updates++;

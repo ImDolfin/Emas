@@ -18,7 +18,7 @@ namespace Emas
 
         internal IDisposable Subscribe(Query query, Action<IGhost> callback, bool notifyImmediately)
         {
-            var subscription = new Subscription(this, query, callback);
+            Subscription subscription = new Subscription(this, query, callback);
             _items.Add(subscription);
             if (notifyImmediately && !_notifying)
             {
@@ -32,12 +32,13 @@ namespace Emas
                     _notifying = false;
                 }
             }
+
             return subscription;
         }
 
         internal void Forget(Key key)
         {
-            for (var index = 0; index < _items.Count; index++)
+            for (int index = 0; index < _items.Count; index++)
             {
                 _items[index].Seen.Remove(key);
             }
@@ -49,16 +50,18 @@ namespace Emas
             {
                 return;
             }
+
             _notifying = true;
             try
             {
-                var items = new List<Subscription>(_items);
-                for (var index = 0; index < items.Count; index++)
+                List<Subscription> items = new List<Subscription>(_items);
+                for (int index = 0; index < items.Count; index++)
                 {
                     if (_realm.IsDisposed)
                     {
                         break;
                     }
+
                     Notify(items[index]);
                 }
             }
@@ -70,8 +73,8 @@ namespace Emas
 
         internal void Clear()
         {
-            var items = new List<Subscription>(_items);
-            for (var index = 0; index < items.Count; index++)
+            List<Subscription> items = new List<Subscription>(_items);
+            for (int index = 0; index < items.Count; index++)
             {
                 items[index].Dispose();
             }
@@ -83,27 +86,31 @@ namespace Emas
             {
                 return;
             }
-            var matches = _realm.Evaluate(subscription.Query);
-            var keys = subscription.MatchKeys;
+
+            List<IGhost> matches = _realm.Evaluate(subscription.Query);
+            HashSet<Key> keys = subscription.MatchKeys;
             keys.Clear();
-            for (var index = 0; index < matches.Count; index++)
+            for (int index = 0; index < matches.Count; index++)
             {
                 keys.Add(matches[index].Key);
             }
-            // Linear set intersection replaces a linear search for every previously seen key.
+
+            // Retain seen identities only while they remain current matches.
             subscription.Seen.IntersectWith(keys);
-            for (var index = 0; index < matches.Count; index++)
+            for (int index = 0; index < matches.Count; index++)
             {
                 if (subscription.Disposed || _realm.IsDisposed)
                 {
                     break;
                 }
-                var ghost = matches[index];
+
+                IGhost ghost = matches[index];
                 // A preceding callback can remove or invalidate another match in this snapshot.
                 if (!_realm.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
                 {
                     continue;
                 }
+
                 if (subscription.Seen.Add(ghost.Key))
                 {
                     try
@@ -134,13 +141,16 @@ namespace Emas
             internal Action<IGhost> Callback;
             internal bool Disposed;
 
-            /// <summary>Stops notifications and releases the callback.</summary>
+            /// <summary>
+            /// Stops notifications and releases the callback.
+            /// </summary>
             public void Dispose()
             {
                 if (Disposed)
                 {
                     return;
                 }
+
                 Disposed = true;
                 Owner._items.Remove(this);
                 Seen.Clear();

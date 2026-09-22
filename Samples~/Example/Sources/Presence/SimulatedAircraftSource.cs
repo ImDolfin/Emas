@@ -4,21 +4,31 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Publishes an independently moving aircraft population.</summary>
+    /// <summary>
+    /// Publishes an independently moving aircraft population.
+    /// </summary>
 
     public sealed class SimulatedAircraftSource : PresenceSource
     {
         private readonly SimulatedAircraftFeed _feed;
 
-        /// <summary>Creates a source with the default aircraft feed.</summary>
+        /// <summary>
+        /// Creates a source with the default aircraft feed.
+        /// </summary>
         public SimulatedAircraftSource()
             : this(new SimulatedAircraftFeed())
         {
         }
 
-        /// <summary>Creates a source with a supplied aircraft feed.</summary>
-        /// <param name="feed">The source feed to poll.</param>
-        /// <exception cref="ArgumentNullException">Thrown when the feed is null.</exception>
+        /// <summary>
+        /// Creates a source with a supplied aircraft feed.
+        /// </summary>
+        /// <param name="feed">
+        /// The source feed to poll.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// Thrown when the feed is null.
+        /// </exception>
         public SimulatedAircraftSource(SimulatedAircraftFeed feed)
         {
             if (feed == null)
@@ -43,9 +53,9 @@ namespace Emas.Sample
 
         private void PublishAll(float elapsedSeconds)
         {
-            foreach (var proxy in _feed.ReadAircraft(elapsedSeconds))
+            foreach (SimulatedAircraftProxy proxy in _feed.ReadAircraft(elapsedSeconds))
             {
-                var ghost = GetOrCreate<AircraftGhost>(
+                AircraftGhost ghost = GetOrCreate<AircraftGhost>(
                     proxy.Identifier,
                     SampleKinds.Aircraft,
                     AircraftVariants.Trainer,

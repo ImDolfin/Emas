@@ -2,10 +2,14 @@ using NUnit.Framework;
 
 namespace Emas.Tests
 {
-    /// <summary>Tests detail level values and comparisons.</summary>
+    /// <summary>
+    /// Tests detail level values and comparisons.
+    /// </summary>
     public class DetailLevelTests
     {
-        /// <summary>Runs the Presets_HaveExpectedLevels test.</summary>
+        /// <summary>
+        /// Runs the Presets_HaveExpectedLevels test.
+        /// </summary>
         [Test]
         public void Presets_HaveExpectedLevels()
         {
@@ -15,47 +19,57 @@ namespace Emas.Tests
             Assert.That(DetailLevel.Full.Level, Is.EqualTo(3));
         }
 
-        /// <summary>Runs the CustomDetailLevel_PreservesLevel test.</summary>
+        /// <summary>
+        /// Runs the CustomDetailLevel_PreservesLevel test.
+        /// </summary>
         [Test]
         public void CustomDetailLevel_PreservesLevel()
         {
-            var detailLevel = new DetailLevel(7);
+            DetailLevel detailLevel = new DetailLevel(7);
             Assert.That(detailLevel.Level, Is.EqualTo(7));
         }
 
-        /// <summary>Runs the Equality_SameLevel_AreEqual test.</summary>
+        /// <summary>
+        /// Runs the Equality_SameLevel_AreEqual test.
+        /// </summary>
         [Test]
         public void Equality_SameLevel_AreEqual()
         {
-            var a = new DetailLevel(2);
-            var b = new DetailLevel(2);
+            DetailLevel a = new DetailLevel(2);
+            DetailLevel b = new DetailLevel(2);
 
             Assert.That(a, Is.EqualTo(b));
             Assert.That(a == b, Is.True);
             Assert.That(a != b, Is.False);
         }
 
-        /// <summary>Runs the Equality_DifferentLevel_AreNotEqual test.</summary>
+        /// <summary>
+        /// Runs the Equality_DifferentLevel_AreNotEqual test.
+        /// </summary>
         [Test]
         public void Equality_DifferentLevel_AreNotEqual()
         {
-            var a = DetailLevel.Minimal;
-            var b = DetailLevel.Full;
+            DetailLevel a = DetailLevel.Minimal;
+            DetailLevel b = DetailLevel.Full;
 
             Assert.That(a, Is.Not.EqualTo(b));
             Assert.That(a == b, Is.False);
             Assert.That(a != b, Is.True);
         }
 
-        /// <summary>Runs the Equality_MatchesPreset test.</summary>
+        /// <summary>
+        /// Runs the Equality_MatchesPreset test.
+        /// </summary>
         [Test]
         public void Equality_MatchesPreset()
         {
-            var custom = new DetailLevel(3);
+            DetailLevel custom = new DetailLevel(3);
             Assert.That(custom, Is.EqualTo(DetailLevel.Full));
         }
 
-        /// <summary>Runs the Comparison_OrdersByLevel test.</summary>
+        /// <summary>
+        /// Runs the Comparison_OrdersByLevel test.
+        /// </summary>
         [Test]
         public void Comparison_OrdersByLevel()
         {
@@ -65,13 +79,15 @@ namespace Emas.Tests
             Assert.That(DetailLevel.Full > DetailLevel.None, Is.True);
         }
 
-        /// <summary>Runs the Comparison_LessOrEqual_GreaterOrEqual test.</summary>
+        /// <summary>
+        /// Runs the Comparison_LessOrEqual_GreaterOrEqual test.
+        /// </summary>
         [Test]
         public void Comparison_LessOrEqual_GreaterOrEqual()
         {
-            var a = new DetailLevel(2);
-            var b = new DetailLevel(2);
-            var c = new DetailLevel(3);
+            DetailLevel a = new DetailLevel(2);
+            DetailLevel b = new DetailLevel(2);
+            DetailLevel c = new DetailLevel(3);
 
             Assert.That(a <= b, Is.True);
             Assert.That(a >= b, Is.True);
@@ -79,7 +95,9 @@ namespace Emas.Tests
             Assert.That(c >= a, Is.True);
         }
 
-        /// <summary>Runs the CompareTo_ReturnsCorrectOrdering test.</summary>
+        /// <summary>
+        /// Runs the CompareTo_ReturnsCorrectOrdering test.
+        /// </summary>
         [Test]
         public void CompareTo_ReturnsCorrectOrdering()
         {
@@ -88,16 +106,20 @@ namespace Emas.Tests
             Assert.That(DetailLevel.Minimal.CompareTo(DetailLevel.Minimal), Is.EqualTo(0));
         }
 
-        /// <summary>Runs the GetHashCode_SameLevelSameHash test.</summary>
+        /// <summary>
+        /// Runs the GetHashCode_SameLevelSameHash test.
+        /// </summary>
         [Test]
         public void GetHashCode_SameLevelSameHash()
         {
-            var a = new DetailLevel(5);
-            var b = new DetailLevel(5);
+            DetailLevel a = new DetailLevel(5);
+            DetailLevel b = new DetailLevel(5);
             Assert.That(a.GetHashCode(), Is.EqualTo(b.GetHashCode()));
         }
 
-        /// <summary>Runs the ToString_PresetsShowNames test.</summary>
+        /// <summary>
+        /// Runs the ToString_PresetsShowNames test.
+        /// </summary>
         [Test]
         public void ToString_PresetsShowNames()
         {
@@ -107,11 +129,13 @@ namespace Emas.Tests
             Assert.That(DetailLevel.Full.ToString(), Does.Contain("Full"));
         }
 
-        /// <summary>Runs the ToString_CustomShowsLevel test.</summary>
+        /// <summary>
+        /// Runs the ToString_CustomShowsLevel test.
+        /// </summary>
         [Test]
         public void ToString_CustomShowsLevel()
         {
-            var detailLevel = new DetailLevel(7);
+            DetailLevel detailLevel = new DetailLevel(7);
             Assert.That(detailLevel.ToString(), Does.Contain("7"));
         }
     }

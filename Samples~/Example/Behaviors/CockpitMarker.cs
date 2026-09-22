@@ -4,24 +4,36 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Maps normalized top-left cockpit coordinates onto a resolved screen.</summary>
+    /// <summary>
+    /// Maps normalized top-left cockpit coordinates onto a resolved screen.
+    /// </summary>
 
     public sealed class CockpitMarker : MonoBehaviour
     {
         private string _screenId;
         private Vector2 _normalizedTopLeft;
 
-        /// <summary>Sets the source screen ID and normalized top-left coordinate.</summary>
-        /// <param name="screenId">The source screen identifier.</param>
-        /// <param name="normalizedTopLeft">The normalized top-left coordinate.</param>
+        /// <summary>
+        /// Sets the source screen ID and normalized top-left coordinate.
+        /// </summary>
+        /// <param name="screenId">
+        /// The source screen identifier.
+        /// </param>
+        /// <param name="normalizedTopLeft">
+        /// The normalized top-left coordinate.
+        /// </param>
         public void SetData(string screenId, Vector2 normalizedTopLeft)
         {
             _screenId = screenId;
             _normalizedTopLeft = normalizedTopLeft;
         }
 
-        /// <summary>Updates this marker using the current screen transform.</summary>
-        /// <param name="resolveScreen">Resolves a screen ID to a transform.</param>
+        /// <summary>
+        /// Updates this marker using the current screen transform.
+        /// </summary>
+        /// <param name="resolveScreen">
+        /// Resolves a screen ID to a transform.
+        /// </param>
         public void Apply(Func<string, Transform> resolveScreen)
         {
             Transform screen;

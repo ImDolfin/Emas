@@ -4,7 +4,9 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Bootstraps the external Emas sample without package modifications.</summary>
+    /// <summary>
+    /// Bootstraps the external Emas sample without package modifications.
+    /// </summary>
 
     public sealed class Bootstrap : MonoBehaviour
     {
@@ -23,12 +25,15 @@ namespace Emas.Sample
         private readonly List<Material> _runtimeMaterials = new List<Material>();
         private readonly List<Blueprint> _runtimeBlueprints = new List<Blueprint>();
 
-        /// <summary>Starts the sample anchor and its sources.</summary>
+        /// <summary>
+        /// Starts the sample anchor and its sources.
+        /// </summary>
         private void OnEnable()
         {
             _sourceReplaced = false;
             _replacementTimer = 0f;
             _cockpitFeed = new SimulatedCockpitFeed();
+            // Register view configuration before either source publishes its population.
             ConfigureCamera();
             RegisterCarBlueprint();
             RegisterAircraftBlueprint();
@@ -39,7 +44,7 @@ namespace Emas.Sample
                 _firstCarSource,
                 new SimulatedAircraftSource());
 
-            var realm = _anchor.Realm;
+            Realm realm = _anchor.Realm;
             _carSubscription = realm.Query()
                 .InAnchor(AnchorId)
                 .OfKind(SampleKinds.Car)
@@ -57,8 +62,12 @@ namespace Emas.Sample
             CreateCockpitDemo();
         }
 
-        /// <summary>Switches to SDK Two while retaining compatible car ghosts and their consumers.</summary>
-        /// <remarks>Safe to call repeatedly. The sample also switches automatically after four seconds.</remarks>
+        /// <summary>
+        /// Switches to SDK Two while retaining compatible car ghosts and their consumers.
+        /// </summary>
+        /// <remarks>
+        /// Safe to call repeatedly. The sample also switches automatically after four seconds.
+        /// </remarks>
         public void ReplaceCarSource()
         {
             if (_anchor != null && !_sourceReplaced)
@@ -68,7 +77,9 @@ namespace Emas.Sample
             }
         }
 
-        /// <summary>Updates the replacement demonstration and moving cockpit marker.</summary>
+        /// <summary>
+        /// Updates the replacement demonstration and moving cockpit marker.
+        /// </summary>
         private void Update()
         {
             _replacementTimer += Time.deltaTime;
@@ -87,15 +98,18 @@ namespace Emas.Sample
 
             if (_cockpitMarker != null && _cockpitFeed != null)
             {
-                var markerData = _cockpitFeed.ReadMarker(Time.time);
+                CockpitMarkerData markerData = _cockpitFeed.ReadMarker(Time.time);
                 _cockpitMarker.SetData(markerData.ScreenId, markerData.NormalizedTopLeft);
                 _cockpitMarker.Apply(ResolveScreen);
             }
         }
 
-        /// <summary>Stops sample subscriptions, anchors and generated objects.</summary>
+        /// <summary>
+        /// Stops sample subscriptions, anchors and generated objects.
+        /// </summary>
         private void OnDisable()
         {
+            // Release consumer callbacks before removing the anchor and its ghosts.
             if (_carSubscription != null)
             {
                 _carSubscription.Dispose();
@@ -113,6 +127,7 @@ namespace Emas.Sample
                 _anchor.Dispose();
                 _anchor = null;
             }
+
             if (_cockpitScreen != null)
             {
                 Destroy(_cockpitScreen.gameObject);
@@ -128,7 +143,7 @@ namespace Emas.Sample
                 Destroy(_ground);
             }
 
-            for (var index = 0; index < _runtimeBlueprints.Count; index++)
+            for (int index = 0; index < _runtimeBlueprints.Count; index++)
             {
                 if (_runtimeBlueprints[index] != null)
                 {
@@ -136,17 +151,19 @@ namespace Emas.Sample
                 }
             }
 
-            for (var index = 0; index < _runtimeObjects.Count; index++)
+            for (int index = 0; index < _runtimeObjects.Count; index++)
             {
                 if (_runtimeObjects[index] != null)
                 {
                     Destroy(_runtimeObjects[index]);
                 }
             }
-            foreach (var material in _runtimeMaterials)
+
+            foreach (Material material in _runtimeMaterials)
             {
                 Destroy(material);
             }
+
             _runtimeMaterials.Clear();
             _runtimeObjects.Clear();
             _runtimeBlueprints.Clear();
@@ -155,8 +172,8 @@ namespace Emas.Sample
 
         private void OnGUI()
         {
-            var cars = _anchor.Realm.Query().InAnchor(AnchorId).OfKind(SampleKinds.Car).Count;
-            var aircraft = _anchor.Realm.Query().InAnchor(AnchorId).OfKind(SampleKinds.Aircraft).Count;
+            int cars = _anchor.Realm.Query().InAnchor(AnchorId).OfKind(SampleKinds.Car).Count;
+            int aircraft = _anchor.Realm.Query().InAnchor(AnchorId).OfKind(SampleKinds.Aircraft).Count;
             GUI.color = Color.white;
             GUI.Label(
                 new Rect(16.0f, 16.0f, 900.0f, 28.0f),
@@ -180,7 +197,7 @@ namespace Emas.Sample
 
         private void ConfigureCamera()
         {
-            var camera = Camera.main;
+            Camera camera = Camera.main;
             if (camera == null)
             {
                 return;
@@ -223,14 +240,14 @@ namespace Emas.Sample
 
         private void CreateCockpitDemo()
         {
-            var screenObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            GameObject screenObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
             screenObject.name = "Cockpit Screen";
             screenObject.transform.position = new Vector3(0.0f, 2.6f, 5.0f);
             screenObject.transform.localScale = new Vector3(4.0f, 2.0f, 1.0f);
             SetColor(screenObject, new Color(0.03f, 0.13f, 0.18f));
             _cockpitScreen = screenObject.transform;
 
-            var markerObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            GameObject markerObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             markerObject.name = "Cockpit Marker";
             markerObject.transform.localScale = new Vector3(0.20f, 0.20f, 0.20f);
             SetColor(markerObject, new Color(1.0f, 0.75f, 0.05f));
@@ -240,30 +257,30 @@ namespace Emas.Sample
 
         private void RegisterCarBlueprint()
         {
-            var ghostTemplate = new GameObject("Sample Car Ghost Template");
+            GameObject ghostTemplate = new GameObject("Sample Car Ghost Template");
             ghostTemplate.SetActive(false);
             ghostTemplate.AddComponent<CarGhost>();
             ghostTemplate.AddComponent<ApplyPosition>();
             _runtimeObjects.Add(ghostTemplate);
 
-            var smallCar = CreateCarViewTemplate(
+            GameObject smallCar = CreateCarViewTemplate(
                 "SmallCar.prefab",
                 new Color(0.15f, 0.55f, 1.0f),
                 new Vector3(1.25f, 0.35f, 0.70f));
-            var largeCar = CreateCarViewTemplate(
+            GameObject largeCar = CreateCarViewTemplate(
                 "LargeCar.prefab",
                 new Color(0.20f, 0.85f, 0.35f),
                 new Vector3(1.55f, 0.42f, 0.82f));
-            var truck = CreateCarViewTemplate(
+            GameObject truck = CreateCarViewTemplate(
                 "Truck.prefab",
                 new Color(0.95f, 0.25f, 0.15f),
                 new Vector3(1.90f, 0.55f, 0.95f));
-            var unknown = CreateCarViewTemplate(
+            GameObject unknown = CreateCarViewTemplate(
                 "UnknownVehicle.prefab",
                 new Color(0.85f, 0.20f, 0.85f),
                 new Vector3(1.45f, 0.44f, 0.82f));
 
-            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
             blueprint.Configure(
                 SampleKinds.Car,
                 ghostTemplate.GetComponent<CarGhost>(),
@@ -280,16 +297,16 @@ namespace Emas.Sample
 
         private void RegisterAircraftBlueprint()
         {
-            var ghostTemplate = new GameObject("Sample Aircraft Ghost Template");
+            GameObject ghostTemplate = new GameObject("Sample Aircraft Ghost Template");
             ghostTemplate.SetActive(false);
             ghostTemplate.AddComponent<AircraftGhost>();
             ghostTemplate.AddComponent<ApplyPosition>();
             _runtimeObjects.Add(ghostTemplate);
 
-            var view = CreateAircraftViewTemplate(
+            GameObject view = CreateAircraftViewTemplate(
                 "Aircraft.prefab",
                 new Color(1.0f, 0.75f, 0.05f));
-            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
             blueprint.Configure(
                 SampleKinds.Aircraft,
                 ghostTemplate.GetComponent<AircraftGhost>(),
@@ -307,14 +324,14 @@ namespace Emas.Sample
 
         private GameObject CreateCarViewTemplate(string name, Color color, Vector3 bodyScale)
         {
-            var view = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject view = GameObject.CreatePrimitive(PrimitiveType.Cube);
             view.name = name;
             view.transform.localScale = bodyScale;
             SetColor(view, color);
             view.AddComponent<VehicleLogic>();
             view.AddComponent<ArticulationLogic>();
 
-            var cabin = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject cabin = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cabin.name = name + " Cabin";
             cabin.transform.SetParent(view.transform, false);
             cabin.transform.localPosition = new Vector3(0.0f, 0.65f, -0.05f);
@@ -333,20 +350,20 @@ namespace Emas.Sample
 
         private GameObject CreateAircraftViewTemplate(string name, Color color)
         {
-            var view = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            GameObject view = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             view.name = name;
             view.transform.localRotation = Quaternion.Euler(90.0f, 0.0f, 0.0f);
             view.transform.localScale = new Vector3(0.45f, 0.65f, 1.35f);
             SetColor(view, color);
 
-            var wing = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject wing = GameObject.CreatePrimitive(PrimitiveType.Cube);
             wing.name = name + " Wings";
             wing.transform.SetParent(view.transform, false);
             wing.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
             wing.transform.localScale = new Vector3(3.0f, 0.08f, 0.38f);
             SetColor(wing, Color.Lerp(color, Color.white, 0.25f));
 
-            var tail = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject tail = GameObject.CreatePrimitive(PrimitiveType.Cube);
             tail.name = name + " Tail";
             tail.transform.SetParent(view.transform, false);
             tail.transform.localPosition = new Vector3(0.0f, 0.0f, -0.80f);
@@ -360,7 +377,7 @@ namespace Emas.Sample
 
         private void CreateWheel(GameObject parent, string name, Vector3 localPosition)
         {
-            var wheel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            GameObject wheel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             wheel.name = name;
             wheel.transform.SetParent(parent.transform, false);
             wheel.transform.localPosition = localPosition;
@@ -375,7 +392,7 @@ namespace Emas.Sample
             Vector3 scale,
             Color color)
         {
-            var target = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject target = GameObject.CreatePrimitive(PrimitiveType.Cube);
             target.name = name;
             target.transform.position = position;
             target.transform.localScale = scale;
@@ -386,10 +403,10 @@ namespace Emas.Sample
 
         private void SetColor(GameObject target, Color color)
         {
-            var renderer = target.GetComponent<Renderer>();
+            Renderer renderer = target.GetComponent<Renderer>();
             if (renderer != null)
             {
-                var material = renderer.material;
+                Material material = renderer.material;
                 material.color = color;
                 _runtimeMaterials.Add(material);
             }

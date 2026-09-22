@@ -6,16 +6,20 @@ using UnityEngine;
 
 namespace Emas.Tests
 {
-    /// <summary>Verifies extensible appearance values and their query and blueprint integration.</summary>
+    /// <summary>
+    /// Verifies extensible appearance values and their query and blueprint integration.
+    /// </summary>
     public sealed class VariantTests
     {
-        /// <summary>Ensures independent declarations compare by exact identifier.</summary>
+        /// <summary>
+        /// Ensures independent declarations compare by exact identifier.
+        /// </summary>
         [Test]
         public void Equality_IsOrdinalAndWorksInCollections()
         {
-            var first = new Variant("cars.small");
-            var same = new Variant("cars.small");
-            var different = new Variant("Cars.Small");
+            Variant first = new Variant("cars.small");
+            Variant same = new Variant("cars.small");
+            Variant different = new Variant("Cars.Small");
 
             Assert.That(first == same, Is.True);
             Assert.That(first != different, Is.True);
@@ -27,11 +31,13 @@ namespace Emas.Tests
             Assert.That(first.IsNone, Is.False);
         }
 
-        /// <summary>Ensures absent appearances have a consistent default value.</summary>
+        /// <summary>
+        /// Ensures absent appearances have a consistent default value.
+        /// </summary>
         [Test]
         public void Default_IsUnspecified()
         {
-            var value = default(Variant);
+            Variant value = default(Variant);
 
             Assert.That(value, Is.EqualTo(Variant.None));
             Assert.That(value.Id, Is.Empty);
@@ -39,7 +45,9 @@ namespace Emas.Tests
             Assert.That(value.GetHashCode(), Is.EqualTo(Variant.None.GetHashCode()));
         }
 
-        /// <summary>Rejects accidental empty declarations while allowing an explicit None value.</summary>
+        /// <summary>
+        /// Rejects accidental empty declarations while allowing an explicit None value.
+        /// </summary>
         [Test]
         public void Constructor_RejectsMissingIds()
         {
@@ -48,27 +56,31 @@ namespace Emas.Tests
             Assert.Throws<ArgumentException>(() => new Variant(" "));
         }
 
-        /// <summary>Ensures serialization preserves exact identifiers and the default.</summary>
+        /// <summary>
+        /// Ensures serialization preserves exact identifiers and the default.
+        /// </summary>
         [Test]
         public void Serialization_RoundTrips()
         {
-            var value = new Variant("cars.truck");
-            var copy = JsonUtility.FromJson<Variant>(JsonUtility.ToJson(value));
+            Variant value = new Variant("cars.truck");
+            Variant copy = JsonUtility.FromJson<Variant>(JsonUtility.ToJson(value));
 
             Assert.That(copy, Is.EqualTo(value));
             Assert.That(JsonUtility.FromJson<Variant>("{}"), Is.EqualTo(Variant.None));
         }
 
-        /// <summary>Ensures appearance filters are typed, exact and independent of query copies.</summary>
+        /// <summary>
+        /// Ensures appearance filters are typed, exact and independent of query copies.
+        /// </summary>
         [Test]
         public void Query_MatchesTypedAppearanceAndNone()
         {
-            using (var realm = new Realm())
+            using (Realm realm = new Realm())
             {
-                var original = realm.Query();
-                var selected = original.WithVariant(new Variant("cars.small"));
-                var small = new FakeGhost(new Variant("cars.small"));
-                var large = new FakeGhost(new Variant("cars.large"));
+                Query original = realm.Query();
+                Query selected = original.WithVariant(new Variant("cars.small"));
+                FakeGhost small = new FakeGhost(new Variant("cars.small"));
+                FakeGhost large = new FakeGhost(new Variant("cars.large"));
 
                 Assert.That(original.Matches(large), Is.True);
                 Assert.That(selected.Matches(small), Is.True);
@@ -78,17 +90,19 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Ensures blueprint selection uses typed appearances for exact, lower and fallback views.</summary>
+        /// <summary>
+        /// Ensures blueprint selection uses typed appearances for exact, lower and fallback views.
+        /// </summary>
         [Test]
         public void Blueprint_SelectsTypedVariants()
         {
-            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            var full = new GameObject("full");
-            var minimal = new GameObject("minimal");
-            var fallback = new GameObject("fallback");
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            GameObject full = new GameObject("full");
+            GameObject minimal = new GameObject("minimal");
+            GameObject fallback = new GameObject("fallback");
             try
             {
-                var variant = new Variant("cars.small");
+                Variant variant = new Variant("cars.small");
                 blueprint.Configure(new Kind("cars"), null, new[]
                 {
                     new Blueprint.ViewMapping(variant, DetailLevel.Full, full),
@@ -109,7 +123,9 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Appearance APIs require Variant values without implicit kind or string conversions.</summary>
+        /// <summary>
+        /// Appearance APIs require Variant values without implicit kind or string conversions.
+        /// </summary>
         [Test]
         public void Api_RequiresTypedVariants()
         {
@@ -123,7 +139,7 @@ namespace Emas.Tests
             Assert.That(typeof(PresenceSource).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
                 .Any(method => method.Name == "GetOrCreate" && method.GetParameters().Length == 3
                     && method.GetParameters()[2].ParameterType == typeof(Variant?)), Is.True);
-            foreach (var type in new[] { typeof(Variant), typeof(Kind) })
+            foreach (Type type in new[] { typeof(Variant), typeof(Kind) })
             {
                 Assert.That(type.GetMethods().Any(method => method.Name == "op_Implicit"), Is.False,
                     type.Name + " must require explicit construction.");
@@ -156,7 +172,10 @@ namespace Emas.Tests
             }
 
             /// <inheritdoc />
-            public Variant Variant { get; }
+            public Variant Variant
+            {
+                get;
+            }
 
             /// <inheritdoc />
             public bool IsAvailable

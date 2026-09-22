@@ -5,7 +5,9 @@ namespace Emas
     /// </summary>
     public static class Package
     {
-        /// <summary>Current semantic version of the plugin.</summary>
+        /// <summary>
+        /// Current semantic version of the plugin.
+        /// </summary>
         public const string Version = "0.1.0";
     }
 }

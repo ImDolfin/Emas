@@ -4,34 +4,42 @@ using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
-    /// <summary>Verifies the shared realm entry point and its Unity update integration.</summary>
+    /// <summary>
+    /// Verifies the shared realm entry point and its Unity update integration.
+    /// </summary>
     public sealed class DefaultRealmTests
     {
-        /// <summary>Repeated access returns the live shared realm.</summary>
+        /// <summary>
+        /// Repeated access returns the live shared realm.
+        /// </summary>
         [Test]
         public void Default_ReusesLiveRealm()
         {
             Assert.That(Realm.Default, Is.SameAs(Realm.Default));
         }
 
-        /// <summary>A disposed shared realm is replaced on next access.</summary>
+        /// <summary>
+        /// A disposed shared realm is replaced on next access.
+        /// </summary>
         [Test]
         public void Default_RecreatesDisposedRealm()
         {
-            var previous = Realm.Default;
+            Realm previous = Realm.Default;
             previous.Dispose();
-            var current = Realm.Default;
+            Realm current = Realm.Default;
             Assert.That(current, Is.Not.SameAs(previous));
             Assert.That(current.IsDisposed, Is.False);
         }
 
-        /// <summary>Unity advances a source without a manual realm update.</summary>
+        /// <summary>
+        /// Unity advances a source without a manual realm update.
+        /// </summary>
         [UnityTest]
         public IEnumerator Default_UpdatesAutomatically()
         {
-            var realm = Realm.Default;
-            var source = new CountingSource();
-            var anchor = realm.GetOrCreateAnchor("tests.default", source);
+            Realm realm = Realm.Default;
+            CountingSource source = new CountingSource();
+            Anchor anchor = realm.GetOrCreateAnchor("tests.default", source);
             try
             {
                 yield return null;

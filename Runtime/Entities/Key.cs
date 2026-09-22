@@ -3,15 +3,24 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Identifies one ghost within one anchor and kind.</summary>
+    /// <summary>
+    /// Identifies one ghost within one anchor and kind.
+    /// </summary>
     [Serializable]
-
     public struct Key : IEquatable<Key>
     {
-        /// <summary>Creates a key.</summary>
-        /// <param name="anchorId">The anchor identifier.</param>
-        /// <param name="kind">The ghost kind.</param>
-        /// <param name="entityId">The source entity identifier.</param>
+        /// <summary>
+        /// Creates a key.
+        /// </summary>
+        /// <param name="anchorId">
+        /// The anchor identifier.
+        /// </param>
+        /// <param name="kind">
+        /// The ghost kind.
+        /// </param>
+        /// <param name="entityId">
+        /// The source entity identifier.
+        /// </param>
         public Key(string anchorId, Kind kind, string entityId)
         {
             AnchorId = anchorId ?? string.Empty;
@@ -19,17 +28,41 @@ namespace Emas
             EntityId = entityId ?? string.Empty;
         }
 
-        /// <summary>Gets the anchor identifier.</summary>
-        /// <value>The anchor identifier.</value>
-        public string AnchorId { get; private set; }
+        /// <summary>
+        /// Gets the anchor identifier.
+        /// </summary>
+        /// <value>
+        /// The anchor identifier.
+        /// </value>
+        public string AnchorId
+        {
+            get;
+            private set;
+        }
 
-        /// <summary>Gets the ghost kind.</summary>
-        /// <value>The exact ghost kind.</value>
-        public Kind Kind { get; private set; }
+        /// <summary>
+        /// Gets the ghost kind.
+        /// </summary>
+        /// <value>
+        /// The exact ghost kind.
+        /// </value>
+        public Kind Kind
+        {
+            get;
+            private set;
+        }
 
-        /// <summary>Gets the source entity identifier.</summary>
-        /// <value>The source entity identifier.</value>
-        public string EntityId { get; private set; }
+        /// <summary>
+        /// Gets the source entity identifier.
+        /// </summary>
+        /// <value>
+        /// The source entity identifier.
+        /// </value>
+        public string EntityId
+        {
+            get;
+            private set;
+        }
 
         /// <inheritdoc />
         public bool Equals(Key other)
@@ -50,25 +83,41 @@ namespace Emas
         {
             unchecked
             {
-                var hash = StringComparer.Ordinal.GetHashCode(AnchorId ?? string.Empty);
+                int hash = StringComparer.Ordinal.GetHashCode(AnchorId ?? string.Empty);
                 hash = (hash * 397) ^ Kind.GetHashCode();
                 return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(EntityId ?? string.Empty);
             }
         }
 
-        /// <summary>Compares two keys.</summary>
-        /// <param name="left">The first key.</param>
-        /// <param name="right">The second key.</param>
-        /// <returns>True when the keys are equal.</returns>
+        /// <summary>
+        /// Compares two keys.
+        /// </summary>
+        /// <param name="left">
+        /// The first key.
+        /// </param>
+        /// <param name="right">
+        /// The second key.
+        /// </param>
+        /// <returns>
+        /// True when the keys are equal.
+        /// </returns>
         public static bool operator ==(Key left, Key right)
         {
             return left.Equals(right);
         }
 
-        /// <summary>Compares two keys.</summary>
-        /// <param name="left">The first key.</param>
-        /// <param name="right">The second key.</param>
-        /// <returns>True when the keys differ.</returns>
+        /// <summary>
+        /// Compares two keys.
+        /// </summary>
+        /// <param name="left">
+        /// The first key.
+        /// </param>
+        /// <param name="right">
+        /// The second key.
+        /// </param>
+        /// <returns>
+        /// True when the keys differ.
+        /// </returns>
         public static bool operator !=(Key left, Key right)
         {
             return !left.Equals(right);

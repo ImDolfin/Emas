@@ -32,7 +32,7 @@ namespace Emas
             _realm = new Realm();
             if (_runner == null)
             {
-                var runnerObject = new GameObject("[Emas Runner]");
+                GameObject runnerObject = new GameObject("[Emas Runner]");
                 Object.DontDestroyOnLoad(runnerObject);
                 _runner = runnerObject.AddComponent<Runner>();
             }
@@ -58,6 +58,7 @@ namespace Emas
                 Object.Destroy(_runner.gameObject);
                 _runner = null;
             }
+
             if (_realm != null)
             {
                 _realm.Dispose();
