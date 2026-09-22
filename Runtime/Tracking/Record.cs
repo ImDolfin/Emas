@@ -4,7 +4,7 @@ namespace Emas
 {
     internal sealed class Record
     {
-        internal Record(Ghost ghost, Coordinator owner, Blueprint blueprint)
+        internal Record(Ghost ghost, PresenceSource owner, Blueprint blueprint)
         {
             Key = ghost.Key;
             Ghost = ghost;
@@ -16,7 +16,7 @@ namespace Emas
 
         internal readonly Key Key;
         internal readonly Ghost Ghost;
-        internal Coordinator Owner;
+        internal PresenceSource Owner;
         internal Blueprint Blueprint;
         internal View View;
         internal UnityEngine.GameObject ViewPrefab;

@@ -4,14 +4,14 @@ using System.Collections.Generic;
 namespace Emas
 {
     /// <summary>Base class for one network or simulation integration.</summary>
-    public abstract class Coordinator
+    public abstract class PresenceSource
     {
         private readonly object _registrationLock = new object();
         private Anchor _anchor;
         private bool _started;
         private long _registrationGeneration;
 
-        /// <summary>Gets the anchor currently hosting this coordinator.</summary>
+        /// <summary>Gets the anchor currently hosting this source.</summary>
         /// <value>The attached anchor, or null while detached.</value>
         protected Anchor Anchor
         {
@@ -21,7 +21,7 @@ namespace Emas
             }
         }
 
-        /// <summary>Gets ghosts owned by this coordinator.</summary>
+        /// <summary>Gets ghosts owned by this source.</summary>
         /// <value>A snapshot including unavailable ghosts.</value>
         protected IReadOnlyList<IGhost> OwnedGhosts
         {
@@ -46,7 +46,7 @@ namespace Emas
         {
         }
 
-        /// <summary>Obtains or creates a typed ghost owned by this coordinator.</summary>
+        /// <summary>Obtains or creates a typed ghost owned by this source.</summary>
         /// <typeparam name="TGhost">The ghost component type.</typeparam>
         /// <param name="entityId">The source entity ID.</param>
         /// <param name="kind">The ghost kind.</param>
@@ -68,13 +68,13 @@ namespace Emas
         {
             if (_anchor == null || !_started)
             {
-                throw new InvalidOperationException("The coordinator is not active on an anchor.");
+                throw new InvalidOperationException("The source is not active on an anchor.");
             }
             _anchor.ThrowIfDisposed();
             return _anchor.Realm.GetOrCreate<TGhost>(this, _anchor.Id, entityId, kind, variant, name);
         }
 
-        /// <summary>Removes one ghost owned by this coordinator.</summary>
+        /// <summary>Removes one ghost owned by this source.</summary>
         /// <param name="kind">The ghost kind.</param>
         /// <param name="entityId">The source entity ID.</param>
         protected void Remove(Kind kind, string entityId)
@@ -158,7 +158,7 @@ namespace Emas
             {
                 if (_anchor != null)
                 {
-                    throw new InvalidOperationException("The coordinator is already attached to an anchor.");
+                    throw new InvalidOperationException("The source is already attached to an anchor.");
                 }
                 _anchor = anchor;
                 _registrationGeneration++;
@@ -170,7 +170,7 @@ namespace Emas
                 anchor.Realm.ApplySourceChanges(OnStart);
                 if (IsRegistration(anchor.Realm, generation))
                 {
-                    anchor.Realm.FinalizeCoordinator(this);
+                    anchor.Realm.FinalizeSource(this);
                 }
             }
             catch
@@ -196,7 +196,7 @@ namespace Emas
                 anchor.Realm.ApplySourceChanges(OnUpdate);
                 if (IsRegistration(anchor.Realm, generation))
                 {
-                    anchor.Realm.FinalizeCoordinator(this);
+                    anchor.Realm.FinalizeSource(this);
                 }
             }
             catch (Exception exception)

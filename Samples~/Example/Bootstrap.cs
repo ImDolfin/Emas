@@ -12,7 +12,7 @@ namespace Emas.Sample
         private IDisposable _carSubscription;
         private IDisposable _aircraftSubscription;
         private Anchor _anchor;
-        private SdkOneCarCoordinator _firstCarSource;
+        private SdkOneCarSource _firstCarSource;
         private SimulatedCockpitFeed _cockpitFeed;
         private bool _sourceReplaced;
         private float _replacementTimer;
@@ -22,7 +22,7 @@ namespace Emas.Sample
         private readonly List<GameObject> _runtimeObjects = new List<GameObject>();
         private readonly List<Blueprint> _runtimeBlueprints = new List<Blueprint>();
 
-        /// <summary>Starts the sample anchor and its coordinators.</summary>
+        /// <summary>Starts the sample anchor and its sources.</summary>
         private void Start()
         {
             _cockpitFeed = new SimulatedCockpitFeed();
@@ -30,11 +30,11 @@ namespace Emas.Sample
             RegisterCarBlueprint();
             RegisterAircraftBlueprint();
 
-            _firstCarSource = new SdkOneCarCoordinator();
+            _firstCarSource = new SdkOneCarSource();
             _anchor = Realm.Default.CreateAnchorFor(
                 AnchorId,
                 _firstCarSource,
-                new SimulatedAircraftCoordinator());
+                new SimulatedAircraftSource());
 
             _carSubscription = Realm.Default.Query()
                 .OfKind(SampleKinds.Car)
@@ -57,7 +57,7 @@ namespace Emas.Sample
             _replacementTimer += Time.deltaTime;
             if (!_sourceReplaced && _replacementTimer >= 4.0f)
             {
-                _anchor.ReplaceCoordinator(_firstCarSource, new SdkTwoCarCoordinator());
+                _anchor.ReplaceSource(_firstCarSource, new SdkTwoCarSource());
                 _sourceReplaced = true;
             }
 

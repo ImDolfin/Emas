@@ -7,7 +7,7 @@ namespace Emas
     /// <typeparam name="TSource">The source item type.</typeparam>
     /// <typeparam name="TGhost">The application ghost component.</typeparam>
     /// <remarks>Configure while detached on the Unity thread. Reads on startup and each update. Use full snapshots, not delta batches.</remarks>
-    public sealed class PollingCoordinator<TSource, TGhost> : Coordinator where TGhost : Ghost
+    public sealed class PollingPresenceSource<TSource, TGhost> : PresenceSource where TGhost : Ghost
     {
         private bool _polling;
         private readonly Kind _kind;
@@ -20,19 +20,19 @@ namespace Emas
 
         /// <summary>Creates a polling source for one entity kind. Configure its callbacks before tracking.</summary>
         /// <param name="kind">The kind assigned to every ghost from this source.</param>
-        public PollingCoordinator(Kind kind)
+        public PollingPresenceSource(Kind kind)
         {
             if (!kind.IsValid)
             {
-                throw new ArgumentException("A polling coordinator requires a valid kind.", nameof(kind));
+                throw new ArgumentException("A polling source requires a valid kind.", nameof(kind));
             }
             _kind = kind;
         }
 
         /// <summary>Sets the callback that reads the complete current population on startup and each update.</summary>
         /// <param name="read">Returns all current items; an empty collection removes the population, null is an error.</param>
-        /// <returns>This coordinator for further configuration.</returns>
-        public PollingCoordinator<TSource, TGhost> ReadFrom(Func<IEnumerable<TSource>> read)
+        /// <returns>This source for further configuration.</returns>
+        public PollingPresenceSource<TSource, TGhost> ReadFrom(Func<IEnumerable<TSource>> read)
         {
             ThrowIfConfiguringWhileTracking();
             _read = read ?? throw new ArgumentNullException(nameof(read));
@@ -41,8 +41,8 @@ namespace Emas
 
         /// <summary>Sets the stable identity selector used to match items to existing ghosts.</summary>
         /// <param name="identify">Returns a non-empty ID unique within each read.</param>
-        /// <returns>This coordinator for further configuration.</returns>
-        public PollingCoordinator<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
+        /// <returns>This source for further configuration.</returns>
+        public PollingPresenceSource<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
         {
             ThrowIfConfiguringWhileTracking();
             _identify = identify ?? throw new ArgumentNullException(nameof(identify));
@@ -51,8 +51,8 @@ namespace Emas
 
         /// <summary>Sets the callback that copies each source item's data into its ghost.</summary>
         /// <param name="apply">Receives the source item first and its stable ghost second.</param>
-        /// <returns>This coordinator for further configuration.</returns>
-        public PollingCoordinator<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
+        /// <returns>This source for further configuration.</returns>
+        public PollingPresenceSource<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
         {
             ThrowIfConfiguringWhileTracking();
             _apply = apply ?? throw new ArgumentNullException(nameof(apply));
@@ -61,8 +61,8 @@ namespace Emas
 
         /// <summary>Optionally selects each ghost's appearance. Omit this step to preserve existing appearances.</summary>
         /// <param name="variant">Returns the appearance for an item; Variant.None clears its appearance.</param>
-        /// <returns>This coordinator for further configuration.</returns>
-        public PollingCoordinator<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
+        /// <returns>This source for further configuration.</returns>
+        public PollingPresenceSource<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
         {
             ThrowIfConfiguringWhileTracking();
             _variant = variant ?? throw new ArgumentNullException(nameof(variant));
@@ -73,7 +73,7 @@ namespace Emas
         {
             if (IsAttached || _polling)
             {
-                throw new InvalidOperationException("Configure polling callbacks before attaching the coordinator to an anchor.");
+                throw new InvalidOperationException("Configure polling callbacks before attaching the source to an anchor.");
             }
         }
 
@@ -82,7 +82,7 @@ namespace Emas
         {
             if (_read == null || _identify == null || _apply == null)
             {
-                throw new InvalidOperationException("Configure ReadFrom, IdentifyBy and Apply before tracking a polling coordinator.");
+                throw new InvalidOperationException("Configure ReadFrom, IdentifyBy and Apply before tracking a polling source.");
             }
             Poll();
         }

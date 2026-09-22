@@ -33,7 +33,7 @@
       "id": "initializing",
       "type": "active",
       "label": "Initializing",
-      "sublabel": "Coordinator populates data",
+      "sublabel": "Source populates data",
       "lane": "main",
       "col": 1
     },

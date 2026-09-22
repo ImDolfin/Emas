@@ -6,20 +6,20 @@ namespace Emas.Sample
 {
     /// <summary>Publishes an independently moving aircraft population.</summary>
 
-    public sealed class SimulatedAircraftCoordinator : Coordinator
+    public sealed class SimulatedAircraftSource : PresenceSource
     {
         private readonly SimulatedAircraftFeed _feed;
 
-        /// <summary>Creates a coordinator with the default aircraft feed.</summary>
-        public SimulatedAircraftCoordinator()
+        /// <summary>Creates a source with the default aircraft feed.</summary>
+        public SimulatedAircraftSource()
             : this(new SimulatedAircraftFeed())
         {
         }
 
-        /// <summary>Creates a coordinator with a supplied aircraft feed.</summary>
+        /// <summary>Creates a source with a supplied aircraft feed.</summary>
         /// <param name="feed">The source feed to poll.</param>
         /// <exception cref="ArgumentNullException">Thrown when the feed is null.</exception>
-        public SimulatedAircraftCoordinator(SimulatedAircraftFeed feed)
+        public SimulatedAircraftSource(SimulatedAircraftFeed feed)
         {
             if (feed == null)
             {

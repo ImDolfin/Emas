@@ -4,10 +4,10 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Represents one scene coordinate frame and its coordinators.</summary>
+    /// <summary>Represents one scene coordinate frame and its sources.</summary>
     public sealed class Anchor : IDisposable
     {
-        private readonly List<Coordinator> _coordinators = new List<Coordinator>();
+        private readonly List<PresenceSource> _sources = new List<PresenceSource>();
         private readonly GameObject _gameObject;
         private bool _disposed;
 
@@ -37,68 +37,68 @@ namespace Emas
         /// <value>The anchor scene transform.</value>
         public Transform Transform { get; private set; }
 
-        /// <summary>Adds and starts a coordinator.</summary>
-        /// <param name="coordinator">The coordinator to add.</param>
-        public void AddCoordinator(Coordinator coordinator)
+        /// <summary>Adds and starts a source.</summary>
+        /// <param name="source">The source to add.</param>
+        public void AddSource(PresenceSource source)
         {
             ThrowIfDisposed();
-            if (coordinator == null)
+            if (source == null)
             {
-                throw new ArgumentNullException(nameof(coordinator));
+                throw new ArgumentNullException(nameof(source));
             }
 
-            if (_coordinators.Contains(coordinator))
+            if (_sources.Contains(source))
             {
                 return;
             }
 
-            if (coordinator.IsAttached)
+            if (source.IsAttached)
             {
-                throw new InvalidOperationException("The coordinator is already attached to an anchor.");
+                throw new InvalidOperationException("The source is already attached to an anchor.");
             }
             var previous = Realm.CaptureGhosts();
-            _coordinators.Add(coordinator);
+            _sources.Add(source);
             try
             {
-                coordinator.Attach(this);
+                source.Attach(this);
             }
             catch
             {
-                _coordinators.Remove(coordinator);
-                if (coordinator.IsAttachedTo(this))
+                _sources.Remove(source);
+                if (source.IsAttachedTo(this))
                 {
-                    coordinator.Detach();
-                    Realm.RollbackCoordinator(coordinator, previous);
+                    source.Detach();
+                    Realm.RollbackSource(source, previous);
                 }
                 throw;
             }
         }
 
-        /// <summary>Stops and removes a coordinator and its owned ghosts.</summary>
-        /// <param name="coordinator">The coordinator to remove.</param>
-        public void RemoveCoordinator(Coordinator coordinator)
+        /// <summary>Stops and removes a source and its owned ghosts.</summary>
+        /// <param name="source">The source to remove.</param>
+        public void RemoveSource(PresenceSource source)
         {
             ThrowIfDisposed();
-            if (coordinator == null || !_coordinators.Remove(coordinator))
+            if (source == null || !_sources.Remove(source))
             {
                 return;
             }
 
             try
             {
-                coordinator.Detach();
+                source.Detach();
             }
             catch (Exception exception)
             {
                 Debug.LogException(exception);
             }
-            Realm.RemoveCoordinatorGhosts(coordinator);
+            Realm.RemoveSourceGhosts(source);
         }
 
-        /// <summary>Replaces one coordinator while preserving its compatible ghosts.</summary>
-        /// <param name="current">The coordinator being replaced.</param>
-        /// <param name="replacement">The replacement coordinator.</param>
-        public void ReplaceCoordinator(Coordinator current, Coordinator replacement)
+        /// <summary>Replaces one source while preserving its compatible ghosts.</summary>
+        /// <param name="current">The source being replaced.</param>
+        /// <param name="replacement">The replacement source.</param>
+        public void ReplaceSource(PresenceSource current, PresenceSource replacement)
         {
             ThrowIfDisposed();
             if (current == null || replacement == null)
@@ -106,23 +106,23 @@ namespace Emas
                 throw new ArgumentNullException(current == null ? nameof(current) : nameof(replacement));
             }
 
-            var index = _coordinators.IndexOf(current);
+            var index = _sources.IndexOf(current);
             if (index < 0)
             {
-                throw new InvalidOperationException("The current coordinator is not attached to this anchor.");
+                throw new InvalidOperationException("The current source is not attached to this anchor.");
             }
 
             if (current == replacement)
             {
-                throw new ArgumentException("The replacement must be a different coordinator.", nameof(replacement));
+                throw new ArgumentException("The replacement must be a different source.", nameof(replacement));
             }
 
-            if (_coordinators.Contains(replacement) || replacement.IsAttached)
+            if (_sources.Contains(replacement) || replacement.IsAttached)
             {
-                throw new InvalidOperationException("The replacement coordinator is already registered with an anchor.");
+                throw new InvalidOperationException("The replacement source is already registered with an anchor.");
             }
 
-            _coordinators[index] = replacement;
+            _sources[index] = replacement;
             try
             {
                 current.Detach();
@@ -132,15 +132,15 @@ namespace Emas
                 Debug.LogException(exception);
             }
 
-            if (_disposed || !_coordinators.Contains(replacement))
+            if (_disposed || !_sources.Contains(replacement))
             {
-                Realm.RemoveCoordinatorGhosts(current);
+                Realm.RemoveSourceGhosts(current);
                 return;
             }
-            Realm.TransferCoordinator(current, replacement);
-            if (_disposed || !_coordinators.Contains(replacement))
+            Realm.TransferSource(current, replacement);
+            if (_disposed || !_sources.Contains(replacement))
             {
-                Realm.RemoveCoordinatorGhosts(replacement);
+                Realm.RemoveSourceGhosts(replacement);
                 return;
             }
             try
@@ -167,21 +167,21 @@ namespace Emas
             }
 
             _disposed = true;
-            var coordinators = new List<Coordinator>(_coordinators);
-            _coordinators.Clear();
+            var sources = new List<PresenceSource>(_sources);
+            _sources.Clear();
             // Remove registration and records before scene callbacks can reenter the realm.
             Realm.NotifyAnchorDisposed(this);
-            for (var index = coordinators.Count - 1; index >= 0; index--)
+            for (var index = sources.Count - 1; index >= 0; index--)
             {
                 try
                 {
-                    coordinators[index].Detach();
+                    sources[index].Detach();
                 }
                 catch (Exception exception)
                 {
                     Debug.LogException(exception);
                 }
-                Realm.RemoveCoordinatorGhosts(coordinators[index]);
+                Realm.RemoveSourceGhosts(sources[index]);
             }
             if (_gameObject != null)
             {
@@ -218,9 +218,9 @@ namespace Emas
             }
         }
 
-        internal IReadOnlyList<IGhost> GetOwnedGhosts(Coordinator coordinator)
+        internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceSource source)
         {
-            return Realm.GetOwnedGhosts(coordinator);
+            return Realm.GetOwnedGhosts(source);
         }
 
         internal void Tick()
@@ -229,16 +229,16 @@ namespace Emas
             {
                 return;
             }
-            var coordinators = new List<Coordinator>(_coordinators);
-            for (var index = 0; index < coordinators.Count; index++)
+            var sources = new List<PresenceSource>(_sources);
+            for (var index = 0; index < sources.Count; index++)
             {
                 if (_disposed)
                 {
                     break;
                 }
-                if (_coordinators.Contains(coordinators[index]))
+                if (_sources.Contains(sources[index]))
                 {
-                    coordinators[index].Tick();
+                    sources[index].Tick();
                 }
             }
         }

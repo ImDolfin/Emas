@@ -25,7 +25,7 @@ namespace Emas.Tests
             Assert.That(current.IsDisposed, Is.False);
         }
 
-        /// <summary>Unity advances a coordinator without a manual realm update.</summary>
+        /// <summary>Unity advances a source without a manual realm update.</summary>
         [UnityTest]
         public IEnumerator Default_UpdatesAutomatically()
         {
@@ -45,7 +45,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class CountingSource : Coordinator
+        private sealed class CountingSource : PresenceSource
         {
             internal int Updates;
 

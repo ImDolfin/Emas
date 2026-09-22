@@ -48,11 +48,11 @@ namespace Emas.Tests
             _assets.Clear();
         }
 
-        /// <summary>Rejected attachment cannot remove the coordinator's original population.</summary>
+        /// <summary>Rejected attachment cannot remove the source's original population.</summary>
         [Test]
         public void SecondAnchorAttachment_PreservesAnchoralGhosts()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             var firstAnchor = _realm.CreateAnchorFor("first", source);
             var ghost = source.Publish("car");
             _realm.Update();
@@ -60,7 +60,7 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
             Assert.That(ghost.transform.parent, Is.SameAs(firstAnchor.Transform));
             var secondAnchor = _realm.CreateAnchorFor("second");
-            Assert.Throws<InvalidOperationException>(() => secondAnchor.AddCoordinator(source));
+            Assert.Throws<InvalidOperationException>(() => secondAnchor.AddSource(source));
             Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
         }
 
@@ -70,17 +70,17 @@ namespace Emas.Tests
         {
             var anchor = _realm.CreateAnchorFor("anchor");
             var prepared = _realm.Prepare<ProbeGhost>("anchor", Kind, "prepared");
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             source.Starting = () =>
             {
                 source.Publish("prepared");
                 source.Publish("new");
                 throw new InvalidOperationException("start failed");
             };
-            Assert.Throws<InvalidOperationException>(() => anchor.AddCoordinator(source));
+            Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source));
             Assert.That(source.StopCount, Is.EqualTo(1));
-            var replacement = new ProbeCoordinator();
-            anchor.AddCoordinator(replacement);
+            var replacement = new ProbeSource();
+            anchor.AddSource(replacement);
             Assert.That(replacement.Publish("prepared"), Is.SameAs(prepared));
             _realm.Update();
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
@@ -90,7 +90,7 @@ namespace Emas.Tests
         [Test]
         public void DisposedRealm_RejectsMutationsAndKeepsDisposeIdempotent()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car");
             _realm.Update();
@@ -113,13 +113,13 @@ namespace Emas.Tests
         [Test]
         public void DisposedAnchor_UnregistersBeforeDeferredDestruction()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             var anchor = _realm.CreateAnchorFor("anchor", source);
             var prepared = _realm.Prepare<ProbeGhost>("anchor", Kind, "prepared");
             anchor.Dispose();
-            Assert.Throws<ObjectDisposedException>(() => anchor.AddCoordinator(new ProbeCoordinator()));
-            Assert.Throws<ObjectDisposedException>(() => anchor.RemoveCoordinator(source));
-            Assert.Throws<ObjectDisposedException>(() => anchor.ReplaceCoordinator(source, new ProbeCoordinator()));
+            Assert.Throws<ObjectDisposedException>(() => anchor.AddSource(new ProbeSource()));
+            Assert.Throws<ObjectDisposedException>(() => anchor.RemoveSource(source));
+            Assert.Throws<ObjectDisposedException>(() => anchor.ReplaceSource(source, new ProbeSource()));
             var next = _realm.CreateAnchorFor("anchor");
             Assert.That(next, Is.Not.SameAs(anchor));
             Assert.That(_realm.Prepare<ProbeGhost>("anchor", Kind, "prepared"), Is.Not.SameAs(prepared));
@@ -129,7 +129,7 @@ namespace Emas.Tests
         [Test]
         public void OnEnable_CanPrepareAnotherGhost()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             ProbeGhost prepared = null;
             ProbeGhost.Enabled = ghost =>
@@ -152,7 +152,7 @@ namespace Emas.Tests
         public IEnumerator OnEnable_CanRemoveItsOwnGhost()
         {
             _realm.RegisterBlueprint(Blueprint());
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car");
             _realm.Manifest(ghost);
@@ -171,7 +171,7 @@ namespace Emas.Tests
         [Test]
         public void OnEnable_CanDisposeRealm()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             source.Publish("first");
             source.Publish("second");
@@ -188,14 +188,14 @@ namespace Emas.Tests
         [Test]
         public void OnDisable_CanRemoveAnchorDuringReplacement()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             var anchor = _realm.CreateAnchorFor("anchor", source);
             source.Publish("first");
             source.Publish("second");
             _realm.Update();
-            var replacement = new ProbeCoordinator();
+            var replacement = new ProbeSource();
             ProbeGhost.Disabled = ghost => _realm.RemoveAnchor("anchor");
-            Assert.DoesNotThrow(() => anchor.ReplaceCoordinator(source, replacement));
+            Assert.DoesNotThrow(() => anchor.ReplaceSource(source, replacement));
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
             Assert.That(replacement.StartCount, Is.EqualTo(0));
         }
@@ -204,24 +204,24 @@ namespace Emas.Tests
         [Test]
         public void FailedReplacement_PreservesUnavailableIdentityAndCanRecover()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             var anchor = _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car");
             _realm.Update();
-            var failed = new ProbeCoordinator();
+            var failed = new ProbeSource();
             failed.Starting = () =>
             {
                 failed.Publish("car");
                 throw new InvalidOperationException("replacement failed");
             };
-            Assert.Throws<InvalidOperationException>(() => anchor.ReplaceCoordinator(source, failed));
+            Assert.Throws<InvalidOperationException>(() => anchor.ReplaceSource(source, failed));
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
             var otherAnchor = _realm.CreateAnchorFor("other");
-            Assert.Throws<InvalidOperationException>(() => otherAnchor.AddCoordinator(failed));
-            var recovery = new ProbeCoordinator();
-            anchor.ReplaceCoordinator(failed, recovery);
+            Assert.Throws<InvalidOperationException>(() => otherAnchor.AddSource(failed));
+            var recovery = new ProbeSource();
+            anchor.ReplaceSource(failed, recovery);
             Assert.That(recovery.Publish("car"), Is.SameAs(ghost));
             _realm.Update();
             Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
@@ -232,8 +232,8 @@ namespace Emas.Tests
         public void VariantViewRefresh_WaitsUntilAllSourceUpdatesFinish()
         {
             _realm.RegisterBlueprint(Blueprint());
-            var first = new ProbeCoordinator();
-            var second = new ProbeCoordinator();
+            var first = new ProbeSource();
+            var second = new ProbeSource();
             _realm.CreateAnchorFor("anchor", first, second);
             var ghost = first.Publish("car", First, 1);
             var other = second.Publish("other", First, 10);
@@ -264,7 +264,7 @@ namespace Emas.Tests
         public void AvailabilityNotification_FollowsViewRefresh()
         {
             _realm.RegisterBlueprint(Blueprint());
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car");
             _realm.Manifest(ghost);
@@ -279,7 +279,7 @@ namespace Emas.Tests
         public IEnumerator ViewOnEnable_CanDemanifestItself()
         {
             _realm.RegisterBlueprint(Blueprint());
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car");
             _realm.Update();
@@ -295,7 +295,7 @@ namespace Emas.Tests
         public IEnumerator ViewOnDisable_CanRemoveGhostDuringVariantChange()
         {
             _realm.RegisterBlueprint(Blueprint());
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car");
             _realm.Update();
@@ -315,7 +315,7 @@ namespace Emas.Tests
         [Test]
         public void Subscription_RechecksMatchesAfterCallbackMutation()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             source.Publish("first");
             source.Publish("second");
@@ -334,7 +334,7 @@ namespace Emas.Tests
         [Test]
         public void Subscription_CanDisposeItselfDuringNotification()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             IDisposable subscription = null;
             var calls = 0;
@@ -354,7 +354,7 @@ namespace Emas.Tests
         public void TypedQuery_ComposesAndExcludesViewOnlyContracts()
         {
             _realm.RegisterBlueprint(Blueprint());
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car");
             _realm.Update();
@@ -365,11 +365,11 @@ namespace Emas.Tests
             Assert.That(query.Count, Is.EqualTo(1));
         }
 
-        /// <summary>Nested dispatch is deferred and cannot starve coordinator updates.</summary>
+        /// <summary>Nested dispatch is deferred and cannot starve source updates.</summary>
         [Test]
         public void Dispatch_RequeuedActionRunsNextUpdate()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var calls = 0;
             Action repeat = null;
@@ -390,7 +390,7 @@ namespace Emas.Tests
         [Test]
         public void Dispatch_BacklogRespectsBudgetAndOrder()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var calls = new List<int>();
             var count = Realm.MaxDispatchActionsPerUpdate + 7;
@@ -410,16 +410,16 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>A reused coordinator cannot execute queued actions from its previous registration.</summary>
+        /// <summary>A reused source cannot execute queued actions from its previous registration.</summary>
         [Test]
         public void Dispatch_ReattachedInstanceDiscardsOldGeneration()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             var anchor = _realm.CreateAnchorFor("anchor", source);
             var calls = 0;
             source.Queue(() => calls++);
-            anchor.RemoveCoordinator(source);
-            anchor.AddCoordinator(source);
+            anchor.RemoveSource(source);
+            anchor.AddSource(source);
             source.Queue(() => calls += 10);
             _realm.Update();
             Assert.That(calls, Is.EqualTo(10));
@@ -427,10 +427,10 @@ namespace Emas.Tests
 
         /// <summary>A failing source deactivates only its own population and stops once.</summary>
         [Test]
-        public void SourceFailure_DoesNotStopOtherCoordinators()
+        public void SourceFailure_DoesNotStopOtherSources()
         {
-            var source = new ProbeCoordinator();
-            var other = new ProbeCoordinator();
+            var source = new ProbeSource();
+            var other = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source, other);
             var failedGhost = source.Publish("failed");
             var healthyGhost = other.Publish("healthy");
@@ -454,7 +454,7 @@ namespace Emas.Tests
             var scene = SceneManager.CreateScene("Emas lifecycle " + Guid.NewGuid().ToString("N"));
             var frame = new GameObject("Scene frame");
             SceneManager.MoveGameObjectToScene(frame, scene);
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             var anchor = _realm.CreateAnchorFor("scene", frame.transform, source);
             var ghost = source.Publish("published");
             var prepared = _realm.Prepare<ProbeGhost>("scene", Kind, "prepared");
@@ -471,12 +471,12 @@ namespace Emas.Tests
 
         /// <summary>Ownership changes during root activation defer publication until the new source is finalized.</summary>
         [Test]
-        public void OnEnable_CanReplaceCoordinatorWithoutPublishingStaleAvailability()
+        public void OnEnable_CanReplaceSourceWithoutPublishingStaleAvailability()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             var anchor = _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car");
-            var replacement = new ProbeCoordinator();
+            var replacement = new ProbeSource();
             replacement.Starting = () => replacement.Publish("car", Second, 42);
             var replaced = false;
             ProbeGhost.Enabled = value =>
@@ -484,7 +484,7 @@ namespace Emas.Tests
                 if (!replaced)
                 {
                     replaced = true;
-                    anchor.ReplaceCoordinator(source, replacement);
+                    anchor.ReplaceSource(source, replacement);
                 }
             };
             var notifications = 0;
@@ -503,7 +503,7 @@ namespace Emas.Tests
         [Test]
         public void DispatchFailure_KeepsPartialPublicationUnavailable()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             ProbeGhost ghost = null;
             source.Queue(() =>
@@ -523,7 +523,7 @@ namespace Emas.Tests
         [Test]
         public void SubscriptionCreatedDuringSourceUpdate_WaitsForFinalValues()
         {
-            var source = new ProbeCoordinator();
+            var source = new ProbeSource();
             _realm.CreateAnchorFor("anchor", source);
             var ghost = source.Publish("car", First, 1);
             _realm.Update();
@@ -610,7 +610,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class ProbeCoordinator : Coordinator
+        private sealed class ProbeSource : PresenceSource
         {
             internal Action Starting;
             internal Action Updating;

@@ -72,19 +72,19 @@ namespace Emas
 
         /// <summary>Creates or returns an anchor at the root scene frame.</summary>
         /// <param name="id">The anchor identifier.</param>
-        /// <param name="coordinators">The coordinators to attach.</param>
+        /// <param name="sources">The sources to attach.</param>
         /// <returns>The existing or new anchor.</returns>
-        public Anchor CreateAnchorFor(string id, params Coordinator[] coordinators)
+        public Anchor CreateAnchorFor(string id, params PresenceSource[] sources)
         {
-            return CreateAnchorFor(id, null, coordinators);
+            return CreateAnchorFor(id, null, sources);
         }
 
         /// <summary>Creates or returns an anchor under a scene frame.</summary>
         /// <param name="id">The anchor identifier.</param>
         /// <param name="frame">The optional parent transform.</param>
-        /// <param name="coordinators">The coordinators to attach.</param>
+        /// <param name="sources">The sources to attach.</param>
         /// <returns>The existing or new anchor.</returns>
-        public Anchor CreateAnchorFor(string id, Transform frame, params Coordinator[] coordinators)
+        public Anchor CreateAnchorFor(string id, Transform frame, params PresenceSource[] sources)
         {
             ThrowIfDisposed();
             if (string.IsNullOrEmpty(id))
@@ -111,11 +111,11 @@ namespace Emas
                     }
                 }
 
-                if (coordinators != null)
+                if (sources != null)
                 {
-                    for (var index = 0; index < coordinators.Length; index++)
+                    for (var index = 0; index < sources.Length; index++)
                     {
-                        anchor.AddCoordinator(coordinators[index]);
+                        anchor.AddSource(sources[index]);
                     }
                 }
 
@@ -380,7 +380,7 @@ namespace Emas
             return _subscriptions.Subscribe(query, callback, _sourceDepth == 0 && !_finalizing);
         }
 
-        internal void Dispatch(Coordinator coordinator, long generation, Action action)
+        internal void Dispatch(PresenceSource source, long generation, Action action)
         {
             if (action == null)
             {
@@ -395,14 +395,14 @@ namespace Emas
                 }
 
                 _dispatch.Enqueue(new DispatchItem(
-                    coordinator,
+                    source,
                     generation,
                     action));
             }
         }
 
         internal TGhost GetOrCreate<TGhost>(
-            Coordinator owner,
+            PresenceSource owner,
             string anchorId,
             string entityId,
             Kind kind,
@@ -412,7 +412,7 @@ namespace Emas
             ThrowIfDisposed();
             if (owner != null && !owner.IsActive)
             {
-                throw new InvalidOperationException("A stopped coordinator cannot publish ghosts.");
+                throw new InvalidOperationException("A stopped source cannot publish ghosts.");
             }
             if (!kind.IsValid || string.IsNullOrEmpty(anchorId) || string.IsNullOrEmpty(entityId))
             {
@@ -426,7 +426,7 @@ namespace Emas
                 var existingTyped = RequireGhost<TGhost>(record.Ghost);
                 if (owner != null && record.Owner != null && record.Owner != owner)
                 {
-                    throw new InvalidOperationException("The ghost is owned by another coordinator.");
+                    throw new InvalidOperationException("The ghost is owned by another source.");
                 }
 
                 if (record.Blueprint == null)
@@ -504,7 +504,7 @@ namespace Emas
             _ghosts.Add(key, newRecord);
             return typed;
         }
-        internal void FinalizeCoordinator(Coordinator owner)
+        internal void FinalizeSource(PresenceSource owner)
         {
             if (!_updating && _sourceDepth == 0 && !_finalizing && !_disposed)
             {
@@ -512,7 +512,7 @@ namespace Emas
             }
         }
 
-        internal void RemoveGhost(Coordinator owner, Key key)
+        internal void RemoveGhost(PresenceSource owner, Key key)
         {
             Record record;
             if (!_ghosts.TryGetValue(key, out record) || record.Owner != owner)
@@ -523,7 +523,7 @@ namespace Emas
             RemoveRecord(key, record);
         }
 
-        internal void RemoveCoordinatorGhosts(Coordinator owner)
+        internal void RemoveSourceGhosts(PresenceSource owner)
         {
             var records = _ghosts.OwnedBy(owner);
             for (var index = 0; index < records.Count; index++)
@@ -535,7 +535,7 @@ namespace Emas
             }
         }
 
-        internal void TransferCoordinator(Coordinator current, Coordinator replacement)
+        internal void TransferSource(PresenceSource current, PresenceSource replacement)
         {
             var records = _ghosts.OwnedBy(current);
             for (var index = 0; index < records.Count; index++)
@@ -548,7 +548,7 @@ namespace Emas
             DeactivateRecords(records, replacement);
         }
 
-        internal void MarkUnavailable(Coordinator owner)
+        internal void MarkUnavailable(PresenceSource owner)
         {
             var records = _ghosts.OwnedBy(owner);
             for (var index = 0; index < records.Count; index++)
@@ -562,7 +562,7 @@ namespace Emas
         {
             anchor.Dispose();
         }
-        internal IReadOnlyList<IGhost> GetOwnedGhosts(Coordinator owner)
+        internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceSource owner)
         {
             var result = new List<IGhost>();
             foreach (var record in _ghosts.Values)
@@ -593,7 +593,7 @@ namespace Emas
 
         private void ExecuteDispatch(DispatchItem item)
         {
-            if (item.Coordinator != null && !item.Coordinator.IsRegistration(this, item.Generation))
+            if (item.Source != null && !item.Source.IsRegistration(this, item.Generation))
             {
                 return;
             }
@@ -603,13 +603,13 @@ namespace Emas
             }
             catch (Exception exception)
             {
-                if (item.Coordinator == null)
+                if (item.Source == null)
                 {
                     Debug.LogException(exception);
                 }
-                else if (item.Coordinator.IsRegistration(this, item.Generation))
+                else if (item.Source.IsRegistration(this, item.Generation))
                 {
-                    item.Coordinator.HandleFailure(exception);
+                    item.Source.HandleFailure(exception);
                 }
             }
         }
@@ -726,7 +726,7 @@ namespace Emas
             return new HashSet<Record>(_ghosts.Values);
         }
 
-        internal void RollbackCoordinator(Coordinator owner, HashSet<Record> previous)
+        internal void RollbackSource(PresenceSource owner, HashSet<Record> previous)
         {
             var records = _ghosts.OwnedBy(owner);
             for (var index = 0; index < records.Count; index++)
@@ -761,7 +761,7 @@ namespace Emas
             _subscriptions.Forget(record.Key);
         }
 
-        private void DeactivateRecords(List<Record> records, Coordinator owner)
+        private void DeactivateRecords(List<Record> records, PresenceSource owner)
         {
             for (var index = 0; index < records.Count; index++)
             {
@@ -774,14 +774,14 @@ namespace Emas
             }
         }
 
-        private bool CanFinalize(Record record, Coordinator onlyOwner)
+        private bool CanFinalize(Record record, PresenceSource onlyOwner)
         {
             return !_disposed && _ghosts.Contains(record) && record.Ghost != null
                 && record.Owner != null && (onlyOwner == null || record.Owner == onlyOwner)
                 && record.Owner.IsRegistration(this, record.RegistrationGeneration);
         }
 
-        private void FinalizeChanges(Coordinator onlyOwner)
+        private void FinalizeChanges(PresenceSource onlyOwner)
         {
             _finalizing = true;
             try
@@ -864,14 +864,14 @@ namespace Emas
 
         private sealed class DispatchItem
         {
-            public DispatchItem(Coordinator coordinator, long generation, Action action)
+            public DispatchItem(PresenceSource source, long generation, Action action)
             {
-                Coordinator = coordinator;
+                Source = source;
                 Generation = generation;
                 Action = action;
             }
 
-            public readonly Coordinator Coordinator;
+            public readonly PresenceSource Source;
             public readonly long Generation;
             public readonly Action Action;
         }

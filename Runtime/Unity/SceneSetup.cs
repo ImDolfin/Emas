@@ -25,10 +25,10 @@ namespace Emas
         }
 
         /// <summary>Starts sources under this transform using the Inspector settings.</summary>
-        /// <param name="coordinators">Application sources to attach.</param>
+        /// <param name="sources">Application sources to attach.</param>
         /// <returns>The owned anchor, also usable for source replacement.</returns>
         /// <remarks>Call once while enabled. Disabling cleans up; call again after re-enabling to restart.</remarks>
-        public Anchor Track(params Coordinator[] coordinators)
+        public Anchor Track(params PresenceSource[] sources)
         {
             if ((!enabled || !gameObject.activeInHierarchy) || _starting || _anchor != null)
             {
@@ -75,15 +75,15 @@ namespace Emas
                         }
                     });
                 }
-                if (coordinators != null)
+                if (sources != null)
                 {
-                    foreach (var coordinator in coordinators)
+                    foreach (var source in sources)
                     {
                         if (_lifetime != lifetime || (!enabled || !gameObject.activeInHierarchy))
                         {
                             throw new InvalidOperationException("SceneSetup stopped during source startup.");
                         }
-                        created.AddCoordinator(coordinator);
+                        created.AddSource(source);
                     }
                 }
                 if (_lifetime != lifetime || (!enabled || !gameObject.activeInHierarchy))

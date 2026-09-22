@@ -6,13 +6,13 @@ Runtime APIs use the `Emas` namespace. `Realm.Default` is updated automatically 
 
 | API | Contract |
 | --- | --- |
-| `PollingCoordinator<TSource, TGhost>(kind)` | Poll on startup and every update; create/update entities and remove those absent from a successful complete snapshot |
-| `SceneSetup.Track(params coordinators)` | Register Inspector blueprints and start one owned anchor under the component transform |
+| `PollingPresenceSource<TSource, TGhost>(kind)` | Poll on startup and every update; create/update entities and remove those absent from a successful complete snapshot |
+| `SceneSetup.Track(params PresenceSource[] sources)` | Register Inspector blueprints and start one owned anchor under the component transform |
 | `SceneSetup.Anchor` | Current owned anchor, or null when stopped; use it for source replacement |
 
 Configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an anchor.
 
-Polling requires a non-null full snapshot and unique, non-empty IDs. The entire read is validated before mapping; departures run only after all mapping callbacks succeed. Failures use normal coordinator stop/unavailability behavior. SDK clients remain application-owned.
+Polling requires a non-null full snapshot and unique, non-empty IDs. The entire read is validated before mapping; departures run only after all mapping callbacks succeed. Failures use normal source stop/unavailability behavior. SDK clients remain application-owned.
 
 `SceneSetup` must be enabled and its anchor ID unused. Call `Track` once per enabled lifetime. Automatic views apply only to its assigned blueprint kinds. Disable cleans up tracking and subscriptions; re-enable requires another `Track` call. Blueprint registrations remain in the shared realm.
 
@@ -21,17 +21,17 @@ Polling requires a non-null full snapshot and unique, non-empty IDs. The entire 
 | Operation | Contract |
 | --- | --- |
 | `RegisterBlueprint(blueprint)` | Register prefab/view configuration by kind |
-| `CreateAnchorFor(id, params coordinators)` | Create an anchor and start its coordinators; overload accepts a `Transform` frame |
+| `CreateAnchorFor(id, params PresenceSource[] sources)` | Create an anchor and start its sources; overload accepts a `Transform` frame |
 | `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
 | `Query(partialName = null)` | Describe filters over available ghosts |
 | `Query(description)` | Rebind an existing query description to this realm |
-| `RemoveAnchor(id)` | Stop its coordinators and remove all its records, including prepared ghosts |
+| `RemoveAnchor(id)` | Stop its sources and remove all its records, including prepared ghosts |
 | `Update()` | Advance an explicitly managed realm; the default realm advances automatically |
 | `realm.Dispose()` | Release the realm and all owned state |
 
-An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddCoordinator`, `RemoveCoordinator`, `ReplaceCoordinator(current, replacement)` and `Dispose()`. Replacement retains compatible identities; removal destroys the removed coordinator's population. See [lifecycle rules](Architecture.md#failure-and-cleanup).
+An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddSource`, `RemoveSource`, `ReplaceSource(current, replacement)` and `Dispose()`. Replacement retains compatible identities; removal destroys the removed source's population. See [lifecycle rules](Architecture.md#failure-and-cleanup).
 
-## Coordinator and ghost contracts
+## PresenceSource and ghost contracts
 
 | Member | Use |
 | --- | --- |
@@ -43,7 +43,7 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `AddCoordinator`, `RemoveCoordin
 | `IGhost.Key`, `Name`, `Variant`, `IsAvailable` | Read identity, label, appearance and availability |
 | `IGhost.TryGet<T>(out part)` | Resolve a root component contract; excludes view children and rejects ambiguous providers |
 
-Source-specific types and coordinate conversion stay in application coordinators. One coordinator owns each identity; an application coordinator can compose multiple feeds.
+Source-specific types and coordinate conversion stay in application sources. One source owns each identity; an application source can compose multiple feeds.
 
 ## Queries and subscriptions
 

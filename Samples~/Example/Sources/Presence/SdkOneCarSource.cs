@@ -4,22 +4,22 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Publishes the same car ghosts from the second SDK shape.</summary>
+    /// <summary>Publishes car ghosts from the first SDK shape.</summary>
 
-    public sealed class SdkTwoCarCoordinator : Coordinator
+    public sealed class SdkOneCarSource : PresenceSource
     {
-        private readonly SdkTwoVehicleFeed _feed;
+        private readonly SdkOneVehicleFeed _feed;
 
-        /// <summary>Creates a coordinator with the default SDK Two feed.</summary>
-        public SdkTwoCarCoordinator()
-            : this(new SdkTwoVehicleFeed())
+        /// <summary>Creates a source with the default SDK One feed.</summary>
+        public SdkOneCarSource()
+            : this(new SdkOneVehicleFeed())
         {
         }
 
-        /// <summary>Creates a coordinator with a supplied SDK Two feed.</summary>
+        /// <summary>Creates a source with a supplied SDK One feed.</summary>
         /// <param name="feed">The source feed to poll.</param>
         /// <exception cref="ArgumentNullException">Thrown when the feed is null.</exception>
-        public SdkTwoCarCoordinator(SdkTwoVehicleFeed feed)
+        public SdkOneCarSource(SdkOneVehicleFeed feed)
         {
             if (feed == null)
             {
@@ -49,20 +49,20 @@ namespace Emas.Sample
             }
         }
 
-        private void Publish(SdkTwoVehicleProxy proxy)
+        private void Publish(SdkOneVehicleProxy proxy)
         {
             var car = GetOrCreate<CarGhost>(
-                proxy.Id.ToString(),
+                proxy.Identifier,
                 SampleKinds.Car,
-                MapVariant(proxy.ModelCode),
-                "Car " + proxy.Id);
-            car.SetPosition(proxy.Coordinates);
-            car.SetArticulation(proxy.WheelAngle);
+                MapVariant(proxy.TypeCode),
+                "Car " + proxy.Identifier);
+            car.SetPosition(new Vector3(proxy.PositionX, proxy.PositionY, proxy.PositionZ));
+            car.SetArticulation(proxy.Steering);
         }
 
-        private static Variant MapVariant(int modelCode)
+        private static Variant MapVariant(int typeCode)
         {
-            switch (modelCode)
+            switch (typeCode)
             {
                 case 0:
                     return CarVariants.SmallCar;

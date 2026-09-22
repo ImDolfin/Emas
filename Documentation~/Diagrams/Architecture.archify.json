@@ -12,7 +12,7 @@
     "legend": {
       "entries": {
         "backend": {
-          "label": "Coordination / behavior"
+          "label": "Presence / behavior"
         },
         "frontend": {
           "label": "Scene / application"
@@ -31,12 +31,12 @@
         "label": "Discovery",
         "focus": [
           "network",
-          "coordinator",
+          "source",
           "realm",
           "ghost",
           "anchor"
         ],
-        "note": "Coordinators publish via GetOrCreate<TGhost>. Realm creates roots beneath the anchor and activates them after initialization."
+        "note": "Presence sources publish via GetOrCreate<TGhost>. Realm creates roots beneath the anchor and activates them after initialization."
       },
       {
         "id": "query-and-view",
@@ -64,7 +64,7 @@
         "id": "update-phases",
         "label": "Update phases",
         "focus": [
-          "coordinator",
+          "source",
           "realm",
           "ghost",
           "view",
@@ -90,9 +90,9 @@
       ]
     },
     {
-      "id": "coordinator",
+      "id": "source",
       "type": "backend",
-      "label": "Coordinator",
+      "label": "PresenceSource",
       "sublabel": "Application source integration",
       "pos": [
         330,
@@ -177,7 +177,7 @@
       "id": "anchor",
       "type": "frontend",
       "label": "Anchor",
-      "sublabel": "Scene frame + coordinators",
+      "sublabel": "Scene frame + sources",
       "pos": [
         620,
         545
@@ -206,13 +206,13 @@
     {
       "id": "source-data",
       "from": "network",
-      "to": "coordinator",
+      "to": "source",
       "label": "Read data",
       "variant": "emphasis"
     },
     {
       "id": "publish",
-      "from": "coordinator",
+      "from": "source",
       "to": "realm",
       "label": "GetOrCreate<T>",
       "variant": "emphasis"

@@ -18,15 +18,15 @@ The imported scene is under `Assets/Samples/Emas/0.1.0/Quick start/`. The [sampl
 
 ```csharp
 GetComponent<SceneSetup>().Track(
-    new PollingCoordinator<SdkItem, Car>(Car.Kind)
+    new PollingPresenceSource<SdkItem, Car>(Car.Kind)
         .ReadFrom(() => client.ReadAll())
         .IdentifyBy(item => item.Id)
         .Apply((item, ghost) => ghost.SetPosition(item.Position)));
 ```
 
-`SdkItem`, `Car` and `client` are your application types. The selectors supply identity and copy data; optional `.WithVariant(item => ...)` selects an appearance. No custom coordinator class is needed for this polling path.
+`SdkItem`, `Car` and `client` are your application types. The selectors supply identity and copy data; optional `.WithVariant(item => ...)` selects an appearance. No custom source class is needed for this polling path.
 
-**Return a complete snapshot each time.** An empty collection removes the population. Null, duplicate/empty IDs or an exception stop that source and retain its existing ghosts as unavailable. A partial/delta feed must use a custom `Coordinator` instead.
+**Return a complete snapshot each time.** An empty collection removes the population. Null, duplicate/empty IDs or an exception stop that source and retain its existing ghosts as unavailable. A partial/delta feed must use a custom `PresenceSource` instead.
 
 `SceneSetup` registers its blueprints, creates the anchor under its transform and requests views for configured kinds. Disabling it removes its anchor, ghosts, views and subscription. Re-enable and call `Track` again to restart; toggling the sample's whole Tracking object does this through its bootstrap. Blueprint registrations remain shared realm configuration.
 
@@ -36,7 +36,7 @@ GetComponent<SceneSetup>().Track(
 | --- | --- |
 | Data-only tracking | Leave blueprints empty; views and custom interfaces are optional |
 | Consume available entities | `Realm.Default.Query().OfKind(Car.Kind)` |
-| SDK push callbacks or delta updates | Subclass `Coordinator`; marshal worker callbacks through `Dispatch` |
+| SDK push callbacks or delta updates | Subclass `PresenceSource`; marshal worker callbacks through `Dispatch` |
 | Explicit lifetime or update control | Use `Realm` and `CreateAnchorFor` directly |
 | Multiple sources and replacement | Import the **Emas sample** and open its `Scenes/Example.unity` |
 

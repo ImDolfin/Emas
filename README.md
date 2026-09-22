@@ -1,6 +1,6 @@
 # Emas
 
-A Unity 2022.3+ package that tracks source entities as scene-owned ghosts and creates optional views. Applications define their own data contracts, source coordinators, kinds and appearances.
+A Unity 2022.3+ package that tracks source entities as scene-owned ghosts and creates optional views. Applications define their own data contracts, presence sources, kinds and appearances.
 
 ## Try it
 

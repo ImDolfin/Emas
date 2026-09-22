@@ -36,7 +36,7 @@ namespace Emas
             return _records.TryGetValue(record.Key, out current) && ReferenceEquals(current, record);
         }
 
-        internal List<Record> OwnedBy(Coordinator owner)
+        internal List<Record> OwnedBy(PresenceSource owner)
         {
             var result = new List<Record>();
             foreach (var record in _records.Values)
