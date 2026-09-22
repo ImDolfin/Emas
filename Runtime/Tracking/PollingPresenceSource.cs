@@ -80,9 +80,23 @@ namespace Emas
         /// <inheritdoc />
         protected override void OnStart()
         {
-            if (_read == null || _identify == null || _apply == null)
+            var missing = new List<string>();
+            if (_read == null)
             {
-                throw new InvalidOperationException("Configure ReadFrom, IdentifyBy and Apply before tracking a polling source.");
+                missing.Add(nameof(ReadFrom));
+            }
+            if (_identify == null)
+            {
+                missing.Add(nameof(IdentifyBy));
+            }
+            if (_apply == null)
+            {
+                missing.Add(nameof(Apply));
+            }
+            if (missing.Count > 0)
+            {
+                throw new InvalidOperationException("Polling source is missing required steps: "
+                    + string.Join(", ", missing) + ". Configure them before tracking.");
             }
             Poll();
         }

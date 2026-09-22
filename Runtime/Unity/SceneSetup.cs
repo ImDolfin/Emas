@@ -9,8 +9,11 @@ namespace Emas
     [AddComponentMenu("Emas/Scene Setup")]
     public sealed class SceneSetup : MonoBehaviour
     {
+        [Tooltip("Unique among active anchors in Realm.Default. Tracking places ghosts under this object; disabling it removes its anchor and ghosts.")]
         [SerializeField] private string _anchorId = "default";
+        [Tooltip("One blueprint per kind. Leave empty for tracking without automatic views. Registered blueprints remain in Realm.Default after this component stops.")]
         [SerializeField] private Blueprint[] _blueprints = new Blueprint[0];
+        [Tooltip("Create views for available ghosts in this anchor whose kinds have an assigned blueprint. A matching or fallback prefab is required.")]
         [SerializeField] private bool _automaticViews = true;
         private readonly HashSet<Kind> _viewKinds = new HashSet<Kind>();
         private Anchor _anchor;
@@ -45,12 +48,27 @@ namespace Emas
             }
             _viewKinds.Clear();
             var blueprints = _blueprints ?? new Blueprint[0];
-            foreach (var blueprint in blueprints)
+            for (var index = 0; index < blueprints.Length; index++)
             {
-                if (blueprint == null || !blueprint.Kind.IsValid || !_viewKinds.Add(blueprint.Kind))
+                var blueprint = blueprints[index];
+                string error = null;
+                if (blueprint == null)
+                {
+                    error = "SceneSetup blueprint at index " + index + " is null. Assign a blueprint or remove the entry.";
+                }
+                else if (!blueprint.Kind.IsValid)
+                {
+                    error = "SceneSetup blueprint at index " + index + " ('" + blueprint.name + "') requires a non-empty kind ID.";
+                }
+                else if (!_viewKinds.Add(blueprint.Kind))
+                {
+                    error = "SceneSetup blueprint at index " + index + " ('" + blueprint.name
+                        + "') duplicates kind '" + blueprint.Kind.Id + "'. Assign one blueprint per kind.";
+                }
+                if (error != null)
                 {
                     _viewKinds.Clear();
-                    throw new InvalidOperationException("SceneSetup blueprints must be valid and have distinct kinds.");
+                    throw new InvalidOperationException(error);
                 }
             }
 
@@ -63,7 +81,7 @@ namespace Emas
                 {
                     realm.RegisterBlueprint(blueprint);
                 }
-                created = realm.CreateAnchorFor(_anchorId, transform);
+                created = realm.GetOrCreateAnchor(_anchorId, transform);
                 _anchor = created;
                 if (_automaticViews)
                 {

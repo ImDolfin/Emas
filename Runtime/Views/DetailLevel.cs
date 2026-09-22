@@ -22,7 +22,7 @@ namespace Emas
 
         [SerializeField] private int _level;
 
-        /// <summary>Creates a non-negative degree.</summary>
+        /// <summary>Creates a non-negative detail level.</summary>
         /// <param name="level">The detail level.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when the level is negative.</exception>
         public DetailLevel(int level)
@@ -69,55 +69,55 @@ namespace Emas
             return _level.CompareTo(other._level);
         }
 
-        /// <summary>Compares two degrees for equality.</summary>
-        /// <param name="left">The first degree.</param>
-        /// <param name="right">The second degree.</param>
-        /// <returns>True when the degrees are equal.</returns>
+        /// <summary>Compares two detail levels for equality.</summary>
+        /// <param name="left">The first detail level.</param>
+        /// <param name="right">The second detail level.</param>
+        /// <returns>True when the detail levels are equal.</returns>
         public static bool operator ==(DetailLevel left, DetailLevel right)
         {
             return left.Equals(right);
         }
 
-        /// <summary>Compares two degrees for inequality.</summary>
-        /// <param name="left">The first degree.</param>
-        /// <param name="right">The second degree.</param>
-        /// <returns>True when the degrees differ.</returns>
+        /// <summary>Compares two detail levels for inequality.</summary>
+        /// <param name="left">The first detail level.</param>
+        /// <param name="right">The second detail level.</param>
+        /// <returns>True when the detail levels differ.</returns>
         public static bool operator !=(DetailLevel left, DetailLevel right)
         {
             return !left.Equals(right);
         }
 
-        /// <summary>Compares two degrees.</summary>
-        /// <param name="left">The first degree.</param>
-        /// <param name="right">The second degree.</param>
-        /// <returns>True when the first degree is lower.</returns>
+        /// <summary>Compares two detail levels.</summary>
+        /// <param name="left">The first detail level.</param>
+        /// <param name="right">The second detail level.</param>
+        /// <returns>True when the first detail level is lower.</returns>
         public static bool operator <(DetailLevel left, DetailLevel right)
         {
             return left._level < right._level;
         }
 
-        /// <summary>Compares two degrees.</summary>
-        /// <param name="left">The first degree.</param>
-        /// <param name="right">The second degree.</param>
-        /// <returns>True when the first degree is greater.</returns>
+        /// <summary>Compares two detail levels.</summary>
+        /// <param name="left">The first detail level.</param>
+        /// <param name="right">The second detail level.</param>
+        /// <returns>True when the first detail level is greater.</returns>
         public static bool operator >(DetailLevel left, DetailLevel right)
         {
             return left._level > right._level;
         }
 
-        /// <summary>Compares two degrees.</summary>
-        /// <param name="left">The first degree.</param>
-        /// <param name="right">The second degree.</param>
-        /// <returns>True when the first degree is no greater.</returns>
+        /// <summary>Compares two detail levels.</summary>
+        /// <param name="left">The first detail level.</param>
+        /// <param name="right">The second detail level.</param>
+        /// <returns>True when the first detail level is no greater.</returns>
         public static bool operator <=(DetailLevel left, DetailLevel right)
         {
             return left._level <= right._level;
         }
 
-        /// <summary>Compares two degrees.</summary>
-        /// <param name="left">The first degree.</param>
-        /// <param name="right">The second degree.</param>
-        /// <returns>True when the first degree is no lower.</returns>
+        /// <summary>Compares two detail levels.</summary>
+        /// <param name="left">The first detail level.</param>
+        /// <param name="right">The second detail level.</param>
+        /// <returns>True when the first detail level is no lower.</returns>
         public static bool operator >=(DetailLevel left, DetailLevel right)
         {
             return left._level >= right._level;
@@ -137,7 +137,7 @@ namespace Emas
                 case 3:
                     return "Full (3)";
                 default:
-                    return "Degree (" + _level + ")";
+                    return "Detail level (" + _level + ")";
             }
         }
     }

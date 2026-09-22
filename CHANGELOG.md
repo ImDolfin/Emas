@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Clarified detail-level, prefab selection and anchor reuse APIs; added Inspector guidance and specific configuration errors.
+
 - Added the `Realm` entry point and `Anchor.Realm` ownership property.
 
 - Simplified polling construction with named read, identity, data and appearance steps.

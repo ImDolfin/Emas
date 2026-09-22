@@ -15,12 +15,12 @@ namespace Emas.Tests
             Assert.That(DetailLevel.Full.Level, Is.EqualTo(3));
         }
 
-        /// <summary>Runs the CustomDegree_PreservesLevel test.</summary>
+        /// <summary>Runs the CustomDetailLevel_PreservesLevel test.</summary>
         [Test]
-        public void CustomDegree_PreservesLevel()
+        public void CustomDetailLevel_PreservesLevel()
         {
-            var degree = new DetailLevel(7);
-            Assert.That(degree.Level, Is.EqualTo(7));
+            var detailLevel = new DetailLevel(7);
+            Assert.That(detailLevel.Level, Is.EqualTo(7));
         }
 
         /// <summary>Runs the Equality_SameLevel_AreEqual test.</summary>
@@ -111,8 +111,8 @@ namespace Emas.Tests
         [Test]
         public void ToString_CustomShowsLevel()
         {
-            var degree = new DetailLevel(7);
-            Assert.That(degree.ToString(), Does.Contain("7"));
+            var detailLevel = new DetailLevel(7);
+            Assert.That(detailLevel.ToString(), Does.Contain("7"));
         }
     }
 }

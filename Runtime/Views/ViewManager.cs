@@ -25,7 +25,7 @@ namespace Emas
             record.ViewDirty = false;
             try
             {
-                if (!record.ViewRequested || record.RequestedDegree.Level <= 0)
+                if (!record.ViewRequested || record.RequestedDetailLevel.Level <= 0)
                 {
                     Destroy(record);
                     return;
@@ -34,16 +34,16 @@ namespace Emas
                 {
                     return;
                 }
-                var prefab = record.Blueprint.GetView(record.Ghost.Variant, record.RequestedDegree);
+                var prefab = record.Blueprint.ResolveViewPrefab(record.Ghost.Variant, record.RequestedDetailLevel);
                 if (prefab == null)
                 {
                     Destroy(record);
-                    Debug.LogWarning("No Emas view prefab resolves for ghost " + record.Key + " at degree " + record.RequestedDegree + ".");
+                    Debug.LogWarning("No Emas view prefab resolves for ghost " + record.Key + " at detail level " + record.RequestedDetailLevel + ".");
                     return;
                 }
                 if (record.View != null && record.ViewPrefab == prefab)
                 {
-                    record.View.Bind(record.Ghost, record.RequestedDegree);
+                    record.View.Bind(record.Ghost, record.RequestedDetailLevel);
                     if (record.Ghost.gameObject.activeInHierarchy)
                     {
                         _scene.SetActive(record.View.gameObject, true);
@@ -68,7 +68,7 @@ namespace Emas
                     {
                         view = instance.AddComponent<View>();
                     }
-                    view.Bind(record.Ghost, record.RequestedDegree);
+                    view.Bind(record.Ghost, record.RequestedDetailLevel);
                     instance.name = prefab.name;
                     instance.transform.SetParent(record.Ghost.transform, false);
                     if (!CanContinue(record, version))

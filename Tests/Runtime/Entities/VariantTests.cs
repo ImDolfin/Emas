@@ -93,10 +93,10 @@ namespace Emas.Tests
                     new Blueprint.ViewMapping(variant, DetailLevel.Minimal, minimal)
                 }, fallback);
 
-                Assert.That(blueprint.GetView(variant, DetailLevel.Full), Is.SameAs(full));
-                Assert.That(blueprint.GetView(variant, DetailLevel.Reduced), Is.SameAs(minimal));
-                Assert.That(blueprint.GetView(new Variant("cars.large"), DetailLevel.Full), Is.SameAs(fallback));
-                Assert.That(blueprint.GetView(Variant.None, DetailLevel.Full), Is.SameAs(fallback));
+                Assert.That(blueprint.ResolveViewPrefab(variant, DetailLevel.Full), Is.SameAs(full));
+                Assert.That(blueprint.ResolveViewPrefab(variant, DetailLevel.Reduced), Is.SameAs(minimal));
+                Assert.That(blueprint.ResolveViewPrefab(new Variant("cars.large"), DetailLevel.Full), Is.SameAs(fallback));
+                Assert.That(blueprint.ResolveViewPrefab(Variant.None, DetailLevel.Full), Is.SameAs(fallback));
             }
             finally
             {

@@ -31,7 +31,7 @@ namespace Emas.Sample
             RegisterAircraftBlueprint();
 
             _firstCarSource = new SdkOneCarSource();
-            _anchor = Realm.Default.CreateAnchorFor(
+            _anchor = Realm.Default.GetOrCreateAnchor(
                 AnchorId,
                 _firstCarSource,
                 new SimulatedAircraftSource());
@@ -241,9 +241,9 @@ namespace Emas.Sample
                 ghostTemplate.GetComponent<CarGhost>(),
                 new[]
                 {
-                    new Blueprint.ViewMapping(variant: CarVariants.SmallCar, degree: DetailLevel.Full, prefab: smallCar),
-                    new Blueprint.ViewMapping(variant: CarVariants.LargeCar, degree: DetailLevel.Full, prefab: largeCar),
-                    new Blueprint.ViewMapping(variant: CarVariants.Truck, degree: DetailLevel.Full, prefab: truck)
+                    new Blueprint.ViewMapping(variant: CarVariants.SmallCar, detailLevel: DetailLevel.Full, prefab: smallCar),
+                    new Blueprint.ViewMapping(variant: CarVariants.LargeCar, detailLevel: DetailLevel.Full, prefab: largeCar),
+                    new Blueprint.ViewMapping(variant: CarVariants.Truck, detailLevel: DetailLevel.Full, prefab: truck)
                 },
                 unknown);
             _runtimeBlueprints.Add(blueprint);
@@ -269,7 +269,7 @@ namespace Emas.Sample
                 {
                     new Blueprint.ViewMapping(
                         variant: AircraftVariants.Trainer,
-                        degree: DetailLevel.Full,
+                        detailLevel: DetailLevel.Full,
                         prefab: view)
                 },
                 view);

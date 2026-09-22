@@ -31,7 +31,7 @@ namespace Emas.Tests
         {
             var realm = Realm.Default;
             var source = new CountingSource();
-            var anchor = realm.CreateAnchorFor("tests.default", source);
+            var anchor = realm.GetOrCreateAnchor("tests.default", source);
             try
             {
                 yield return null;

@@ -242,7 +242,7 @@
       "id": "select",
       "from": "blueprint",
       "to": "view",
-      "label": "Variant + degree",
+      "label": "Variant + detail level",
       "labelDy": 90
     },
     {

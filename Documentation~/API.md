@@ -21,7 +21,7 @@ Polling requires a non-null full snapshot and unique, non-empty IDs. The entire 
 | Operation | Contract |
 | --- | --- |
 | `RegisterBlueprint(blueprint)` | Register prefab/view configuration by kind |
-| `CreateAnchorFor(id, params PresenceSource[] sources)` | Create an anchor and start its sources; overload accepts a `Transform` frame |
+| `GetOrCreateAnchor(id, params PresenceSource[] sources)` | Create or reuse an anchor and attach/start supplied sources; overload accepts a `Transform` frame, which must match when reusing |
 | `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
 | `Query(partialName = null)` | Describe filters over available ghosts |
 | `Query(description)` | Rebind an existing query description to this realm |
@@ -82,14 +82,16 @@ Declare named constants in application classes for autocomplete. Kinds and varia
 
 | Operation | Effect |
 | --- | --- |
-| `Manifest(ghost)` | Request Full for a new request; preserve an existing requested degree |
-| `Manifest(ghost, degree)` | Request the selected degree; return the current view or null |
-| `SetDegree(ghost, degree)` | Update degree; does not create a request for a never-requested ghost |
-| `Demanifest(ghost)` or degree None | Remove the view and request, preserving the ghost |
+| `Manifest(ghost)` | Request Full for a new request; preserve an existing requested detail level |
+| `Manifest(ghost, detailLevel)` | Request the selected detail level; return the current view or null |
+| `SetDetailLevel(ghost, detailLevel)` | Update detail level; does not create a request for a never-requested ghost |
+| `Demanifest(ghost)` or detail level None | Remove the view and request, preserving the ghost |
 
-A blueprint supplies a kind, optional ghost prefab, view mappings and optional fallback. Configure through the Inspector or `Configure(kind, ghostPrefab, mappings, fallback)`. A mapping is `ViewMapping(variant, degree, prefab)`; duplicate variant/degree pairs, non-positive mapping degrees and null view prefabs are rejected.
+A blueprint supplies a kind, optional ghost prefab, view mappings and optional fallback. `ResolveViewPrefab(variant, detailLevel)` selects a prefab; `FallbackViewPrefab` exposes the configured fallback asset. Configure through the Inspector or `Configure(kind, ghostPrefab, views, fallbackViewPrefab)`. A mapping is `ViewMapping(variant, detailLevel, prefab)`; duplicate variant/detail level pairs, non-positive mapping detail levels and null view prefabs are rejected.
 
-Selection: **exact variant/degree > highest lower positive degree for that variant > fallback > no view**. Missing selection removes an obsolete view and reports a diagnostic. Selecting the same prefab rebinds it; another prefab replaces only the child. Without a ghost prefab, Emas creates a root with the requested ghost component.
+Selection: **exact variant/detail level > highest lower positive detail level for that variant > fallback > no view**. Missing selection removes an obsolete view and reports a diagnostic. Selecting the same prefab rebinds it; another prefab replaces only the child. Without a ghost prefab, Emas creates a root with the requested ghost component.
+
+`View.RequestedDetailLevel` records the requested level, even when a lower-detail prefab is selected. `ViewMapping.DetailLevel` describes the level supported by that mapping.
 
 Views require an available ghost and a positive request. View binding finishes before activation. Requests made during source changes/finalization defer refresh, so `Manifest` may return the previous view or null until that phase completes. Requests outside those phases refresh immediately.
 

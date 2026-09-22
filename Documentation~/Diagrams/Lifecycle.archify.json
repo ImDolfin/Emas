@@ -104,7 +104,7 @@
       "id": "demanifest",
       "from": "visible",
       "to": "available",
-      "label": "Demanifest / degree 0",
+      "label": "Demanifest / detail level 0",
       "route": "top-channel"
     },
     {

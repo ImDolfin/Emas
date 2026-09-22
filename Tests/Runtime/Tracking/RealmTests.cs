@@ -27,7 +27,7 @@ namespace Emas.Tests
         {
             var first = new TestSource(new Kind("vehicles.car"));
             var second = new TestSource(new Kind("vehicles.aircraft"));
-            _realm.CreateAnchorFor("simulation", first, second);
+            _realm.GetOrCreateAnchor("simulation", first, second);
 
             first.Publish("42", new Variant("car"));
             second.Publish("42", new Variant("aircraft"));
@@ -43,13 +43,13 @@ namespace Emas.Tests
         public void Prepare_IsUnavailableUntilSourceUsesIt()
         {
             var kind = new Kind("vehicles.car");
-            _realm.CreateAnchorFor("simulation");
+            _realm.GetOrCreateAnchor("simulation");
             var prepared = _realm.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
             Assert.That(prepared.IsAvailable, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
 
             var source = new TestSource(kind);
-            _realm.CreateAnchorFor("simulation", source);
+            _realm.GetOrCreateAnchor("simulation", source);
             var initialized = source.Publish("42", new Variant("car"));
             _realm.Update();
 
@@ -64,7 +64,7 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var source = new TestSource(kind);
-            _realm.CreateAnchorFor("simulation", source);
+            _realm.GetOrCreateAnchor("simulation", source);
             source.Publish("1", new Variant("one"));
             _realm.Update();
 
@@ -87,7 +87,7 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var source = new TestSource(kind);
-            _realm.CreateAnchorFor("simulation", source);
+            _realm.GetOrCreateAnchor("simulation", source);
             source.Publish("1", new Variant("Small Car"));
             _realm.Update();
 
@@ -144,12 +144,12 @@ namespace Emas.Tests
             var secondRealm = new Realm();
             try
             {
-                _realm.CreateAnchorFor("simulation", firstSource);
+                _realm.GetOrCreateAnchor("simulation", firstSource);
                 var firstGhost = firstSource.Publish("42", new Variant("small-car"));
                 _realm.Update();
 
                 var secondSource = new TestSource(kind);
-                secondRealm.CreateAnchorFor("simulation", secondSource);
+                secondRealm.GetOrCreateAnchor("simulation", secondSource);
                 secondSource.Publish("42", new Variant("small-car"));
                 secondRealm.Update();
 
@@ -168,7 +168,7 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var source = new TestSource(kind);
-            _realm.CreateAnchorFor("simulation", source);
+            _realm.GetOrCreateAnchor("simulation", source);
             source.PublishNamed("42", "Car 42", new Variant("small-car"));
             _realm.Update();
 
@@ -182,7 +182,7 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var first = new TestSource(kind);
-            var anchor = _realm.CreateAnchorFor("simulation", first);
+            var anchor = _realm.GetOrCreateAnchor("simulation", first);
             first.Publish("42", new Variant("small-car"));
             _realm.Update();
 
@@ -202,12 +202,12 @@ namespace Emas.Tests
         public void RemovingAnchor_RemovesPreparedIdentity()
         {
             var kind = new Kind("vehicles.car");
-            _realm.CreateAnchorFor("simulation");
+            _realm.GetOrCreateAnchor("simulation");
             var prepared = _realm.Prepare<TestGhost>("simulation", kind, "42");
             _realm.RemoveAnchor("simulation");
 
             var source = new TestSource(kind);
-            _realm.CreateAnchorFor("simulation", source);
+            _realm.GetOrCreateAnchor("simulation", source);
             var discovered = source.Publish("42", Variant.None);
             _realm.Update();
 
@@ -221,7 +221,7 @@ namespace Emas.Tests
         {
             var kind = new Kind("vehicles.car");
             var source = new TestSource(kind);
-            _realm.CreateAnchorFor("simulation", source);
+            _realm.GetOrCreateAnchor("simulation", source);
             source.PublishNamed("42", "Car 42", new Variant("small-car"));
             source.PublishNamed("42", "Car 42 updated", null);
             _realm.Update();
@@ -254,15 +254,15 @@ namespace Emas.Tests
                 _realm.RegisterBlueprint(blueprint);
 
                 var source = new TestSource(kind);
-                _realm.CreateAnchorFor("simulation", source);
+                _realm.GetOrCreateAnchor("simulation", source);
                 var ghost = source.Publish("42", new Variant("small-car"));
                 _realm.Update();
 
                 var view = _realm.Manifest(ghost);
                 Assert.That(view, Is.Not.Null);
-                _realm.SetDegree(ghost, DetailLevel.Minimal);
+                _realm.SetDetailLevel(ghost, DetailLevel.Minimal);
                 Assert.That(_realm.Manifest(ghost), Is.SameAs(view));
-                Assert.That(view.Degree, Is.EqualTo(DetailLevel.Minimal));
+                Assert.That(view.RequestedDetailLevel, Is.EqualTo(DetailLevel.Minimal));
 
                 _realm.Manifest(ghost, DetailLevel.None);
                 Assert.That(_realm.Query().OfKind(kind).Count, Is.EqualTo(1));
@@ -273,6 +273,40 @@ namespace Emas.Tests
                 UnityEngine.Object.DestroyImmediate(blueprint);
                 UnityEngine.Object.DestroyImmediate(ghostTemplate);
                 UnityEngine.Object.DestroyImmediate(viewPrefab);
+            }
+        }
+
+        /// <summary>A lower-detail prefab keeps the caller's requested level on its instantiated view.</summary>
+        [Test]
+        public void View_ReportsRequestedDetailLevelWhenUsingLowerDetailPrefab()
+        {
+            var kind = new Kind("vehicles.car");
+            var prefab = new GameObject("Minimal view");
+            prefab.SetActive(false);
+            var blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            try
+            {
+                blueprint.Configure(kind, null, new[]
+                {
+                    new Blueprint.ViewMapping(Variant.None, DetailLevel.Minimal, prefab)
+                }, null);
+                _realm.RegisterBlueprint(blueprint);
+                var source = new TestSource(kind);
+                _realm.GetOrCreateAnchor("simulation", source);
+                var ghost = source.Publish("42", Variant.None);
+                _realm.Update();
+                var view = _realm.Manifest(ghost, DetailLevel.Full);
+                Assert.That(view, Is.Not.Null);
+                Assert.That(view.gameObject.name, Is.EqualTo("Minimal view"));
+                Assert.That(view.RequestedDetailLevel, Is.EqualTo(DetailLevel.Full));
+                _realm.SetDetailLevel(ghost, DetailLevel.Reduced);
+                Assert.That(_realm.Manifest(ghost), Is.SameAs(view));
+                Assert.That(view.RequestedDetailLevel, Is.EqualTo(DetailLevel.Reduced));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(prefab);
             }
         }
 
@@ -303,7 +337,7 @@ namespace Emas.Tests
                 _realm.RegisterBlueprint(blueprint);
 
                 var source = new TestSource(kind);
-                _realm.CreateAnchorFor("simulation", source);
+                _realm.GetOrCreateAnchor("simulation", source);
                 var ghost = source.Publish("42", new Variant("small-car"));
                 _realm.Update();
                 _realm.Manifest(ghost);
@@ -327,7 +361,7 @@ namespace Emas.Tests
         public void Dispatch_FromStoppedRegistrationIsDiscarded()
         {
             var source = new DispatchSource();
-            var anchor = _realm.CreateAnchorFor("simulation", source);
+            var anchor = _realm.GetOrCreateAnchor("simulation", source);
             var calls = 0;
             source.QueueAction(() => calls++);
             anchor.ReplaceSource(source, new TestSource(new Kind("vehicles.car")));

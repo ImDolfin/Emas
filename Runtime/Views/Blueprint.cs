@@ -9,10 +9,14 @@ namespace Emas
 
     public sealed class Blueprint : ScriptableObject
     {
+        [Tooltip("Entity kind this blueprint configures. Each SceneSetup can assign one blueprint per kind.")]
         [SerializeField] private string _kindId;
+        [Tooltip("Optional root prefab. Leave empty to create a root with the requested Ghost component.")]
         [SerializeField] private Ghost _ghostPrefab;
+        [Tooltip("View prefabs by variant and detail level. Selection uses an exact match, then the highest lower positive level, then the fallback prefab.")]
         [SerializeField] private List<ViewMapping> _views = new List<ViewMapping>();
-        [SerializeField] private GameObject _fallbackView;
+        [Tooltip("Optional prefab used when no mapping matches the variant and requested detail level. Leave empty to create no view in that case.")]
+        [SerializeField] private GameObject _fallbackViewPrefab;
 
         /// <summary>Gets the configured ghost kind.</summary>
         /// <value>The kind selected by this blueprint.</value>
@@ -30,18 +34,18 @@ namespace Emas
 
         /// <summary>Gets the fallback view prefab.</summary>
         /// <value>The fallback prefab, or null when no view is available.</value>
-        public GameObject FallbackView
+        public GameObject FallbackViewPrefab
         {
-            get { return _fallbackView; }
+            get { return _fallbackViewPrefab; }
         }
 
         /// <summary>Configures the blueprint for code-driven tests or authoring tools.</summary>
         /// <param name="kind">The ghost kind.</param>
         /// <param name="ghostPrefab">The ghost prefab.</param>
-        /// <param name="views">The variant and degree mappings.</param>
-        /// <param name="fallbackView">The optional fallback prefab.</param>
+        /// <param name="views">The variant and detail level mappings.</param>
+        /// <param name="fallbackViewPrefab">The optional fallback prefab.</param>
         /// <exception cref="ArgumentException">Thrown when the kind or view mappings are invalid.</exception>
-        public void Configure(Kind kind, Ghost ghostPrefab, IEnumerable<ViewMapping> views, GameObject fallbackView)
+        public void Configure(Kind kind, Ghost ghostPrefab, IEnumerable<ViewMapping> views, GameObject fallbackViewPrefab)
         {
             if (!kind.IsValid)
             {
@@ -49,31 +53,20 @@ namespace Emas
             }
 
             var copiedViews = views == null ? new List<ViewMapping>() : new List<ViewMapping>(views);
-            var keys = new HashSet<string>(StringComparer.Ordinal);
+            var indices = new Dictionary<string, int>(StringComparer.Ordinal);
             for (var index = 0; index < copiedViews.Count; index++)
             {
-                var mapping = copiedViews[index];
-                if (mapping.Prefab == null)
+                var error = GetMappingError(copiedViews[index], index, indices);
+                if (error != null)
                 {
-                    throw new ArgumentException("A view mapping requires a prefab.", nameof(views));
-                }
-
-                if (mapping.Degree.Level <= 0)
-                {
-                    throw new ArgumentException("A view mapping requires a positive degree.", nameof(views));
-                }
-
-                var key = mapping.Variant.Id + "\u001f" + mapping.Degree.Level;
-                if (!keys.Add(key))
-                {
-                    throw new ArgumentException("A blueprint cannot contain duplicate variant and degree mappings.", nameof(views));
+                    throw new ArgumentException(error, nameof(views));
                 }
             }
 
             _kindId = kind.Id;
             _ghostPrefab = ghostPrefab;
             _views = copiedViews;
-            _fallbackView = fallbackView;
+            _fallbackViewPrefab = fallbackViewPrefab;
         }
 
         private void OnValidate()
@@ -91,42 +84,58 @@ namespace Emas
                 _views = new List<ViewMapping>();
             }
 
-            var keys = new HashSet<string>(StringComparer.Ordinal);
+            var indices = new Dictionary<string, int>(StringComparer.Ordinal);
             for (var index = 0; index < _views.Count; index++)
             {
-                var mapping = _views[index];
-                if (mapping.Prefab == null || mapping.Degree.Level <= 0)
+                var error = GetMappingError(_views[index], index, indices);
+                if (error != null)
                 {
-                    Debug.LogError("Emas blueprint contains an invalid view mapping at index " + index + ".", this);
-                    continue;
-                }
-
-                if (!keys.Add(mapping.Variant.Id + "\u001f" + mapping.Degree.Level))
-                {
-                    Debug.LogError("Emas blueprint contains duplicate variant and degree mappings.", this);
+                    Debug.LogError(error, this);
                 }
             }
         }
 
+        private static string GetMappingError(ViewMapping mapping, int index, Dictionary<string, int> indices)
+        {
+            var entry = "View mapping at index " + index + " (variant '" + mapping.Variant
+                + "', detail level " + mapping.DetailLevel.Level + ")";
+            if (mapping.Prefab == null)
+            {
+                return entry + " requires a non-null prefab.";
+            }
+            if (mapping.DetailLevel.Level <= 0)
+            {
+                return entry + " requires a positive detail level.";
+            }
+            var key = mapping.Variant.Id + "\u001f" + mapping.DetailLevel.Level;
+            int previousIndex;
+            if (indices.TryGetValue(key, out previousIndex))
+            {
+                return entry + " duplicates index " + previousIndex + ". Use a unique variant and detail level pair.";
+            }
+            indices.Add(key, index);
+            return null;
+        }
+
         /// <summary>Returns the best matching view prefab.</summary>
         /// <param name="variant">The requested variant.</param>
-        /// <param name="degree">The requested degree.</param>
+        /// <param name="detailLevel">The requested detail level.</param>
         /// <returns>The selected prefab, or the fallback, or null.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the degree is negative.</exception>
-        public GameObject GetView(Variant variant, DetailLevel degree)
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the detail level is negative.</exception>
+        public GameObject ResolveViewPrefab(Variant variant, DetailLevel detailLevel)
         {
-            if (degree.Level < 0)
+            if (detailLevel.Level < 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(degree), "A detail level cannot be negative.");
+                throw new ArgumentOutOfRangeException(nameof(detailLevel), "A detail level cannot be negative.");
             }
 
             if (_views == null)
             {
-                return _fallbackView;
+                return _fallbackViewPrefab;
             }
 
             GameObject best = null;
-            var bestDegree = DetailLevel.None;
+            var bestDetailLevel = DetailLevel.None;
             for (var index = 0; index < _views.Count; index++)
             {
                 var mapping = _views[index];
@@ -135,27 +144,30 @@ namespace Emas
                     continue;
                 }
 
-                if (mapping.Degree == degree && mapping.Degree.Level > 0)
+                if (mapping.DetailLevel == detailLevel && mapping.DetailLevel.Level > 0)
                 {
                     return mapping.Prefab;
                 }
 
-                if (mapping.Degree.Level > 0 && mapping.Degree > bestDegree && mapping.Degree <= degree)
+                if (mapping.DetailLevel.Level > 0 && mapping.DetailLevel > bestDetailLevel && mapping.DetailLevel <= detailLevel)
                 {
                     best = mapping.Prefab;
-                    bestDegree = mapping.Degree;
+                    bestDetailLevel = mapping.DetailLevel;
                 }
             }
 
-            return best ?? _fallbackView;
+            return best ?? _fallbackViewPrefab;
         }
 
-        /// <summary>Maps a variant and degree to a view prefab.</summary>
+        /// <summary>Maps a variant and detail level to a view prefab.</summary>
         [Serializable]
         public struct ViewMapping
         {
+            [Tooltip("Appearance identifier matched exactly. Use None for ghosts without a variant.")]
             [SerializeField] private Variant _variant;
-            [SerializeField] private DetailLevel _degree;
+            [Tooltip("Positive detail level supported by this prefab. Higher requests can reuse it when no closer mapping exists.")]
+            [SerializeField] private DetailLevel _detailLevel;
+            [Tooltip("Visual child prefab instantiated beneath the ghost root.")]
             [SerializeField] private GameObject _prefab;
 
             /// <summary>Gets the appearance identifier.</summary>
@@ -168,13 +180,13 @@ namespace Emas
                 }
             }
 
-            /// <summary>Gets the supported degree.</summary>
+            /// <summary>Gets the supported detail level.</summary>
             /// <value>The detail level selected by this entry.</value>
-            public DetailLevel Degree
+            public DetailLevel DetailLevel
             {
                 get
                 {
-                    return _degree;
+                    return _detailLevel;
                 }
             }
 
@@ -190,12 +202,12 @@ namespace Emas
 
             /// <summary>Creates a mapping.</summary>
             /// <param name="variant">The variant identifier.</param>
-            /// <param name="degree">The detail level at which this prefab is selected.</param>
+            /// <param name="detailLevel">The detail level at which this prefab is selected.</param>
             /// <param name="prefab">The view prefab.</param>
-            public ViewMapping(Variant variant, DetailLevel degree, GameObject prefab)
+            public ViewMapping(Variant variant, DetailLevel detailLevel, GameObject prefab)
             {
                 _variant = variant;
-                _degree = degree;
+                _detailLevel = detailLevel;
                 _prefab = prefab;
             }
         }

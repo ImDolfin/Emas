@@ -37,7 +37,7 @@ GetComponent<SceneSetup>().Track(
 | Data-only tracking | Leave blueprints empty; views and custom interfaces are optional |
 | Consume available entities | `Realm.Default.Query().OfKind(Car.Kind)` |
 | SDK push callbacks or delta updates | Subclass `PresenceSource`; marshal worker callbacks through `Dispatch` |
-| Explicit lifetime or update control | Use `Realm` and `CreateAnchorFor` directly |
+| Explicit lifetime or update control | Use `Realm` and `GetOrCreateAnchor` directly |
 | Multiple sources and replacement | Import the **Emas sample** and open its `Scenes/Example.unity` |
 
 Unity advances the default realm automatically. Do not also call `Update()` every frame. See [API](API.md) for contracts and [architecture](Architecture.md) for update order and cleanup.

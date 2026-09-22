@@ -10,7 +10,7 @@ namespace Emas
             Ghost = ghost;
             Owner = owner;
             Blueprint = blueprint;
-            RequestedDegree = DetailLevel.Full;
+            RequestedDetailLevel = DetailLevel.Full;
             RegistrationGeneration = owner == null ? 0 : owner.RegistrationGeneration;
         }
 
@@ -27,6 +27,6 @@ namespace Emas
         internal long ViewVersion;
         internal long OwnershipVersion;
         internal long RegistrationGeneration;
-        internal DetailLevel RequestedDegree;
+        internal DetailLevel RequestedDetailLevel;
     }
 }

@@ -72,19 +72,19 @@ namespace Emas
 
         /// <summary>Creates or returns an anchor at the root scene frame.</summary>
         /// <param name="id">The anchor identifier.</param>
-        /// <param name="sources">The sources to attach.</param>
+        /// <param name="sources">The sources to attach and start, including on an existing anchor.</param>
         /// <returns>The existing or new anchor.</returns>
-        public Anchor CreateAnchorFor(string id, params PresenceSource[] sources)
+        public Anchor GetOrCreateAnchor(string id, params PresenceSource[] sources)
         {
-            return CreateAnchorFor(id, null, sources);
+            return GetOrCreateAnchor(id, null, sources);
         }
 
         /// <summary>Creates or returns an anchor under a scene frame.</summary>
         /// <param name="id">The anchor identifier.</param>
         /// <param name="frame">The optional parent transform.</param>
-        /// <param name="sources">The sources to attach.</param>
+        /// <param name="sources">The sources to attach and start, including on an existing anchor.</param>
         /// <returns>The existing or new anchor.</returns>
-        public Anchor CreateAnchorFor(string id, Transform frame, params PresenceSource[] sources)
+        public Anchor GetOrCreateAnchor(string id, Transform frame, params PresenceSource[] sources)
         {
             ThrowIfDisposed();
             if (string.IsNullOrEmpty(id))
@@ -178,7 +178,7 @@ namespace Emas
             return GetOrCreate<TGhost>(null, anchorId, entityId, kind, variant, null);
         }
 
-        /// <summary>Requests a full-degree view when no view request exists, or refreshes the existing request.</summary>
+        /// <summary>Requests a view at Full detail when no view request exists, or refreshes the existing request.</summary>
         /// <param name="ghost">The ghost.</param>
         /// <returns>The view component, or null when no prefab resolves.</returns>
         public View Manifest(IGhost ghost)
@@ -194,16 +194,16 @@ namespace Emas
             return Manifest(ghost, DetailLevel.Full);
         }
 
-        /// <summary>Requests a view at a specific degree.</summary>
+        /// <summary>Requests a view at a specific detail level.</summary>
         /// <remarks>Requests made during source mutation or finalization are refreshed after source data is complete.</remarks>
         /// <param name="ghost">The ghost.</param>
-        /// <param name="degree">The desired degree.</param>
+        /// <param name="detailLevel">The desired detail level.</param>
         /// <returns>The view component, or null when no prefab resolves.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the degree is negative.</exception>
-        public View Manifest(IGhost ghost, DetailLevel degree)
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the detail level is negative.</exception>
+        public View Manifest(IGhost ghost, DetailLevel detailLevel)
         {
             ThrowIfDisposed();
-            ValidateDegree(degree);
+            ValidateDetailLevel(detailLevel);
             var record = FindRecord(ghost);
             if (record == null)
             {
@@ -212,8 +212,8 @@ namespace Emas
 
             record.ViewVersion++;
             record.ViewDirty = true;
-            record.RequestedDegree = degree;
-            record.ViewRequested = degree.Level > 0;
+            record.RequestedDetailLevel = detailLevel;
+            record.ViewRequested = detailLevel.Level > 0;
             if (!record.ViewRequested)
             {
                 _views.Destroy(record);
@@ -238,18 +238,18 @@ namespace Emas
             record.ViewVersion++;
             record.ViewDirty = false;
             record.ViewRequested = false;
-            record.RequestedDegree = DetailLevel.None;
+            record.RequestedDetailLevel = DetailLevel.None;
             _views.Destroy(record);
         }
 
-        /// <summary>Changes the requested view degree.</summary>
+        /// <summary>Changes the requested view detail level.</summary>
         /// <param name="ghost">The ghost whose view should change.</param>
-        /// <param name="degree">The desired degree.</param>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when the degree is negative.</exception>
-        public void SetDegree(IGhost ghost, DetailLevel degree)
+        /// <param name="detailLevel">The desired detail level.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the detail level is negative.</exception>
+        public void SetDetailLevel(IGhost ghost, DetailLevel detailLevel)
         {
             ThrowIfDisposed();
-            ValidateDegree(degree);
+            ValidateDetailLevel(detailLevel);
             var record = FindRecord(ghost);
             if (record == null)
             {
@@ -258,8 +258,8 @@ namespace Emas
 
             record.ViewVersion++;
             record.ViewDirty = true;
-            record.RequestedDegree = degree;
-            if (degree.Level <= 0)
+            record.RequestedDetailLevel = detailLevel;
+            if (detailLevel.Level <= 0)
             {
                 if (record.ViewRequested)
                 {
@@ -854,11 +854,11 @@ namespace Emas
             }
         }
 
-        private static void ValidateDegree(DetailLevel degree)
+        private static void ValidateDetailLevel(DetailLevel detailLevel)
         {
-            if (degree.Level < 0)
+            if (detailLevel.Level < 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(degree), "A detail level cannot be negative.");
+                throw new ArgumentOutOfRangeException(nameof(detailLevel), "A detail level cannot be negative.");
             }
         }
 

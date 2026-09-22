@@ -56,25 +56,26 @@ namespace Emas.Tests
         [TestCase("ReadFrom")]
         [TestCase("IdentifyBy")]
         [TestCase("Apply")]
+        [TestCase("ReadFrom, IdentifyBy, Apply")]
         public void Polling_RequiresCompleteConfiguration(string missing)
         {
             var reads = 0;
             var source = new PollingPresenceSource<string, Probe>(Population);
-            if (missing != "ReadFrom")
+            if (!missing.Contains("ReadFrom"))
             {
                 source.ReadFrom(() => { reads++; return new[] { "a" }; });
             }
-            if (missing != "IdentifyBy")
+            if (!missing.Contains("IdentifyBy"))
             {
                 source.IdentifyBy(id => id);
             }
-            if (missing != "Apply")
+            if (!missing.Contains("Apply"))
             {
                 source.Apply((item, ghost) => { });
             }
             var setup = CreateSetup();
             var error = Assert.Throws<InvalidOperationException>(() => setup.Track(source));
-            Assert.That(error.Message, Does.Contain(missing));
+            Assert.That(error.Message, Is.EqualTo("Polling source is missing required steps: " + missing + ". Configure them before tracking."));
             Assert.That(reads, Is.Zero);
             Assert.That(setup.Anchor, Is.Null);
             Assert.That(_realm.ContainsAnchor("default"), Is.False);
@@ -90,7 +91,7 @@ namespace Emas.Tests
         {
             var broken = false;
             var source = Source(() => broken ? null : new[] { "a" });
-            var anchor = _realm.CreateAnchorFor("poll", source);
+            var anchor = _realm.GetOrCreateAnchor("poll", source);
             if (fail)
             {
                 broken = true;
@@ -117,7 +118,7 @@ namespace Emas.Tests
         {
             var ids = new List<string> { "a", "b" };
             var value = 1;
-            _realm.CreateAnchorFor("poll", new PollingPresenceSource<string, Probe>(Population)
+            _realm.GetOrCreateAnchor("poll", new PollingPresenceSource<string, Probe>(Population)
                 .ReadFrom(() => ids)
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) => ghost.Value = value));
@@ -141,7 +142,7 @@ namespace Emas.Tests
         public void Polling_MapsVariants()
         {
             var variant = new Variant("first");
-            _realm.CreateAnchorFor("poll", new PollingPresenceSource<string, Probe>(Population)
+            _realm.GetOrCreateAnchor("poll", new PollingPresenceSource<string, Probe>(Population)
                 .ReadFrom(() => new[] { "a" })
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) => { })
@@ -157,7 +158,7 @@ namespace Emas.Tests
         public void Polling_ReplacementRemovesAbsentTransferredGhosts()
         {
             var first = Source(() => new[] { "a", "b" });
-            var anchor = _realm.CreateAnchorFor("poll", first);
+            var anchor = _realm.GetOrCreateAnchor("poll", first);
             var retained = _realm.Query("a").Single();
             var removed = _realm.Query("b").Single();
             anchor.ReplaceSource(first, Source(() => new[] { "a" }));
@@ -177,7 +178,7 @@ namespace Emas.Tests
                 failure == "null" ? null : failure == "duplicate" ? new[] { "a", "a" } :
                 failure == "empty-id" ? new[] { "" } : BrokenSnapshot();
             var source = Source(read);
-            var anchor = _realm.CreateAnchorFor("poll", source);
+            var anchor = _realm.GetOrCreateAnchor("poll", source);
             var retained = _realm.Query("a").Single();
             fail = true;
             LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException"));
@@ -203,7 +204,7 @@ namespace Emas.Tests
                         throw new InvalidOperationException("mapper failed");
                     }
                 });
-            _realm.CreateAnchorFor("poll", source);
+            _realm.GetOrCreateAnchor("poll", source);
             fail = true;
             LogAssert.Expect(LogType.Exception, new Regex("mapper failed"));
             _realm.Update();
@@ -226,7 +227,7 @@ namespace Emas.Tests
                         _realm.RemoveAnchor("poll");
                     }
                 });
-            _realm.CreateAnchorFor("poll", source);
+            _realm.GetOrCreateAnchor("poll", source);
             remove = true;
             _realm.Update();
             Assert.That(_realm.Query().Count, Is.Zero);
@@ -252,7 +253,7 @@ namespace Emas.Tests
         [Test]
         public void Setup_RejectsDuplicateOwnershipAndRepeatedStart()
         {
-            var existing = _realm.CreateAnchorFor("default", Source(() => new[] { "a" }));
+            var existing = _realm.GetOrCreateAnchor("default", Source(() => new[] { "a" }));
             var setup = CreateSetup();
             Assert.Throws<InvalidOperationException>(() => setup.Track());
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
@@ -282,14 +283,51 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Count, Is.Zero);
         }
 
-        /// <summary>Bad configuration does not create an anchor.</summary>
-        [Test]
-        public void Setup_ValidatesBlueprintsBeforeStarting()
+        /// <summary>Configuration errors identify the offending entry and leave setup ready to retry.</summary>
+        [TestCase("null", "is null")]
+        [TestCase("kind", "requires a non-empty kind ID")]
+        [TestCase("duplicate", "duplicates kind 'tests.polling'")]
+        public void Setup_ValidatesBlueprintsBeforeStarting(string failure, string expectedReason)
         {
             var setup = CreateSetup();
-            SetField(setup, "_blueprints", new Blueprint[] { null });
-            Assert.Throws<InvalidOperationException>(() => setup.Track());
+            var first = ScriptableObject.CreateInstance<Blueprint>();
+            _objects.Add(first);
+            first.Configure(Population, null, null, null);
+            Blueprint invalid = null;
+            if (failure != "null")
+            {
+                invalid = ScriptableObject.CreateInstance<Blueprint>();
+                invalid.name = "Invalid blueprint";
+                _objects.Add(invalid);
+                if (failure == "duplicate")
+                {
+                    invalid.Configure(Population, null, null, null);
+                }
+            }
+            SetField(setup, "_blueprints", new[] { first, invalid });
+            var error = Assert.Throws<InvalidOperationException>(() => setup.Track());
+            Assert.That(error.Message, Does.Contain("index 1"));
+            Assert.That(error.Message, Does.Contain(expectedReason));
             Assert.That(_realm.ContainsAnchor("default"), Is.False);
+            Assert.That(setup.Anchor, Is.Null);
+            SetField(setup, "_blueprints", new[] { first });
+            Assert.That(setup.Track(), Is.Not.Null);
+        }
+
+        /// <summary>Reusing an anchor preserves its frame and starts only newly attached sources.</summary>
+        [Test]
+        public void GetOrCreateAnchor_ReusesAnchorAndStartsOnlyNewSources()
+        {
+            var reads = 0;
+            var first = Source(() => { reads++; return new[] { "a" }; });
+            var frame = new GameObject("source frame");
+            _objects.Add(frame);
+            var anchor = _realm.GetOrCreateAnchor("shared", frame.transform, first);
+            var reused = _realm.GetOrCreateAnchor("shared", frame.transform, first, Source(() => new[] { "b" }));
+            Assert.That(reused, Is.SameAs(anchor));
+            Assert.That(reused.Transform.parent, Is.SameAs(frame.transform));
+            Assert.That(reads, Is.EqualTo(1));
+            Assert.That(_realm.Query().Count, Is.EqualTo(2));
         }
 
         /// <summary>A startup exception rolls back the scene owner's population.</summary>
