@@ -8,6 +8,7 @@ Emas tracks source entities as scene-owned ghosts with optional views. Requires 
 | [Guidelines](Guidelines.md) | Application contracts, ownership, recovery and contribution rules |
 | [API reference](API.md) | Operations, filters, typed values and view selection |
 | [Architecture](Architecture.md) | Ownership, update order, failures and cleanup |
+| [Relative worlds](Spatial.md) | Double-precision coordinates, fixed ego vehicles and presentation range |
 | [Validation](Validation.md) | Tested configuration, results and limits |
 
 Diagrams: [architecture](Diagrams/Architecture.html) / [lifecycle](Diagrams/Lifecycle.html). Editable Archify specifications sit beside the HTML files.

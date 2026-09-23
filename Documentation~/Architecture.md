@@ -26,15 +26,24 @@ Blueprints are resolved by anchor and kind: an anchor registration takes precede
 1. Process up to **256 queued actions** present at update entry, in FIFO order.
 2. Run source updates and finish assigning data.
 3. Remove ghosts past their configured inactivity timeout and unreported ghosts whose startup handover has completed.
-4. Publish initialized ghosts as available and activate their roots.
-5. Refresh requested dirty views.
-6. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
+4. Resolve the optional realm reference frame and project spatial ghosts, updating presentation range.
+5. Publish initialized ghosts as available and activate their roots.
+6. Refresh requested dirty views within presentation range.
+7. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
 
 Newly queued actions wait for a later update. The budget limits action count, not execution time; application callbacks must remain short. Dispatch records the source's registration generation, so stale work is discarded even if the same instance is reattached. Source updates also capture that generation: a source removed and reattached during an update first ticks in the following update.
 
 Successful startup outside an update finalizes directly populated ghosts immediately. Callback-source startup queues its initial publications for a later update. Variant changes and explicit view requests inside source/finalization callbacks defer refresh until source data is complete. Explicit requests outside those phases retain immediate behavior.
 
 `Realm.Default` provides an automatically updated default realm. An isolated realm uses explicit `Update()` instead. All Emas calls require Unity's main thread. Applications handle SDK threading before publishing or removing entities. The queue and protected `Dispatch` defer main-thread work to later updates. Custom sources can capture a dispatcher per attachment so callbacks retained from an old attachment cannot enter a new one. Emas provides no thread synchronization or marshalling.
+
+## Optional spatial projection
+
+`Realm.ReferenceFrame` and root `Spatial` components opt into shared simulation coordinates. `Double3` preserves global positions until the reference displacement has been calculated in doubles. The spatial phase maps the result to a configured Unity world pose, compensating for Anchor parents; ghosts without enabled spatial components retain application positioning.
+
+A manual reference or a followed spatial ghost provides the origin. Following resolves once per spatial phase, so reference movement reprojects entities whose cached position has not changed. Rotation is an independent optional channel. Losing a followed entity retains its last valid reference pose and exposes that loss without jumping to the global origin.
+
+Presentation range is measured in simulation coordinates before float conversion. Out-of-range entities keep their identities, query availability and root scripts; their views, root rendering and colliders are suppressed. The view request survives and resumes on range entry. This keeps distant presentation out of Unity's large-coordinate range without requiring entity republication. See [spatial integration](Spatial.md).
 
 ## Failure and cleanup
 
@@ -84,7 +93,7 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | Folder | Contents |
 | --- | --- |
 | `Runtime/` | `Realm` entry point and package metadata |
-| `Runtime/Entities/` | Ghost contract, component and identity values |
+| `Runtime/Entities/` | Ghost contracts, spatial state and identity/coordinate values |
 | `Runtime/Tracking/` | Anchors, sources and ownership storage |
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | Blueprint, detail level and view lifecycle |

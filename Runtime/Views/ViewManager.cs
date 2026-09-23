@@ -27,7 +27,7 @@ namespace Emas
             string context = "view refresh for " + record.Key;
             try
             {
-                if (!record.ViewRequested || record.RequestedDetailLevel.Level <= 0)
+                if (!record.ViewRequested || record.RequestedDetailLevel.Level <= 0 || !record.SpatialVisible)
                 {
                     Destroy(record);
                     return;
@@ -168,7 +168,7 @@ namespace Emas
         private bool CanContinue(Record record, long version)
         {
             return _ghosts.Contains(record) && record.Ghost != null && record.Ghost.IsAvailable
-                && record.ViewVersion == version && record.ViewRequested;
+                && record.ViewVersion == version && record.ViewRequested && record.SpatialVisible;
         }
     }
 }

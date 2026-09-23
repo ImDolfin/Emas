@@ -20,6 +20,7 @@ namespace Emas
         internal BlueprintSnapshot Blueprint;
         internal View View;
         internal UnityEngine.GameObject ViewPrefab;
+        internal bool SpatialVisible = true;
         internal bool ViewRequested;
         internal bool PendingActivation;
         internal bool ViewDirty;

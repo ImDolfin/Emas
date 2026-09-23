@@ -13,6 +13,7 @@ namespace Emas.Editor.Tests
         /// A package script imports as its declared public type.
         /// </summary>
         [TestCase("Runtime/Entities/Ghost.cs", typeof(Ghost))]
+        [TestCase("Runtime/Entities/Spatial.cs", typeof(Spatial))]
         [TestCase("Runtime/Views/View.cs", typeof(View))]
         [TestCase("Runtime/Views/Blueprint.cs", typeof(Blueprint))]
         public void PackageScript_ResolvesDeclaredType(string relativePath, Type expectedType)

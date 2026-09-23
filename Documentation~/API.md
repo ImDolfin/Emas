@@ -91,6 +91,32 @@ Application interfaces should be read-only; concrete ghost setters are for sourc
 
 Use `TryGet<T>` when a contract is optional and `GetRequired<T>` when its absence is a setup error. Both inspect only root MonoBehaviours. An ambiguous `TryGet<T>` logs the ghost key, matching component types and instance IDs with a clickable ghost context. It logs once per ghost and contract until a later lookup observes zero or one provider; `GetRequired<T>` also throws on ambiguity. The Ghost Inspector keeps Emas-owned metadata out of prefab editing and shows live key, display name, variant and availability as read-only values in Play Mode. Application fields remain editable.
 
+## Spatial coordinates and reference frames
+
+| Member | Use |
+| --- | --- |
+| `Realm.ReferenceFrame` | Optional spatial projection configuration; null preserves ordinary positioning |
+| `Double3(x, y, z)` | Double-precision Cartesian position or displacement; preserve doubles from the source |
+| `Double3.Distance(a, b)` | Distance between simulation positions in double precision |
+| `Spatial.SetPosition(position)` / `Position` / `HasPosition` | Publish and read the root's independent double-precision position channel |
+| `Spatial.SetRotation(rotation)` / `Rotation` / `HasRotation` | Publish and read the optional orientation channel; without it Emas leaves root rotation untouched |
+| `Spatial.IsInRange` | Whether the latest spatial projection can be presented |
+| `ReferenceFrame.Position` / `Rotation` | Manual simulation reference pose, or the latest resolved followed pose |
+| `ReferenceFrame.UnityPosition` / `UnityRotation` | Desired Unity world pose of the reference; defaults to zero/identity |
+| `ReferenceFrame.FollowedGhost` | Optional key to follow within this realm; null uses manual configuration |
+| `ReferenceFrame.FollowRotation` | Follow reference orientation as well as position; defaults to true |
+| `ReferenceFrame.MaxDistance` | Optional positive double presentation range; null disables the configured limit |
+| `ReferenceFrame.HasPosition` | Whether manual configuration or following has provided a usable cached reference position |
+| `ReferenceFrame.IsReferenceAvailable` | Whether the configured reference is currently available; loss preserves the last valid pose |
+| `TryToUnityPosition(position, out result)` | Project with reference initialization and presentation-range checks |
+| `ToSimulationPosition(position)` | Convert a Unity world position back into simulation coordinates |
+| `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the frame mapping |
+| `DistanceTo(position)` | Double-precision distance from the cached simulation reference |
+
+Add enabled `Spatial` components to participating Ghost roots. Source adapters normalize positions into shared Cartesian units/axes for the realm. The realm subtracts the reference in doubles before converting to Unity floats and projects the root in world space, accounting for Anchor parents. Reference movement reprojects all spatial ghosts without requiring another entity publication. Position, rotation and articulation updates remain independent; the spatial API emits no general data-change events.
+
+Before the first position/reference and outside the presentation range, spatial views and root rendering/colliders are suppressed while identity, availability and scripts remain active. Requested views return on range entry. Reference loss freezes its last valid pose and sets `IsReferenceAvailable` false; before any valid reference, presentation stays suppressed. Disabling `Spatial` or clearing `Realm.ReferenceFrame` releases spatial control. See [relative-world integration](Spatial.md) for complete setup, channel mapping and precision guidance.
+
 ## Queries and subscriptions
 
 Use `TryGetGhost` when the full `Key` is known. It reads the realm registry without creating, activating or updating anything. Check `ghost.IsAvailable` before consuming its data; a found ghost may be prepared or awaiting publication during startup handover. Keys are case-sensitive and resolved only within the receiving realm. Removal stops lookup immediately, even before Unity finishes destroying the object.

@@ -14,7 +14,9 @@
     "name": "Emas"
   },
   "type": "library",
-  "dependencies": {},
+  "dependencies": {
+    "com.unity.modules.physics": "1.0.0"
+  },
   "samples": [
     {
       "displayName": "Quick start",

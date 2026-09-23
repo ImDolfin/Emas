@@ -53,6 +53,8 @@ namespace Emas
         private readonly Subscriptions _subscriptions;
         private readonly Func<double> _elapsedSeconds;
         private readonly ViewManager _views;
+        private readonly SpatialManager _spatial;
+        private ReferenceFrame _referenceFrame;
         private readonly SceneEffects _scene = new SceneEffects();
         private readonly Queue<DispatchItem> _dispatch = new Queue<DispatchItem>();
         // Deterministic action budget: newly queued work waits for the following update.
@@ -77,6 +79,29 @@ namespace Emas
             _elapsedSeconds = elapsedSeconds ?? throw new ArgumentNullException(nameof(elapsedSeconds));
             _subscriptions = new Subscriptions(this);
             _views = new ViewManager(_ghosts, _scene);
+            _spatial = new SpatialManager(this, _ghosts);
+        }
+
+        /// <summary>
+        /// Gets or sets optional projection from double-precision simulation coordinates into Unity world space.
+        /// </summary>
+        /// <remarks>
+        /// Null, the default, leaves transforms application-controlled. Spatial components opt individual ghosts in.
+        /// Changes apply during the next realm update or an explicit Manifest request. Projection runs after source
+        /// processing and before root/view activation, and does not change data, source activity or query membership.
+        /// Anchor parenting is retained; its transform is compensated when assigning the projected world pose.
+        /// </remarks>
+        public ReferenceFrame ReferenceFrame
+        {
+            get
+            {
+                return _referenceFrame;
+            }
+            set
+            {
+                ThrowIfDisposed();
+                _referenceFrame = value;
+            }
         }
 
         internal bool IsDisposed
@@ -708,6 +733,7 @@ namespace Emas
             }
 
             _blueprints.Clear();
+            _referenceFrame = null;
         }
 
         internal List<IGhost> Evaluate(Query query)
@@ -1183,7 +1209,9 @@ namespace Emas
             record.ViewDirty = true;
             if (_sourceDepth == 0 && !_finalizing)
             {
+                _spatial.Project(record, _referenceFrame);
                 _views.Refresh(record);
+                _spatial.RefreshSuppression(record);
             }
         }
 
@@ -1324,6 +1352,8 @@ namespace Emas
             try
             {
                 List<Record> records = _ghosts.Snapshot();
+                // Use one reference pose after source processing, before any root or view activation.
+                _spatial.Project(records, _referenceFrame);
                 // Phase 1: make initialized roots available and activate them.
                 for (int index = 0; index < records.Count; index++)
                 {
@@ -1371,6 +1401,8 @@ namespace Emas
 
                     _views.Refresh(record);
                 }
+
+                _spatial.RefreshSuppression(records);
             }
             finally
             {

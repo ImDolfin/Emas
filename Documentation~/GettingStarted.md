@@ -123,6 +123,12 @@ To remove entities that silently stop publishing, set `source.InactivityTimeout 
 
 Call all Emas APIs, including publish/remove callbacks, on Unity's main thread. Your SDK adapter is responsible for delivering events there. Keep callback payloads unchanged until processed. SDK ownership, coordinate conversion and recovery are covered in [Guidelines](Guidelines.md); exact scheduling and failure contracts are in [API](API.md).
 
+## Keep a network vehicle fixed in Unity
+
+For moving-reference worlds or large global coordinates, assign `realm.ReferenceFrame` and add `Spatial` to participating Ghost roots. Publish simulation positions as `Double3`; the realm calculates the relative displacement before converting to Unity floats. Position and orientation publications can arrive independently. A presentation range hides distant views while keeping their data tracked.
+
+Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and source mapping. The **Emas sample** includes an optional **Emas > Examples > Relative World** component: add it to an empty scene object to run the demonstration with its own realm and generated visuals.
+
 ## Troubleshooting
 
 | Symptom | Check |
