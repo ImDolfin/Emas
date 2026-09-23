@@ -43,6 +43,7 @@ Successful startup outside an update finalizes directly populated ghosts immedia
 | Restart/replace source | Preserve identities, root components and view requests; ghosts remain unavailable until republished |
 | Failed restart/replacement | Retain unavailable records and failed registration for another explicit retry/replacement/removal |
 | Failed initial attachment | Remove only newly created records; restore prepared identities to unowned/unavailable |
+| Failed multi-source anchor attachment | Remove sources newly attached by that call in reverse order; restore prepared identities and retain an existing anchor's earlier sources |
 | Attach an already registered source | Reject without changing its original population |
 | Remove ghost/source | Remove the selected identity/owned population and associated views |
 | Stop SceneSetup, dispose/remove anchor or unload its scene | Remove owned and prepared records; stop sources |
@@ -67,7 +68,7 @@ Registry traversal uses snapshots and rechecks membership/registration after cal
 | [SceneEffects](../Runtime/Unity/SceneEffects.cs) | Serialize nested scene effects |
 | [PresenceSource](../Runtime/Tracking/PresenceSource.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | Source lifecycle, registration and scene ownership |
 
-Query interface filters use typed predicates and a reusable root-component list. Subscriptions reuse their match and departure buffers across updates while still scanning current ghosts and rechecking matches after callbacks. These are implementation choices, not measured performance guarantees.
+Query interface filters use typed predicates and a reusable root-component list. Subscriptions reuse their match and departure buffers across updates while still scanning current ghosts and rechecking matches after callbacks. Scalar query results scan without building a match list; polling reuses its owned-ghost buffer. These are implementation choices, not measured performance guarantees.
 
 Assembly dependencies: editor and tests may reference runtime; runtime never references editor, sample or SDK assemblies. The sample remains a separate application assembly. Package code targets C# 8, enforced by compiler response files.
 

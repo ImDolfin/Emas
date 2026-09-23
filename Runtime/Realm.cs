@@ -150,6 +150,10 @@ namespace Emas
         /// <returns>
         /// The existing or new anchor.
         /// </returns>
+        /// <remarks>
+        /// On failure, newly attached sources are removed and prepared ghosts are restored; existing sources remain.
+        /// A newly created anchor is disposed.
+        /// </remarks>
         /// <exception cref="ArgumentException">
         /// The anchor ID is empty.
         /// </exception>
@@ -179,6 +183,10 @@ namespace Emas
         /// <returns>
         /// The existing or new anchor.
         /// </returns>
+        /// <remarks>
+        /// On failure, newly attached sources are removed and prepared ghosts are restored; existing sources remain.
+        /// A newly created anchor is disposed.
+        /// </remarks>
         /// <exception cref="ArgumentException">
         /// The anchor ID is empty.
         /// </exception>
@@ -198,6 +206,8 @@ namespace Emas
 
             Anchor anchor;
             bool created = false;
+            List<PresenceSource> newSources = null;
+            HashSet<Record> previousRecords = null;
             if (!_anchors.TryGetValue(id, out anchor))
             {
                 anchor = new Anchor(this, id, frame);
@@ -219,7 +229,19 @@ namespace Emas
                 {
                     for (int index = 0; index < sources.Length; index++)
                     {
-                        anchor.AddSource(sources[index]);
+                        PresenceSource source = sources[index];
+                        if (!created && !anchor.ContainsSource(source))
+                        {
+                            if (newSources == null)
+                            {
+                                newSources = new List<PresenceSource>();
+                                previousRecords = CaptureGhosts();
+                            }
+
+                            newSources.Add(source);
+                        }
+
+                        anchor.AddSource(source);
                     }
                 }
 
@@ -231,8 +253,33 @@ namespace Emas
                 {
                     anchor.Dispose();
                 }
+                else if (newSources != null)
+                {
+                    RollbackAnchorSources(anchor, newSources, previousRecords);
+                }
 
                 throw;
+            }
+        }
+
+        private void RollbackAnchorSources(Anchor anchor, List<PresenceSource> sources, HashSet<Record> previous)
+        {
+            for (int index = sources.Count - 1; index >= 0; index--)
+            {
+                Anchor current;
+                if (_disposed || !_anchors.TryGetValue(anchor.Id, out current) || !ReferenceEquals(current, anchor))
+                {
+                    return;
+                }
+
+                try
+                {
+                    anchor.RollbackAddedSource(sources[index], previous);
+                }
+                catch (Exception exception)
+                {
+                    PresenceSource.LogError(exception, "rolling back source attachment to anchor '" + anchor.Id + "'");
+                }
             }
         }
 
@@ -638,6 +685,39 @@ namespace Emas
             }
         }
 
+        internal int CountMatches(Query query, out IGhost first)
+        {
+            first = null;
+            int count = 0;
+            foreach (Record record in _ghosts.Values)
+            {
+                if (query.Matches(record.Ghost))
+                {
+                    if (count == 0)
+                    {
+                        first = record.Ghost;
+                    }
+
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        internal IGhost FirstMatch(Query query)
+        {
+            foreach (Record record in _ghosts.Values)
+            {
+                if (query.Matches(record.Ghost))
+                {
+                    return record.Ghost;
+                }
+            }
+
+            return null;
+        }
+
         internal IDisposable Subscribe(Query query, Action<IGhost> callback, Action<Key> onLeave = null)
         {
             ThrowIfDisposed();
@@ -840,6 +920,13 @@ namespace Emas
         internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceSource owner)
         {
             List<IGhost> result = new List<IGhost>();
+            GetOwnedGhosts(owner, result);
+            return result;
+        }
+
+        internal void GetOwnedGhosts(PresenceSource owner, List<IGhost> result)
+        {
+            result.Clear();
             foreach (Record record in _ghosts.Values)
             {
                 if (record.Owner == owner)
@@ -847,8 +934,6 @@ namespace Emas
                     result.Add(record.Ghost);
                 }
             }
-
-            return result;
         }
 
         private void ExecuteDispatch(DispatchItem item)

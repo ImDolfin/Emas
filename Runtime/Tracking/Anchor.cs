@@ -114,6 +114,11 @@ namespace Emas
             return _blueprints.TryGetValue(kindId, out blueprint);
         }
 
+        internal bool ContainsSource(PresenceSource source)
+        {
+            return _sources.Contains(source);
+        }
+
         /// <summary>
         /// Adds and starts a source.
         /// </summary>
@@ -171,6 +176,22 @@ namespace Emas
                 }
 
                 throw;
+            }
+        }
+
+        internal void RollbackAddedSource(PresenceSource source, HashSet<Record> previous)
+        {
+            if (!_sources.Remove(source) || !source.IsAttachedTo(this))
+            {
+                return;
+            }
+
+            long generation = source.RegistrationGeneration;
+            source.Detach();
+            if (source.RegistrationGeneration == generation && !source.IsAttached)
+            {
+                // Keep records that were prepared before this batch instead of destroying them.
+                Realm.RollbackSource(source, previous);
             }
         }
 

@@ -28,6 +28,7 @@ namespace Emas
         private Action<TSource, TGhost> _apply;
         private Func<TSource, Variant> _variant;
         private readonly List<Entry> _entries = new List<Entry>();
+        private readonly List<IGhost> _ownedGhosts = new List<IGhost>();
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>
@@ -309,7 +310,8 @@ namespace Emas
                 }
 
                 // Deletions happen only after the full read and all mapping callbacks succeed.
-                foreach (IGhost ghost in OwnedGhosts)
+                realm.GetOwnedGhosts(this, _ownedGhosts);
+                foreach (IGhost ghost in _ownedGhosts)
                 {
                     if (!IsActive || RegistrationGeneration != generation)
                     {
@@ -332,6 +334,7 @@ namespace Emas
             finally
             {
                 _entries.Clear();
+                _ownedGhosts.Clear();
                 _seen.Clear();
                 _polling = false;
             }

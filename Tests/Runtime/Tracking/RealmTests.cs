@@ -153,6 +153,38 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Scalar query results follow changing membership and report the full match count.
+        /// </summary>
+        [Test]
+        public void Query_ScalarResultsFollowMembership()
+        {
+            TestSource first = new TestSource(new Kind("vehicles.car"));
+            TestSource second = new TestSource(new Kind("vehicles.aircraft"));
+            Anchor anchor = _realm.GetOrCreateAnchor("simulation", first, second);
+            TestGhost firstGhost = first.Publish("one", Variant.None);
+            TestGhost secondGhost = second.Publish("two", Variant.None);
+            _realm.Update();
+            Query query = _realm.Query();
+
+            Assert.That(query.Count, Is.EqualTo(2));
+            IGhost firstMatch = query.FirstOrDefault();
+            Assert.That(ReferenceEquals(firstMatch, firstGhost) || ReferenceEquals(firstMatch, secondGhost), Is.True);
+            InvalidOperationException multiple = Assert.Throws<InvalidOperationException>(() => query.Single());
+            Assert.That(multiple.Message, Is.EqualTo("Expected exactly one ghost, but found 2."));
+
+            anchor.RemoveSource(first);
+            Assert.That(query.Count, Is.EqualTo(1));
+            Assert.That(query.FirstOrDefault(), Is.SameAs(secondGhost));
+            Assert.That(query.Single(), Is.SameAs(secondGhost));
+
+            anchor.RemoveSource(second);
+            Assert.That(query.Count, Is.Zero);
+            Assert.That(query.FirstOrDefault(), Is.Null);
+            InvalidOperationException empty = Assert.Throws<InvalidOperationException>(() => query.Single());
+            Assert.That(empty.Message, Is.EqualTo("Expected exactly one ghost, but found 0."));
+        }
+
+        /// <summary>
         /// Reuses a query description against a different realm.
         /// </summary>
         [Test]

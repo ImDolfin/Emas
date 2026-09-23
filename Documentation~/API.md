@@ -44,7 +44,7 @@ Subscription and cleanup run on the Unity thread. Initial items may be published
 | `Realm.Anchors` / `Anchor.Sources` | Copied, read-only membership snapshots; earlier snapshots stay unchanged; disposed owners return empty snapshots. Objects retain their own lifetimes |
 | `Realm.RegisterBlueprint(blueprint)` | Register a realm-wide default by kind for anchors without an override; assets stay application-owned |
 | `Anchor.RegisterBlueprint(blueprint)` | Register or replace this anchor's override for a kind; released with the anchor |
-| `GetOrCreateAnchor(id, params PresenceSource[] sources)` | Create or reuse an anchor and attach/start supplied sources; overload accepts a `Transform` frame, which must match when reusing |
+| `GetOrCreateAnchor(id, params PresenceSource[] sources)` | Create or reuse an anchor and attach/start supplied sources; overload accepts a `Transform` frame, which must match when reusing. On failure, sources newly attached by this call are removed and prepared identities are restored; existing sources remain |
 | `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
 | `TryGetGhost(key, out ghost)` | Look up an exact identity, including prepared and retained unavailable ghosts; return false/null for missing, invalid or destroyed identities and disposed realms |
 | `Query(partialName = null)` | Describe filters over available ghosts |

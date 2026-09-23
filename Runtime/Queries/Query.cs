@@ -126,7 +126,8 @@ namespace Emas
         {
             get
             {
-                return Evaluate().Count;
+                IGhost ignored;
+                return _realm.CountMatches(this, out ignored);
             }
         }
 
@@ -141,13 +142,14 @@ namespace Emas
         /// </exception>
         public IGhost Single()
         {
-            List<IGhost> matches = Evaluate();
-            if (matches.Count != 1)
+            IGhost first;
+            int count = _realm.CountMatches(this, out first);
+            if (count != 1)
             {
-                throw new InvalidOperationException("Expected exactly one ghost, but found " + matches.Count + ".");
+                throw new InvalidOperationException("Expected exactly one ghost, but found " + count + ".");
             }
 
-            return matches[0];
+            return first;
         }
 
         /// <summary>
@@ -158,8 +160,7 @@ namespace Emas
         /// </returns>
         public IGhost FirstOrDefault()
         {
-            List<IGhost> matches = Evaluate();
-            return matches.Count == 0 ? null : matches[0];
+            return _realm.FirstMatch(this);
         }
 
         /// <summary>

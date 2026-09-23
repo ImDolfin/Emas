@@ -97,6 +97,53 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Failed source batches on an existing anchor undo only this call's new attachments.
+        /// </summary>
+        [Test]
+        public void GetOrCreateAnchor_RollsBackNewSourcesOnExistingAnchorFailure()
+        {
+            ProbeSource retained = new ProbeSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("anchor", retained);
+            ProbeGhost kept = retained.Publish("kept");
+            ProbeGhost prepared = _realm.Prepare<ProbeGhost>("anchor", Kind, "prepared");
+            _realm.Update();
+
+            ProbeSource added = new ProbeSource();
+            added.Starting = () =>
+            {
+                added.Publish("prepared");
+                added.Publish("temporary");
+            };
+            ProbeSource alsoAdded = new ProbeSource();
+            alsoAdded.Starting = () => alsoAdded.Publish("another");
+            ProbeSource failing = new ProbeSource();
+            failing.Starting = () =>
+            {
+                failing.Publish("failed");
+                throw new InvalidOperationException("start failed");
+            };
+
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
+                _realm.GetOrCreateAnchor("anchor", retained, added, alsoAdded, failing));
+
+            Assert.That(error.Message, Is.EqualTo("start failed"));
+            Assert.That(anchor.Sources, Is.EquivalentTo(new[] { retained }));
+            Assert.That(retained.IsActive, Is.True);
+            Assert.That(retained.StopCount, Is.Zero);
+            Assert.That(added.IsAttached, Is.False);
+            Assert.That(added.StopCount, Is.EqualTo(1));
+            Assert.That(alsoAdded.IsAttached, Is.False);
+            Assert.That(alsoAdded.StopCount, Is.EqualTo(1));
+            Assert.That(failing.IsAttached, Is.False);
+            Assert.That(failing.StopCount, Is.EqualTo(1));
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(prepared.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(prepared));
+            Assert.That(prepared.IsAvailable, Is.False);
+            Assert.That(_realm.Query().Single(), Is.SameAs(kept));
+        }
+
+        /// <summary>
         /// A disposed realm cannot create unmanaged scene objects or accept mutations.
         /// </summary>
         [Test]
