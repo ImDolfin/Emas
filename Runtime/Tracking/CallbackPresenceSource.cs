@@ -217,7 +217,7 @@ namespace Emas
         /// <inheritdoc />
         protected override void OnStop()
         {
-            // A previous failure may finish after a scene callback has already restarted this source.
+            // A superseded stop must not clean up a newer active attachment.
             if (IsActive)
             {
                 return;

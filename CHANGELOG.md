@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Made source failure cleanup finish before ghost deactivation can reattach the source; added `PresenceSource.CaptureDispatcher()` for registration-safe custom callbacks and clarified direct publication timing.
 - Added `Anchor.UnregisterBlueprint(kind)` to restore realm defaults; re-registering a blueprint after changing its kind clears its old registration and refreshes requested views for both kinds.
 - Deferred updates for sources removed and reattached during the same update until the following update.
 - Made ghost contract errors identify the ghost and duplicate root components without repeated logs; added a `GetRequired<T>()` extension for required `IGhost` contracts and a Ghost Inspector with read-only live state.

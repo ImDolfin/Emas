@@ -57,6 +57,8 @@ namespace Emas.Tests
             TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
             TestGhost initialized = source.Publish("42", new Variant("car"));
+            Assert.That(initialized.IsAvailable, Is.False);
+            Assert.That(_realm.Query().Count, Is.Zero);
             _realm.Update();
 
             Assert.That(initialized, Is.SameAs(prepared));

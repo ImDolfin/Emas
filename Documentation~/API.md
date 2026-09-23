@@ -68,11 +68,16 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `RegisterBlueprint(blueprint)`, 
 | `OnStart`, `OnUpdate`, `OnStop` | Override lifecycle hooks; cleanup runs once for a started attachment, including startup failure |
 | `GetOrCreate<TGhost>(entityId, kind, variant = null)` | Obtain a stable owned ghost; another overload accepts a display name |
 | `Remove(kind, entityId)` | Remove one owned ghost |
-| `Dispatch(action)` | Defer source work from the main thread to a later update; stopped/stale registrations cannot execute it |
+| `Dispatch(action)` | Queue main-thread work for the current attachment; queued work is discarded if that attachment stops |
+| `CaptureDispatcher()` | Capture a main-thread dispatcher for the current attachment; callbacks from an earlier attachment are ignored |
 | `OwnedGhosts` | Snapshot of owned ghosts, including unavailable ones |
 | `IGhost.Key`, `Name`, `Variant`, `IsAvailable` | Read identity, label, appearance and availability |
 | `IGhost.TryGet<T>(out part)` | Resolve an optional root component contract; excludes view children and returns false for missing or ambiguous providers |
 | `GetRequired<T>()` extension on `IGhost` | Return the single root provider or throw with the ghost key and requested contract |
+
+Custom sources can call `GetOrCreate` and `Remove` on Unity's main thread whenever `IsActive` is true. New or unavailable ghosts created by direct calls outside lifecycle or dispatched callbacks become available on the next realm update; complete their data before that update. Already available ghosts can be updated in place. Inactive `GetOrCreate` throws, while inactive `Remove` is ignored.
+
+Capture a dispatcher in `OnStart` when subscribing to SDK callbacks and release the subscription in `OnStop`. The returned callback accepts an `Action` to run during a later realm update and ignores calls after its attachment ends, even if the same source instance restarts. `Dispatch` called directly from an old SDK callback would instead use the source's current attachment. Applications must move SDK events to Unity's main thread before calling either dispatcher.
 
 Application interfaces should be read-only; concrete ghost setters are for source mapping. `Ghost` supplies `IGhost`; root activation happens after publication, so `Awake` must not assume mapped data. Source-specific types and coordinate conversion stay in application sources. One source owns each identity; an application source can compose multiple feeds.
 

@@ -98,7 +98,8 @@ namespace Emas
         /// The stable ghost component.
         /// </returns>
         /// <remarks>
-        /// Use only from lifecycle or dispatched callbacks on the Unity thread. Data must be complete before the callback returns.
+        /// Call on Unity's main thread while this source is active. Complete data before a lifecycle or dispatched callback returns.
+        /// A new or unavailable ghost obtained outside those callbacks becomes available on the next realm update; finish its data first.
         /// A compatible replacement reuses the root; an incompatible ghost type is rejected.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
@@ -137,7 +138,8 @@ namespace Emas
         /// The stable ghost component.
         /// </returns>
         /// <remarks>
-        /// Use only from lifecycle or dispatched callbacks on the Unity thread. Data must be complete before the callback returns.
+        /// Call on Unity's main thread while this source is active. Complete data before a lifecycle or dispatched callback returns.
+        /// A new or unavailable ghost obtained outside those callbacks becomes available on the next realm update; finish its data first.
         /// A compatible replacement reuses the root; an incompatible ghost type is rejected.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
@@ -191,7 +193,7 @@ namespace Emas
         /// Call only on Unity's main thread. This defers work; it does not transfer work between threads.
         /// Stopped/detached calls are ignored; actions queued during an update wait until a later update.
         /// Up to 256 queued actions run per update across the realm.
-        /// Custom sources must invalidate old SDK callbacks in OnStop before reattachment; CallbackPresenceSource handles subscription generations automatically.
+        /// For SDK callbacks, use CaptureDispatcher to reject calls retained from a previous attachment; release subscriptions in OnStop.
         /// </remarks>
         protected void Dispatch(Action action)
         {
@@ -201,6 +203,42 @@ namespace Emas
             }
 
             _anchor.Realm.Dispatch(this, _registrationGeneration, action);
+        }
+
+        /// <summary>
+        /// Captures a dispatcher bound to this source's current attachment.
+        /// </summary>
+        /// <returns>
+        /// A callback that queues work while this attachment remains active and ignores calls after it ends.
+        /// </returns>
+        /// <remarks>
+        /// Capture during OnStart and pass the returned callback to an external subscription. Invoke it only on Unity's main thread.
+        /// Queued actions run during a later realm update, subject to the realm's dispatch budget.
+        /// This does not transfer work from background threads.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// The source is not active on an anchor.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// The owning anchor or realm was disposed.
+        /// </exception>
+        protected Action<Action> CaptureDispatcher()
+        {
+            if (_anchor == null || !_started)
+            {
+                throw new InvalidOperationException("The source is not active on an anchor.");
+            }
+
+            _anchor.ThrowIfDisposed();
+            Realm realm = _anchor.Realm;
+            long generation = _registrationGeneration;
+            return action =>
+            {
+                if (IsRegistration(realm, generation))
+                {
+                    realm.Dispatch(this, generation, action);
+                }
+            };
         }
 
         /// <summary>
@@ -456,17 +494,12 @@ namespace Emas
             }
 
             string context = DescribeError(CaptureErrorContext(), "OnStop");
-            // Availability changes can invoke scene callbacks; keep the entire stop protected against restart.
+            // Finish old cleanup before deactivation can reattach this source through scene callbacks.
             _started = false;
             _lifecycleDepth++;
             try
             {
                 Anchor anchor = _anchor;
-                if (anchor != null)
-                {
-                    anchor.Realm.MarkUnavailable(this);
-                }
-
                 try
                 {
                     OnStop();
@@ -475,6 +508,11 @@ namespace Emas
                 {
                     RecordError(exception, generation, context);
                     LogError(exception, context);
+                }
+
+                if (_registrationGeneration == generation && _anchor == anchor && anchor != null)
+                {
+                    anchor.Realm.MarkUnavailable(this);
                 }
             }
             finally

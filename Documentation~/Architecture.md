@@ -33,13 +33,13 @@ Newly queued actions wait for a later update. The budget limits action count, no
 
 Successful startup outside an update finalizes directly populated ghosts immediately. Callback-source startup queues its initial publications for a later update. Variant changes and explicit view requests inside source/finalization callbacks defer refresh until source data is complete. Explicit requests outside those phases retain immediate behavior.
 
-`Realm.Default` provides an automatically updated default realm. An isolated realm uses explicit `Update()` instead. All Emas calls require Unity's main thread. Applications handle SDK threading before publishing or removing entities. The queue and protected `Dispatch` defer main-thread work to later updates; Emas provides no thread synchronization or marshalling.
+`Realm.Default` provides an automatically updated default realm. An isolated realm uses explicit `Update()` instead. All Emas calls require Unity's main thread. Applications handle SDK threading before publishing or removing entities. The queue and protected `Dispatch` defer main-thread work to later updates. Custom sources can capture a dispatcher per attachment so callbacks retained from an old attachment cannot enter a new one. Emas provides no thread synchronization or marshalling.
 
 ## Failure and cleanup
 
 | Event | Result |
 | --- | --- |
-| Source update/dispatched action throws | Stop that source and deactivate its population; other sources continue |
+| Source update/dispatched action throws | Run that attachment's OnStop, then deactivate its population if it is still current; other sources continue |
 | Restart/replace source | Preserve identities, root components and view requests; ghosts remain unavailable until republished |
 | Failed restart/replacement | Retain unavailable records and failed registration for another explicit retry/replacement/removal |
 | Failed initial attachment | Remove only newly created records; restore prepared identities to unowned/unavailable |

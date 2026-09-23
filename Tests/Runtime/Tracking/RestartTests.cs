@@ -240,6 +240,71 @@ namespace Emas.Tests
             observer.Stopping = null;
         }
 
+        /// <summary>
+        /// An old failure completes its cleanup before deactivation callbacks can reattach the source.
+        /// </summary>
+        [Test]
+        public void FailureCleanup_DoesNotStopReattachedRegistration()
+        {
+            Probe source = new Probe();
+            Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
+            TestGhost ghost = source.Publish("one");
+            RestartOnDisable observer = ghost.gameObject.AddComponent<RestartOnDisable>();
+            _realm.Update();
+            int oldCleanup = 0;
+            int newCleanup = 0;
+            int reattachments = 0;
+            source.Stopping = () => oldCleanup++;
+            source.Starting = () => source.Stopping = () => newCleanup++;
+            observer.Stopping = () =>
+            {
+                reattachments++;
+                anchor.RemoveSource(source);
+                anchor.AddSource(source);
+            };
+            source.Updating = () => throw new InvalidOperationException("update failed");
+
+            ExpectedErrors.Verify(_realm.Update, "update failed");
+            Assert.That(reattachments, Is.EqualTo(1));
+            Assert.That(oldCleanup, Is.EqualTo(1));
+            Assert.That(newCleanup, Is.Zero);
+            Assert.That(source.Starts, Is.EqualTo(2));
+            Assert.That(source.Stops, Is.EqualTo(1));
+            Assert.That(source.IsAttached && source.IsActive, Is.True);
+            Assert.That(source.LastError, Is.Null);
+
+            observer.Stopping = null;
+            anchor.RemoveSource(source);
+            Assert.That(newCleanup, Is.EqualTo(1));
+        }
+
+        /// <summary>
+        /// Captured dispatchers ignore old callbacks even after the same source starts again.
+        /// </summary>
+        [Test]
+        public void CapturedDispatcher_RejectsStaleCallbacksAfterRestart()
+        {
+            Probe source = new Probe();
+            Assert.Throws<InvalidOperationException>(() => source.Capture());
+            source.Starting = () => source.Captured = source.Capture();
+            Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
+            Action<Action> original = source.Captured;
+            int calls = 0;
+            original(() => calls++);
+
+            anchor.RestartSource(source);
+            Action<Action> current = source.Captured;
+            original(() => calls += 100);
+            current(() => calls += 10);
+            _realm.Update();
+            Assert.That(calls, Is.EqualTo(10));
+
+            anchor.RemoveSource(source);
+            current(() => calls += 100);
+            _realm.Update();
+            Assert.That(calls, Is.EqualTo(10));
+        }
+
         private sealed class RestartOnDisable : MonoBehaviour
         {
             internal Action Stopping;
@@ -255,6 +320,7 @@ namespace Emas.Tests
             internal Action Starting;
             internal Action Updating;
             internal Action Stopping;
+            internal Action<Action> Captured;
             internal int Starts;
             internal int Stops;
 
@@ -268,6 +334,11 @@ namespace Emas.Tests
             internal void Enqueue(Action action)
             {
                 Dispatch(action);
+            }
+
+            internal Action<Action> Capture()
+            {
+                return CaptureDispatcher();
             }
 
             protected override void OnStart()
