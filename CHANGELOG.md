@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Captured blueprint settings per realm or anchor registration so live asset edits cannot change another scope's views; None now resolves to no prefab, and Inspector validation rejects whitespace-only variant IDs.
 - Made source failure cleanup finish before ghost deactivation can reattach the source; added `PresenceSource.CaptureDispatcher()` for registration-safe custom callbacks and clarified direct publication timing.
 - Added `Anchor.UnregisterBlueprint(kind)` to restore realm defaults; re-registering a blueprint after changing its kind clears its old registration and refreshes requested views for both kinds.
 - Deferred updates for sources removed and reattached during the same update until the following update.

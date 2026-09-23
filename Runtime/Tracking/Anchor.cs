@@ -101,8 +101,8 @@ namespace Emas
         /// The blueprint to use before any realm-wide blueprint for the same kind.
         /// </param>
         /// <remarks>
-        /// Existing ghost roots remain unchanged. Requested views refresh on the next realm update.
-        /// Re-register an asset after changing its kind to release the previous kind registration.
+        /// This registration captures the asset's settings. Re-register after edits to refresh requested views on the next realm update.
+        /// Existing ghost roots remain unchanged. Re-register after changing the kind to release the previous kind registration.
         /// The registration is released when this anchor is disposed.
         /// </remarks>
         /// <exception cref="ArgumentException">
@@ -148,7 +148,7 @@ namespace Emas
             return _blueprints.Remove(kind);
         }
 
-        internal bool TryGetBlueprint(string kindId, out Blueprint blueprint)
+        internal bool TryGetBlueprint(string kindId, out BlueprintSnapshot blueprint)
         {
             return _blueprints.TryGet(kindId, out blueprint);
         }

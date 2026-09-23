@@ -437,6 +437,56 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Shared assets keep each scope's previous settings until that scope registers again.
+        /// </summary>
+        [Test]
+        public void Blueprint_SharedAssetUsesIndependentRegistrationSnapshots()
+        {
+            Kind kind = new Kind("views.shared.snapshot");
+            GameObject oldPrefab = new GameObject("old view");
+            GameObject newPrefab = new GameObject("new view");
+            Blueprint shared = ScriptableObject.CreateInstance<Blueprint>();
+            try
+            {
+                oldPrefab.SetActive(false);
+                newPrefab.SetActive(false);
+                shared.Configure(kind, null, null, oldPrefab);
+                _realm.RegisterBlueprint(shared);
+                Anchor localAnchor = _realm.GetOrCreateAnchor("local");
+                Anchor globalAnchor = _realm.GetOrCreateAnchor("global");
+                localAnchor.RegisterBlueprint(shared);
+                TestSource localSource = new TestSource(kind);
+                TestSource globalSource = new TestSource(kind);
+                localAnchor.AddSource(localSource);
+                globalAnchor.AddSource(globalSource);
+                TestGhost localGhost = localSource.Publish("one", Variant.None);
+                TestGhost globalGhost = globalSource.Publish("two", Variant.None);
+                _realm.Update();
+                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
+                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
+
+                shared.Configure(kind, null, null, newPrefab);
+                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
+                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
+
+                localAnchor.RegisterBlueprint(shared);
+                _realm.Update();
+                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("new view"));
+                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
+
+                _realm.RegisterBlueprint(shared);
+                _realm.Update();
+                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("new view"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(shared);
+                UnityEngine.Object.DestroyImmediate(oldPrefab);
+                UnityEngine.Object.DestroyImmediate(newPrefab);
+            }
+        }
+
+        /// <summary>
         /// Re-registering an asset under a new kind releases its old mapping and refreshes both kinds.
         /// </summary>
         [TestCase(false)]
@@ -483,6 +533,7 @@ namespace Emas.Tests
                 Assert.That(_realm.Manifest(newGhost), Is.Null);
 
                 changing.Configure(newKind, null, null, newPrefab);
+                Assert.That(_realm.Manifest(oldGhost).gameObject.name, Is.EqualTo("old view"));
                 if (anchorScoped)
                 {
                     anchor.RegisterBlueprint(changing);

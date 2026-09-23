@@ -4,19 +4,20 @@ using System.Collections.Generic;
 namespace Emas
 {
     /// <summary>
-    /// Tracks blueprint registrations by kind and removes old keys when an asset changes kind.
+    /// Tracks snapshots by kind and removes old keys when an asset is re-registered under another kind.
     /// </summary>
     internal sealed class BlueprintRegistry
     {
-        private readonly Dictionary<string, Blueprint> _byKind = new Dictionary<string, Blueprint>(StringComparer.Ordinal);
+        private readonly Dictionary<string, BlueprintSnapshot> _byKind = new Dictionary<string, BlueprintSnapshot>(StringComparer.Ordinal);
 
         internal List<Kind> Register(Blueprint blueprint)
         {
-            string kindId = blueprint.Kind.Id;
+            BlueprintSnapshot snapshot = blueprint.CaptureSnapshot();
+            string kindId = snapshot.Kind.Id;
             List<Kind> staleKinds = null;
-            foreach (KeyValuePair<string, Blueprint> entry in _byKind)
+            foreach (KeyValuePair<string, BlueprintSnapshot> entry in _byKind)
             {
-                if (!ReferenceEquals(entry.Value, blueprint) || string.Equals(entry.Key, kindId, StringComparison.Ordinal))
+                if (!ReferenceEquals(entry.Value.Asset, blueprint) || string.Equals(entry.Key, kindId, StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -37,7 +38,7 @@ namespace Emas
                 }
             }
 
-            _byKind[kindId] = blueprint;
+            _byKind[kindId] = snapshot;
             return staleKinds;
         }
 
@@ -46,10 +47,9 @@ namespace Emas
             return _byKind.Remove(kind.Id);
         }
 
-        internal bool TryGet(string kindId, out Blueprint blueprint)
+        internal bool TryGet(string kindId, out BlueprintSnapshot blueprint)
         {
-            if (!_byKind.TryGetValue(kindId, out blueprint) || blueprint == null
-                || !string.Equals(blueprint.Kind.Id, kindId, StringComparison.Ordinal))
+            if (!_byKind.TryGetValue(kindId, out blueprint) || blueprint.Asset == null)
             {
                 blueprint = null;
                 return false;

@@ -83,6 +83,9 @@ namespace Emas
         /// <exception cref="ArgumentException">
         /// Thrown when the kind or view mappings are invalid.
         /// </exception>
+        /// <remarks>
+        /// Existing registrations keep their captured settings until each realm or anchor registers this asset again.
+        /// </remarks>
         public void Configure(Kind kind, Ghost ghostPrefab, IEnumerable<ViewMapping> views, GameObject fallbackViewPrefab)
         {
             if (!kind.IsValid)
@@ -106,6 +109,12 @@ namespace Emas
         internal string GetConfigurationError()
         {
             return GetConfigurationError(Kind, _views);
+        }
+
+        internal BlueprintSnapshot CaptureSnapshot()
+        {
+            ViewMapping[] views = _views == null ? new ViewMapping[0] : _views.ToArray();
+            return new BlueprintSnapshot(this, Kind, _ghostPrefab, views, _fallbackViewPrefab);
         }
 
         private static string GetConfigurationError(Kind kind, IReadOnlyList<ViewMapping> views)
@@ -145,6 +154,11 @@ namespace Emas
                 return entry + " requires a positive detail level.";
             }
 
+            if (!mapping.Variant.IsNone && string.IsNullOrWhiteSpace(mapping.Variant.Id))
+            {
+                return entry + " has a whitespace-only variant ID. Use Variant.None or a non-whitespace identifier.";
+            }
+
             string key = mapping.Variant.Id + "\u001f" + mapping.DetailLevel.Level;
             int previousIndex;
             if (indices.TryGetValue(key, out previousIndex))
@@ -166,28 +180,39 @@ namespace Emas
         /// The requested detail level.
         /// </param>
         /// <returns>
-        /// The selected prefab, or the fallback, or null.
+        /// The selected prefab, the fallback, or null. None always returns null.
         /// </returns>
         /// <exception cref="ArgumentOutOfRangeException">
         /// Thrown when the detail level is negative.
         /// </exception>
         public GameObject ResolveViewPrefab(Variant variant, DetailLevel detailLevel)
         {
+            return ResolveViewPrefab(_views, _fallbackViewPrefab, variant, detailLevel);
+        }
+
+        internal static GameObject ResolveViewPrefab(IReadOnlyList<ViewMapping> views, GameObject fallbackViewPrefab,
+            Variant variant, DetailLevel detailLevel)
+        {
             if (detailLevel.Level < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(detailLevel), "A detail level cannot be negative.");
             }
 
-            if (_views == null)
+            if (detailLevel.Level == 0)
             {
-                return _fallbackViewPrefab;
+                return null;
+            }
+
+            if (views == null)
+            {
+                return fallbackViewPrefab;
             }
 
             GameObject best = null;
             DetailLevel bestDetailLevel = DetailLevel.None;
-            for (int index = 0; index < _views.Count; index++)
+            for (int index = 0; index < views.Count; index++)
             {
-                ViewMapping mapping = _views[index];
+                ViewMapping mapping = views[index];
                 if (mapping.Prefab == null || mapping.Variant != variant)
                 {
                     continue;
@@ -205,7 +230,7 @@ namespace Emas
                 }
             }
 
-            return best ?? _fallbackViewPrefab;
+            return best ?? fallbackViewPrefab;
         }
 
         /// <summary>

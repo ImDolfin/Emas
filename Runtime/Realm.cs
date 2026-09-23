@@ -99,8 +99,8 @@ namespace Emas
         /// </param>
         /// <remarks>
         /// Assets remain application-owned. This realm-wide default applies where an anchor has no override.
-        /// A later registration refreshes existing requested views on the next update; existing roots stay intact.
-        /// Re-register an asset after changing its kind to release the previous kind registration.
+        /// Each registration captures the asset's settings. Re-register after edits to refresh requested views on the next update;
+        /// existing roots stay intact. Re-register after changing its kind to release the previous kind registration.
         /// </remarks>
         /// <exception cref="ArgumentException">
         /// The blueprint is null or its kind/view mappings are invalid.
@@ -801,7 +801,7 @@ namespace Emas
                     throw new InvalidOperationException("The ghost is owned by another source.");
                 }
 
-                Blueprint resolved = ResolveBlueprint(anchorId, kind);
+                BlueprintSnapshot resolved = ResolveBlueprint(anchorId, kind);
                 if (!ReferenceEquals(record.Blueprint, resolved))
                 {
                     record.Blueprint = resolved;
@@ -838,7 +838,7 @@ namespace Emas
                 return existingTyped;
             }
 
-            Blueprint blueprint = ResolveBlueprint(anchorId, kind);
+            BlueprintSnapshot blueprint = ResolveBlueprint(anchorId, kind);
             Ghost prefab = blueprint == null ? null : blueprint.GhostPrefab;
             Transform anchorTransform = GetAnchorTransform(anchorId);
             // Keep the root inactive until its identity and initial data are ready.
@@ -991,10 +991,10 @@ namespace Emas
             }
         }
 
-        private Blueprint ResolveBlueprint(string anchorId, Kind kind)
+        private BlueprintSnapshot ResolveBlueprint(string anchorId, Kind kind)
         {
             Anchor anchor;
-            Blueprint blueprint;
+            BlueprintSnapshot blueprint;
             if (_anchors.TryGetValue(anchorId, out anchor) && anchor.TryGetBlueprint(kind.Id, out blueprint))
             {
                 return blueprint;
@@ -1017,7 +1017,7 @@ namespace Emas
 
                 // Realm defaults do not replace a specific anchor's configuration.
                 Anchor anchor;
-                Blueprint ignored;
+                BlueprintSnapshot ignored;
                 if (anchorId == null && _anchors.TryGetValue(record.Key.AnchorId, out anchor)
                     && anchor.TryGetBlueprint(kind.Id, out ignored))
                 {

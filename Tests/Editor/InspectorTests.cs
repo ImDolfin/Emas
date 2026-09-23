@@ -49,6 +49,41 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
+        /// Serialized whitespace-only variants are rejected because code cannot construct them.
+        /// </summary>
+        [Test]
+        public void Blueprint_RejectsWhitespaceOnlySerializedVariant()
+        {
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            GameObject prefab = new GameObject("view prefab");
+            try
+            {
+                blueprint.Configure(new Kind("inspector.variant"), null, new[]
+                {
+                    new Blueprint.ViewMapping(new Variant("valid"), DetailLevel.Full, prefab)
+                }, null);
+                SerializedObject serialized = new SerializedObject(blueprint);
+                SerializedProperty variantId = serialized.FindProperty("_views").GetArrayElementAtIndex(0)
+                    .FindPropertyRelative("_variant").FindPropertyRelative("_id");
+                Assert.That(variantId, Is.Not.Null);
+                variantId.stringValue = "   ";
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+                string error = blueprint.GetConfigurationError();
+                Assert.That(error, Does.Contain("whitespace-only variant ID"));
+                using (Realm realm = new Realm())
+                {
+                    Assert.That(Assert.Throws<ArgumentException>(() => realm.RegisterBlueprint(blueprint)).Message,
+                        Does.Contain(error));
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(prefab);
+            }
+        }
+
+        /// <summary>
         /// Invalid scene entries produce actionable errors before any default realm is created.
         /// </summary>
         [Test]

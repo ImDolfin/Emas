@@ -10,6 +10,32 @@ namespace Emas.Tests
     public sealed class BlueprintTests
     {
         /// <summary>
+        /// None resolves to no view even when the blueprint provides a fallback.
+        /// </summary>
+        [Test]
+        public void ResolveViewPrefab_NoneNeverSelectsFallback()
+        {
+            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            GameObject mapped = new GameObject("mapped view");
+            GameObject fallback = new GameObject("fallback view");
+            try
+            {
+                blueprint.Configure(new Kind("views.none"), null, new[]
+                {
+                    new Blueprint.ViewMapping(Variant.None, DetailLevel.Minimal, mapped)
+                }, fallback);
+                Assert.That(blueprint.ResolveViewPrefab(Variant.None, DetailLevel.None), Is.Null);
+                Assert.That(blueprint.ResolveViewPrefab(Variant.None, DetailLevel.Minimal), Is.SameAs(mapped));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(mapped);
+                UnityEngine.Object.DestroyImmediate(fallback);
+            }
+        }
+
+        /// <summary>
         /// Invalid entries report their index and cause without replacing the current configuration.
         /// </summary>
         [TestCase("prefab", "requires a non-null prefab")]

@@ -37,7 +37,7 @@ namespace Emas
                     return;
                 }
 
-                if (record.Blueprint == null)
+                if (record.Blueprint == null || record.Blueprint.Asset == null)
                 {
                     Destroy(record);
                     return;
