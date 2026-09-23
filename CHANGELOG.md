@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Isolated view creation/refresh failures to the affected view, preserving tracking and view requests for explicit or appearance-driven retry.
+- Removed source populations on failure and unreported identities after restart/replacement startup handover; compatible republished roots still survive successful handovers.
+- Added optional per-entity `PresenceSource.InactivityTimeout` with unscaled timing and protected `MarkPublished(ghost)` for custom sources updating cached ghosts; expired roots and views are removed automatically.
+
 - Captured blueprint settings per realm or anchor registration so live asset edits cannot change another scope's views; None now resolves to no prefab, and Inspector validation rejects whitespace-only variant IDs.
 - Made source failure cleanup finish before ghost deactivation can reattach the source; added `PresenceSource.CaptureDispatcher()` for registration-safe custom callbacks and clarified direct publication timing.
 - Added `Anchor.UnregisterBlueprint(kind)` to restore realm defaults; re-registering a blueprint after changing its kind clears its old registration and refreshes requested views for both kinds.

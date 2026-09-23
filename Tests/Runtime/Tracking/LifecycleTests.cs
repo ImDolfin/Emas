@@ -144,6 +144,94 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Removing an old attachment preserves roots reclaimed by a new attachment and removes unclaimed leftovers.
+        /// </summary>
+        [Test]
+        public void SourceRemoval_PreservesReclaimedRootDuringSceneCleanup()
+        {
+            ProbeSource source = new ProbeSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
+            ProbeGhost[] population = { source.Publish("first"), source.Publish("second"), source.Publish("third") };
+            _realm.Update();
+            ProbeGhost reclaimed = null;
+            ProbeGhost.Disabled = disabled =>
+            {
+                ProbeGhost.Disabled = null;
+                source.Starting = () =>
+                {
+                    for (int index = 0; index < population.Length; index++)
+                    {
+                        IGhost found;
+                        if (_realm.TryGetGhost(population[index].Key, out found))
+                        {
+                            reclaimed = source.Publish(found.Key.EntityId);
+                            Assert.That(reclaimed, Is.SameAs(found));
+                            break;
+                        }
+                    }
+                };
+                anchor.AddSource(source);
+            };
+
+            anchor.RemoveSource(source);
+
+            Assert.That(source.IsActive && source.IsAttached, Is.True);
+            Assert.That(source.StartCount, Is.EqualTo(2));
+            Assert.That(reclaimed, Is.Not.Null);
+            Assert.That(_realm.Query().Single(), Is.SameAs(reclaimed));
+            for (int index = 0; index < population.Length; index++)
+            {
+                IGhost found;
+                Assert.That(_realm.TryGetGhost(population[index].Key, out found),
+                    Is.EqualTo(ReferenceEquals(population[index], reclaimed)));
+            }
+        }
+
+        /// <summary>
+        /// An older batch rollback cannot clear ownership of a prepared root reclaimed during scene cleanup.
+        /// </summary>
+        [Test]
+        public void BatchRollback_PreservesPreparedRootReclaimedByNewAttachment()
+        {
+            Anchor anchor = _realm.GetOrCreateAnchor("anchor");
+            ProbeGhost first = _realm.Prepare<ProbeGhost>("anchor", Kind, "first");
+            ProbeGhost second = _realm.Prepare<ProbeGhost>("anchor", Kind, "second");
+            ProbeSource source = new ProbeSource();
+            source.Starting = () =>
+            {
+                source.Publish("first");
+                source.Publish("second");
+                source.Publish("temporary");
+            };
+            ProbeSource failing = new ProbeSource();
+            failing.Starting = () => throw new InvalidOperationException("start failed");
+            ProbeGhost reclaimed = null;
+            ProbeGhost.Disabled = disabled =>
+            {
+                ProbeGhost.Disabled = null;
+                // At least one prepared root is still active when the first rollback scene effect runs.
+                ProbeGhost candidate = first.IsAvailable ? first : second;
+                source.Starting = () => reclaimed = source.Publish(candidate.Key.EntityId);
+                anchor.AddSource(source);
+                Assert.That(reclaimed, Is.SameAs(candidate));
+            };
+
+            Assert.Throws<InvalidOperationException>(() => _realm.GetOrCreateAnchor("anchor", source, failing));
+
+            Assert.That(source.IsActive && source.IsAttached, Is.True);
+            Assert.That(anchor.Sources, Is.EqualTo(new[] { source }));
+            Assert.That(_realm.Query().Single(), Is.SameAs(reclaimed));
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(new Key("anchor", Kind, "temporary"), out found), Is.False);
+            ProbeGhost unclaimed = ReferenceEquals(reclaimed, first) ? second : first;
+            Assert.That(_realm.TryGetGhost(unclaimed.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(unclaimed));
+            Assert.That(unclaimed.IsAvailable, Is.False);
+            _realm.Update();
+            Assert.That(_realm.Query().Single(), Is.SameAs(reclaimed));
+        }
+
+        /// <summary>
         /// A disposed realm cannot create unmanaged scene objects or accept mutations.
         /// </summary>
         [Test]
@@ -275,10 +363,10 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A replacement failure keeps compatible identities unavailable for a subsequent recovery.
+        /// A replacement failure removes its population and supports recovery with new ghost objects.
         /// </summary>
         [Test]
-        public void FailedReplacement_PreservesUnavailableIdentityAndCanRecover()
+        public void FailedReplacement_RemovesPopulationAndCanRecover()
         {
             ProbeSource source = new ProbeSource();
             Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
@@ -295,15 +383,20 @@ namespace Emas.Tests
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
             IGhost found;
-            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(ghost));
+            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
+            Assert.That(found, Is.Null);
+            Assert.That(_realm.GetOwnedGhosts(failed), Is.Empty);
+            Assert.That(failed.IsAttached, Is.True);
+            Assert.That(failed.IsActive, Is.False);
             Anchor otherAnchor = _realm.GetOrCreateAnchor("other");
             Assert.Throws<InvalidOperationException>(() => otherAnchor.AddSource(failed));
             ProbeSource recovery = new ProbeSource();
             anchor.ReplaceSource(failed, recovery);
-            Assert.That(recovery.Publish("car"), Is.SameAs(ghost));
+            ProbeGhost recovered = recovery.Publish("car");
+            Assert.That(recovered, Is.Not.SameAs(ghost));
+            Assert.That(recovered.Key, Is.EqualTo(ghost.Key));
             _realm.Update();
-            Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
+            Assert.That(_realm.Query().Single(), Is.SameAs(recovered));
         }
 
         /// <summary>
@@ -582,10 +675,10 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Dispatched source failure cannot expose its partially populated ghost.
+        /// Dispatched source failure removes and destroys its partially populated ghost.
         /// </summary>
-        [Test]
-        public void DispatchFailure_KeepsPartialPublicationUnavailable()
+        [UnityTest]
+        public IEnumerator DispatchFailure_RemovesPartialPublication()
         {
             ProbeSource source = new ProbeSource();
             _realm.GetOrCreateAnchor("anchor", source);
@@ -600,6 +693,13 @@ namespace Emas.Tests
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
             Assert.That(source.StopCount, Is.EqualTo(1));
+            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
+            GameObject root = ghost.gameObject;
+            yield return null;
+            Assert.That(root == null, Is.True);
+            Assert.That(ghost == null, Is.True);
         }
 
         /// <summary>

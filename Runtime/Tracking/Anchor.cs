@@ -267,8 +267,8 @@ namespace Emas
         /// </param>
         /// <remarks>
         /// Stops the old registration once and discards its queued work. Retained ghosts become unavailable until republished.
-        /// Startup errors propagate and leave the source attached with unavailable ghosts for another retry.
-        /// Callback sources retain unreported identities; polling removes identities absent from a successful complete read.
+        /// Unreported ghosts are removed after the next update and the queued initial publications have been processed.
+        /// Startup errors propagate and remove the population; the source remains attached for another retry.
         /// Cleanup errors are logged; the new attachment clears LastError and LastErrorContext before startup.
         /// </remarks>
         /// <exception cref="ArgumentNullException">
@@ -318,12 +318,16 @@ namespace Emas
                 try
                 {
                     source.Attach(this);
+                    if (source.IsAttachedTo(this) && source.RegistrationGeneration == generation + 1)
+                    {
+                        Realm.CompleteSourceHandover(source);
+                    }
                 }
                 catch
                 {
                     if (source.IsAttachedTo(this) && source.RegistrationGeneration == generation + 1)
                     {
-                        Realm.MarkUnavailable(source);
+                        Realm.RemoveSourceGhosts(source);
                     }
 
                     throw;
@@ -351,7 +355,8 @@ namespace Emas
         /// The replacement source.
         /// </param>
         /// <remarks>
-        /// Transferred ghosts become unavailable until republished. Failed startup retains the replacement and unavailable identities for recovery.
+        /// Transferred ghosts become unavailable until republished. Unreported ghosts are removed after the next update
+        /// and the queued initial publications have been processed. Failed startup removes ghosts and retains the replacement for retry.
         /// </remarks>
         /// <exception cref="ArgumentNullException">
         /// Either source is null.
@@ -410,13 +415,17 @@ namespace Emas
             try
             {
                 replacement.Attach(this);
+                if (replacement.IsAttachedTo(this) && replacement.RegistrationGeneration == generation)
+                {
+                    Realm.CompleteSourceHandover(replacement);
+                }
             }
             catch
             {
-                // Preserve transferred identities, but never expose partially initialized data.
+                // A failed handover releases transferred and partially initialized ghosts.
                 if (replacement.IsAttachedTo(this) && replacement.RegistrationGeneration == generation)
                 {
-                    Realm.MarkUnavailable(replacement);
+                    Realm.RemoveSourceGhosts(replacement);
                 }
 
                 throw;

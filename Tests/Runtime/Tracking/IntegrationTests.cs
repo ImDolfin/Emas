@@ -199,13 +199,13 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Malformed snapshots cannot delete the retained population.
+        /// Malformed polling results stop the source and remove its population.
         /// </summary>
         [TestCase("null")]
         [TestCase("duplicate")]
         [TestCase("empty-id")]
         [TestCase("enumeration")]
-        public void Polling_InvalidSnapshotStopsWithoutDeleting(string failure)
+        public void Polling_InvalidSnapshotStopsAndRemovesPopulation(string failure)
         {
             bool fail = false;
             Func<IEnumerable<string>> read = () => !fail ? new[] { "a", "b" } :
@@ -223,17 +223,23 @@ namespace Emas.Tests
                 Assert.That(source.LastErrorContext, Does.Contain("ReadFrom").And.Not.Contain("entity '"));
             }
 
-            Assert.That(_realm.GetOwnedGhosts(source).Count, Is.EqualTo(2));
+            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
             Assert.That(retained.IsAvailable, Is.False);
+            Assert.That(source.IsAttached, Is.True);
+            Assert.That(source.IsActive, Is.False);
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(retained.Key, out found), Is.False);
+            Assert.That(_realm.TryGetGhost(new Key("poll", Population, "b"), out found), Is.False);
             anchor.ReplaceSource(source, Source(() => new[] { "a" }));
-            Assert.That(_realm.Query().Single(), Is.SameAs(retained));
+            Assert.That(_realm.Query().Single(), Is.Not.SameAs(retained));
+            Assert.That(_realm.Query().Single().Key, Is.EqualTo(retained.Key));
         }
 
         /// <summary>
-        /// A failed mapper does not execute departures from a partial poll.
+        /// A failed mapper removes the entire source population, including entities absent from the partial poll.
         /// </summary>
         [Test]
-        public void Polling_MappingFailureKeepsUnpublishedDepartures()
+        public void Polling_MappingFailureRemovesEntirePopulation()
         {
             bool fail = false;
             PollingPresenceSource<string, Probe> source = new PollingPresenceSource<string, Probe>(Population)
@@ -249,8 +255,11 @@ namespace Emas.Tests
             _realm.GetOrCreateAnchor("poll", source);
             fail = true;
             ExpectedErrors.Verify(_realm.Update, "mapper failed");
-            Assert.That(_realm.GetOwnedGhosts(source).Count, Is.EqualTo(2));
+            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
             Assert.That(_realm.Query().Count, Is.Zero);
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(new Key("poll", Population, "a"), out found), Is.False);
+            Assert.That(_realm.TryGetGhost(new Key("poll", Population, "b"), out found), Is.False);
         }
 
         /// <summary>

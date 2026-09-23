@@ -32,11 +32,11 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Restart retains identity, invalidates old work and recovers both active and failed sources.
+        /// Restart invalidates old work and recreates ghosts removed by a previous source failure.
         /// </summary>
         [TestCase(false)]
         [TestCase(true)]
-        public void Restart_PreservesIdentityAndDiscardsOldWork(bool fail)
+        public void Restart_DiscardsOldWorkAndRecoversPopulation(bool fail)
         {
             Probe source = new Probe();
             Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
@@ -49,6 +49,9 @@ namespace Emas.Tests
                     throw new InvalidOperationException("update failed");
                 };
                 ExpectedErrors.Verify(_realm.Update, "update failed");
+                Assert.That(source.Population, Is.Empty);
+                IGhost removed;
+                Assert.That(_realm.TryGetGhost(ghost.Key, out removed), Is.False);
                 source.Updating = null;
             }
             else
@@ -64,16 +67,25 @@ namespace Emas.Tests
             Assert.That(source.IsAttached && source.IsActive, Is.True);
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(anchor.Sources, Is.EqualTo(new[] { source }));
-            Assert.That(source.Publish("one"), Is.SameAs(ghost));
+            TestGhost recovered = source.Publish("one");
+            if (fail)
+            {
+                Assert.That(recovered, Is.Not.SameAs(ghost));
+            }
+            else
+            {
+                Assert.That(recovered, Is.SameAs(ghost));
+            }
+
             _realm.Update();
-            Assert.That(ghost.IsAvailable, Is.True);
+            Assert.That(recovered.IsAvailable, Is.True);
         }
 
         /// <summary>
-        /// Failed restart leaves identities attached and unavailable until a later successful retry.
+        /// Failed restart removes its population while keeping the source attached for a later retry.
         /// </summary>
         [Test]
-        public void RestartFailure_RetainsGhostsAndCanRetry()
+        public void RestartFailure_RemovesGhostsAndCanRetry()
         {
             Probe source = new Probe();
             Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
@@ -92,10 +104,16 @@ namespace Emas.Tests
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);
             Assert.That(_realm.Query().Count, Is.Zero);
-            Assert.That(source.Population.Count, Is.EqualTo(2));
+            Assert.That(source.Population, Is.Empty);
+            Assert.That(ghost.IsAvailable, Is.False);
+            Assert.That(ghost.gameObject.activeSelf, Is.False);
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
+            Assert.That(_realm.TryGetGhost(new Key("restart", Kind, "partial"), out found), Is.False);
             source.Starting = () => source.Publish("one");
             anchor.RestartSource(source);
-            Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
+            Assert.That(_realm.Query().Single(), Is.Not.SameAs(ghost));
+            Assert.That(_realm.Query().Single().Key, Is.EqualTo(ghost.Key));
             Assert.That(source.Starts, Is.EqualTo(3));
             Assert.That(source.Stops, Is.EqualTo(2));
             Assert.That(source.LastError, Is.Null);

@@ -27,6 +27,9 @@ namespace Emas
         internal long ViewVersion;
         internal long OwnershipVersion;
         internal long RegistrationGeneration;
+        internal long HandoverUpdate;
+        internal long HandoverDispatchSequence;
+        internal double LastPublishedAt;
         internal DetailLevel RequestedDetailLevel;
     }
 }

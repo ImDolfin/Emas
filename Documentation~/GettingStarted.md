@@ -90,7 +90,7 @@ namespace Emas.Minimal
 
 Unity advances `Realm.Default` automatically. `SceneSetup.StopTracking()` removes its anchor, ghosts and views while leaving the component enabled; another `Track` call starts again. Disabling also removes tracking; the bootstrap calls `Track` again on re-enable. Toggle the whole Tracking object so both components share that lifetime. Inspector blueprints apply only to that anchor and leave with it. An empty blueprint list is valid for data-only tracking.
 
-To retry an attached source while retaining its ghosts, call `setup.Anchor.RestartSource(source)`. Use `ReplaceSource` when changing the source instance. Both require new publication before retained data becomes available.
+Use `setup.Anchor.RestartSource(source)` to restart an attached source and `ReplaceSource` to change its instance. A successful handover reuses compatible roots republished during startup; unreported roots are removed after the first subsequent update and queued startup publications finish. A source failure removes its population immediately, so restarting a failed source creates new roots.
 
 When you already know the identity, look it up directly:
 
@@ -103,7 +103,7 @@ if (Realm.Default.TryGetGhost(key, out ghost) && ghost.IsAvailable)
 }
 ```
 
-The anchor ID must match your SceneSetup. Lookup also finds retained unavailable ghosts, whose data may be stale; removal returns `false`.
+The anchor ID must match your SceneSetup. Lookup also finds prepared ghosts and unavailable roots during startup handover; removal returns `false`.
 
 For interface-based consumers, paired query arrivals/departures and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>` for optional interfaces or `ghost.GetRequired<T>()` when a missing provider should fail immediately; the application owns those interfaces.
 
@@ -112,12 +112,14 @@ For interface-based consumers, paired query arrivals/departures and source repla
 | Source | Choose when | What deletion means |
 | --- | --- | --- |
 | `PollingPresenceSource` | The SDK can return the complete current population on startup and each update | Omitted IDs disappear after a successful read; an empty collection removes all |
-| `CallbackPresenceSource` | The SDK supplies individual changes and removals | Only an explicit remove callback deletes an ID |
-| Custom `PresenceSource` | The integration needs its own lifecycle or multiple feeds | Call protected `Remove` yourself |
+| `CallbackPresenceSource` | The SDK supplies individual changes and removals | An explicit remove callback or configured inactivity timeout deletes an ID |
+| Custom `PresenceSource` | The integration needs its own lifecycle or multiple feeds | Call protected `Remove` or configure an inactivity timeout |
 
-Polling reads on every update by default. For slower feeds, add `.PollEvery(System.TimeSpan.FromMilliseconds(500))` to the builder before tracking. Startup still reads immediately; later reads use unscaled elapsed time, without catch-up bursts. Existing data remains available between reads. Restart resets the interval.
+Polling reads on every update by default. For slower feeds, add `.PollEvery(System.TimeSpan.FromMilliseconds(500))` to the builder before tracking. Startup still reads immediately; later reads use unscaled elapsed time, without catch-up bursts. Existing data remains available between reads unless its configured inactivity timeout expires. Restart resets the interval.
 
 The callback builder uses `IdentifyBy`, `Apply` and `Listen`. `Listen` receives publish/remove callbacks and returns an unsubscribe action. Publish initial data inside `Listen`; every event is deferred to a later realm update. Import **Callback quick start**, open `Callbacks.unity`, and inspect its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for complete wiring, initial population and cleanup.
+
+To remove entities that silently stop publishing, set `source.InactivityTimeout = System.TimeSpan.FromSeconds(10)` before tracking, choosing a duration suited to your feed. Null, the default, disables expiry. Each partial publication refreshes that entity's deadline; custom sources updating cached ghosts call protected `MarkPublished(ghost)`. Expiry removes the root and view. A later publication creates a new root.
 
 Call all Emas APIs, including publish/remove callbacks, on Unity's main thread. Your SDK adapter is responsible for delivering events there. Keep callback payloads unchanged until processed. SDK ownership, coordinate conversion and recovery are covered in [Guidelines](Guidelines.md); exact scheduling and failure contracts are in [API](API.md).
 
@@ -126,7 +128,8 @@ Call all Emas APIs, including publish/remove callbacks, on Unity's main thread. 
 | Symptom | Check |
 | --- | --- |
 | Nothing appears | Check Blueprint and SceneSetup Inspector errors, matching kind IDs and the view prefab. A ghost can be available without a view. |
-| A source stops | Open **Window > Emas** during Play Mode. Inspect its label, status and failure details, or read `source.LastErrorContext` and `source.LastError`. Fix the cause and call `anchor.RestartSource(source)`. Assign `source.Name` to distinguish feeds. |
+| A source stops | Its ghosts are removed. Open **Window > Emas** during Play Mode or read `source.LastErrorContext` and `source.LastError`. Fix the cause and call `anchor.RestartSource(source)` to repopulate. Assign `source.Name` to distinguish feeds. |
+| One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its blueprint, variant or detail to retry. |
 | Polling entities disappear | Return the full population, not only changes. Null, duplicate/empty IDs and mapping exceptions stop the source. |
 | Restart creates duplicates | Unsubscribe in callback cleanup; dispose consumer query subscriptions when their owner stops. |
 | No tests appear | Open the prepared **`Tests/Unity~`** project through Unity Hub. Package import alone does not opt a consumer into tests. See [Validation](Validation.md). |

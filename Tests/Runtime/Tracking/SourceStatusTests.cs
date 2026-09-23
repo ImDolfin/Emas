@@ -74,7 +74,7 @@ namespace Emas.Tests
         /// </summary>
         [TestCase(false)]
         [TestCase(true)]
-        public void RuntimeFailure_RetainsUnavailableGhostAndIsolatesHealthySource(bool dispatched)
+        public void RuntimeFailure_RemovesGhostAndIsolatesHealthySource(bool dispatched)
         {
             InvalidOperationException failure = new InvalidOperationException("runtime failure");
             ProbeSource source = new ProbeSource();
@@ -112,8 +112,9 @@ namespace Emas.Tests
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             IGhost found;
-            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(ghost));
+            Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
+            Assert.That(found, Is.Null);
+            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
             _realm.Update();
             Assert.That(source.Stops, Is.EqualTo(1));
             Assert.That(other.IsAvailable && healthy.IsActive, Is.True);
@@ -122,11 +123,13 @@ namespace Emas.Tests
             Assert.That(healthy.LastError, Is.Null);
             ProbeSource replacement = new ProbeSource();
             anchor.ReplaceSource(source, replacement);
-            Assert.That(replacement.Publish("failed"), Is.SameAs(ghost));
+            StatusGhost recovered = replacement.Publish("failed");
+            Assert.That(recovered, Is.Not.SameAs(ghost));
             _realm.Update();
-            Assert.That(ghost.IsAvailable, Is.True);
+            Assert.That(recovered.IsAvailable, Is.True);
+            Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(ghost));
+            Assert.That(found, Is.SameAs(recovered));
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.Stops, Is.EqualTo(1));
         }

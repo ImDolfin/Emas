@@ -20,6 +20,7 @@ namespace Emas
         private string _name;
         private string _sourceContext;
         private int _lifecycleDepth;
+        private TimeSpan? _inactivityTimeout;
 
         /// <summary>
         /// Gets the anchor currently hosting this source.
@@ -63,7 +64,7 @@ namespace Emas
         /// Processes one realm update on the Unity thread.
         /// </summary>
         /// <remarks>
-        /// Exceptions stop this registration and retain its ghosts as unavailable. Other sources continue.
+        /// Exceptions stop this registration and remove its ghosts. Other sources continue.
         /// </remarks>
         protected virtual void OnUpdate()
         {
@@ -101,6 +102,7 @@ namespace Emas
         /// Call on Unity's main thread while this source is active. Complete data before a lifecycle or dispatched callback returns.
         /// A new or unavailable ghost obtained outside those callbacks becomes available on the next realm update; finish its data first.
         /// A compatible replacement reuses the root; an incompatible ghost type is rejected.
+        /// Each successful call records activity for InactivityTimeout, including partial data publications.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// The source is inactive, another source owns the identity, or the existing/prefab ghost has an incompatible type.
@@ -141,6 +143,7 @@ namespace Emas
         /// Call on Unity's main thread while this source is active. Complete data before a lifecycle or dispatched callback returns.
         /// A new or unavailable ghost obtained outside those callbacks becomes available on the next realm update; finish its data first.
         /// A compatible replacement reuses the root; an incompatible ghost type is rejected.
+        /// Each successful call records activity for InactivityTimeout, including partial data publications.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// The source is inactive, another source owns the identity, or the existing/prefab ghost has an incompatible type.
@@ -160,6 +163,40 @@ namespace Emas
 
             _anchor.ThrowIfDisposed();
             return _anchor.Realm.GetOrCreate<TGhost>(this, _anchor.Id, entityId, kind, variant, name);
+        }
+
+        /// <summary>
+        /// Records fresh data written to a ghost cached by this source.
+        /// </summary>
+        /// <param name="ghost">
+        /// The current ghost owned by this attachment.
+        /// </param>
+        /// <remarks>
+        /// Call after updating cached ghost data to reset its inactivity deadline. Any partial data update counts as activity.
+        /// GetOrCreate already records activity, so no additional call is needed when publishing through it.
+        /// This does not notify consumers or change ghost data.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// The source is inactive.
+        /// </exception>
+        /// <exception cref="ArgumentNullException">
+        /// The ghost is null.
+        /// </exception>
+        /// <exception cref="ArgumentException">
+        /// The ghost is removed, belongs to another source, or was not claimed by this attachment.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// The owning anchor or realm was disposed.
+        /// </exception>
+        protected void MarkPublished(IGhost ghost)
+        {
+            if (_anchor == null || !_started)
+            {
+                throw new InvalidOperationException("The source is not active on an anchor.");
+            }
+
+            _anchor.ThrowIfDisposed();
+            _anchor.Realm.MarkPublished(this, ghost);
         }
 
         /// <summary>
@@ -242,10 +279,50 @@ namespace Emas
         }
 
         /// <summary>
+        /// Gets or sets how long an owned ghost may go without publication before removal.
+        /// </summary>
+        /// <value>
+        /// A positive timeout, or null to disable inactivity expiry, which is the default.
+        /// </value>
+        /// <remarks>
+        /// Configure while detached. Uses unscaled real time and removes expired ghosts during the next realm update,
+        /// after queued publications and source updates. GetOrCreate and MarkPublished reset the individual ghost's deadline.
+        /// Any partial data update counts as activity. Enable only for feeds that publish often enough to establish continued presence;
+        /// feeds that publish only changed values should normally leave expiry disabled.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The timeout is zero or negative.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The source is attached or running a lifecycle callback.
+        /// </exception>
+        public TimeSpan? InactivityTimeout
+        {
+            get
+            {
+                return _inactivityTimeout;
+            }
+            set
+            {
+                if (IsAttached || IsInLifecycle)
+                {
+                    throw new InvalidOperationException("Configure inactivity expiry before attaching the source to an anchor.");
+                }
+
+                if (value.HasValue && value.Value <= TimeSpan.Zero)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "The inactivity timeout must be positive or null.");
+                }
+
+                _inactivityTimeout = value;
+            }
+        }
+
+        /// <summary>
         /// Gets whether this registration is starting or accepting updates.
         /// </summary>
         /// <remarks>
-        /// False after failure or detachment. Failure can leave the source attached with unavailable ghosts.
+        /// False after failure or detachment. Failure leaves the source attached for retry but removes its ghosts.
         /// </remarks>
         public bool IsActive
         {
@@ -435,7 +512,7 @@ namespace Emas
                 RecordError(exception, generation, context);
                 if (IsAttachedTo(anchor) && RegistrationGeneration == generation)
                 {
-                    StopAfterFailure(generation);
+                    StopAfterFailure(generation, false);
                 }
 
                 throw;
@@ -486,7 +563,7 @@ namespace Emas
             StopAfterFailure(generation);
         }
 
-        private void StopAfterFailure(long generation)
+        private void StopAfterFailure(long generation, bool removeGhosts = true)
         {
             if (!_started || _registrationGeneration != generation)
             {
@@ -512,7 +589,15 @@ namespace Emas
 
                 if (_registrationGeneration == generation && _anchor == anchor && anchor != null)
                 {
-                    anchor.Realm.MarkUnavailable(this);
+                    if (removeGhosts)
+                    {
+                        anchor.Realm.RemoveSourceGhosts(this);
+                    }
+                    else
+                    {
+                        // The caller must first restore any prepared roots claimed during startup.
+                        anchor.Realm.MarkUnavailable(this);
+                    }
                 }
             }
             finally

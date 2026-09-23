@@ -15,9 +15,9 @@ Runtime APIs use the `Emas` namespace. All operations require Unity's main threa
 
 For polling, configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an anchor.
 
-`PollEvery(TimeSpan.FromMilliseconds(500))` reads immediately on attachment, then on the first realm update at least 500 ms after the previous read started. It uses unscaled real time on Unity's main thread, runs at most once per update and skips missed intervals without catch-up reads. Restart and reattachment read immediately and reset the deadline. Data and membership stay unchanged between polls. Configure the interval while detached and outside a read; negative intervals are rejected.
+`PollEvery(TimeSpan.FromMilliseconds(500))` reads immediately on attachment, then on the first realm update at least 500 ms after the previous read started. It uses unscaled real time on Unity's main thread, runs at most once per update and skips missed intervals without catch-up reads. Restart and reattachment read immediately and reset the deadline. Without inactivity expiry, data and membership stay unchanged between polls. Configure the interval while detached and outside a read; negative intervals are rejected.
 
-Polling requires a non-null full snapshot and unique, non-empty IDs. The entire read is validated before mapping; departures run only after all mapping callbacks succeed. Failures use normal source stop/unavailability behavior. SDK clients remain application-owned.
+Polling requires a non-null full snapshot and unique, non-empty IDs. The entire read is validated before mapping; omitted identities are removed after all mapping callbacks succeed. Failures stop the source and remove its population. SDK clients remain application-owned.
 
 For callbacks, configure `.IdentifyBy(idSelector)`, `.Apply(copyData)` and `.Listen(subscribe)`; optional `.WithVariant(selector)` has the same appearance semantics.
 
@@ -27,10 +27,10 @@ For callbacks, configure `.IdentifyBy(idSelector)`, `.Apply(copyData)` and `.Lis
 | --- | --- |
 | Configuration | Change only while detached and outside subscription startup; a failed attached source remains unconfigurable |
 | Scheduling | Publish/remove on Unity's main thread; all events use the bounded FIFO queue. Selectors and mapping run on a later realm update |
-| Identity | Repeated IDs update the same ghost; unknown removals do nothing; untouched entities remain |
+| Identity | Repeated IDs update the same ghost; unknown removals do nothing; an optional inactivity timeout removes silent entities |
 | Lifetime | Subscribe once per attachment; cleanup once on stop, including interrupted startup. Old callbacks cannot affect a restarted registration |
-| Failure | Null items, empty/null IDs or selector/mapping exceptions stop the source, unsubscribe, retain unavailable ghosts and discard queued work. Cleanup exceptions are logged and retained when no primary failure exists |
-| Replacement | Preserve compatible roots; each becomes available when republished. Unreported identities are not deleted |
+| Failure | Null items, empty/null IDs or selector/mapping exceptions stop the source, unsubscribe, remove its ghosts and discard queued work. Cleanup exceptions are logged and retained when no primary failure exists |
+| Replacement | Preserve compatible roots during startup handover; republished identities become available and unreported identities are then removed |
 | Adapter responsibilities | Keep payloads unchanged until processed; copy mutable SDK data. Order initial publications with live events and undo partial subscriptions before throwing |
 
 Subscription and cleanup run on the Unity thread. Initial items may be published inside `Listen`; they are also deferred.
@@ -47,14 +47,18 @@ Subscription and cleanup run on the Unity thread. Initial items may be published
 | `Anchor.UnregisterBlueprint(kind)` | Remove this anchor's override so its realm default applies; missing overrides are ignored |
 | `GetOrCreateAnchor(id, params PresenceSource[] sources)` | Create or reuse an anchor and attach/start supplied sources; overload accepts a `Transform` frame, which must match when reusing. On failure, sources newly attached by this call are removed and prepared identities are restored; existing sources remain |
 | `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
-| `TryGetGhost(key, out ghost)` | Look up an exact identity, including prepared and retained unavailable ghosts; return false/null for missing, invalid or destroyed identities and disposed realms |
+| `TryGetGhost(key, out ghost)` | Look up an exact identity, including prepared ghosts and unavailable ghosts during startup handover; return false/null for missing, invalid or destroyed identities and disposed realms |
 | `Query(partialName = null)` | Describe filters over available ghosts |
 | `Query(description)` | Rebind an existing query description to this realm |
 | `RemoveAnchor(id)` | Stop its sources and remove all its records, including prepared ghosts |
 | `Update()` | Advance an explicitly managed realm; the default realm advances automatically |
 | `realm.Dispose()` | Release the realm and all owned state |
 
-An `Anchor` exposes `Id`, `Transform`, `Realm`, `RegisterBlueprint(blueprint)`, `UnregisterBlueprint(kind)`, `AddSource`, `RemoveSource`, `RestartSource(source)`, `ReplaceSource(current, replacement)` and `Dispose()`. Restart reuses the attached active or failed source with its existing configuration; replacement uses a different instance. Both retain compatible identities and view requests, marking ghosts unavailable until republished. Restart rejects calls during startup, cleanup or another restart. Startup failure leaves the restarted source attached for another retry; callbacks from its previous registration remain invalid. Removal destroys the removed source's population. A source removed and reattached during an update waits until the next update for its new registration to tick. See [lifecycle rules](Architecture.md#failure-and-cleanup).
+An `Anchor` exposes `Id`, `Transform`, `Realm`, `RegisterBlueprint(blueprint)`, `UnregisterBlueprint(kind)`, `AddSource`, `RemoveSource`, `RestartSource(source)`, `ReplaceSource(current, replacement)` and `Dispose()`. Restart reuses an attached source with its existing configuration; replacement uses a different instance.
+
+During a successful handover, compatible roots and view requests survive when the new registration republishes them. Roots remain unavailable until republished. After the first subsequent realm update and all publications queued during startup have run, identities still unreported are removed.
+
+Source failure removes its population, so recovery creates new roots. Failed restart/replacement startup leaves the failed registration attached for another retry. Restart rejects calls during startup, cleanup or another restart; old callbacks remain invalid. Removal destroys the removed source's population. A source removed and reattached during an update waits until the next update to tick. See [lifecycle rules](Architecture.md#failure-and-cleanup).
 
 ## PresenceSource and ghost contracts
 
@@ -62,11 +66,13 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `RegisterBlueprint(blueprint)`, 
 | --- | --- |
 | `IsAttached` | An anchor still owns this source, including a failed registration |
 | `IsActive` | The current attachment is starting or accepting updates |
+| `InactivityTimeout` | Optional positive `TimeSpan`; remove each ghost after this much unscaled time without publication. Null disables expiry; configure while detached |
 | `Name` | Optional application label for diagnostics; empty labels use the source type. Does not affect identity |
 | `LastError` | Original first exception from the latest attachment; cleared before startup, retained after stopping/detachment, never overwritten by cleanup or an old registration |
 | `LastErrorContext` | Captured anchor, source label and operation for `LastError`; built-in sources also include kind/entity ID when known. Same retention and reset rules |
 | `OnStart`, `OnUpdate`, `OnStop` | Override lifecycle hooks; cleanup runs once for a started attachment, including startup failure |
-| `GetOrCreate<TGhost>(entityId, kind, variant = null)` | Obtain a stable owned ghost; another overload accepts a display name |
+| `GetOrCreate<TGhost>(entityId, kind, variant = null)` | Obtain a stable owned ghost and reset its inactivity deadline; another overload accepts a display name |
+| `MarkPublished(ghost)` | Protected hook to reset activity after a custom source writes fresh data to a cached owned ghost |
 | `Remove(kind, entityId)` | Remove one owned ghost |
 | `Dispatch(action)` | Queue main-thread work for the current attachment; queued work is discarded if that attachment stops |
 | `CaptureDispatcher()` | Capture a main-thread dispatcher for the current attachment; callbacks from an earlier attachment are ignored |
@@ -77,6 +83,8 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `RegisterBlueprint(blueprint)`, 
 
 Custom sources can call `GetOrCreate` and `Remove` on Unity's main thread whenever `IsActive` is true. New or unavailable ghosts created by direct calls outside lifecycle or dispatched callbacks become available on the next realm update; complete their data before that update. Already available ghosts can be updated in place. Inactive `GetOrCreate` throws, while inactive `Remove` is ignored.
 
+`InactivityTimeout` defaults to null. Every `GetOrCreate` publication resets that entity's deadline, including partial updates such as position or articulation. Built-in sources do this automatically. A custom source updating a cached ghost calls `MarkPublished(ghost)` after writing fresh data. Expiry runs after source processing and before query notifications, removes the root and view, and reports ordinary query departures. Later publication creates a new root with the same key. Unowned prepared ghosts do not expire. Choose a timeout that allows for the feed's normal publication interval, including any polling interval.
+
 Capture a dispatcher in `OnStart` when subscribing to SDK callbacks and release the subscription in `OnStop`. The returned callback accepts an `Action` to run during a later realm update and ignores calls after its attachment ends, even if the same source instance restarts. `Dispatch` called directly from an old SDK callback would instead use the source's current attachment. Applications must move SDK events to Unity's main thread before calling either dispatcher.
 
 Application interfaces should be read-only; concrete ghost setters are for source mapping. `Ghost` supplies `IGhost`; root activation happens after publication, so `Awake` must not assume mapped data. Source-specific types and coordinate conversion stay in application sources. One source owns each identity; an application source can compose multiple feeds.
@@ -85,7 +93,7 @@ Use `TryGet<T>` when a contract is optional and `GetRequired<T>` when its absenc
 
 ## Queries and subscriptions
 
-Use `TryGetGhost` when the full `Key` is known. It reads the realm registry without creating, activating or updating anything. Check `ghost.IsAvailable` before consuming its data; a found ghost may be prepared or retained after failure or replacement. Keys are case-sensitive and resolved only within the receiving realm. Removal stops lookup immediately, even before Unity finishes destroying the object.
+Use `TryGetGhost` when the full `Key` is known. It reads the realm registry without creating, activating or updating anything. Check `ghost.IsAvailable` before consuming its data; a found ghost may be prepared or awaiting publication during startup handover. Keys are case-sensitive and resolved only within the receiving realm. Removal stops lookup immediately, even before Unity finishes destroying the object.
 
 Queries are immutable and combine all filters. They never create ghosts or components.
 
@@ -137,6 +145,8 @@ Selection for positive levels: **exact variant/detail level > highest lower posi
 `View.RequestedDetailLevel` records the requested level, even when a lower-detail prefab is selected. `ViewMapping.DetailLevel` describes the level supported by that mapping.
 
 Views require an available ghost and a positive request. View binding finishes before activation. Requests made during source changes/finalization defer refresh, so `Manifest` may return the previous view or null until that phase completes. Requests outside those phases refresh immediately.
+
+Emas catches view creation/refresh failures per ghost, cleans up the failed view and logs its key, prefab and requested detail. The source and ghosts stay available. The view request survives: retry with `Manifest`, re-register the blueprint, or change the variant or requested detail. Ordinary source updates with unchanged appearance do not retry the failed view.
 
 Source: [realm](../Runtime/Realm.cs), [queries](../Runtime/Queries/Query.cs), [blueprints](../Runtime/Views/Blueprint.cs).
 

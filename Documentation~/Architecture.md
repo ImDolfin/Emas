@@ -15,7 +15,7 @@ Realm
       View (optional visual child)
 ```
 
-Identity is `(anchor ID, kind, entity ID)`. Display names are labels. Each identity belongs to one source; compatible replacement transfers ownership without replacing its root. Prepared ghosts remain unowned and unavailable until claimed.
+Identity is `(anchor ID, kind, entity ID)`. Display names are labels. Each identity belongs to one source; compatible replacement reuses roots republished during startup handover. Prepared ghosts remain unowned and unavailable until claimed.
 
 Queries see available ghosts only. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors.
 
@@ -25,9 +25,10 @@ Blueprints are resolved by anchor and kind: an anchor registration takes precede
 
 1. Process up to **256 queued actions** present at update entry, in FIFO order.
 2. Run source updates and finish assigning data.
-3. Publish initialized ghosts as available and activate their roots.
-4. Refresh requested dirty views.
-5. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
+3. Remove ghosts past their configured inactivity timeout and unreported ghosts whose startup handover has completed.
+4. Publish initialized ghosts as available and activate their roots.
+5. Refresh requested dirty views.
+6. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
 
 Newly queued actions wait for a later update. The budget limits action count, not execution time; application callbacks must remain short. Dispatch records the source's registration generation, so stale work is discarded even if the same instance is reattached. Source updates also capture that generation: a source removed and reattached during an update first ticks in the following update.
 
@@ -39,9 +40,11 @@ Successful startup outside an update finalizes directly populated ghosts immedia
 
 | Event | Result |
 | --- | --- |
-| Source update/dispatched action throws | Run that attachment's OnStop, then deactivate its population if it is still current; other sources continue |
-| Restart/replace source | Preserve identities, root components and view requests; ghosts remain unavailable until republished |
-| Failed restart/replacement | Retain unavailable records and failed registration for another explicit retry/replacement/removal |
+| Source update/dispatched action throws | Run that attachment's OnStop, then remove its population if it is still current; leave the failed source attached for explicit recovery; other sources continue |
+| Restart/replace source | Reuse compatible roots and view requests republished during startup handover; remove identities still unreported when handover completes |
+| Failed restart/replacement | Remove the population; retain the failed registration for another explicit retry/replacement/removal |
+| Inactivity timeout reached | Remove that ghost and its view; keep the source running |
+| View creation/refresh throws | Clean up that view and log its context; keep the source and ghost available, retaining the view request for retry |
 | Failed initial attachment | Remove only newly created records; restore prepared identities to unowned/unavailable |
 | Failed multi-source anchor attachment | Remove sources newly attached by that call in reverse order; restore prepared identities and retain an existing anchor's earlier sources |
 | Attach an already registered source | Reject without changing its original population |
@@ -49,7 +52,11 @@ Successful startup outside an update finalizes directly populated ghosts immedia
 | Stop SceneSetup, dispose/remove anchor or unload its scene | Remove owned and prepared records; stop sources |
 | Dispose realm | Remove anchors, records, views, subscriptions, blueprints and queued work |
 
-Availability loss deactivates the root and excludes it from queries; retained data may be stale. Demanifesting only removes the visual child. Recovery is explicit through an active source republishing identities.
+A successful restart or replacement has a bounded startup handover. Existing roots are unavailable until republished; cleanup waits for the first subsequent realm update and for publications queued during startup to run, including any dispatch backlog. It then removes still-unreported roots. Source failure removes roots immediately, so later recovery creates new instances. Unowned prepared ghosts remain until claimed or explicitly removed with their anchor.
+
+Sources can opt into per-entity expiry with `InactivityTimeout`. Each publication records unscaled activity time; any partial data update counts. Custom sources updating cached ghosts call `MarkPublished`. Expiry removes the identity and view before subscription notifications; later publication creates a fresh root.
+
+Demanifesting removes only the visual child. Failed view requests can retry through `Manifest` or a blueprint, variant or detail change; unchanged source updates leave them alone.
 
 Sources retain the original first exception in `LastError` and its captured anchor/source/operation in `LastErrorContext`; cleanup errors cannot hide either and old registrations cannot change a restarted source's status. See [status contracts](API.md#presencesource-and-ghost-contracts).
 
@@ -63,7 +70,7 @@ Registry traversal uses snapshots and rechecks membership/registration after cal
 | --- | --- |
 | [Realm](../Runtime/Realm.cs) | Orchestrate anchors, configuration and update phases |
 | [Registry](../Runtime/Tracking/Registry.cs) | Store identity, ownership and pending state |
-| [ViewManager](../Runtime/Views/ViewManager.cs) | Stage, bind, refresh and destroy views |
+| [ViewManager](../Runtime/Views/ViewManager.cs) | Stage, bind, refresh and destroy views; contain presentation failures per ghost |
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
 | [SceneEffects](../Runtime/Unity/SceneEffects.cs) | Serialize nested scene effects |
 | [PresenceSource](../Runtime/Tracking/PresenceSource.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | Source lifecycle, registration and scene ownership |

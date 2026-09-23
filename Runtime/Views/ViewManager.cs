@@ -24,6 +24,7 @@ namespace Emas
             record.RefreshingView = true;
             long version = record.ViewVersion;
             record.ViewDirty = false;
+            string context = "view refresh for " + record.Key;
             try
             {
                 if (!record.ViewRequested || record.RequestedDetailLevel.Level <= 0)
@@ -51,6 +52,8 @@ namespace Emas
                     return;
                 }
 
+                context += " (prefab '" + prefab.name + "', detail " + record.RequestedDetailLevel + ")";
+
                 // Rebind the existing child when the requested appearance resolves to the same prefab.
                 if (record.View != null && record.ViewPrefab == prefab)
                 {
@@ -70,12 +73,13 @@ namespace Emas
                 }
 
                 // Bind the ghost before activation lets view components consume its data.
-                GameObject staging = new GameObject("[Emas View Staging]");
-                staging.SetActive(false);
-                staging.transform.SetParent(record.Ghost.transform, false);
+                GameObject staging = null;
                 GameObject instance = null;
                 try
                 {
+                    staging = new GameObject("[Emas View Staging]");
+                    staging.SetActive(false);
+                    staging.transform.SetParent(record.Ghost.transform, false);
                     instance = Object.Instantiate(prefab, staging.transform, false);
                     instance.SetActive(false);
                     View view = instance.GetComponent<View>();
@@ -123,8 +127,18 @@ namespace Emas
                 }
                 finally
                 {
-                    Object.Destroy(staging);
+                    if (staging != null)
+                    {
+                        Object.Destroy(staging);
+                    }
                 }
+            }
+            catch (System.Exception exception)
+            {
+                // Presentation failures belong to this view, not to the source population.
+                // Keep the request so a new request or appearance change can retry it.
+                Destroy(record);
+                PresenceSource.LogError(exception, context);
             }
             finally
             {
@@ -137,10 +151,17 @@ namespace Emas
             View view = record.View;
             record.View = null;
             record.ViewPrefab = null;
-            if (view != null)
+            try
             {
-                GameObject instance = view.gameObject;
-                _scene.Destroy(instance);
+                if (view != null)
+                {
+                    GameObject instance = view.gameObject;
+                    _scene.Destroy(instance);
+                }
+            }
+            catch (System.Exception exception)
+            {
+                PresenceSource.LogError(exception, "view removal for " + record.Key);
             }
         }
 

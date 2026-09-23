@@ -385,7 +385,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Bad events stop only their source, retain identities and permit replacement recovery.
+        /// Bad events remove only their source population and permit replacement recovery.
         /// </summary>
         [TestCase("null-item")]
         [TestCase("empty-id")]
@@ -393,7 +393,7 @@ namespace Emas.Tests
         [TestCase("empty-removal")]
         [TestCase("null-removal")]
         [TestCase("apply")]
-        public void Failure_StopsAndRetainsPopulation(string failure)
+        public void Failure_StopsAndRemovesPopulation(string failure)
         {
             Feed feed = new Feed();
             bool fail = false;
@@ -431,14 +431,20 @@ namespace Emas.Tests
             ExpectedErrors.Verify(_realm.Update, expected);
             Assert.That(feed.Stops, Is.EqualTo(1));
             Assert.That(retained.IsAvailable, Is.False);
-            Assert.That(_realm.GetOwnedGhosts(source).Count, Is.EqualTo(1));
+            Assert.That(retained.gameObject.activeSelf, Is.False);
+            Assert.That(source.IsAttached, Is.True);
+            Assert.That(source.IsActive, Is.False);
+            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(retained.Key, out found), Is.False);
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("healthy"));
             Feed recovery = new Feed();
             anchor.ReplaceSource(source, Source(recovery));
             recovery.Publish(new Item("a", 42));
             _realm.Update();
-            Assert.That(Find("a"), Is.SameAs(retained));
-            Assert.That(retained.Value, Is.EqualTo(42));
+            Probe recovered = Find("a");
+            Assert.That(recovered, Is.Not.SameAs(retained));
+            Assert.That(recovered.Value, Is.EqualTo(42));
             Assert.That(feed.Stops, Is.EqualTo(1));
         }
 
@@ -488,10 +494,10 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Replacement retains unreported identities as unavailable instead of inferring removals.
+        /// Replacement preserves roots during handover, then removes identities that were not republished.
         /// </summary>
         [Test]
-        public void Replacement_DoesNotReconcileUnreportedEntities()
+        public void Replacement_RemovesUnreportedEntitiesAfterHandover()
         {
             Feed first = new Feed();
             CallbackPresenceSource<Item, Probe> source = Source(first);
@@ -504,14 +510,84 @@ namespace Emas.Tests
             Feed second = new Feed();
             CallbackPresenceSource<Item, Probe> replacement = Source(second);
             anchor.ReplaceSource(source, replacement);
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(b.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(b));
+            Assert.That(_realm.GetOwnedGhosts(replacement).Count, Is.EqualTo(2));
             second.Publish(new Item("a"));
             _realm.Update();
             Assert.That(_realm.Query().Single(), Is.SameAs(a));
             Assert.That(b.IsAvailable, Is.False);
-            Assert.That(_realm.GetOwnedGhosts(replacement).Count, Is.EqualTo(2));
+            Assert.That(b.gameObject.activeSelf, Is.False);
+            Assert.That(_realm.TryGetGhost(b.Key, out found), Is.False);
+            Assert.That(_realm.GetOwnedGhosts(replacement), Is.EqualTo(new[] { a }));
             second.Publish(new Item("b"));
             _realm.Update();
-            Assert.That(Find("b"), Is.SameAs(b));
+            Assert.That(Find("b"), Is.Not.SameAs(b));
+        }
+
+        /// <summary>
+        /// Handover waits for all initial callbacks even across update budgets, but later traffic cannot prolong it.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Handover_DrainsInitialCallbacksBeforeRemovingUnreportedGhosts(bool restart)
+        {
+            Feed first = new Feed();
+            CallbackPresenceSource<Item, Probe> source = Source(first);
+            Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
+            first.Publish(new Item("a"));
+            first.Publish(new Item("b"));
+            _realm.Update();
+            Probe a = Find("a");
+            Probe b = Find("b");
+            Feed next = restart ? first : new Feed();
+            next.Starting = () =>
+            {
+                for (int index = 0; index < 299; index++)
+                {
+                    next.Publish(new Item("new", index));
+                }
+
+                next.Publish(new Item("a", 42));
+            };
+            CallbackPresenceSource<Item, Probe> current;
+            if (restart)
+            {
+                current = source;
+                anchor.RestartSource(source);
+            }
+            else
+            {
+                current = Source(next);
+                anchor.ReplaceSource(source, current);
+            }
+
+            for (int index = 0; index < 300; index++)
+            {
+                next.Publish(new Item("new", index));
+            }
+
+            next.Publish(new Item("b", 7));
+            _realm.Update();
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(a.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(a));
+            Assert.That(a.IsAvailable, Is.False);
+            Assert.That(_realm.TryGetGhost(b.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(b));
+            Assert.That(_realm.GetOwnedGhosts(current).Count, Is.EqualTo(3));
+
+            _realm.Update();
+            Assert.That(Find("a"), Is.SameAs(a));
+            Assert.That(a.Value, Is.EqualTo(42));
+            Assert.That(_realm.TryGetGhost(b.Key, out found), Is.False);
+            Assert.That(_realm.GetOwnedGhosts(current).Count, Is.EqualTo(2));
+
+            _realm.Update();
+            Assert.That(Find("b"), Is.Not.SameAs(b));
+            Assert.That(Find("b").Value, Is.EqualTo(7));
+            Assert.That(current.IsActive, Is.True);
         }
 
         /// <summary>

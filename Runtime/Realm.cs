@@ -51,11 +51,14 @@ namespace Emas
         private readonly Registry _ghosts = new Registry();
         private readonly BlueprintRegistry _blueprints = new BlueprintRegistry();
         private readonly Subscriptions _subscriptions;
+        private readonly Func<double> _elapsedSeconds;
         private readonly ViewManager _views;
         private readonly SceneEffects _scene = new SceneEffects();
         private readonly Queue<DispatchItem> _dispatch = new Queue<DispatchItem>();
         // Deterministic action budget: newly queued work waits for the following update.
         internal const int MaxDispatchActionsPerUpdate = 256;
+        private long _updateNumber;
+        private long _dispatchSequence;
         private int _sourceDepth;
         private bool _finalizing;
         private bool _updating;
@@ -65,7 +68,13 @@ namespace Emas
         /// Creates an isolated realm advanced explicitly with Update.
         /// </summary>
         public Realm()
+            : this(() => Time.realtimeSinceStartupAsDouble)
         {
+        }
+
+        internal Realm(Func<double> elapsedSeconds)
+        {
+            _elapsedSeconds = elapsedSeconds ?? throw new ArgumentNullException(nameof(elapsedSeconds));
             _subscriptions = new Subscriptions(this);
             _views = new ViewManager(_ghosts, _scene);
         }
@@ -350,7 +359,7 @@ namespace Emas
         /// True when this realm contains the ghost; false for missing or invalid keys and disposed realms.
         /// </returns>
         /// <remarks>
-        /// Read on Unity's main thread. Prepared ghosts and ghosts retained after source failure or replacement
+        /// Read on Unity's main thread. Prepared ghosts and ghosts in a source handover
         /// can be returned while unavailable; check IsAvailable before consuming their data. Lookup does not
         /// create, activate or update anything. A returned reference remains subject to its tracking lifetime.
         /// </remarks>
@@ -454,10 +463,11 @@ namespace Emas
         /// The ghost.
         /// </param>
         /// <returns>
-        /// The view component, or null when no prefab resolves.
+        /// The view component, or null when no view can be created yet.
         /// </returns>
         /// <remarks>
         /// Null, foreign and removed ghosts return null. Detail level None clears the request.
+        /// Presentation failures are logged without stopping tracking; call Manifest again after fixing the cause to retry.
         /// </remarks>
         /// <exception cref="ObjectDisposedException">
         /// The realm was disposed.
@@ -488,13 +498,14 @@ namespace Emas
         /// The desired detail level.
         /// </param>
         /// <returns>
-        /// The view component, or null when no prefab resolves.
+        /// The view component, or null when no view can be created yet.
         /// </returns>
         /// <exception cref="ArgumentOutOfRangeException">
         /// Thrown when the detail level is negative.
         /// </exception>
         /// <remarks>
         /// Null, foreign and removed ghosts return null. Detail level None clears the request.
+        /// Presentation failures are logged without stopping tracking; call Manifest again after fixing the cause to retry.
         /// </remarks>
         /// <exception cref="ObjectDisposedException">
         /// The realm was disposed.
@@ -600,7 +611,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Applies a bounded source batch, finalizes availability, refreshes views, then notifies subscribers.
+        /// Applies a bounded source batch, cleans up expired ghosts, finalizes availability and views, then notifies subscribers.
         /// </summary>
         /// <remarks>
         /// Processes at most 256 queued actions present at update entry. Newly queued actions wait for a later update. A disposed realm does nothing.
@@ -621,6 +632,7 @@ namespace Emas
             }
 
             _updating = true;
+            _updateNumber++;
             try
             {
                 // Capture the batch boundary before callbacks can enqueue more work.
@@ -652,6 +664,9 @@ namespace Emas
 
                 if (!_disposed)
                 {
+                    // Let publications in this update refresh their deadlines before expiring silent ghosts.
+                    RemoveUnpublishedHandoverGhosts();
+                    RemoveExpiredGhosts();
                     // Expose complete data and refresh views before notifying consumers.
                     FinalizeChanges(null);
                     _subscriptions.NotifyAll();
@@ -768,7 +783,8 @@ namespace Emas
             _dispatch.Enqueue(new DispatchItem(
                 source,
                 generation,
-                action));
+                action,
+                ++_dispatchSequence));
         }
 
         internal TGhost GetOrCreate<TGhost>(
@@ -816,7 +832,9 @@ namespace Emas
                 record.Owner = owner ?? record.Owner;
                 if (owner != null)
                 {
+                    record.HandoverUpdate = 0;
                     record.RegistrationGeneration = owner.RegistrationGeneration;
+                    record.LastPublishedAt = _elapsedSeconds();
                 }
 
                 record.Ghost.SetMetadata(nameValue, variant);
@@ -879,10 +897,51 @@ namespace Emas
             UnityEngine.Object.Destroy(staging);
             typed.SetAvailable(false);
             Record newRecord = new Record(typed, owner, blueprint);
+            newRecord.LastPublishedAt = owner == null ? 0 : _elapsedSeconds();
             newRecord.PendingActivation = owner != null;
             newRecord.ViewDirty = true;
             _ghosts.Add(key, newRecord);
             return typed;
+        }
+
+        internal void MarkPublished(PresenceSource owner, IGhost ghost)
+        {
+            ThrowIfDisposed();
+            if (ghost == null)
+            {
+                throw new ArgumentNullException(nameof(ghost));
+            }
+
+            Record record = FindRecord(ghost);
+            if (record == null || record.Ghost == null || record.Owner != owner
+                || !owner.IsRegistration(this, record.RegistrationGeneration))
+            {
+                throw new ArgumentException("The ghost is not owned by this source's current attachment.", nameof(ghost));
+            }
+
+            record.LastPublishedAt = _elapsedSeconds();
+        }
+
+        private void RemoveExpiredGhosts()
+        {
+            double now = _elapsedSeconds();
+            List<Record> records = _ghosts.Snapshot();
+            for (int index = 0; index < records.Count && !_disposed; index++)
+            {
+                Record record = records[index];
+                PresenceSource owner = record.Owner;
+                if (!_ghosts.Contains(record) || owner == null
+                    || !owner.IsRegistration(this, record.RegistrationGeneration))
+                {
+                    continue;
+                }
+
+                TimeSpan? timeout = owner.InactivityTimeout;
+                if (timeout.HasValue && now - record.LastPublishedAt >= timeout.Value.TotalSeconds)
+                {
+                    RemoveRecord(record.Key, record);
+                }
+            }
         }
 
         internal void FinalizeSource(PresenceSource owner)
@@ -906,12 +965,60 @@ namespace Emas
 
         internal void RemoveSourceGhosts(PresenceSource owner)
         {
+            long generation = owner.RegistrationGeneration;
+            List<Record> records = _ghosts.OwnedBy(owner);
+            // Hide the whole population before destruction callbacks can observe or reattach it.
+            for (int index = 0; index < records.Count; index++)
+            {
+                InvalidateAvailability(records[index]);
+            }
+
+            for (int index = 0; index < records.Count; index++)
+            {
+                Record record = records[index];
+                // Scene callbacks may reattach this source and reclaim a root that is still in this batch.
+                if (_ghosts.Contains(record) && record.Owner == owner && record.RegistrationGeneration <= generation)
+                {
+                    RemoveRecord(record.Key, record);
+                }
+            }
+        }
+
+        internal void CompleteSourceHandover(PresenceSource owner)
+        {
             List<Record> records = _ghosts.OwnedBy(owner);
             for (int index = 0; index < records.Count; index++)
             {
-                if (records[index].Owner == owner)
+                Record record = records[index];
+                if (record.RegistrationGeneration != owner.RegistrationGeneration)
                 {
-                    RemoveRecord(records[index].Key, records[index]);
+                    record.HandoverUpdate = _updateNumber + 1;
+                    record.HandoverDispatchSequence = _dispatchSequence;
+                }
+            }
+        }
+
+        private void RemoveUnpublishedHandoverGhosts()
+        {
+            List<Record> records = _ghosts.Snapshot();
+            for (int index = 0; index < records.Count; index++)
+            {
+                Record record = records[index];
+                if (!_ghosts.Contains(record) || record.HandoverUpdate == 0 || _updateNumber < record.HandoverUpdate)
+                {
+                    continue;
+                }
+
+                // Wait only for work queued by startup, so later traffic cannot prolong the handover indefinitely.
+                if (_dispatch.Count > 0 && _dispatch.Peek().Sequence <= record.HandoverDispatchSequence)
+                {
+                    continue;
+                }
+
+                record.HandoverUpdate = 0;
+                if (!record.PendingActivation && record.Ghost != null && !record.Ghost.IsAvailable)
+                {
+                    RemoveRecord(record.Key, record);
                 }
             }
         }
@@ -1150,10 +1257,17 @@ namespace Emas
 
         internal void RollbackSource(PresenceSource owner, HashSet<Record> previous)
         {
+            long generation = owner.RegistrationGeneration;
             List<Record> records = _ghosts.OwnedBy(owner);
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];
+                // Preserve roots reclaimed by a newer attachment during earlier scene cleanup.
+                if (!_ghosts.Contains(record) || record.Owner != owner || record.RegistrationGeneration > generation)
+                {
+                    continue;
+                }
+
                 if (!previous.Contains(record))
                 {
                     RemoveRecord(record.Key, record);
@@ -1255,23 +1369,7 @@ namespace Emas
                         continue;
                     }
 
-                    PresenceSource owner = record.Owner;
-                    long generation = record.RegistrationGeneration;
-                    try
-                    {
-                        _views.Refresh(record);
-                    }
-                    catch (Exception exception)
-                    {
-                        if (owner.IsRegistration(this, generation))
-                        {
-                            owner.HandleFailure(exception, PresenceSource.DescribeError(owner.CaptureErrorContext(), "RefreshView", record.Key.Kind, record.Key.EntityId));
-                        }
-                        else
-                        {
-                            Debug.LogException(exception);
-                        }
-                    }
+                    _views.Refresh(record);
                 }
             }
             finally
@@ -1290,16 +1388,18 @@ namespace Emas
 
         private sealed class DispatchItem
         {
-            public DispatchItem(PresenceSource source, long generation, Action action)
+            public DispatchItem(PresenceSource source, long generation, Action action, long sequence)
             {
                 Source = source;
                 Generation = generation;
                 Action = action;
+                Sequence = sequence;
             }
 
             public readonly PresenceSource Source;
             public readonly long Generation;
             public readonly Action Action;
+            public readonly long Sequence;
         }
     }
 }

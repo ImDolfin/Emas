@@ -147,7 +147,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Restart after failure reads immediately, preserves roots and starts a fresh interval.
+        /// Restart after failure reads immediately, recreates removed ghosts and starts a fresh interval.
         /// </summary>
         [Test]
         public void Restart_ResetsDeadline()
@@ -162,13 +162,17 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(_reads, Is.EqualTo(2));
             Assert.That(original.IsAvailable, Is.False);
+            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(original.Key, out found), Is.False);
 
             _fail = false;
             _now += 0.25;
             int before = _reads;
             anchor.RestartSource(source);
             Assert.That(_reads, Is.EqualTo(before + 1));
-            Assert.That(_realm.Query().Single(), Is.SameAs(original));
+            Assert.That(_realm.Query().Single(), Is.Not.SameAs(original));
+            Assert.That(_realm.Query().Single().Key, Is.EqualTo(original.Key));
             Assert.That(source.LastError, Is.Null);
             _now += 0.75;
             _realm.Update();
