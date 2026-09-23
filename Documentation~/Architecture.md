@@ -67,7 +67,7 @@ Registry traversal uses snapshots and rechecks membership/registration after cal
 | [SceneEffects](../Runtime/Unity/SceneEffects.cs) | Serialize nested scene effects |
 | [PresenceSource](../Runtime/Tracking/PresenceSource.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | Source lifecycle, registration and scene ownership |
 
-Query interface filters use typed predicates; subscription reconciliation avoids repeated per-key scans. These are implementation choices, not measured performance guarantees.
+Query interface filters use typed predicates and a reusable root-component list. Subscriptions reuse their match and departure buffers across updates while still scanning current ghosts and rechecking matches after callbacks. These are implementation choices, not measured performance guarantees.
 
 Assembly dependencies: editor and tests may reference runtime; runtime never references editor, sample or SDK assemblies. The sample remains a separate application assembly. Package code targets C# 8, enforced by compiler response files.
 

@@ -227,6 +227,35 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// A departure queued by another departure callback waits for the next notification pass.
+        /// </summary>
+        [Test]
+        public void Observe_QueuesDeparturesCreatedDuringCallback()
+        {
+            _source.Publish("first");
+            _source.Publish("second");
+            _realm.Update();
+            List<string> departed = new List<string>();
+            _realm.Query().Observe(ghost =>
+            {
+            }, key =>
+            {
+                departed.Add(key.EntityId);
+                if (key.EntityId == "first")
+                {
+                    _source.RemoveId("second");
+                }
+            });
+
+            _source.RemoveId("first");
+            _realm.Update();
+            Assert.That(departed, Is.EqualTo(new[] { "first" }));
+
+            _realm.Update();
+            Assert.That(departed, Is.EqualTo(new[] { "first", "second" }));
+        }
+
+        /// <summary>
         /// A departure can cancel its subscription before any recovered entries are delivered.
         /// </summary>
         [Test]

@@ -113,6 +113,35 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Root contract lookup and typed queries reflect components added and removed after publication.
+        /// </summary>
+        [Test]
+        public void TryGet_ReflectsRootComponentChanges()
+        {
+            Kind kind = new Kind("vehicles.car");
+            TestSource source = new TestSource(kind);
+            _realm.GetOrCreateAnchor("simulation", source);
+            TestGhost ghost = source.Publish("42", Variant.None);
+            _realm.Update();
+            Query query = _realm.Query().With<IExtraPart>();
+            IExtraPart part;
+
+            Assert.That(ghost.TryGet<IExtraPart>(out part), Is.False);
+            Assert.That(part, Is.Null);
+            Assert.That(query.Count, Is.Zero);
+
+            ExtraPart component = ghost.gameObject.AddComponent<ExtraPart>();
+            Assert.That(ghost.TryGet<IExtraPart>(out part), Is.True);
+            Assert.That(part, Is.SameAs(component));
+            Assert.That(query.Count, Is.EqualTo(1));
+
+            UnityEngine.Object.DestroyImmediate(component);
+            Assert.That(ghost.TryGet<IExtraPart>(out part), Is.False);
+            Assert.That(part, Is.Null);
+            Assert.That(query.Count, Is.Zero);
+        }
+
+        /// <summary>
         /// Empty queries return safe empty results.
         /// </summary>
         [Test]
@@ -415,7 +444,15 @@ namespace Emas.Tests
         {
         }
 
+        private interface IExtraPart
+        {
+        }
+
         private sealed class TestGhost : Ghost, ITestPart
+        {
+        }
+
+        private sealed class ExtraPart : MonoBehaviour, IExtraPart
         {
         }
 

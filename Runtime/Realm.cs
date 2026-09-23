@@ -622,6 +622,13 @@ namespace Emas
         internal List<IGhost> Evaluate(Query query)
         {
             List<IGhost> result = new List<IGhost>();
+            Evaluate(query, result);
+            return result;
+        }
+
+        internal void Evaluate(Query query, List<IGhost> result)
+        {
+            result.Clear();
             foreach (Record record in _ghosts.Values)
             {
                 if (query.Matches(record.Ghost))
@@ -629,8 +636,6 @@ namespace Emas
                     result.Add(record.Ghost);
                 }
             }
-
-            return result;
         }
 
         internal IDisposable Subscribe(Query query, Action<IGhost> callback, Action<Key> onLeave = null)

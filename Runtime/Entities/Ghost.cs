@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas
@@ -26,6 +27,7 @@ namespace Emas
         private Variant _variant;
         [SerializeField]
         private bool _isAvailable;
+        private readonly List<MonoBehaviour> _components = new List<MonoBehaviour>();
 
         /// <inheritdoc />
         public Key Key
@@ -68,11 +70,11 @@ namespace Emas
         public bool TryGet<T>(out T part) where T : class
         {
             part = null;
-            MonoBehaviour[] matches = GetComponents<MonoBehaviour>();
+            GetComponents(_components);
             int count = 0;
-            for (int index = 0; index < matches.Length; index++)
+            for (int index = 0; index < _components.Count; index++)
             {
-                T candidate = matches[index] as T;
+                T candidate = _components[index] as T;
                 if (candidate == null)
                 {
                     continue;

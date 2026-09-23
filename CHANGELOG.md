@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Reused subscription match/departure buffers and ghost root-component lookup lists to reduce allocations during query notifications.
 - Scoped `SceneSetup` blueprints to their anchors, added anchor blueprint overrides, and refreshed requested views when a blueprint is registered again while preserving ghost roots.
 
 - Removed overlapping tests and consolidated related value checks; retained distinct lifecycle, failure and sample regressions.

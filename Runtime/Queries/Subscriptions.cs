@@ -9,6 +9,7 @@ namespace Emas
     {
         private readonly Realm _realm;
         private readonly List<Subscription> _items = new List<Subscription>();
+        private readonly List<Subscription> _notificationItems = new List<Subscription>();
         private bool _notifying;
 
         internal Subscriptions(Realm realm)
@@ -58,19 +59,21 @@ namespace Emas
             _notifying = true;
             try
             {
-                List<Subscription> items = new List<Subscription>(_items);
-                for (int index = 0; index < items.Count; index++)
+                _notificationItems.Clear();
+                _notificationItems.AddRange(_items);
+                for (int index = 0; index < _notificationItems.Count; index++)
                 {
                     if (_realm.IsDisposed)
                     {
                         break;
                     }
 
-                    Notify(items[index]);
+                    Notify(_notificationItems[index]);
                 }
             }
             finally
             {
+                _notificationItems.Clear();
                 _notifying = false;
             }
         }
@@ -91,69 +94,81 @@ namespace Emas
                 return;
             }
 
-            List<IGhost> matches = _realm.Evaluate(subscription.Query);
+            List<IGhost> matches = subscription.Matches;
+            List<Key> departures = subscription.PendingDepartures;
             HashSet<Key> keys = subscription.MatchKeys;
-            keys.Clear();
-            for (int index = 0; index < matches.Count; index++)
+            try
             {
-                keys.Add(matches[index].Key);
-            }
-
-            // Collect departures before invoking consumers, which may mutate the realm again.
-            foreach (Key key in subscription.Seen)
-            {
-                if (!keys.Contains(key) && subscription.OnLeave != null)
+                _realm.Evaluate(subscription.Query, matches);
+                keys.Clear();
+                for (int index = 0; index < matches.Count; index++)
                 {
-                    subscription.Departures.Add(key);
-                }
-            }
-
-            subscription.Seen.IntersectWith(keys);
-            List<Key> departures = new List<Key>(subscription.Departures);
-            subscription.Departures.Clear();
-            for (int index = 0; index < departures.Count; index++)
-            {
-                if (subscription.Disposed || _realm.IsDisposed)
-                {
-                    return;
+                    keys.Add(matches[index].Key);
                 }
 
-                Key key = departures[index];
-                try
+                // Collect departures before invoking consumers, which may mutate the realm again.
+                foreach (Key key in subscription.Seen)
                 {
-                    subscription.OnLeave(key);
-                }
-                catch (Exception exception)
-                {
-                    PresenceSource.LogError(exception, "query departure for " + key);
-                }
-            }
-
-            for (int index = 0; index < matches.Count; index++)
-            {
-                if (subscription.Disposed || _realm.IsDisposed)
-                {
-                    break;
+                    if (!keys.Contains(key) && subscription.OnLeave != null)
+                    {
+                        subscription.Departures.Add(key);
+                    }
                 }
 
-                IGhost ghost = matches[index];
-                // A preceding callback can remove or invalidate another match in this snapshot.
-                if (!_realm.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
+                subscription.Seen.IntersectWith(keys);
+                departures.Clear();
+                departures.AddRange(subscription.Departures);
+                subscription.Departures.Clear();
+                for (int index = 0; index < departures.Count; index++)
                 {
-                    continue;
-                }
+                    if (subscription.Disposed || _realm.IsDisposed)
+                    {
+                        return;
+                    }
 
-                if (subscription.Seen.Add(ghost.Key))
-                {
+                    Key key = departures[index];
                     try
                     {
-                        subscription.Callback(ghost);
+                        subscription.OnLeave(key);
                     }
                     catch (Exception exception)
                     {
-                        PresenceSource.LogError(exception, "query arrival for " + ghost.Key);
+                        PresenceSource.LogError(exception, "query departure for " + key);
                     }
                 }
+
+                for (int index = 0; index < matches.Count; index++)
+                {
+                    if (subscription.Disposed || _realm.IsDisposed)
+                    {
+                        break;
+                    }
+
+                    IGhost ghost = matches[index];
+                    // A preceding callback can remove or invalidate another match in this snapshot.
+                    if (!_realm.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
+                    {
+                        continue;
+                    }
+
+                    if (subscription.Seen.Add(ghost.Key))
+                    {
+                        try
+                        {
+                            subscription.Callback(ghost);
+                        }
+                        catch (Exception exception)
+                        {
+                            PresenceSource.LogError(exception, "query arrival for " + ghost.Key);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                matches.Clear();
+                departures.Clear();
+                keys.Clear();
             }
         }
 
@@ -171,7 +186,9 @@ namespace Emas
             internal readonly Query Query;
             internal readonly HashSet<Key> Seen = new HashSet<Key>();
             internal readonly HashSet<Key> MatchKeys = new HashSet<Key>();
+            internal readonly List<IGhost> Matches = new List<IGhost>();
             internal readonly List<Key> Departures = new List<Key>();
+            internal readonly List<Key> PendingDepartures = new List<Key>();
             internal Action<IGhost> Callback;
             internal Action<Key> OnLeave;
             internal bool Disposed;
@@ -190,7 +207,9 @@ namespace Emas
                 Owner._items.Remove(this);
                 Seen.Clear();
                 MatchKeys.Clear();
+                Matches.Clear();
                 Departures.Clear();
+                PendingDepartures.Clear();
                 Callback = null;
                 OnLeave = null;
             }
