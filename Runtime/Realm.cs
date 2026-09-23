@@ -49,7 +49,7 @@ namespace Emas
 
         private readonly Dictionary<string, Anchor> _anchors = new Dictionary<string, Anchor>();
         private readonly Registry _ghosts = new Registry();
-        private readonly Dictionary<string, Blueprint> _blueprints = new Dictionary<string, Blueprint>(StringComparer.Ordinal);
+        private readonly BlueprintRegistry _blueprints = new BlueprintRegistry();
         private readonly Subscriptions _subscriptions;
         private readonly ViewManager _views;
         private readonly SceneEffects _scene = new SceneEffects();
@@ -100,6 +100,7 @@ namespace Emas
         /// <remarks>
         /// Assets remain application-owned. This realm-wide default applies where an anchor has no override.
         /// A later registration refreshes existing requested views on the next update; existing roots stay intact.
+        /// Re-register an asset after changing its kind to release the previous kind registration.
         /// </remarks>
         /// <exception cref="ArgumentException">
         /// The blueprint is null or its kind/view mappings are invalid.
@@ -111,8 +112,8 @@ namespace Emas
         {
             ThrowIfDisposed();
             ValidateBlueprint(blueprint);
-            _blueprints[blueprint.Kind.Id] = blueprint;
-            RebindBlueprints(blueprint.Kind, null);
+            List<Kind> staleKinds = _blueprints.Register(blueprint);
+            RebindBlueprintRegistration(staleKinds, blueprint.Kind, null);
         }
 
         internal void RegisterBlueprint(Anchor anchor, Blueprint blueprint)
@@ -120,8 +121,36 @@ namespace Emas
             ThrowIfDisposed();
             anchor.ThrowIfDisposed();
             ValidateBlueprint(blueprint);
-            anchor.SetBlueprint(blueprint);
-            RebindBlueprints(blueprint.Kind, anchor.Id);
+            List<Kind> staleKinds = anchor.SetBlueprint(blueprint);
+            RebindBlueprintRegistration(staleKinds, blueprint.Kind, anchor.Id);
+        }
+
+        internal void UnregisterBlueprint(Anchor anchor, Kind kind)
+        {
+            ThrowIfDisposed();
+            anchor.ThrowIfDisposed();
+            if (!kind.IsValid)
+            {
+                throw new ArgumentException("The blueprint kind must be valid.", nameof(kind));
+            }
+
+            if (anchor.RemoveBlueprint(kind))
+            {
+                RebindBlueprints(kind, anchor.Id);
+            }
+        }
+
+        private void RebindBlueprintRegistration(List<Kind> staleKinds, Kind kind, string anchorId)
+        {
+            if (staleKinds != null)
+            {
+                for (int index = 0; index < staleKinds.Count; index++)
+                {
+                    RebindBlueprints(staleKinds[index], anchorId);
+                }
+            }
+
+            RebindBlueprints(kind, anchorId);
         }
 
         private static void ValidateBlueprint(Blueprint blueprint)
@@ -971,7 +1000,7 @@ namespace Emas
                 return blueprint;
             }
 
-            _blueprints.TryGetValue(kind.Id, out blueprint);
+            _blueprints.TryGet(kind.Id, out blueprint);
             return blueprint;
         }
 

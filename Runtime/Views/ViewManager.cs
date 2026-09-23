@@ -32,8 +32,14 @@ namespace Emas
                     return;
                 }
 
-                if (!record.Ghost.IsAvailable || record.Blueprint == null)
+                if (!record.Ghost.IsAvailable)
                 {
+                    return;
+                }
+
+                if (record.Blueprint == null)
+                {
+                    Destroy(record);
                     return;
                 }
 

@@ -242,6 +242,37 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// A reattached source waits until the next update even if its old registration was in this update's snapshot.
+        /// </summary>
+        [Test]
+        public void Tick_SkipsSourceReattachedBeforeItsTurn()
+        {
+            ProbeSource first = new ProbeSource();
+            ProbeSource second = new ProbeSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("status", first, second);
+            int secondUpdates = 0;
+            bool reattached = false;
+            first.Updating = () =>
+            {
+                if (reattached)
+                {
+                    return;
+                }
+
+                reattached = true;
+                anchor.RemoveSource(second);
+                anchor.AddSource(second);
+            };
+            second.Updating = () => secondUpdates++;
+
+            _realm.Update();
+            Assert.That(second.IsAttached && second.IsActive, Is.True);
+            Assert.That(secondUpdates, Is.Zero);
+            _realm.Update();
+            Assert.That(secondUpdates, Is.EqualTo(1));
+        }
+
+        /// <summary>
         /// Snapshots cannot mutate the owner, retain their membership and become empty on disposed owners.
         /// </summary>
         [Test]

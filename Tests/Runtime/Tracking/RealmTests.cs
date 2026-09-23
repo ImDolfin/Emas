@@ -388,6 +388,133 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Removing an anchor override restores the realm default without replacing the ghost root.
+        /// </summary>
+        [Test]
+        public void AnchorBlueprint_UnregisterRestoresRealmDefault()
+        {
+            Kind kind = new Kind("views.unregister");
+            GameObject defaultPrefab = new GameObject("default view");
+            GameObject localPrefab = new GameObject("local view");
+            Blueprint defaultBlueprint = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint localBlueprint = ScriptableObject.CreateInstance<Blueprint>();
+            try
+            {
+                defaultPrefab.SetActive(false);
+                localPrefab.SetActive(false);
+                defaultBlueprint.Configure(kind, null, null, defaultPrefab);
+                localBlueprint.Configure(kind, null, null, localPrefab);
+                _realm.RegisterBlueprint(defaultBlueprint);
+                Anchor anchor = _realm.GetOrCreateAnchor("simulation");
+                anchor.RegisterBlueprint(localBlueprint);
+                TestSource source = new TestSource(kind);
+                anchor.AddSource(source);
+                TestGhost ghost = source.Publish("42", Variant.None);
+                _realm.Update();
+                View localView = _realm.Manifest(ghost);
+                Assert.That(localView.gameObject.name, Is.EqualTo("local view"));
+
+                anchor.UnregisterBlueprint(kind);
+                _realm.Update();
+                View defaultView = _realm.Manifest(ghost);
+                Assert.That(defaultView.gameObject.name, Is.EqualTo("default view"));
+                Assert.That(defaultView, Is.Not.SameAs(localView));
+                Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
+                Assert.DoesNotThrow(() => anchor.UnregisterBlueprint(kind));
+                Assert.Throws<ArgumentException>(() => anchor.UnregisterBlueprint(default(Kind)));
+                anchor.Dispose();
+                Assert.Throws<ObjectDisposedException>(() => anchor.UnregisterBlueprint(kind));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(defaultBlueprint);
+                UnityEngine.Object.DestroyImmediate(localBlueprint);
+                UnityEngine.Object.DestroyImmediate(defaultPrefab);
+                UnityEngine.Object.DestroyImmediate(localPrefab);
+            }
+        }
+
+        /// <summary>
+        /// Re-registering an asset under a new kind releases its old mapping and refreshes both kinds.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Blueprint_ReconfiguredKindRebindsOldAndNewKinds(bool anchorScoped)
+        {
+            Kind oldKind = new Kind("views.old");
+            Kind newKind = new Kind("views.new");
+            GameObject oldPrefab = new GameObject("old view");
+            GameObject fallbackPrefab = new GameObject("realm fallback");
+            GameObject newPrefab = new GameObject("new view");
+            Blueprint changing = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint fallback = ScriptableObject.CreateInstance<Blueprint>();
+            try
+            {
+                oldPrefab.SetActive(false);
+                fallbackPrefab.SetActive(false);
+                newPrefab.SetActive(false);
+                changing.Configure(oldKind, null, null, oldPrefab);
+                fallback.Configure(oldKind, null, null, fallbackPrefab);
+                if (anchorScoped)
+                {
+                    _realm.RegisterBlueprint(fallback);
+                }
+
+                Anchor anchor = _realm.GetOrCreateAnchor("simulation");
+                if (anchorScoped)
+                {
+                    anchor.RegisterBlueprint(changing);
+                }
+                else
+                {
+                    _realm.RegisterBlueprint(changing);
+                }
+
+                TestSource oldSource = new TestSource(oldKind);
+                TestSource newSource = new TestSource(newKind);
+                anchor.AddSource(oldSource);
+                anchor.AddSource(newSource);
+                TestGhost oldGhost = oldSource.Publish("old", Variant.None);
+                TestGhost newGhost = newSource.Publish("new", Variant.None);
+                _realm.Update();
+                Assert.That(_realm.Manifest(oldGhost).gameObject.name, Is.EqualTo("old view"));
+                Assert.That(_realm.Manifest(newGhost), Is.Null);
+
+                changing.Configure(newKind, null, null, newPrefab);
+                if (anchorScoped)
+                {
+                    anchor.RegisterBlueprint(changing);
+                }
+                else
+                {
+                    _realm.RegisterBlueprint(changing);
+                }
+
+                _realm.Update();
+                View oldView = _realm.Manifest(oldGhost);
+                if (anchorScoped)
+                {
+                    Assert.That(oldView.gameObject.name, Is.EqualTo("realm fallback"));
+                }
+                else
+                {
+                    Assert.That(oldView, Is.Null);
+                }
+
+                Assert.That(_realm.Manifest(newGhost).gameObject.name, Is.EqualTo("new view"));
+                Assert.That(_realm.Query().Count, Is.EqualTo(2));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(changing);
+                UnityEngine.Object.DestroyImmediate(fallback);
+                UnityEngine.Object.DestroyImmediate(oldPrefab);
+                UnityEngine.Object.DestroyImmediate(fallbackPrefab);
+                UnityEngine.Object.DestroyImmediate(newPrefab);
+            }
+        }
+
+        /// <summary>
         /// Removes a requested view for None while retaining the available ghost.
         /// </summary>
         [Test]

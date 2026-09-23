@@ -14,9 +14,21 @@ namespace Emas
     {
         private readonly List<PresenceSource> _sources = new List<PresenceSource>();
         private readonly HashSet<PresenceSource> _restarting = new HashSet<PresenceSource>();
-        private readonly Dictionary<string, Blueprint> _blueprints = new Dictionary<string, Blueprint>(StringComparer.Ordinal);
+        private readonly BlueprintRegistry _blueprints = new BlueprintRegistry();
         private readonly GameObject _gameObject;
         private bool _disposed;
+
+        private struct SourceTick
+        {
+            internal SourceTick(PresenceSource source)
+            {
+                Source = source;
+                Generation = source.RegistrationGeneration;
+            }
+
+            internal readonly PresenceSource Source;
+            internal readonly long Generation;
+        }
 
         internal Anchor(Realm realm, string id, Transform frame)
         {
@@ -90,6 +102,7 @@ namespace Emas
         /// </param>
         /// <remarks>
         /// Existing ghost roots remain unchanged. Requested views refresh on the next realm update.
+        /// Re-register an asset after changing its kind to release the previous kind registration.
         /// The registration is released when this anchor is disposed.
         /// </remarks>
         /// <exception cref="ArgumentException">
@@ -104,14 +117,40 @@ namespace Emas
             Realm.RegisterBlueprint(this, blueprint);
         }
 
-        internal void SetBlueprint(Blueprint blueprint)
+        /// <summary>
+        /// Removes this anchor's blueprint override so the realm default can apply.
+        /// </summary>
+        /// <param name="kind">
+        /// The kind whose override should be removed.
+        /// </param>
+        /// <remarks>
+        /// Missing overrides are ignored. Existing ghost roots remain unchanged; requested views refresh on the next realm update.
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// The kind is invalid.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// The anchor or realm was disposed.
+        /// </exception>
+        public void UnregisterBlueprint(Kind kind)
         {
-            _blueprints[blueprint.Kind.Id] = blueprint;
+            ThrowIfDisposed();
+            Realm.UnregisterBlueprint(this, kind);
+        }
+
+        internal List<Kind> SetBlueprint(Blueprint blueprint)
+        {
+            return _blueprints.Register(blueprint);
+        }
+
+        internal bool RemoveBlueprint(Kind kind)
+        {
+            return _blueprints.Remove(kind);
         }
 
         internal bool TryGetBlueprint(string kindId, out Blueprint blueprint)
         {
-            return _blueprints.TryGetValue(kindId, out blueprint);
+            return _blueprints.TryGet(kindId, out blueprint);
         }
 
         internal bool ContainsSource(PresenceSource source)
@@ -454,7 +493,12 @@ namespace Emas
                 return;
             }
 
-            List<PresenceSource> sources = new List<PresenceSource>(_sources);
+            List<SourceTick> sources = new List<SourceTick>(_sources.Count);
+            for (int index = 0; index < _sources.Count; index++)
+            {
+                sources.Add(new SourceTick(_sources[index]));
+            }
+
             for (int index = 0; index < sources.Count; index++)
             {
                 if (_disposed)
@@ -462,9 +506,10 @@ namespace Emas
                     break;
                 }
 
-                if (_sources.Contains(sources[index]))
+                SourceTick current = sources[index];
+                if (_sources.Contains(current.Source) && current.Source.RegistrationGeneration == current.Generation)
                 {
-                    sources[index].Tick();
+                    current.Source.Tick();
                 }
             }
         }

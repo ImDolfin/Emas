@@ -19,7 +19,7 @@ Identity is `(anchor ID, kind, entity ID)`. Display names are labels. Each ident
 
 Queries see available ghosts only. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors.
 
-Blueprints are resolved by anchor and kind: an anchor registration takes precedence over the realm-wide default. `SceneSetup` installs its Inspector blueprints on its owned anchor, so setups sharing a kind do not replace each other's configuration. Re-registration refreshes requested views on the next update while keeping existing roots; root prefab changes affect newly created ghosts.
+Blueprints are resolved by anchor and kind: an anchor registration takes precedence over the realm-wide default. `SceneSetup` installs its Inspector blueprints on its owned anchor, so setups sharing a kind do not replace each other's configuration. Re-registration refreshes requested views on the next update while keeping existing roots. Re-registering an asset after changing its kind releases the old kind in that scope and refreshes both kinds. Removing an anchor override restores the realm default. Root prefab changes affect newly created ghosts.
 
 ## Update order
 
@@ -29,7 +29,7 @@ Blueprints are resolved by anchor and kind: an anchor registration takes precede
 4. Refresh requested dirty views.
 5. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
 
-Newly queued actions wait for a later update. The budget limits action count, not execution time; application callbacks must remain short. Dispatch records the source's registration generation, so stale work is discarded even if the same instance is reattached.
+Newly queued actions wait for a later update. The budget limits action count, not execution time; application callbacks must remain short. Dispatch records the source's registration generation, so stale work is discarded even if the same instance is reattached. Source updates also capture that generation: a source removed and reattached during an update first ticks in the following update.
 
 Successful startup outside an update finalizes directly populated ghosts immediately. Callback-source startup queues its initial publications for a later update. Variant changes and explicit view requests inside source/finalization callbacks defer refresh until source data is complete. Explicit requests outside those phases retain immediate behavior.
 
