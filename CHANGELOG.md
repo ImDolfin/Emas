@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Scoped `SceneSetup` blueprints to their anchors, added anchor blueprint overrides, and refreshed requested views when a blueprint is registered again while preserving ghost roots.
+
 - Removed overlapping tests and consolidated related value checks; retained distinct lifecycle, failure and sample regressions.
 
 - Added `Realm.TryGetGhost(key, out ghost)` for exact identity lookup, including retained unavailable ghosts.

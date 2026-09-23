@@ -333,6 +333,52 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Separate scene setups can use the same kind without changing each other's later ghosts or leaving realm defaults.
+        /// </summary>
+        [Test]
+        public void Setup_BlueprintsStayWithTheirAnchors()
+        {
+            SceneSetup first = CreateSetup();
+            SceneSetup second = CreateSetup();
+            SetField(second, "_anchorId", "second");
+            GameObject firstPrefab = new GameObject("first view");
+            GameObject secondPrefab = new GameObject("second view");
+            _objects.Add(firstPrefab);
+            _objects.Add(secondPrefab);
+            firstPrefab.SetActive(false);
+            secondPrefab.SetActive(false);
+            Blueprint firstBlueprint = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint secondBlueprint = ScriptableObject.CreateInstance<Blueprint>();
+            _objects.Add(firstBlueprint);
+            _objects.Add(secondBlueprint);
+            firstBlueprint.Configure(Population, null, null, firstPrefab);
+            secondBlueprint.Configure(Population, null, null, secondPrefab);
+            SetField(first, "_blueprints", new[] { firstBlueprint });
+            SetField(second, "_blueprints", new[] { secondBlueprint });
+
+            List<string> firstIds = new List<string> { "a" };
+            first.Track(Source(() => firstIds));
+            second.Track(Source(() => new[] { "b" }));
+            _realm.Update();
+            Probe firstGhost = (Probe)_realm.Query().InAnchor("default").Single();
+            Probe secondGhost = (Probe)_realm.Query().InAnchor("second").Single();
+            Assert.That(firstGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("first view"));
+            Assert.That(secondGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("second view"));
+
+            firstIds.Add("later");
+            _realm.Update();
+            IGhost later;
+            Assert.That(_realm.TryGetGhost(new Key("default", Population, "later"), out later), Is.True);
+            Assert.That(((Probe)later).GetComponentInChildren<View>().gameObject.name, Is.EqualTo("first view"));
+
+            first.StopTracking();
+            _realm.GetOrCreateAnchor("unconfigured", Source(() => new[] { "c" }));
+            Probe unconfigured = (Probe)_realm.Query().InAnchor("unconfigured").Single();
+            Assert.That(_realm.Manifest(unconfigured), Is.Null);
+            Assert.That(secondGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("second view"));
+        }
+
+        /// <summary>
         /// Configuration errors identify the offending entry and leave setup ready to retry.
         /// </summary>
         [TestCase("null", "is null")]

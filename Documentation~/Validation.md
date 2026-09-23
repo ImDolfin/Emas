@@ -26,17 +26,16 @@ Reopen Unity if the tests remain hidden. [Unity requires this opt-in for install
 
 ## Results
 
-Verified on **2026-09-22**, package **0.1.0**, Windows Mono:
+Current editor validation on **2026-09-23**, package **0.1.0**:
 
-| Editor | Test Framework | EditMode | PlayMode | Windows player |
-| --- | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 184 passed | 184 passed |
-| 6000.3.24f1 / Unity 6.3 LTS (`4e7b9b5b6244`) | 1.6.0 | 9 passed | 184 passed | 184 passed |
+| Editor | Test Framework | EditMode | PlayMode |
+| --- | --- | --- | --- |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 187 passed |
 
-No failed or skipped tests in the final suites. Unity 2022 used the prepared repository project; Unity 6 used isolated copies of its Assets, Packages and ProjectSettings. The repository project remains on Unity 2022.3.
+The previous **2026-09-22** Windows Mono player runs passed 184 tests on Unity 2022.3.62f3 and Unity 6.3 LTS (6000.3.24f1). Unity 6 also passed 9 EditMode and 184 PlayMode tests then. Those runs preceded the three new blueprint regression tests; the player and Unity 6 suites have not been rerun for this change. No failed or skipped tests were reported. Unity 2022 used the prepared repository project; Unity 6 used isolated copies of its Assets, Packages and ProjectSettings. The repository project remains on Unity 2022.3.
 
 Coverage includes source and ghost lifetimes, failure recovery, stale callbacks, query observations, identity lookup, polling intervals and callback ordering/budgets. Player tests exercise all samples; EditMode checks cover Inspectors, passive diagnostics and shipped/imported sample consistency. Expected-error capture has dedicated logging regressions.
 
 A fresh Unity 2022.3 consuming project imported all three samples through Package Manager with its manifest unchanged and no `testables` entry. All **3 sample smoke tests passed**. Package test opt-in remains separate from ordinary installation.
 
-The latest suite reports are in the ignored `Tests/Unity~/TestResults/TestCleanup/` directory; fresh-install reports are in `Tests/Unity~/TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.
+The current Unity 2022 editor reports are in the ignored `Tests/Unity~/TestResults/BlueprintHandling/` directory; earlier suites are in `TestResults/TestCleanup/`, and fresh-install reports are in `TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.

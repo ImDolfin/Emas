@@ -14,6 +14,7 @@ namespace Emas
     {
         private readonly List<PresenceSource> _sources = new List<PresenceSource>();
         private readonly HashSet<PresenceSource> _restarting = new HashSet<PresenceSource>();
+        private readonly Dictionary<string, Blueprint> _blueprints = new Dictionary<string, Blueprint>(StringComparer.Ordinal);
         private readonly GameObject _gameObject;
         private bool _disposed;
 
@@ -79,6 +80,38 @@ namespace Emas
             {
                 return new List<PresenceSource>(_sources).AsReadOnly();
             }
+        }
+
+        /// <summary>
+        /// Registers or replaces a blueprint for this anchor's ghost kind.
+        /// </summary>
+        /// <param name="blueprint">
+        /// The blueprint to use before any realm-wide blueprint for the same kind.
+        /// </param>
+        /// <remarks>
+        /// Existing ghost roots remain unchanged. Requested views refresh on the next realm update.
+        /// The registration is released when this anchor is disposed.
+        /// </remarks>
+        /// <exception cref="ArgumentException">
+        /// The blueprint or its configuration is invalid.
+        /// </exception>
+        /// <exception cref="ObjectDisposedException">
+        /// The anchor or realm was disposed.
+        /// </exception>
+        public void RegisterBlueprint(Blueprint blueprint)
+        {
+            ThrowIfDisposed();
+            Realm.RegisterBlueprint(this, blueprint);
+        }
+
+        internal void SetBlueprint(Blueprint blueprint)
+        {
+            _blueprints[blueprint.Kind.Id] = blueprint;
+        }
+
+        internal bool TryGetBlueprint(string kindId, out Blueprint blueprint)
+        {
+            return _blueprints.TryGetValue(kindId, out blueprint);
         }
 
         /// <summary>
@@ -341,6 +374,7 @@ namespace Emas
             }
 
             _disposed = true;
+            _blueprints.Clear();
             List<PresenceSource> sources = new List<PresenceSource>(_sources);
             _sources.Clear();
             // Remove registration and records before scene callbacks can reenter the realm.

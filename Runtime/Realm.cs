@@ -98,7 +98,8 @@ namespace Emas
         /// The blueprint to register.
         /// </param>
         /// <remarks>
-        /// Assets remain application-owned. A later registration of the same kind replaces its configuration.
+        /// Assets remain application-owned. This realm-wide default applies where an anchor has no override.
+        /// A later registration refreshes existing requested views on the next update; existing roots stay intact.
         /// </remarks>
         /// <exception cref="ArgumentException">
         /// The blueprint is null or its kind/view mappings are invalid.
@@ -109,6 +110,22 @@ namespace Emas
         public void RegisterBlueprint(Blueprint blueprint)
         {
             ThrowIfDisposed();
+            ValidateBlueprint(blueprint);
+            _blueprints[blueprint.Kind.Id] = blueprint;
+            RebindBlueprints(blueprint.Kind, null);
+        }
+
+        internal void RegisterBlueprint(Anchor anchor, Blueprint blueprint)
+        {
+            ThrowIfDisposed();
+            anchor.ThrowIfDisposed();
+            ValidateBlueprint(blueprint);
+            anchor.SetBlueprint(blueprint);
+            RebindBlueprints(blueprint.Kind, anchor.Id);
+        }
+
+        private static void ValidateBlueprint(Blueprint blueprint)
+        {
             if (blueprint == null)
             {
                 throw new ArgumentException("A valid blueprint is required.", nameof(blueprint));
@@ -119,8 +136,6 @@ namespace Emas
             {
                 throw new ArgumentException(error, nameof(blueprint));
             }
-
-            _blueprints[blueprint.Kind.Id] = blueprint;
         }
 
         /// <summary>
@@ -672,9 +687,15 @@ namespace Emas
                     throw new InvalidOperationException("The ghost is owned by another source.");
                 }
 
-                if (record.Blueprint == null)
+                Blueprint resolved = ResolveBlueprint(anchorId, kind);
+                if (!ReferenceEquals(record.Blueprint, resolved))
                 {
-                    _blueprints.TryGetValue(kind.Id, out record.Blueprint);
+                    record.Blueprint = resolved;
+                    if (record.ViewRequested)
+                    {
+                        record.ViewVersion++;
+                        record.ViewDirty = true;
+                    }
                 }
 
                 bool variantChanged = variant.HasValue && record.Ghost.Variant != variant.Value;
@@ -703,8 +724,7 @@ namespace Emas
                 return existingTyped;
             }
 
-            Blueprint blueprint;
-            _blueprints.TryGetValue(kind.Id, out blueprint);
+            Blueprint blueprint = ResolveBlueprint(anchorId, kind);
             Ghost prefab = blueprint == null ? null : blueprint.GhostPrefab;
             Transform anchorTransform = GetAnchorTransform(anchorId);
             // Keep the root inactive until its identity and initial data are ready.
@@ -848,6 +868,48 @@ namespace Emas
                 else if (item.Source.IsRegistration(this, item.Generation))
                 {
                     item.Source.HandleFailure(exception, context);
+                }
+            }
+        }
+
+        private Blueprint ResolveBlueprint(string anchorId, Kind kind)
+        {
+            Anchor anchor;
+            Blueprint blueprint;
+            if (_anchors.TryGetValue(anchorId, out anchor) && anchor.TryGetBlueprint(kind.Id, out blueprint))
+            {
+                return blueprint;
+            }
+
+            _blueprints.TryGetValue(kind.Id, out blueprint);
+            return blueprint;
+        }
+
+        private void RebindBlueprints(Kind kind, string anchorId)
+        {
+            List<Record> records = _ghosts.Snapshot();
+            for (int index = 0; index < records.Count; index++)
+            {
+                Record record = records[index];
+                if (record.Key.Kind != kind || (anchorId != null && record.Key.AnchorId != anchorId))
+                {
+                    continue;
+                }
+
+                // Realm defaults do not replace a specific anchor's configuration.
+                Anchor anchor;
+                Blueprint ignored;
+                if (anchorId == null && _anchors.TryGetValue(record.Key.AnchorId, out anchor)
+                    && anchor.TryGetBlueprint(kind.Id, out ignored))
+                {
+                    continue;
+                }
+
+                record.Blueprint = ResolveBlueprint(record.Key.AnchorId, kind);
+                if (record.ViewRequested)
+                {
+                    record.ViewVersion++;
+                    record.ViewDirty = true;
                 }
             }
         }

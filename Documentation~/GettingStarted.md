@@ -88,7 +88,7 @@ namespace Emas.Minimal
 3. Create a scene object named Tracking. Add **Emas > Scene Setup** and the `Bootstrap` component. Set a unique **Anchor Id**, assign the blueprint and leave **Automatic Views** enabled.
 4. Press Play. Emas creates a `Marker` root beneath the anchor, updates its data and attaches the cube view. Move Tracking to see the coordinate frame move with it.
 
-Unity advances `Realm.Default` automatically. `SceneSetup.StopTracking()` removes its anchor, ghosts and views while leaving the component enabled; another `Track` call starts again. Disabling also removes tracking; the bootstrap calls `Track` again on re-enable. Toggle the whole Tracking object so both components share that lifetime. An empty blueprint list is valid for data-only tracking.
+Unity advances `Realm.Default` automatically. `SceneSetup.StopTracking()` removes its anchor, ghosts and views while leaving the component enabled; another `Track` call starts again. Disabling also removes tracking; the bootstrap calls `Track` again on re-enable. Toggle the whole Tracking object so both components share that lifetime. Inspector blueprints apply only to that anchor and leave with it. An empty blueprint list is valid for data-only tracking.
 
 To retry an attached source while retaining its ghosts, call `setup.Anchor.RestartSource(source)`. Use `ReplaceSource` when changing the source instance. Both require new publication before retained data becomes available.
 

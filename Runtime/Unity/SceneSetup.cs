@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Registers Inspector-assigned blueprints and owns one scene anchor and its optional automatic views.
+    /// Registers Inspector-assigned blueprints on one scene anchor and owns its optional automatic views.
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("Emas/Scene Setup")]
@@ -14,7 +14,7 @@ namespace Emas
         [Tooltip("Unique among active anchors in Realm.Default. Tracking places ghosts under this object; disabling it removes its anchor and ghosts.")]
         [SerializeField]
         private string _anchorId = "default";
-        [Tooltip("One blueprint per kind. Leave empty for tracking without automatic views. Registered blueprints remain in Realm.Default after this component stops.")]
+        [Tooltip("One blueprint per kind on this anchor. Leave empty for tracking without automatic views. Registrations end when tracking stops.")]
         [SerializeField]
         private Blueprint[] _blueprints = new Blueprint[0];
         [Tooltip("Create views for available ghosts in this anchor whose kinds have an assigned blueprint. A matching or fallback prefab is required.")]
@@ -55,7 +55,7 @@ namespace Emas
         /// <remarks>
         /// Call once per tracking lifetime while enabled. StopTracking or disabling cleans up; call Track again to restart.
         /// Startup exceptions propagate after cleaning up this attempt. Sources may throw application-specific errors.
-        /// SDK clients remain application-owned. Registered blueprints persist until the default realm is disposed.
+        /// SDK clients remain application-owned. Inspector blueprints apply only to the owned anchor.
         /// </remarks>
         public Anchor Track(params PresenceSource[] sources)
         {
@@ -88,13 +88,13 @@ namespace Emas
             Anchor created = null;
             try
             {
-                foreach (Blueprint blueprint in blueprints)
-                {
-                    realm.RegisterBlueprint(blueprint);
-                }
-
                 created = realm.GetOrCreateAnchor(_anchorId, transform);
                 _anchor = created;
+                foreach (Blueprint blueprint in blueprints)
+                {
+                    created.RegisterBlueprint(blueprint);
+                }
+
                 // Subscribe before startup so immediately available ghosts also receive views.
                 if (_automaticViews)
                 {
@@ -148,7 +148,7 @@ namespace Emas
         /// </summary>
         /// <remarks>
         /// Safe to call repeatedly, including during startup. The component stays enabled; call Track to start again.
-        /// Registered blueprints remain in the realm. SDK clients remain application-owned.
+        /// The anchor releases its blueprint registrations. SDK clients remain application-owned.
         /// </remarks>
         public void StopTracking()
         {

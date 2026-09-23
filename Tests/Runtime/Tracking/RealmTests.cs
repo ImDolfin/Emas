@@ -207,6 +207,126 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Registering a blueprint after publication refreshes a request, and replacing it updates the view without replacing the root.
+        /// </summary>
+        [Test]
+        public void RegisterBlueprint_RefreshesLateAndReplacementViews()
+        {
+            Kind kind = new Kind("views.late");
+            GameObject firstPrefab = new GameObject("first view");
+            GameObject secondPrefab = new GameObject("second view");
+            Blueprint first = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint second = ScriptableObject.CreateInstance<Blueprint>();
+            try
+            {
+                firstPrefab.SetActive(false);
+                secondPrefab.SetActive(false);
+                first.Configure(kind, null, null, firstPrefab);
+                second.Configure(kind, null, null, secondPrefab);
+
+                TestSource source = new TestSource(kind);
+                _realm.GetOrCreateAnchor("simulation", source);
+                TestGhost ghost = source.Publish("42", Variant.None);
+                _realm.Update();
+                Assert.That(_realm.Manifest(ghost), Is.Null);
+
+                _realm.RegisterBlueprint(first);
+                _realm.Update();
+                View firstView = ghost.GetComponentInChildren<View>();
+                Assert.That(firstView, Is.Not.Null);
+                Assert.That(firstView.gameObject.name, Is.EqualTo("first view"));
+
+                _realm.RegisterBlueprint(second);
+                _realm.Update();
+                View secondView = ghost.GetComponentInChildren<View>();
+                Assert.That(secondView, Is.Not.Null);
+                Assert.That(secondView, Is.Not.SameAs(firstView));
+                Assert.That(secondView.gameObject.name, Is.EqualTo("second view"));
+                Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(first);
+                UnityEngine.Object.DestroyImmediate(second);
+                UnityEngine.Object.DestroyImmediate(firstPrefab);
+                UnityEngine.Object.DestroyImmediate(secondPrefab);
+            }
+        }
+
+        /// <summary>
+        /// An anchor blueprint overrides the realm default and can replace its own requested views.
+        /// </summary>
+        [Test]
+        public void AnchorBlueprint_OverridesRealmDefault()
+        {
+            Kind kind = new Kind("views.scoped");
+            GameObject globalPrefab = new GameObject("global view");
+            GameObject localPrefab = new GameObject("local view");
+            GameObject replacementPrefab = new GameObject("replacement view");
+            GameObject globalRoot = new GameObject("global root");
+            GameObject localRoot = new GameObject("local root");
+            GameObject replacementRoot = new GameObject("replacement root");
+            Blueprint global = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint local = ScriptableObject.CreateInstance<Blueprint>();
+            Blueprint replacement = ScriptableObject.CreateInstance<Blueprint>();
+            try
+            {
+                globalPrefab.SetActive(false);
+                localPrefab.SetActive(false);
+                replacementPrefab.SetActive(false);
+                globalRoot.SetActive(false);
+                localRoot.SetActive(false);
+                replacementRoot.SetActive(false);
+                global.Configure(kind, globalRoot.AddComponent<TestGhost>(), null, globalPrefab);
+                local.Configure(kind, localRoot.AddComponent<TestGhost>(), null, localPrefab);
+                replacement.Configure(kind, replacementRoot.AddComponent<TestGhost>(), null, replacementPrefab);
+                _realm.RegisterBlueprint(global);
+
+                Anchor localAnchor = _realm.GetOrCreateAnchor("local");
+                Anchor globalAnchor = _realm.GetOrCreateAnchor("global");
+                Assert.Throws<ArgumentException>(() => localAnchor.RegisterBlueprint(null));
+                localAnchor.RegisterBlueprint(local);
+                TestSource localSource = new TestSource(kind);
+                TestSource globalSource = new TestSource(kind);
+                localAnchor.AddSource(localSource);
+                globalAnchor.AddSource(globalSource);
+                TestGhost localGhost = localSource.Publish("one", Variant.None);
+                TestGhost globalGhost = globalSource.Publish("two", Variant.None);
+                _realm.Update();
+
+                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("local view"));
+                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("global view"));
+                Assert.That(localGhost.gameObject.name, Does.StartWith("local root"));
+                Assert.That(globalGhost.gameObject.name, Does.StartWith("global root"));
+
+                localAnchor.RegisterBlueprint(replacement);
+                _realm.Update();
+                Assert.That(localGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("replacement view"));
+                Assert.That(globalGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("global view"));
+                Assert.That(localGhost.gameObject.name, Does.StartWith("local root"));
+                TestGhost later = localSource.Publish("three", Variant.None);
+                _realm.Update();
+                Assert.That(later.gameObject.name, Does.StartWith("replacement root"));
+                Assert.That(_realm.Query().Count, Is.EqualTo(3));
+
+                localAnchor.Dispose();
+                Assert.Throws<ObjectDisposedException>(() => localAnchor.RegisterBlueprint(local));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(global);
+                UnityEngine.Object.DestroyImmediate(local);
+                UnityEngine.Object.DestroyImmediate(replacement);
+                UnityEngine.Object.DestroyImmediate(globalPrefab);
+                UnityEngine.Object.DestroyImmediate(localPrefab);
+                UnityEngine.Object.DestroyImmediate(replacementPrefab);
+                UnityEngine.Object.DestroyImmediate(globalRoot);
+                UnityEngine.Object.DestroyImmediate(localRoot);
+                UnityEngine.Object.DestroyImmediate(replacementRoot);
+            }
+        }
+
+        /// <summary>
         /// Removes a requested view for None while retaining the available ghost.
         /// </summary>
         [Test]

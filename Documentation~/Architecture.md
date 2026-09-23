@@ -19,6 +19,8 @@ Identity is `(anchor ID, kind, entity ID)`. Display names are labels. Each ident
 
 Queries see available ghosts only. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors.
 
+Blueprints are resolved by anchor and kind: an anchor registration takes precedence over the realm-wide default. `SceneSetup` installs its Inspector blueprints on its owned anchor, so setups sharing a kind do not replace each other's configuration. Re-registration refreshes requested views on the next update while keeping existing roots; root prefab changes affect newly created ghosts.
+
 ## Update order
 
 1. Process up to **256 queued actions** present at update entry, in FIFO order.
