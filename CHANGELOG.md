@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Made ghost contract errors identify the ghost and duplicate root components without repeated logs; added a `GetRequired<T>()` extension for required `IGhost` contracts and a Ghost Inspector with read-only live state.
 - Rolled back new sources when a multi-source `GetOrCreateAnchor` call fails on an existing anchor, preserving earlier sources and prepared identities.
 - Avoided temporary result lists for scalar queries and reused polling ownership buffers.
 - Reused subscription match/departure buffers and ghost root-component lookup lists to reduce allocations during query notifications.

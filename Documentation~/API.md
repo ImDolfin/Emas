@@ -70,9 +70,12 @@ An `Anchor` exposes `Id`, `Transform`, `Realm`, `RegisterBlueprint(blueprint)`, 
 | `Dispatch(action)` | Defer source work from the main thread to a later update; stopped/stale registrations cannot execute it |
 | `OwnedGhosts` | Snapshot of owned ghosts, including unavailable ones |
 | `IGhost.Key`, `Name`, `Variant`, `IsAvailable` | Read identity, label, appearance and availability |
-| `IGhost.TryGet<T>(out part)` | Resolve a root component contract; excludes view children and rejects ambiguous providers |
+| `IGhost.TryGet<T>(out part)` | Resolve an optional root component contract; excludes view children and returns false for missing or ambiguous providers |
+| `GetRequired<T>()` extension on `IGhost` | Return the single root provider or throw with the ghost key and requested contract |
 
 Application interfaces should be read-only; concrete ghost setters are for source mapping. `Ghost` supplies `IGhost`; root activation happens after publication, so `Awake` must not assume mapped data. Source-specific types and coordinate conversion stay in application sources. One source owns each identity; an application source can compose multiple feeds.
+
+Use `TryGet<T>` when a contract is optional and `GetRequired<T>` when its absence is a setup error. Both inspect only root MonoBehaviours. An ambiguous `TryGet<T>` logs the ghost key, matching component types and instance IDs with a clickable ghost context. It logs once per ghost and contract until a later lookup observes zero or one provider; `GetRequired<T>` also throws on ambiguity. The Ghost Inspector keeps Emas-owned metadata out of prefab editing and shows live key, display name, variant and availability as read-only values in Play Mode. Application fields remain editable.
 
 ## Queries and subscriptions
 

@@ -69,7 +69,7 @@ namespace Emas
         /// True when exactly one matching component exists.
         /// </returns>
         /// <remarks>
-        /// Only root MonoBehaviours participate. No match returns false; multiple matches also log an error. No component is added.
+        /// Only root MonoBehaviours participate. No match returns false; multiple matches log a contextual error once until a lookup observes a non-ambiguous result. No component is added.
         /// </remarks>
         bool TryGet<T>(out T part) where T : class;
     }

@@ -2,7 +2,7 @@
 
 | Concern | Rule |
 | --- | --- |
-| Application contracts | Define small read-only interfaces in your application. Implement them on `Ghost` or other root components; keep setters on concrete ghosts for source mapping. Consumers use `IGhost.TryGet<T>`. One root provider per contract. |
+| Application contracts | Define small read-only interfaces in your application. Implement them on `Ghost` or other root components; keep setters on concrete ghosts for source mapping. Consumers use `IGhost.TryGet<T>` for optional contracts or `GetRequired<T>()` for required ones. One root provider per contract. |
 | Coordinates | Define units and axes in the application contract. Sample positions are anchor-local. Convert SDK units/axes first; for a Unity world position, use `anchor.Transform.InverseTransformPoint(worldPosition)` before storing it. |
 | Ownership | Emas owns anchors, ghost roots, views and availability. Applications own SDK clients and prefab assets. Anchor blueprints override realm defaults and leave with the anchor; re-registration refreshes requested views while retaining roots. Source cleanup unsubscribes but does not dispose a shared client. Dispose query subscriptions and clear retained membership when their consumer stops; disposal does not invoke departure callbacks. |
 | Threading and payloads | Call Emas only on Unity's main thread, including publish/remove and `Dispatch`. The application owns SDK threading and delivers events on that thread; copy mutable/reused SDK payloads before publishing. Order initial data with live events and undo partial subscriptions if startup throws. Custom sources must invalidate old callbacks before reattachment. |

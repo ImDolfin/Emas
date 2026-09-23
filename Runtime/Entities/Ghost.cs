@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas
@@ -15,19 +14,19 @@ namespace Emas
     /// </remarks>
     public abstract class Ghost : MonoBehaviour, IGhost
     {
-        [SerializeField]
+        [SerializeField, HideInInspector]
         private string _anchorId;
-        [SerializeField]
+        [SerializeField, HideInInspector]
         private string _entityId;
-        [SerializeField]
+        [SerializeField, HideInInspector]
         private string _kindId;
-        [SerializeField]
+        [SerializeField, HideInInspector]
         private string _name;
-        [SerializeField]
+        [SerializeField, HideInInspector]
         private Variant _variant;
-        [SerializeField]
+        [SerializeField, HideInInspector]
         private bool _isAvailable;
-        private readonly List<MonoBehaviour> _components = new List<MonoBehaviour>();
+        private GhostPartResolver _partResolver;
 
         /// <inheritdoc />
         public Key Key
@@ -69,29 +68,12 @@ namespace Emas
         /// <inheritdoc />
         public bool TryGet<T>(out T part) where T : class
         {
-            part = null;
-            GetComponents(_components);
-            int count = 0;
-            for (int index = 0; index < _components.Count; index++)
+            if (_partResolver == null)
             {
-                T candidate = _components[index] as T;
-                if (candidate == null)
-                {
-                    continue;
-                }
-
-                part = candidate;
-                count++;
+                _partResolver = new GhostPartResolver();
             }
 
-            if (count > 1)
-            {
-                Debug.LogError("Ghost '" + name + "' has multiple providers for " + typeof(T).FullName + ".");
-                part = null;
-                return false;
-            }
-
-            return count == 1;
+            return _partResolver.TryGet(this, out part);
         }
 
         /// <summary>
@@ -114,6 +96,10 @@ namespace Emas
             _name = nameValue ?? key.EntityId;
             _variant = variantValue;
             _isAvailable = false;
+            if (_partResolver != null)
+            {
+                _partResolver.Reset();
+            }
         }
 
         /// <summary>

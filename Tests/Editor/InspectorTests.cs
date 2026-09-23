@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
@@ -92,6 +93,49 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
+        /// Ghost authoring keeps application fields visible and Emas-owned metadata serialized but hidden.
+        /// </summary>
+        [Test]
+        public void GhostInspector_HidesOwnedFieldsAndKeepsApplicationFields()
+        {
+            GameObject root = new GameObject("ghost authoring");
+            UnityEditor.Editor editor = null;
+            try
+            {
+                InspectorGhost ghost = root.AddComponent<InspectorGhost>();
+                ghost.Initialize(new Key("simulation", new Kind("vehicles.car"), "42"), "Car 42", Variant.None);
+                editor = UnityEditor.Editor.CreateEditor(ghost);
+                Assert.That(editor, Is.TypeOf<GhostInspector>());
+
+                SerializedObject serialized = new SerializedObject(ghost);
+                Assert.That(serialized.FindProperty("_anchorId"), Is.Not.Null);
+                Assert.That(serialized.FindProperty("_isAvailable"), Is.Not.Null);
+                List<string> visible = new List<string>();
+                SerializedProperty property = serialized.GetIterator();
+                bool enterChildren = true;
+                while (property.NextVisible(enterChildren))
+                {
+                    visible.Add(property.propertyPath);
+                    enterChildren = false;
+                }
+
+                Assert.That(visible, Does.Contain("_customValue"));
+                Assert.That(ghost.CustomValue, Is.EqualTo(7));
+                Assert.That(visible, Does.Not.Contain("_anchorId"));
+                Assert.That(visible, Does.Not.Contain("_entityId"));
+                Assert.That(visible, Does.Not.Contain("_kindId"));
+                Assert.That(visible, Does.Not.Contain("_name"));
+                Assert.That(visible, Does.Not.Contain("_variant"));
+                Assert.That(visible, Does.Not.Contain("_isAvailable"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(editor);
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        /// <summary>
         /// Returns to Edit Mode if an assertion interrupts a Play Mode inspection.
         /// </summary>
         [UnityTearDown]
@@ -151,6 +195,20 @@ namespace Emas.Editor.Tests
             }
 
             yield return new ExitPlayMode();
+        }
+
+        private sealed class InspectorGhost : Ghost
+        {
+            [SerializeField]
+            private int _customValue = 7;
+
+            internal int CustomValue
+            {
+                get
+                {
+                    return _customValue;
+                }
+            }
         }
 
         private sealed class FailedSource : PresenceSource

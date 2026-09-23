@@ -105,7 +105,7 @@ if (Realm.Default.TryGetGhost(key, out ghost) && ghost.IsAvailable)
 
 The anchor ID must match your SceneSetup. Lookup also finds retained unavailable ghosts, whose data may be stale; removal returns `false`.
 
-For interface-based consumers, paired query arrivals/departures and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>`; the application owns those interfaces.
+For interface-based consumers, paired query arrivals/departures and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>` for optional interfaces or `ghost.GetRequired<T>()` when a missing provider should fail immediately; the application owns those interfaces.
 
 ## Choose a source
 
