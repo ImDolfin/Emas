@@ -10,8 +10,11 @@ namespace Emas
     [Serializable]
     public struct Double3 : IEquatable<Double3>
     {
+        [Tooltip("X coordinate in the shared simulation coordinate system.")]
         [SerializeField] private double _x;
+        [Tooltip("Y coordinate in the shared simulation coordinate system.")]
         [SerializeField] private double _y;
+        [Tooltip("Z coordinate in the shared simulation coordinate system.")]
         [SerializeField] private double _z;
 
         /// <summary>

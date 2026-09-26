@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Added Inspector tooltips to prefab realm settings and preserved blueprint tooltips in custom inspectors.
 - Added a generic README setup and usage guide, including how SDK geodetic readings pass through EntityModules into Spatial and a ReferenceFrame.
 - Renamed `PresenceSource` to `PresenceDetector`, the polling and callback detector types, `ISourceProvider.CreateSource()` to `IDetectorProvider.CreateDetector()`, and Anchor detector-management APIs. Unity script GUIDs were preserved.
 - Added a stable realm-owned `Presence` handle for each detected identity, with labels, visual variants, typed capability interfaces, availability and a Ghost root. Per-Kind `RegisterPresenceInitializer<TGhost>` callbacks install developer-supplied `EntityModule<TData>` instances before SDK data is applied; `IRealmConfigurator` runs these registrations before prefab detectors start.

@@ -9,6 +9,7 @@ namespace Emas
     [Serializable]
     public struct Kind : IEquatable<Kind>, IComparable<Kind>
     {
+        [Tooltip("Stable, case-sensitive identifier for this ghost kind.")]
         [SerializeField]
         private string _id;
 

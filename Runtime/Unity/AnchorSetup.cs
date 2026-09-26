@@ -18,10 +18,10 @@ namespace Emas
         [Tooltip("Unique among anchors in the owning realm. Ghost keys use this ID.")]
         [SerializeField]
         private string _anchorId = "default";
-        [Tooltip("One manifestation blueprint per kind on this anchor. Leave empty for data-only tracking.")]
+        [Tooltip("One blueprint per Kind overriding realm defaults for this anchor. Empty inherits realm blueprints.")]
         [SerializeField]
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
-        [Tooltip("Request views for available ghosts whose kinds have an assigned manifestation blueprint with views.")]
+        [Tooltip("Automatically manifest available Ghosts with configured view prefabs. Disable to request views through code.")]
         [SerializeField]
         private bool _automaticViews = true;
         private Anchor _anchor;

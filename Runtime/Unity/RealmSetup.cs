@@ -18,36 +18,45 @@ namespace Emas
     [DefaultExecutionOrder(-32000)]
     public sealed class RealmSetup : MonoBehaviour
     {
-        [Tooltip("One realm-wide manifestation blueprint per kind. Anchors may override these.")]
+        [Tooltip("One blueprint per Kind for this realm. Anchor blueprints override the matching Kind.")]
         [SerializeField]
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
         [Header("Reference Frame")]
-        [Tooltip("Project Spatial ghosts relative to a manual position or a followed ghost.")]
+        [Tooltip("Project Spatial Ghosts relative to a manual or followed simulation reference.")]
         [SerializeField]
         private bool _useReferenceFrame;
-        [Tooltip("Use a ghost in this realm as the moving simulation reference.")]
+        [Tooltip("Use a Ghost in this realm as the moving reference. Identify it with the next three fields.")]
         [SerializeField]
         private bool _followGhost;
+        [Tooltip("Anchor ID of the followed Ghost; must match an Anchor Setup in this realm.")]
         [SerializeField]
         private string _referenceAnchorId;
+        [Tooltip("Kind reported for the followed Ghost by its detector.")]
         [SerializeField]
         private Kind _referenceKind;
+        [Tooltip("Stable entity ID of the followed Ghost within its Anchor and Kind.")]
         [SerializeField]
         private string _referenceEntityId;
-        [Tooltip("Manual simulation position, in double precision.")]
+        [Tooltip("Manual Cartesian reference position in the same units as Spatial positions. Convert latitude, longitude and altitude before entering it.")]
         [SerializeField]
         private Double3 _position;
+        [Tooltip("Simulation reference orientation. A followed Ghost's published Spatial rotation replaces it.")]
         [SerializeField]
         private Quaternion _rotation = Quaternion.identity;
+        [Tooltip("Unity world position where the reference point appears, usually near the scene origin.")]
         [SerializeField]
         private Vector3 _unityPosition;
+        [Tooltip("Unity world orientation of the reference; aligns simulation axes with the scene.")]
         [SerializeField]
         private Quaternion _unityRotation = Quaternion.identity;
+        [Tooltip("Cancel the simulation reference rotation, fixing its Unity heading at Unity Rotation. Disable to follow position only.")]
         [SerializeField]
         private bool _followRotation = true;
+        [Tooltip("Hide distant spatial presentation without removing tracked Presences.")]
         [SerializeField]
         private bool _limitDistance;
+        [Tooltip("Positive distance from the reference in Spatial position units; farther views are suppressed.")]
         [SerializeField]
         private double _maxDistance = 5000.0;
 

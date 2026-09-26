@@ -16,8 +16,9 @@ namespace Emas.Editor
         {
             serializedObject.Update();
             EditorGUILayout.PropertyField(serializedObject.FindProperty("_anchorId"));
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_blueprints"),
-                new UnityEngine.GUIContent("Manifestation Blueprints"), true);
+            SerializedProperty blueprints = serializedObject.FindProperty("_blueprints");
+            EditorGUILayout.PropertyField(blueprints,
+                new UnityEngine.GUIContent("Manifestation Blueprints", blueprints.tooltip), true);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("_automaticViews"));
             serializedObject.ApplyModifiedProperties();
             foreach (UnityEngine.Object value in targets)

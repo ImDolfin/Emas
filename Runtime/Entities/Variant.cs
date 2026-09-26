@@ -14,6 +14,7 @@ namespace Emas
     [Serializable]
     public struct Variant : IEquatable<Variant>
     {
+        [Tooltip("Case-sensitive appearance ID. Leave empty for Variant.None.")]
         [SerializeField]
         private string _id;
 

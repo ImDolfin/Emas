@@ -15,7 +15,9 @@ namespace Emas.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_blueprints"), new UnityEngine.GUIContent("Manifestation Blueprints"), true);
+            SerializedProperty blueprints = serializedObject.FindProperty("_blueprints");
+            EditorGUILayout.PropertyField(blueprints,
+                new UnityEngine.GUIContent("Manifestation Blueprints", blueprints.tooltip), true);
             SerializedProperty useFrame = serializedObject.FindProperty("_useReferenceFrame");
             EditorGUILayout.PropertyField(useFrame);
             if (useFrame.boolValue)

@@ -29,6 +29,7 @@ namespace Emas
         /// </summary>
         public static readonly DetailLevel Full = new DetailLevel(3);
 
+        [Tooltip("View detail level: Minimal 1, Reduced 2, Full 3. Use a positive level in a variant mapping.")]
         [SerializeField]
         private int _level;
 
