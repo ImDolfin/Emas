@@ -9,7 +9,7 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Add AnchorSetup components to this prefab or its children. Each anchor has one source provider.
-    /// Realm blueprints supply defaults; an anchor can override them for its own kinds. This component owns its realm; it never changes Realm.Default.
+    /// Realm manifestation blueprints supply defaults; an anchor can override them for its own kinds. This component owns its realm; it never changes Realm.Default.
     /// Disable it to stop sources and remove all owned ghosts and views. Direct Realm construction
     /// and manual Update calls remain available independently.
     /// </remarks>
@@ -18,9 +18,9 @@ namespace Emas
     [DefaultExecutionOrder(-32000)]
     public sealed class RealmSetup : MonoBehaviour
     {
-        [Tooltip("One realm-wide default blueprint per kind. Anchors may override these.")]
+        [Tooltip("One realm-wide manifestation blueprint per kind. Anchors may override these.")]
         [SerializeField]
-        private Blueprint[] _blueprints = new Blueprint[0];
+        private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
         [Header("Reference Frame")]
         [Tooltip("Project Spatial ghosts relative to a manual position or a followed ghost.")]
@@ -104,10 +104,13 @@ namespace Emas
             {
                 realm.ReferenceFrame = frame;
                 _realmViewKinds.Clear();
-                foreach (Blueprint blueprint in Blueprints)
+                foreach (ManifestationBlueprint blueprint in Blueprints)
                 {
-                    realm.RegisterBlueprint(blueprint);
-                    _realmViewKinds.Add(blueprint.Kind);
+                    realm.RegisterManifestationBlueprint(blueprint);
+                    if (blueprint.HasManifestationPrefab)
+                    {
+                        _realmViewKinds.Add(blueprint.Kind);
+                    }
                 }
 
                 foreach (AnchorSetup setup in anchors)
@@ -181,14 +184,14 @@ namespace Emas
         internal string GetConfigurationError()
         {
             HashSet<Kind> blueprintKinds = new HashSet<Kind>();
-            Blueprint[] blueprints = Blueprints;
+            ManifestationBlueprint[] blueprints = Blueprints;
             for (int index = 0; index < blueprints.Length; index++)
             {
-                Blueprint blueprint = blueprints[index];
-                string entry = "RealmSetup blueprint at index " + index;
+                ManifestationBlueprint blueprint = blueprints[index];
+                string entry = "RealmSetup manifestation blueprint at index " + index;
                 if (blueprint == null)
                 {
-                    return entry + " is null. Assign a blueprint or remove the entry.";
+                    return entry + " is null. Assign a manifestation blueprint or remove the entry.";
                 }
 
                 string error = blueprint.GetConfigurationError();
@@ -200,7 +203,7 @@ namespace Emas
                 if (!blueprintKinds.Add(blueprint.Kind))
                 {
                     return entry + " ('" + blueprint.name + "') duplicates kind '"
-                        + blueprint.Kind.Id + "'. Assign one blueprint per kind.";
+                        + blueprint.Kind.Id + "'. Assign one manifestation blueprint per kind.";
                 }
             }
 
@@ -235,11 +238,11 @@ namespace Emas
             return null;
         }
 
-        private Blueprint[] Blueprints
+        private ManifestationBlueprint[] Blueprints
         {
             get
             {
-                return _blueprints ?? new Blueprint[0];
+                return _blueprints ?? new ManifestationBlueprint[0];
             }
         }
 
@@ -298,12 +301,19 @@ namespace Emas
 
                 anchor = realm.GetOrCreateAnchor(setup.Id, setup.transform);
                 setup.Bind(anchor);
-                Blueprint[] blueprints = setup.Blueprints;
+                ManifestationBlueprint[] blueprints = setup.Blueprints;
                 HashSet<Kind> kinds = new HashSet<Kind>(_realmViewKinds);
-                foreach (Blueprint blueprint in blueprints)
+                foreach (ManifestationBlueprint blueprint in blueprints)
                 {
-                    anchor.RegisterBlueprint(blueprint);
-                    kinds.Add(blueprint.Kind);
+                    anchor.RegisterManifestationBlueprint(blueprint);
+                    if (blueprint.HasManifestationPrefab)
+                    {
+                        kinds.Add(blueprint.Kind);
+                    }
+                    else
+                    {
+                        kinds.Remove(blueprint.Kind);
+                    }
                 }
 
                 if (setup.AutomaticViews)

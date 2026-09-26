@@ -241,10 +241,10 @@ namespace Emas.Tests
             _realm.GetOrCreateAnchor("anchor", source);
             ProbeGhost ghost = source.Publish("car");
             _realm.Update();
-            Blueprint blueprint = Blueprint();
+            ManifestationBlueprint blueprint = CreateManifestationBlueprint();
             _realm.Dispose();
             Assert.Throws<ObjectDisposedException>(() => _realm.GetOrCreateAnchor("late"));
-            Assert.Throws<ObjectDisposedException>(() => _realm.RegisterBlueprint(blueprint));
+            Assert.Throws<ObjectDisposedException>(() => _realm.RegisterManifestationBlueprint(blueprint));
             Assert.Throws<ObjectDisposedException>(() => _realm.Prepare<ProbeGhost>("anchor", Kind, "late"));
             Assert.Throws<ObjectDisposedException>(() => _realm.Manifest(ghost));
             Assert.Throws<ObjectDisposedException>(() => _realm.Demanifest(ghost));
@@ -309,7 +309,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator OnEnable_CanRemoveItsOwnGhost()
         {
-            _realm.RegisterBlueprint(Blueprint());
+            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
             ProbeSource source = new ProbeSource();
             _realm.GetOrCreateAnchor("anchor", source);
             ProbeGhost ghost = source.Publish("car");
@@ -405,7 +405,7 @@ namespace Emas.Tests
         [Test]
         public void VariantViewRefresh_WaitsUntilAllSourceUpdatesFinish()
         {
-            _realm.RegisterBlueprint(Blueprint());
+            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
             ProbeSource first = new ProbeSource();
             ProbeSource second = new ProbeSource();
             _realm.GetOrCreateAnchor("anchor", first, second);
@@ -439,7 +439,7 @@ namespace Emas.Tests
         [Test]
         public void AvailabilityNotification_FollowsViewRefresh()
         {
-            _realm.RegisterBlueprint(Blueprint());
+            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
             ProbeSource source = new ProbeSource();
             _realm.GetOrCreateAnchor("anchor", source);
             ProbeGhost ghost = source.Publish("car");
@@ -456,7 +456,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator ViewOnEnable_CanDemanifestItself()
         {
-            _realm.RegisterBlueprint(Blueprint());
+            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
             ProbeSource source = new ProbeSource();
             _realm.GetOrCreateAnchor("anchor", source);
             ProbeGhost ghost = source.Publish("car");
@@ -474,7 +474,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator ViewOnDisable_CanRemoveGhostDuringVariantChange()
         {
-            _realm.RegisterBlueprint(Blueprint());
+            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
             ProbeSource source = new ProbeSource();
             _realm.GetOrCreateAnchor("anchor", source);
             ProbeGhost ghost = source.Publish("car");
@@ -539,7 +539,7 @@ namespace Emas.Tests
         [Test]
         public void TypedQuery_ComposesAndExcludesViewOnlyContracts()
         {
-            _realm.RegisterBlueprint(Blueprint());
+            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
             ProbeSource source = new ProbeSource();
             _realm.GetOrCreateAnchor("anchor", source);
             ProbeGhost ghost = source.Publish("car");
@@ -723,7 +723,7 @@ namespace Emas.Tests
             Assert.That(observed, Is.EqualTo(42));
         }
 
-        private Blueprint Blueprint()
+        private ManifestationBlueprint CreateManifestationBlueprint()
         {
             GameObject root = new GameObject("Ghost template");
             root.SetActive(false);
@@ -734,15 +734,23 @@ namespace Emas.Tests
             GameObject second = new GameObject("Second view");
             second.SetActive(false);
             second.AddComponent<ProbeView>();
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            blueprint.Configure(Kind, ghost, new[]
+            ManifestationVariant firstVariant = ScriptableObject.CreateInstance<ManifestationVariant>();
+            firstVariant.Configure(First, new[]
             {
-                new Blueprint.ViewMapping(First, DetailLevel.Full, first),
-                new Blueprint.ViewMapping(Second, DetailLevel.Full, second)
-            }, first);
+                new ManifestationVariant.DetailMapping(DetailLevel.Full, first)
+            });
+            ManifestationVariant secondVariant = ScriptableObject.CreateInstance<ManifestationVariant>();
+            secondVariant.Configure(Second, new[]
+            {
+                new ManifestationVariant.DetailMapping(DetailLevel.Full, second)
+            });
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            blueprint.Configure(Kind, ghost, new[] { firstVariant, secondVariant }, first);
             _assets.Add(root);
             _assets.Add(first);
             _assets.Add(second);
+            _assets.Add(firstVariant);
+            _assets.Add(secondVariant);
             _assets.Add(blueprint);
             return blueprint;
         }

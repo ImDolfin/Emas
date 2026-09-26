@@ -3,11 +3,11 @@ using UnityEditor;
 namespace Emas.Editor
 {
     /// <summary>
-    /// Shows blueprint settings and the same configuration errors used by runtime registration.
+    /// Shows manifestation blueprint settings and the same configuration errors used by runtime registration.
     /// </summary>
-    [CustomEditor(typeof(Blueprint))]
+    [CustomEditor(typeof(ManifestationBlueprint))]
     [CanEditMultipleObjects]
-    public sealed class BlueprintInspector : UnityEditor.Editor
+    public sealed class ManifestationBlueprintInspector : UnityEditor.Editor
     {
         /// <summary>
         /// Draws editable settings followed by actionable validation errors.
@@ -17,7 +17,7 @@ namespace Emas.Editor
             DrawDefaultInspector();
             foreach (UnityEngine.Object value in targets)
             {
-                string error = ((Blueprint)value).GetConfigurationError();
+                string error = ((ManifestationBlueprint)value).GetConfigurationError();
                 if (error != null)
                 {
                     EditorGUILayout.HelpBox(error, MessageType.Error);

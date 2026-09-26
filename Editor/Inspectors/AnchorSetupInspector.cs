@@ -14,7 +14,12 @@ namespace Emas.Editor
         /// </summary>
         public override void OnInspectorGUI()
         {
-            DrawDefaultInspector();
+            serializedObject.Update();
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("_anchorId"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("_blueprints"),
+                new UnityEngine.GUIContent("Manifestation Blueprints"), true);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("_automaticViews"));
+            serializedObject.ApplyModifiedProperties();
             foreach (UnityEngine.Object value in targets)
             {
                 string error = ((AnchorSetup)value).GetConfigurationError();

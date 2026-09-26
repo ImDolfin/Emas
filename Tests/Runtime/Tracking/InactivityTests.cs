@@ -252,13 +252,13 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator Expiry_RemovesViewRootAndObservationMembership()
         {
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             GameObject prefab = new GameObject("inactivity view");
             prefab.SetActive(false);
             try
             {
                 blueprint.Configure(Kind, null, null, prefab);
-                _realm.RegisterBlueprint(blueprint);
+                _realm.RegisterManifestationBlueprint(blueprint);
                 Probe source = ExpiringSource();
                 _realm.GetOrCreateAnchor("anchor", source);
                 TestGhost ghost = source.Publish("one");

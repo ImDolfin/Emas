@@ -14,7 +14,7 @@ namespace Emas
     {
         private readonly List<PresenceSource> _sources = new List<PresenceSource>();
         private readonly HashSet<PresenceSource> _restarting = new HashSet<PresenceSource>();
-        private readonly BlueprintRegistry _blueprints = new BlueprintRegistry();
+        private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
         private readonly GameObject _gameObject;
         private bool _disposed;
 
@@ -111,10 +111,10 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The anchor or realm was disposed.
         /// </exception>
-        public void RegisterBlueprint(Blueprint blueprint)
+        public void RegisterManifestationBlueprint(ManifestationBlueprint blueprint)
         {
             ThrowIfDisposed();
-            Realm.RegisterBlueprint(this, blueprint);
+            Realm.RegisterManifestationBlueprint(this, blueprint);
         }
 
         /// <summary>
@@ -132,23 +132,23 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The anchor or realm was disposed.
         /// </exception>
-        public void UnregisterBlueprint(Kind kind)
+        public void UnregisterManifestationBlueprint(Kind kind)
         {
             ThrowIfDisposed();
-            Realm.UnregisterBlueprint(this, kind);
+            Realm.UnregisterManifestationBlueprint(this, kind);
         }
 
-        internal List<Kind> SetBlueprint(Blueprint blueprint)
+        internal List<Kind> SetManifestationBlueprint(ManifestationBlueprint blueprint)
         {
             return _blueprints.Register(blueprint);
         }
 
-        internal bool RemoveBlueprint(Kind kind)
+        internal bool RemoveManifestationBlueprint(Kind kind)
         {
             return _blueprints.Remove(kind);
         }
 
-        internal bool TryGetBlueprint(string kindId, out BlueprintSnapshot blueprint)
+        internal bool TryGetManifestationBlueprint(string kindId, out ManifestationBlueprintSnapshot blueprint)
         {
             return _blueprints.TryGet(kindId, out blueprint);
         }

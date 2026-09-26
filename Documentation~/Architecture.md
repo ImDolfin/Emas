@@ -19,7 +19,7 @@ Identity is `(anchor ID, kind, entity ID)` within one realm; separate realms may
 
 Queries see available ghosts only. `realm.Query()` is scoped to one realm; `Query.All()` includes every live realm and follows realms created later. Its filters, scalar results, enumeration and subscriptions use the same available-ghost rules. `realm.Query(globalQuery)` reuses the global query's filters within that realm. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors.
 
-Blueprints are resolved by anchor and kind: an anchor registration takes precedence over the realm-wide default. `AnchorSetup` installs its Inspector blueprints on its own anchor, so anchors sharing a kind can use different views. Each realm or anchor registration holds a snapshot of its blueprint settings. Asset edits do not alter that scope until re-registration, which refreshes requested views on the next update while keeping existing roots. Re-registering after a kind change releases the old kind in that scope and refreshes both kinds. Removing an anchor override restores the realm default. Root prefab changes affect newly created ghosts.
+Manifestation blueprints are resolved by anchor and kind: an anchor registration takes precedence over the realm-wide default. `AnchorSetup` installs its Inspector manifestation blueprints on its own anchor, so anchors sharing a kind can use different views. Each realm or anchor registration holds a snapshot of the blueprint and its referenced variant assets. Asset edits do not alter that scope until re-registration, which refreshes requested views on the next update while keeping existing roots. Re-registering after a kind change releases the old kind in that scope and refreshes both kinds. Removing an anchor override restores the realm default. Root prefab changes affect newly created ghosts. With no blueprint, Emas creates a plain Ghost root and no view; empty blueprints also remain silent.
 
 ## Update order
 
@@ -59,13 +59,13 @@ Presentation range is measured in simulation coordinates before float conversion
 | Attach an already registered source | Reject without changing its original population |
 | Remove ghost/source | Remove the selected identity/owned population and associated views |
 | Stop RealmSetup, disable AnchorSetup, dispose/remove anchor or unload its scene | Remove owned and prepared records; stop sources |
-| Dispose realm | Remove anchors, records, views, subscriptions, blueprints and queued work |
+| Dispose realm | Remove anchors, records, views, subscriptions, manifestation blueprints and queued work |
 
 A successful restart or replacement has a bounded startup handover. Existing roots are unavailable until republished; cleanup waits for the first subsequent realm update and for publications queued during startup to run, including any dispatch backlog. It then removes still-unreported roots. Source failure removes roots immediately, so later recovery creates new instances. Unowned prepared ghosts remain until claimed or explicitly removed with their anchor.
 
 Sources can opt into per-entity expiry with `InactivityTimeout`. Each publication records unscaled activity time; any partial data update counts. Custom sources updating cached ghosts call `MarkPublished`. Expiry removes the identity and view before subscription notifications; later publication creates a fresh root.
 
-Demanifesting removes only the visual child. Failed view requests can retry through `Manifest` or a blueprint, variant or detail change; unchanged source updates leave them alone.
+Demanifesting removes only the visual child. Failed view requests can retry through `Manifest` or a manifestation blueprint, variant or detail change; unchanged source updates leave them alone.
 
 Sources retain the original first exception in `LastError` and its captured anchor/source/operation in `LastErrorContext`; cleanup errors cannot hide either and old registrations cannot change a restarted source's status. See [status contracts](API.md#presencesource-and-ghost-contracts).
 
@@ -96,10 +96,10 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Runtime/Entities/` | Ghost contracts, spatial state and identity/coordinate values |
 | `Runtime/Tracking/` | Anchors, sources and ownership storage |
 | `Runtime/Queries/` | Filtering and subscriptions |
-| `Runtime/Views/` | Blueprint, detail level and view lifecycle |
+| `Runtime/Views/` | ManifestationBlueprint, ManifestationVariant, detail level and view lifecycle |
 | `Runtime/Unity/` | Prefab realm and anchor setup, automatic runner and queued scene changes |
 | `Editor/Diagnostics/` | Passive default-realm diagnostics |
-| `Editor/Inspectors/` | Blueprint, RealmSetup and AnchorSetup authoring validation |
+| `Editor/Inspectors/` | ManifestationBlueprint, ManifestationVariant, RealmSetup and AnchorSetup authoring validation |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
 | `Samples~/Minimal/` / `Samples~/Callbacks/` | Polling and callback quick starts |
 | `Samples~/Example/` | Contracts, entities, behaviors and source integrations |

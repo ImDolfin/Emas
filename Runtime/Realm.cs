@@ -49,7 +49,7 @@ namespace Emas
 
         private readonly Dictionary<string, Anchor> _anchors = new Dictionary<string, Anchor>();
         private readonly Registry _ghosts = new Registry();
-        private readonly BlueprintRegistry _blueprints = new BlueprintRegistry();
+        private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
         private readonly Subscriptions _subscriptions;
         private readonly Func<double> _elapsedSeconds;
         private readonly ViewManager _views;
@@ -143,24 +143,24 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The realm was disposed.
         /// </exception>
-        public void RegisterBlueprint(Blueprint blueprint)
+        public void RegisterManifestationBlueprint(ManifestationBlueprint blueprint)
         {
             ThrowIfDisposed();
-            ValidateBlueprint(blueprint);
+            ValidateManifestationBlueprint(blueprint);
             List<Kind> staleKinds = _blueprints.Register(blueprint);
-            RebindBlueprintRegistration(staleKinds, blueprint.Kind, null);
+            RebindManifestationBlueprintRegistration(staleKinds, blueprint.Kind, null);
         }
 
-        internal void RegisterBlueprint(Anchor anchor, Blueprint blueprint)
+        internal void RegisterManifestationBlueprint(Anchor anchor, ManifestationBlueprint blueprint)
         {
             ThrowIfDisposed();
             anchor.ThrowIfDisposed();
-            ValidateBlueprint(blueprint);
-            List<Kind> staleKinds = anchor.SetBlueprint(blueprint);
-            RebindBlueprintRegistration(staleKinds, blueprint.Kind, anchor.Id);
+            ValidateManifestationBlueprint(blueprint);
+            List<Kind> staleKinds = anchor.SetManifestationBlueprint(blueprint);
+            RebindManifestationBlueprintRegistration(staleKinds, blueprint.Kind, anchor.Id);
         }
 
-        internal void UnregisterBlueprint(Anchor anchor, Kind kind)
+        internal void UnregisterManifestationBlueprint(Anchor anchor, Kind kind)
         {
             ThrowIfDisposed();
             anchor.ThrowIfDisposed();
@@ -169,26 +169,26 @@ namespace Emas
                 throw new ArgumentException("The blueprint kind must be valid.", nameof(kind));
             }
 
-            if (anchor.RemoveBlueprint(kind))
+            if (anchor.RemoveManifestationBlueprint(kind))
             {
-                RebindBlueprints(kind, anchor.Id);
+                RebindManifestationBlueprints(kind, anchor.Id);
             }
         }
 
-        private void RebindBlueprintRegistration(List<Kind> staleKinds, Kind kind, string anchorId)
+        private void RebindManifestationBlueprintRegistration(List<Kind> staleKinds, Kind kind, string anchorId)
         {
             if (staleKinds != null)
             {
                 for (int index = 0; index < staleKinds.Count; index++)
                 {
-                    RebindBlueprints(staleKinds[index], anchorId);
+                    RebindManifestationBlueprints(staleKinds[index], anchorId);
                 }
             }
 
-            RebindBlueprints(kind, anchorId);
+            RebindManifestationBlueprints(kind, anchorId);
         }
 
-        private static void ValidateBlueprint(Blueprint blueprint)
+        private static void ValidateManifestationBlueprint(ManifestationBlueprint blueprint)
         {
             if (blueprint == null)
             {
@@ -860,10 +860,10 @@ namespace Emas
                     throw new InvalidOperationException("The ghost is owned by another source.");
                 }
 
-                BlueprintSnapshot resolved = ResolveBlueprint(anchorId, kind);
-                if (!ReferenceEquals(record.Blueprint, resolved))
+                ManifestationBlueprintSnapshot resolved = ResolveManifestationBlueprint(anchorId, kind);
+                if (!ReferenceEquals(record.ManifestationBlueprint, resolved))
                 {
-                    record.Blueprint = resolved;
+                    record.ManifestationBlueprint = resolved;
                     if (record.ViewRequested)
                     {
                         record.ViewVersion++;
@@ -899,7 +899,7 @@ namespace Emas
                 return existingTyped;
             }
 
-            BlueprintSnapshot blueprint = ResolveBlueprint(anchorId, kind);
+            ManifestationBlueprintSnapshot blueprint = ResolveManifestationBlueprint(anchorId, kind);
             Ghost prefab = blueprint == null ? null : blueprint.GhostPrefab;
             Transform anchorTransform = GetAnchorTransform(anchorId);
             // Keep the root inactive until its identity and initial data are ready.
@@ -922,7 +922,7 @@ namespace Emas
                     typed = clone.GetComponent<TGhost>();
                     if (typed == null)
                     {
-                        throw new InvalidOperationException("Blueprint for kind " + kind.Id + " prefab " + prefab.name + " does not contain required component " + typeof(TGhost).FullName + ".");
+                        throw new InvalidOperationException("ManifestationBlueprint for kind " + kind.Id + " prefab " + prefab.name + " does not contain required component " + typeof(TGhost).FullName + ".");
                     }
                 }
 
@@ -1141,11 +1141,11 @@ namespace Emas
             }
         }
 
-        private BlueprintSnapshot ResolveBlueprint(string anchorId, Kind kind)
+        private ManifestationBlueprintSnapshot ResolveManifestationBlueprint(string anchorId, Kind kind)
         {
             Anchor anchor;
-            BlueprintSnapshot blueprint;
-            if (_anchors.TryGetValue(anchorId, out anchor) && anchor.TryGetBlueprint(kind.Id, out blueprint))
+            ManifestationBlueprintSnapshot blueprint;
+            if (_anchors.TryGetValue(anchorId, out anchor) && anchor.TryGetManifestationBlueprint(kind.Id, out blueprint))
             {
                 return blueprint;
             }
@@ -1154,7 +1154,7 @@ namespace Emas
             return blueprint;
         }
 
-        private void RebindBlueprints(Kind kind, string anchorId)
+        private void RebindManifestationBlueprints(Kind kind, string anchorId)
         {
             List<Record> records = _ghosts.Snapshot();
             for (int index = 0; index < records.Count; index++)
@@ -1167,14 +1167,14 @@ namespace Emas
 
                 // Realm defaults do not replace a specific anchor's configuration.
                 Anchor anchor;
-                BlueprintSnapshot ignored;
+                ManifestationBlueprintSnapshot ignored;
                 if (anchorId == null && _anchors.TryGetValue(record.Key.AnchorId, out anchor)
-                    && anchor.TryGetBlueprint(kind.Id, out ignored))
+                    && anchor.TryGetManifestationBlueprint(kind.Id, out ignored))
                 {
                     continue;
                 }
 
-                record.Blueprint = ResolveBlueprint(record.Key.AnchorId, kind);
+                record.ManifestationBlueprint = ResolveManifestationBlueprint(record.Key.AnchorId, kind);
                 if (record.ViewRequested)
                 {
                     record.ViewVersion++;

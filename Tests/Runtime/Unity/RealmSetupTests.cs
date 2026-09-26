@@ -40,14 +40,14 @@ namespace Emas.Tests
         /// Prefab instances with the same anchor IDs and kinds own independent populations and views.
         /// </summary>
         [Test]
-        public void MultipleRealms_KeepAnchorsAndBlueprintsIndependent()
+        public void MultipleRealms_KeepAnchorsAndManifestationBlueprintsIndependent()
         {
             RealmSetup first = CreateRealm("screen one");
             RealmSetup second = CreateRealm("screen two");
-            Blueprint firstBlueprint = CreateBlueprint(FirstKind, "first view");
-            Blueprint secondBlueprint = CreateBlueprint(FirstKind, "second view");
-            SetField(first, "_blueprints", new[] { firstBlueprint });
-            SetField(second, "_blueprints", new[] { secondBlueprint });
+            ManifestationBlueprint firstManifestationBlueprint = CreateManifestationBlueprint(FirstKind, "first view");
+            ManifestationBlueprint secondManifestationBlueprint = CreateManifestationBlueprint(FirstKind, "second view");
+            SetField(first, "_blueprints", new[] { firstManifestationBlueprint });
+            SetField(second, "_blueprints", new[] { secondManifestationBlueprint });
             CreateAnchor(first, "screen", () => new PublishingSource(FirstKind));
             CreateAnchor(second, "screen", () => new PublishingSource(FirstKind));
             first.gameObject.SetActive(true);
@@ -97,12 +97,12 @@ namespace Emas.Tests
         /// One prefab realm supports several anchors, one source per anchor and several blueprints per anchor.
         /// </summary>
         [Test]
-        public void MultipleAnchors_UseOneSourceEachAndIndependentBlueprints()
+        public void MultipleAnchors_UseOneSourceEachAndIndependentManifestationBlueprints()
         {
             RealmSetup setup = CreateRealm("environment");
-            Blueprint first = CreateBlueprint(FirstKind, "first view");
-            Blueprint second = CreateBlueprint(SecondKind, "second view");
-            Blueprint right = CreateBlueprint(FirstKind, "right view");
+            ManifestationBlueprint first = CreateManifestationBlueprint(FirstKind, "first view");
+            ManifestationBlueprint second = CreateManifestationBlueprint(SecondKind, "second view");
+            ManifestationBlueprint right = CreateManifestationBlueprint(FirstKind, "right view");
             SetField(setup, "_blueprints", new[] { first });
             TestProvider leftProvider = CreateAnchor(setup, "left",
                 () => new PublishingSource(FirstKind, SecondKind), second);
@@ -135,6 +135,49 @@ namespace Emas.Tests
             setup.Realm.Update();
             Assert.That(leftProvider.Calls, Is.EqualTo(3));
             Assert.That(setup.Realm.Query().Count, Is.EqualTo(3));
+        }
+
+        /// <summary>
+        /// An empty anchor override keeps its ghosts silent while another anchor uses the realm view.
+        /// </summary>
+        [Test]
+        public void EmptyManifestationBlueprintOverride_SkipsAutomaticViews()
+        {
+            RealmSetup setup = CreateRealm("silent override");
+            ManifestationBlueprint visible = CreateManifestationBlueprint(FirstKind, "realm view");
+            ManifestationBlueprint silent = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            silent.Configure(FirstKind, null, null, null);
+            _objects.Add(silent);
+            SetField(setup, "_blueprints", new[] { visible });
+            CreateAnchor(setup, "silent", () => new PublishingSource(FirstKind), silent);
+            CreateAnchor(setup, "visible", () => new PublishingSource(FirstKind));
+            List<string> warnings = new List<string>();
+            Application.LogCallback onLog = (message, stackTrace, type) =>
+            {
+                if (type == LogType.Warning && message.Contains("No Emas view prefab"))
+                {
+                    warnings.Add(message);
+                }
+            };
+
+            try
+            {
+                Application.logMessageReceived += onLog;
+                setup.gameObject.SetActive(true);
+                setup.StartRealm();
+                setup.Realm.Update();
+
+                Ghost silentGhost = (Ghost)setup.Realm.Query().InAnchor("silent").Single();
+                Assert.That(silentGhost.IsAvailable, Is.True);
+                Assert.That(silentGhost.gameObject.activeInHierarchy, Is.True);
+                Assert.That(silentGhost.GetComponentInChildren<View>(true), Is.Null);
+                Assert.That(ViewName(setup, "visible", FirstKind), Is.EqualTo("realm view"));
+                Assert.That(warnings, Is.Empty);
+            }
+            finally
+            {
+                Application.logMessageReceived -= onLog;
+            }
         }
 
         /// <summary>
@@ -263,7 +306,7 @@ namespace Emas.Tests
         public void ViewActivation_CanDisableRealm()
         {
             RealmSetup setup = CreateRealm("view callback");
-            Blueprint blueprint = CreateBlueprint(FirstKind, "callback view");
+            ManifestationBlueprint blueprint = CreateManifestationBlueprint(FirstKind, "callback view");
             blueprint.FallbackViewPrefab.AddComponent<DisableRealmWhenEnabled>();
             SetField(setup, "_blueprints", new[] { blueprint });
             bool publish = false;
@@ -308,7 +351,7 @@ namespace Emas.Tests
             SetField(setup, "_followGhost", true);
             Assert.That(setup.GetConfigurationError(), Does.Contain("followed ghost"));
             SetField(setup, "_useReferenceFrame", false);
-            Blueprint blueprint = CreateBlueprint(FirstKind, "realm default");
+            ManifestationBlueprint blueprint = CreateManifestationBlueprint(FirstKind, "realm default");
             SetField(setup, "_blueprints", new[] { blueprint, blueprint });
             Assert.That(setup.GetConfigurationError(), Does.Contain("duplicates kind"));
             SetField(setup, "_blueprints", new[] { blueprint });
@@ -324,7 +367,7 @@ namespace Emas.Tests
         }
 
         private TestProvider CreateAnchor(RealmSetup realm, string id,
-            Func<PresenceSource> factory, params Blueprint[] blueprints)
+            Func<PresenceSource> factory, params ManifestationBlueprint[] blueprints)
         {
             GameObject owner = new GameObject(id);
             _objects.Add(owner);
@@ -337,12 +380,12 @@ namespace Emas.Tests
             return provider;
         }
 
-        private Blueprint CreateBlueprint(Kind kind, string name)
+        private ManifestationBlueprint CreateManifestationBlueprint(Kind kind, string name)
         {
             GameObject prefab = new GameObject(name);
             prefab.SetActive(false);
             _objects.Add(prefab);
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             blueprint.Configure(kind, null, null, prefab);
             _objects.Add(blueprint);
             return blueprint;

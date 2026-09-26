@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Renamed `Blueprint` to `ManifestationBlueprint` and split each variant's detail-level prefabs into its own `ManifestationVariant` asset; unassigned kinds keep the built-in silent Ghost root, and empty blueprints no longer request or warn about missing views. Existing assets with nonempty `_views` mappings require one `ManifestationVariant` asset per variant; copy each detail mapping and assign those assets to the blueprint.
 - Renamed the internal `SceneEffects` helper to `SceneChangeQueue` to clarify its role in handling nested GameObject changes.
 - Added `Query.All()` to search and subscribe across every live realm, including realms started later; `ObserveWithRealm` distinguishes duplicate keys across realms and reports departures when a realm is disposed.
 - Added optional realm reference frames, double-precision simulation coordinates and independent root spatial channels; moving origins reproject entities without republication, preserve the last reference on loss and suppress distant presentation while retaining tracking.

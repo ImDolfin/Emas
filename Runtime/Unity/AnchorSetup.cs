@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Configures one prefab anchor with one source provider and any number of blueprints.
+    /// Configures one prefab anchor with one source provider and any number of manifestation blueprints.
     /// </summary>
     /// <remarks>
     /// Place on the anchor GameObject under a RealmSetup. Add exactly one enabled MonoBehaviour
@@ -18,10 +18,10 @@ namespace Emas
         [Tooltip("Unique among anchors in the owning realm. Ghost keys use this ID.")]
         [SerializeField]
         private string _anchorId = "default";
-        [Tooltip("One blueprint per kind on this anchor. Leave empty for data-only tracking.")]
+        [Tooltip("One manifestation blueprint per kind on this anchor. Leave empty for data-only tracking.")]
         [SerializeField]
-        private Blueprint[] _blueprints = new Blueprint[0];
-        [Tooltip("Request views for available ghosts whose kinds have an assigned blueprint.")]
+        private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
+        [Tooltip("Request views for available ghosts whose kinds have an assigned manifestation blueprint with views.")]
         [SerializeField]
         private bool _automaticViews = true;
         private Anchor _anchor;
@@ -56,11 +56,11 @@ namespace Emas
             }
         }
 
-        internal Blueprint[] Blueprints
+        internal ManifestationBlueprint[] Blueprints
         {
             get
             {
-                return _blueprints ?? new Blueprint[0];
+                return _blueprints ?? new ManifestationBlueprint[0];
             }
         }
 
@@ -114,14 +114,14 @@ namespace Emas
             }
 
             HashSet<Kind> kinds = new HashSet<Kind>();
-            Blueprint[] blueprints = Blueprints;
+            ManifestationBlueprint[] blueprints = Blueprints;
             for (int index = 0; index < blueprints.Length; index++)
             {
-                Blueprint blueprint = blueprints[index];
-                string entry = "AnchorSetup blueprint at index " + index;
+                ManifestationBlueprint blueprint = blueprints[index];
+                string entry = "AnchorSetup manifestation blueprint at index " + index;
                 if (blueprint == null)
                 {
-                    return entry + " is null. Assign a blueprint or remove the entry.";
+                    return entry + " is null. Assign a manifestation blueprint or remove the entry.";
                 }
 
                 string error = blueprint.GetConfigurationError();
@@ -133,7 +133,7 @@ namespace Emas
                 if (!kinds.Add(blueprint.Kind))
                 {
                     return entry + " ('" + blueprint.name + "') duplicates kind '"
-                        + blueprint.Kind.Id + "'. Assign one blueprint per kind.";
+                        + blueprint.Kind.Id + "'. Assign one manifestation blueprint per kind.";
                 }
             }
 

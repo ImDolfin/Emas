@@ -92,20 +92,22 @@ namespace Emas.Tests
         /// Ensures blueprint selection uses typed appearances for exact, lower and fallback views.
         /// </summary>
         [Test]
-        public void Blueprint_SelectsTypedVariants()
+        public void ManifestationBlueprint_SelectsTypedVariants()
         {
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            ManifestationVariant manifestationVariant = ScriptableObject.CreateInstance<ManifestationVariant>();
             GameObject full = new GameObject("full");
             GameObject minimal = new GameObject("minimal");
             GameObject fallback = new GameObject("fallback");
             try
             {
                 Variant variant = new Variant("cars.small");
-                blueprint.Configure(new Kind("cars"), null, new[]
+                manifestationVariant.Configure(variant, new[]
                 {
-                    new Blueprint.ViewMapping(variant, DetailLevel.Full, full),
-                    new Blueprint.ViewMapping(variant, DetailLevel.Minimal, minimal)
-                }, fallback);
+                    new ManifestationVariant.DetailMapping(DetailLevel.Full, full),
+                    new ManifestationVariant.DetailMapping(DetailLevel.Minimal, minimal)
+                });
+                blueprint.Configure(new Kind("cars"), null, new[] { manifestationVariant }, fallback);
 
                 Assert.That(blueprint.ResolveViewPrefab(variant, DetailLevel.Full), Is.SameAs(full));
                 Assert.That(blueprint.ResolveViewPrefab(variant, DetailLevel.Reduced), Is.SameAs(minimal));
@@ -115,6 +117,7 @@ namespace Emas.Tests
             finally
             {
                 UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(manifestationVariant);
                 UnityEngine.Object.DestroyImmediate(full);
                 UnityEngine.Object.DestroyImmediate(minimal);
                 UnityEngine.Object.DestroyImmediate(fallback);

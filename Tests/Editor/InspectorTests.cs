@@ -15,36 +15,58 @@ namespace Emas.Editor.Tests
     public sealed class InspectorTests
     {
         /// <summary>
-        /// Optional prefabs are quiet, invalid mappings are rejected by the Inspector and runtime alike.
+        /// Optional prefabs are quiet while invalid variant assets are rejected by authoring and runtime.
         /// </summary>
         [Test]
-        public void Blueprint_UsesSharedValidationAndOptionalDefaults()
+        public void ManifestationBlueprint_UsesSharedValidationAndOptionalDefaults()
         {
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            UnityEditor.Editor editor = null;
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            ManifestationVariant variant = ScriptableObject.CreateInstance<ManifestationVariant>();
+            UnityEditor.Editor blueprintEditor = null;
+            UnityEditor.Editor variantEditor = null;
             try
             {
                 Assert.That(blueprint.GetConfigurationError(), Does.Contain("non-empty kind ID"));
                 blueprint.Configure(new Kind("inspector"), null, null, null);
                 Assert.That(blueprint.GetConfigurationError(), Is.Null);
-                editor = UnityEditor.Editor.CreateEditor(blueprint);
-                Assert.That(editor, Is.TypeOf<BlueprintInspector>());
+                blueprintEditor = UnityEditor.Editor.CreateEditor(blueprint);
+                variantEditor = UnityEditor.Editor.CreateEditor(variant);
+                Assert.That(blueprintEditor, Is.TypeOf<ManifestationBlueprintInspector>());
+                Assert.That(variantEditor, Is.TypeOf<ManifestationVariantInspector>());
+
                 SerializedObject serialized = new SerializedObject(blueprint);
-                SerializedProperty views = serialized.FindProperty("_views");
-                views.arraySize = 1;
+                SerializedProperty variants = serialized.FindProperty("_variants");
+                variants.arraySize = 1;
                 serialized.ApplyModifiedPropertiesWithoutUndo();
                 string error = blueprint.GetConfigurationError();
-                Assert.That(error, Does.Contain("index 0"));
-                Assert.That(error, Does.Contain("prefab"));
+                Assert.That(error, Does.Contain("index 0").And.Contain("null"));
                 using (Realm realm = new Realm())
                 {
-                    Assert.That(Assert.Throws<ArgumentException>(() => realm.RegisterBlueprint(blueprint)).Message, Does.Contain(error));
+                    Assert.That(Assert.Throws<ArgumentException>(() =>
+                        realm.RegisterManifestationBlueprint(blueprint)).Message, Does.Contain(error));
+                }
+
+                variants.GetArrayElementAtIndex(0).objectReferenceValue = variant;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+                Assert.That(blueprint.GetConfigurationError(), Is.Null);
+                SerializedObject serializedVariant = new SerializedObject(variant);
+                serializedVariant.FindProperty("_details").arraySize = 1;
+                serializedVariant.ApplyModifiedPropertiesWithoutUndo();
+                error = variant.GetConfigurationError();
+                Assert.That(error, Does.Contain("index 0").And.Contain("prefab"));
+                Assert.That(blueprint.GetConfigurationError(), Does.Contain(error));
+                using (Realm realm = new Realm())
+                {
+                    Assert.That(Assert.Throws<ArgumentException>(() =>
+                        realm.RegisterManifestationBlueprint(blueprint)).Message, Does.Contain(error));
                 }
             }
             finally
             {
-                UnityEngine.Object.DestroyImmediate(editor);
+                UnityEngine.Object.DestroyImmediate(blueprintEditor);
+                UnityEngine.Object.DestroyImmediate(variantEditor);
                 UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(variant);
             }
         }
 
@@ -52,33 +74,36 @@ namespace Emas.Editor.Tests
         /// Serialized whitespace-only variants are rejected because code cannot construct them.
         /// </summary>
         [Test]
-        public void Blueprint_RejectsWhitespaceOnlySerializedVariant()
+        public void ManifestationBlueprint_RejectsWhitespaceOnlySerializedVariant()
         {
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            ManifestationVariant variant = ScriptableObject.CreateInstance<ManifestationVariant>();
             GameObject prefab = new GameObject("view prefab");
             try
             {
-                blueprint.Configure(new Kind("inspector.variant"), null, new[]
+                variant.Configure(new Variant("valid"), new[]
                 {
-                    new Blueprint.ViewMapping(new Variant("valid"), DetailLevel.Full, prefab)
-                }, null);
-                SerializedObject serialized = new SerializedObject(blueprint);
-                SerializedProperty variantId = serialized.FindProperty("_views").GetArrayElementAtIndex(0)
-                    .FindPropertyRelative("_variant").FindPropertyRelative("_id");
+                    new ManifestationVariant.DetailMapping(DetailLevel.Full, prefab)
+                });
+                blueprint.Configure(new Kind("inspector.variant"), null, new[] { variant }, null);
+                SerializedObject serialized = new SerializedObject(variant);
+                SerializedProperty variantId = serialized.FindProperty("_variant").FindPropertyRelative("_id");
                 Assert.That(variantId, Is.Not.Null);
                 variantId.stringValue = "   ";
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                string error = blueprint.GetConfigurationError();
+                string error = variant.GetConfigurationError();
                 Assert.That(error, Does.Contain("whitespace-only variant ID"));
+                Assert.That(blueprint.GetConfigurationError(), Does.Contain(error));
                 using (Realm realm = new Realm())
                 {
-                    Assert.That(Assert.Throws<ArgumentException>(() => realm.RegisterBlueprint(blueprint)).Message,
-                        Does.Contain(error));
+                    Assert.That(Assert.Throws<ArgumentException>(() =>
+                        realm.RegisterManifestationBlueprint(blueprint)).Message, Does.Contain(error));
                 }
             }
             finally
             {
                 UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(variant);
                 UnityEngine.Object.DestroyImmediate(prefab);
             }
         }
@@ -90,7 +115,7 @@ namespace Emas.Editor.Tests
         public void RealmSetup_ValidatesPrefabConfiguration()
         {
             GameObject go = new GameObject("setup validation");
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             UnityEditor.Editor realmEditor = null;
             UnityEditor.Editor anchorEditor = null;
             try

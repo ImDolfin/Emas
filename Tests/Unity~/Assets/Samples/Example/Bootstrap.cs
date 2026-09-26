@@ -25,7 +25,8 @@ namespace Emas.Sample
         private GameObject _ground;
         private readonly List<GameObject> _runtimeObjects = new List<GameObject>();
         private readonly List<Material> _runtimeMaterials = new List<Material>();
-        private readonly List<Blueprint> _runtimeBlueprints = new List<Blueprint>();
+        private readonly List<ManifestationBlueprint> _runtimeManifestationBlueprints = new List<ManifestationBlueprint>();
+        private readonly List<ManifestationVariant> _runtimeVariants = new List<ManifestationVariant>();
 
         /// <summary>
         /// Starts the sample anchor and its sources.
@@ -37,8 +38,8 @@ namespace Emas.Sample
             _cockpitFeed = new SimulatedCockpitFeed();
             // Register view configuration before either source publishes its population.
             ConfigureCamera();
-            RegisterCarBlueprint();
-            RegisterAircraftBlueprint();
+            RegisterCarManifestationBlueprint();
+            RegisterAircraftManifestationBlueprint();
 
             _firstCarSource = new SdkOneCarSource { Name = "SDK One cars" };
             _anchor = Realm.Default.GetOrCreateAnchor(
@@ -156,11 +157,19 @@ namespace Emas.Sample
                 Destroy(_ground);
             }
 
-            for (int index = 0; index < _runtimeBlueprints.Count; index++)
+            for (int index = 0; index < _runtimeManifestationBlueprints.Count; index++)
             {
-                if (_runtimeBlueprints[index] != null)
+                if (_runtimeManifestationBlueprints[index] != null)
                 {
-                    Destroy(_runtimeBlueprints[index]);
+                    Destroy(_runtimeManifestationBlueprints[index]);
+                }
+            }
+
+            for (int index = 0; index < _runtimeVariants.Count; index++)
+            {
+                if (_runtimeVariants[index] != null)
+                {
+                    Destroy(_runtimeVariants[index]);
                 }
             }
 
@@ -179,7 +188,8 @@ namespace Emas.Sample
 
             _runtimeMaterials.Clear();
             _runtimeObjects.Clear();
-            _runtimeBlueprints.Clear();
+            _runtimeManifestationBlueprints.Clear();
+            _runtimeVariants.Clear();
             _cockpitFeed = null;
         }
 
@@ -268,7 +278,18 @@ namespace Emas.Sample
             _cockpitMarker.SetData("screen", new Vector2(0.5f, 0.5f));
         }
 
-        private void RegisterCarBlueprint()
+        private ManifestationVariant CreateVariant(Variant variant, GameObject prefab)
+        {
+            ManifestationVariant asset = ScriptableObject.CreateInstance<ManifestationVariant>();
+            asset.Configure(variant, new[]
+            {
+                new ManifestationVariant.DetailMapping(DetailLevel.Full, prefab)
+            });
+            _runtimeVariants.Add(asset);
+            return asset;
+        }
+
+        private void RegisterCarManifestationBlueprint()
         {
             GameObject ghostTemplate = new GameObject("Sample Car Ghost Template");
             ghostTemplate.SetActive(false);
@@ -293,22 +314,22 @@ namespace Emas.Sample
                 new Color(0.85f, 0.20f, 0.85f),
                 new Vector3(1.45f, 0.44f, 0.82f));
 
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            blueprint.Configure(
+            ManifestationBlueprint manifestationBlueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            manifestationBlueprint.Configure(
                 SampleKinds.Car,
                 ghostTemplate.GetComponent<CarGhost>(),
                 new[]
                 {
-                    new Blueprint.ViewMapping(variant: CarVariants.SmallCar, detailLevel: DetailLevel.Full, prefab: smallCar),
-                    new Blueprint.ViewMapping(variant: CarVariants.LargeCar, detailLevel: DetailLevel.Full, prefab: largeCar),
-                    new Blueprint.ViewMapping(variant: CarVariants.Truck, detailLevel: DetailLevel.Full, prefab: truck)
+                    CreateVariant(CarVariants.SmallCar, smallCar),
+                    CreateVariant(CarVariants.LargeCar, largeCar),
+                    CreateVariant(CarVariants.Truck, truck)
                 },
                 unknown);
-            _runtimeBlueprints.Add(blueprint);
-            Realm.Default.RegisterBlueprint(blueprint);
+            _runtimeManifestationBlueprints.Add(manifestationBlueprint);
+            Realm.Default.RegisterManifestationBlueprint(manifestationBlueprint);
         }
 
-        private void RegisterAircraftBlueprint()
+        private void RegisterAircraftManifestationBlueprint()
         {
             GameObject ghostTemplate = new GameObject("Sample Aircraft Ghost Template");
             ghostTemplate.SetActive(false);
@@ -319,20 +340,17 @@ namespace Emas.Sample
             GameObject view = CreateAircraftViewTemplate(
                 "Aircraft.prefab",
                 new Color(1.0f, 0.75f, 0.05f));
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            blueprint.Configure(
+            ManifestationBlueprint manifestationBlueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            manifestationBlueprint.Configure(
                 SampleKinds.Aircraft,
                 ghostTemplate.GetComponent<AircraftGhost>(),
                 new[]
                 {
-                    new Blueprint.ViewMapping(
-                        variant: AircraftVariants.Trainer,
-                        detailLevel: DetailLevel.Full,
-                        prefab: view)
+                    CreateVariant(AircraftVariants.Trainer, view)
                 },
                 view);
-            _runtimeBlueprints.Add(blueprint);
-            Realm.Default.RegisterBlueprint(blueprint);
+            _runtimeManifestationBlueprints.Add(manifestationBlueprint);
+            Realm.Default.RegisterManifestationBlueprint(manifestationBlueprint);
         }
 
         private GameObject CreateCarViewTemplate(string name, Color color, Vector3 bodyScale)

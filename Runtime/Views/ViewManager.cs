@@ -38,17 +38,20 @@ namespace Emas
                     return;
                 }
 
-                if (record.Blueprint == null || record.Blueprint.Asset == null)
+                if (record.ManifestationBlueprint == null || record.ManifestationBlueprint.Asset == null)
                 {
                     Destroy(record);
                     return;
                 }
 
-                GameObject prefab = record.Blueprint.ResolveViewPrefab(record.Ghost.Variant, record.RequestedDetailLevel);
+                GameObject prefab = record.ManifestationBlueprint.ResolveViewPrefab(record.Ghost.Variant, record.RequestedDetailLevel);
                 if (prefab == null)
                 {
                     Destroy(record);
-                    Debug.LogWarning("No Emas view prefab resolves for ghost " + record.Key + " at detail level " + record.RequestedDetailLevel + ".");
+                    if (record.ManifestationBlueprint.HasManifestationPrefab)
+                    {
+                        Debug.LogWarning("No Emas view prefab resolves for ghost " + record.Key + " at detail level " + record.RequestedDetailLevel + ".");
+                    }
                     return;
                 }
 

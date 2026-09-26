@@ -8,7 +8,7 @@ namespace Emas.Callbacks
     public sealed class Marker : Ghost
     {
         /// <summary>
-        /// The population identifier used by this sample's blueprint.
+        /// The population identifier used by this sample's manifestation blueprint.
         /// </summary>
         public static readonly Kind Kind = new Kind("callbacks.marker");
 

@@ -84,13 +84,15 @@ namespace Emas.Minimal
 ### Configure the scene and view
 
 1. Create a cube prefab for the visual child. Keep its local position/rotation at zero and scale at one.
-2. Create **Assets > Create > Emas > Blueprint**. Set **Kind Id** to `minimal.marker` and **Fallback View Prefab** to the cube prefab. Leave **Ghost Prefab** and **Views** empty.
-3. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `Bootstrap`. On Realm Setup, assign the blueprint as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled.
+2. Create **Assets > Create > Emas > Manifestation Blueprint**. Set **Kind Id** to `minimal.marker` and **Fallback View Prefab** to the cube prefab. Leave **Ghost Prefab** and **Variants** empty.
+3. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `Bootstrap`. On Realm Setup, assign the manifestation blueprint as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled.
 4. Press Play. Realm Setup creates its own realm, attaches the anchor's one source, and updates the realm each frame. Emas creates a `Marker` root beneath the anchor and attaches the cube view. Move Tracking to move its anchor frame.
 
-Each Realm Setup owns one isolated realm. You can put several in a scene or prefab, with any number of Anchor Setup objects beneath each one. Each anchor needs exactly one enabled component implementing `ISourceProvider` on the same object; `CreateSource()` supplies one presence source each time that anchor starts. Assign any number of default blueprints to Realm Setup and optional overrides to each anchor, with at most one per kind in either list. Empty blueprint lists are valid for data-only tracking. A nested Realm Setup owns its own anchors. Use `realmSetup.Realm` for queries and lookups scoped to that setup; it is null while stopped. The setup starts on the first update after enable in Play Mode and calls its realm's `Update()` each frame. `StopRealm()` disposes that realm and its anchors; `StartRealm()` can start it again. Disabling the component or its object also stops it.
+For multiple appearances of one kind, create a **Manifestation Variant** asset for each appearance and assign its detail-level view prefabs. Add those assets to the kind's **Manifestation Blueprint > Variants** list. Leave a kind without a blueprint when it needs a Ghost root but no view.
 
-Direct code setup is unchanged: `Realm.Default` is still automatically updated, and a realm created with `new Realm()` is still advanced through explicit `Update()` calls. You can configure its anchors, sources, blueprints and reference frame through the existing APIs.
+Each Realm Setup owns one isolated realm. You can put several in a scene or prefab, with any number of Anchor Setup objects beneath each one. Each anchor needs exactly one enabled component implementing `ISourceProvider` on the same object; `CreateSource()` supplies one presence source each time that anchor starts. Assign any number of default manifestation blueprints to Realm Setup and optional overrides to each anchor, with at most one per kind in either list. Leave a kind without a manifestation blueprint to use the built-in silent default: Emas creates its Ghost root and no view. An assigned blueprint with no view prefabs is silent too. A nested Realm Setup owns its own anchors. Use `realmSetup.Realm` for queries and lookups scoped to that setup; it is null while stopped. The setup starts on the first update after enable in Play Mode and calls its realm's `Update()` each frame. `StopRealm()` disposes that realm and its anchors; `StartRealm()` can start it again. Disabling the component or its object also stops it.
+
+Direct code setup is unchanged: `Realm.Default` is still automatically updated, and a realm created with `new Realm()` is still advanced through explicit `Update()` calls. You can configure its anchors, sources, manifestation blueprints and reference frame through the existing APIs.
 
 To find markers without knowing which realm owns them, query all live realms:
 
@@ -145,9 +147,9 @@ Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference los
 
 | Symptom | Check |
 | --- | --- |
-| Nothing appears | Check Realm Setup, Anchor Setup and Blueprint Inspector errors, matching kind IDs and the view prefab. A ghost can be available without a view. |
+| Nothing appears | Check the Realm Setup, Anchor Setup, Manifestation Blueprint and Manifestation Variant Inspectors for errors. Verify the kind ID and view prefab; an available ghost may intentionally have no view. |
 | A source stops | Its ghosts are removed. Open **Window > Emas** during Play Mode or read `source.LastErrorContext` and `source.LastError`. Fix the cause and call `anchor.RestartSource(source)` to repopulate. Assign `source.Name` to distinguish feeds. |
-| One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its blueprint, variant or detail to retry. |
+| One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its manifestation blueprint, variant or detail to retry. |
 | Polling entities disappear | Return the full population, not only changes. Null, duplicate/empty IDs and mapping exceptions stop the source. |
 | Restart creates duplicates | Unsubscribe in callback cleanup; dispose consumer query subscriptions when their owner stops. |
 | No tests appear | Open the prepared **`Tests/Unity~`** project through Unity Hub. Package import alone does not opt a consumer into tests. See [Validation](Validation.md). |

@@ -548,11 +548,11 @@ namespace Emas.Tests
                 prefab.AddComponent<EnableProbe>();
             }
 
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             blueprint.Configure(SpatialKind, null, null, prefab);
             _assets.Add(prefab);
             _assets.Add(blueprint);
-            _realm.RegisterBlueprint(blueprint);
+            _realm.RegisterManifestationBlueprint(blueprint);
         }
 
         private static View ActiveView(TestGhost ghost)

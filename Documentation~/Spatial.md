@@ -4,10 +4,10 @@ Configure a reference frame for a realm when simulation positions should be proj
 
 ## Configure a prefab realm
 
-Add **Emas > Realm Setup** to the prefab root. Its **Blueprints** list holds defaults for that realm. Add one **Emas > Anchor Setup** for each source frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor Id** within this realm and exactly one enabled component implementing `ISourceProvider` on the same object. That component returns a `PresenceSource` from `CreateSource()`. Anchor blueprints can override the realm defaults. For example:
+Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list holds defaults for that realm. Add one **Emas > Anchor Setup** for each source frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor Id** within this realm and exactly one enabled component implementing `ISourceProvider` on the same object. That component returns a `PresenceSource` from `CreateSource()`. Anchor manifestation blueprints can override the realm defaults. Each blueprint covers one Kind and may reference separate Manifestation Variant assets for different appearances, each with its own detail-level views. For example:
 
 ```text
-Screen (RealmSetup: blueprints and reference frame)
+Screen (RealmSetup: manifestation blueprints and reference frame)
   Vehicles (AnchorSetup: id vehicles; CarSourceProvider)
   Signs (AnchorSetup: id signs; SignSourceProvider)
 Environment (another RealmSetup with its own anchors and reference frame)

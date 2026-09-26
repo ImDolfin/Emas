@@ -6,16 +6,16 @@ namespace Emas
     /// <summary>
     /// Tracks snapshots by kind and removes old keys when an asset is re-registered under another kind.
     /// </summary>
-    internal sealed class BlueprintRegistry
+    internal sealed class ManifestationBlueprintRegistry
     {
-        private readonly Dictionary<string, BlueprintSnapshot> _byKind = new Dictionary<string, BlueprintSnapshot>(StringComparer.Ordinal);
+        private readonly Dictionary<string, ManifestationBlueprintSnapshot> _byKind = new Dictionary<string, ManifestationBlueprintSnapshot>(StringComparer.Ordinal);
 
-        internal List<Kind> Register(Blueprint blueprint)
+        internal List<Kind> Register(ManifestationBlueprint blueprint)
         {
-            BlueprintSnapshot snapshot = blueprint.CaptureSnapshot();
+            ManifestationBlueprintSnapshot snapshot = blueprint.CaptureSnapshot();
             string kindId = snapshot.Kind.Id;
             List<Kind> staleKinds = null;
-            foreach (KeyValuePair<string, BlueprintSnapshot> entry in _byKind)
+            foreach (KeyValuePair<string, ManifestationBlueprintSnapshot> entry in _byKind)
             {
                 if (!ReferenceEquals(entry.Value.Asset, blueprint) || string.Equals(entry.Key, kindId, StringComparison.Ordinal))
                 {
@@ -47,7 +47,7 @@ namespace Emas
             return _byKind.Remove(kind.Id);
         }
 
-        internal bool TryGet(string kindId, out BlueprintSnapshot blueprint)
+        internal bool TryGet(string kindId, out ManifestationBlueprintSnapshot blueprint)
         {
             if (!_byKind.TryGetValue(kindId, out blueprint) || blueprint.Asset == null)
             {

@@ -14,7 +14,8 @@ namespace Emas.RelativeWorld
         private Realm _realm;
         private RelativeCarSource _source;
         private IDisposable _views;
-        private Blueprint _blueprint;
+        private ManifestationBlueprint _manifestationBlueprint;
+        private ManifestationVariant[] _manifestationVariants;
         private GameObject _environment;
         private readonly List<Material> _materials = new List<Material>();
         private double _elapsed;
@@ -47,13 +48,14 @@ namespace Emas.RelativeWorld
             _environment.transform.SetParent(transform, false);
             GameObject egoView = CreateCar("Ego Car Template", new Color(0.2f, 0.85f, 0.45f));
             GameObject trafficView = CreateCar("Traffic Template", new Color(1f, 0.55f, 0.15f));
-            _blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            _blueprint.Configure(RelativeCar.Kind, null, new[]
+            _manifestationVariants = new[]
             {
-                new Blueprint.ViewMapping(RelativeCar.Ego, DetailLevel.Full, egoView),
-                new Blueprint.ViewMapping(RelativeCar.Traffic, DetailLevel.Full, trafficView)
-            }, null);
-            _realm.RegisterBlueprint(_blueprint);
+                CreateVariant(RelativeCar.Ego, egoView),
+                CreateVariant(RelativeCar.Traffic, trafficView)
+            };
+            _manifestationBlueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            _manifestationBlueprint.Configure(RelativeCar.Kind, null, _manifestationVariants, null);
+            _realm.RegisterManifestationBlueprint(_manifestationBlueprint);
             _source = new RelativeCarSource { Name = "Large-coordinate cars" };
             _realm.GetOrCreateAnchor("relative-world", _source);
             _views = _realm.Query().OfKind(RelativeCar.Kind).OnAvailable(ghost => _realm.Manifest(ghost));
@@ -93,13 +95,32 @@ namespace Emas.RelativeWorld
             _realm = null;
             _source = null;
             Destroy(_environment);
-            Destroy(_blueprint);
+            Destroy(_manifestationBlueprint);
+            if (_manifestationVariants != null)
+            {
+                foreach (ManifestationVariant variant in _manifestationVariants)
+                {
+                    Destroy(variant);
+                }
+
+                _manifestationVariants = null;
+            }
             foreach (Material material in _materials)
             {
                 Destroy(material);
             }
 
             _materials.Clear();
+        }
+
+        private static ManifestationVariant CreateVariant(Variant variant, GameObject prefab)
+        {
+            ManifestationVariant asset = ScriptableObject.CreateInstance<ManifestationVariant>();
+            asset.Configure(variant, new[]
+            {
+                new ManifestationVariant.DetailMapping(DetailLevel.Full, prefab)
+            });
+            return asset;
         }
 
         private GameObject CreateCar(string name, Color color)

@@ -5,7 +5,7 @@ using UnityEditor;
 namespace Emas.Editor.Tests
 {
     /// <summary>
-    /// Verifies Unity imports the package's component and blueprint scripts.
+    /// Verifies Unity imports the package's component and manifestation asset scripts.
     /// </summary>
     public sealed class PackageAssetsTests
     {
@@ -17,7 +17,8 @@ namespace Emas.Editor.Tests
         [TestCase("Runtime/Unity/RealmSetup.cs", typeof(RealmSetup))]
         [TestCase("Runtime/Unity/AnchorSetup.cs", typeof(AnchorSetup))]
         [TestCase("Runtime/Views/View.cs", typeof(View))]
-        [TestCase("Runtime/Views/Blueprint.cs", typeof(Blueprint))]
+        [TestCase("Runtime/Views/ManifestationBlueprint.cs", typeof(ManifestationBlueprint))]
+        [TestCase("Runtime/Views/ManifestationVariant.cs", typeof(ManifestationVariant))]
         public void PackageScript_ResolvesDeclaredType(string relativePath, Type expectedType)
         {
             MonoScript script = AssetDatabase.LoadAssetAtPath<MonoScript>("Packages/com.emas.core/" + relativePath);

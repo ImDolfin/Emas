@@ -18,7 +18,7 @@
           "label": "Scene / application"
         },
         "database": {
-          "label": "Blueprint asset"
+          "label": "Manifestation assets"
         },
         "external": {
           "label": "External source"
@@ -162,8 +162,8 @@
     {
       "id": "blueprint",
       "type": "database",
-      "label": "Blueprint",
-      "sublabel": "Ghost prefab + view mappings",
+      "label": "ManifestationBlueprint",
+      "sublabel": "Ghost prefab + variant assets",
       "pos": [
         1200,
         65
@@ -242,7 +242,7 @@
       "id": "select",
       "from": "blueprint",
       "to": "view",
-      "label": "Variant + detail level",
+      "label": "Variant asset + level",
       "labelDy": 90
     },
     {
@@ -271,10 +271,11 @@
     },
     {
       "dot": "violet",
-      "title": "Blueprint selection",
+      "title": "Manifestation selection",
       "items": [
-        "Kind selects the ghost prefab.",
-        "View: exact, highest lower, then fallback."
+        "One blueprint per Kind; Ghost prefab optional.",
+        "Variant assets map detail levels to views.",
+        "Exact level, closest lower, then fallback."
       ]
     },
     {

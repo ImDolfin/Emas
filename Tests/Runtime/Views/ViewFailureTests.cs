@@ -53,11 +53,11 @@ namespace Emas.Tests
         {
             GameObject prefab = new GameObject("working view");
             prefab.SetActive(false);
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            blueprint.Configure(Kind, null, new Blueprint.ViewMapping[0], prefab);
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            blueprint.Configure(Kind, null, new ManifestationVariant[0], prefab);
             _assets.Add(prefab);
             _assets.Add(blueprint);
-            _realm.RegisterBlueprint(blueprint);
+            _realm.RegisterManifestationBlueprint(blueprint);
 
             TestSource source = new TestSource();
             _realm.GetOrCreateAnchor("view-tests", source);
@@ -121,7 +121,7 @@ namespace Emas.Tests
             View recovered;
             if (registerAgain)
             {
-                _realm.RegisterBlueprint(blueprint);
+                _realm.RegisterManifestationBlueprint(blueprint);
                 _realm.Update();
                 recovered = broken.GetComponentInChildren<View>();
             }

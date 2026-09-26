@@ -9,7 +9,7 @@ namespace Emas
     /// <remarks>
     /// Declare named static readonly values in application assemblies for autocomplete.
     /// IDs use ordinal equality. There are no implicit conversions from strings or kinds.
-    /// The default value represents no specified appearance and permits blueprint fallback.
+    /// The default value represents no specified appearance and permits manifestation blueprint fallback.
     /// </remarks>
     [Serializable]
     public struct Variant : IEquatable<Variant>

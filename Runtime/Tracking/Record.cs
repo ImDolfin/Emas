@@ -4,12 +4,12 @@ namespace Emas
 {
     internal sealed class Record
     {
-        internal Record(Ghost ghost, PresenceSource owner, BlueprintSnapshot blueprint)
+        internal Record(Ghost ghost, PresenceSource owner, ManifestationBlueprintSnapshot blueprint)
         {
             Key = ghost.Key;
             Ghost = ghost;
             Owner = owner;
-            Blueprint = blueprint;
+            ManifestationBlueprint = blueprint;
             RequestedDetailLevel = DetailLevel.Full;
             RegistrationGeneration = owner == null ? 0 : owner.RegistrationGeneration;
         }
@@ -17,7 +17,7 @@ namespace Emas
         internal readonly Key Key;
         internal readonly Ghost Ghost;
         internal PresenceSource Owner;
-        internal BlueprintSnapshot Blueprint;
+        internal ManifestationBlueprintSnapshot ManifestationBlueprint;
         internal View View;
         internal UnityEngine.GameObject ViewPrefab;
         internal bool SpatialVisible = true;

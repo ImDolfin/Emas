@@ -14,5 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _kindId: minimal.marker
   _ghostPrefab: {fileID: 0}
-  _views: []
+  _variants: []
   _fallbackViewPrefab: {fileID: 575407761735601151, guid: 2bd98ecb839038240b9d2d7670862597, type: 3}

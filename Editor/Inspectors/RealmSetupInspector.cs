@@ -15,7 +15,7 @@ namespace Emas.Editor
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
-            EditorGUILayout.PropertyField(serializedObject.FindProperty("_blueprints"), true);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("_blueprints"), new UnityEngine.GUIContent("Manifestation Blueprints"), true);
             SerializedProperty useFrame = serializedObject.FindProperty("_useReferenceFrame");
             EditorGUILayout.PropertyField(useFrame);
             if (useFrame.boolValue)
@@ -46,7 +46,7 @@ namespace Emas.Editor
             }
 
             serializedObject.ApplyModifiedProperties();
-            EditorGUILayout.HelpBox("Assign realm blueprint defaults here. Add Anchor Setup and one ISourceProvider component to each anchor object; anchors may override blueprints.", MessageType.Info);
+            EditorGUILayout.HelpBox("Assign realm manifestation blueprints here. An empty blueprint keeps a kind silent. Add Anchor Setup and one ISourceProvider component to each anchor object; anchors may override manifestation blueprints.", MessageType.Info);
             foreach (UnityEngine.Object value in targets)
             {
                 string error = ((RealmSetup)value).GetConfigurationError();
