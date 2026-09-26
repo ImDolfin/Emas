@@ -3,7 +3,7 @@
 ## 0.1.0
 
 - Added optional realm reference frames, double-precision simulation coordinates and independent root spatial channels; moving origins reproject entities without republication, preserve the last reference on loss and suppress distant presentation while retaining tracking.
-- Added a runnable relative-world example with a fixed ego car, inverse traffic movement and automatic view restoration on range entry.
+- Split the runnable relative-world example into its own importable sample with a scene and assembly; it shows a fixed ego car, inverse traffic movement and automatic view restoration on range entry.
 
 - Isolated view creation/refresh failures to the affected view, preserving tracking and view requests for explicit or appearance-driven retry.
 - Removed source populations on failure and unreported identities after restart/replacement startup handover; compatible republished roots still survive successful handovers.

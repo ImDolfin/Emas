@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Emas.Sample
+namespace Emas.RelativeWorld
 {
     /// <summary>
     /// A car whose independent position and orientation publications use the realm spatial layer.

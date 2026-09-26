@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Emas.Sample
+namespace Emas.RelativeWorld
 {
     /// <summary>
     /// Publishes nearby cars at large simulation coordinates without converting them to floats.

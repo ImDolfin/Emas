@@ -17,6 +17,7 @@ namespace Emas.Tests.Samples
         [TestCase("Minimal")]
         [TestCase("Callbacks")]
         [TestCase("Example")]
+        [TestCase("RelativeWorld")]
         public void ImportedSample_MatchesPackage(string sample)
         {
             PackageInfo package = PackageInfo.FindForAssembly(typeof(Realm).Assembly);

@@ -127,7 +127,7 @@ Call all Emas APIs, including publish/remove callbacks, on Unity's main thread. 
 
 For moving-reference worlds or large global coordinates, assign `realm.ReferenceFrame` and add `Spatial` to participating Ghost roots. Publish simulation positions as `Double3`; the realm calculates the relative displacement before converting to Unity floats. Position and orientation publications can arrive independently. A presentation range hides distant views while keeping their data tracked.
 
-Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and source mapping. The **Emas sample** includes an optional **Emas > Examples > Relative World** component: add it to an empty scene object to run the demonstration with its own realm and generated visuals.
+Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and source mapping. Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play to see the demonstration with its own realm and generated visuals.
 
 ## Troubleshooting
 

@@ -1,0 +1,16 @@
+{
+  "name": "Emas.RelativeWorld",
+  "rootNamespace": "Emas.RelativeWorld",
+  "references": [
+    "Emas.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

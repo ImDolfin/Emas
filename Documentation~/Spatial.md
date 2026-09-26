@@ -113,6 +113,6 @@ Check `HasPosition` before inverse-position, rotation-conversion or reference-di
 
 ## Run the example
 
-Import **Emas sample**, create an empty scene, and add **Emas > Examples > Relative World** to an empty GameObject. The component creates its own isolated realm, camera and simple car views. The green ego car stays at the Unity origin while orange traffic moves inversely. One distant car's view appears as it enters the configured 45-metre range. Network traffic positions are published once, while the ego car keeps publishing independent position and orientation updates.
+Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play. Its component creates an isolated realm, camera and simple car views. The green ego car stays at the Unity origin while orange traffic moves inversely. One distant car's view appears as it enters the configured 45-metre range. Network traffic positions are published once, while the ego car keeps publishing independent position and orientation updates.
 
-Read [RelativeWorld.cs](../Samples~/Example/RelativeWorld/RelativeWorld.cs) for ownership and configuration, and [RelativeCarSource.cs](../Samples~/Example/RelativeWorld/RelativeCarSource.cs) for double-precision mapping. Disable the component to release its realm and generated objects.
+Read [RelativeWorld.cs](../Samples~/RelativeWorld/RelativeWorld.cs) for ownership and configuration, and [RelativeCarSource.cs](../Samples~/RelativeWorld/RelativeCarSource.cs) for double-precision mapping. Disable the component to release its realm and generated objects.

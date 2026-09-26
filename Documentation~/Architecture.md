@@ -103,5 +103,6 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
 | `Samples~/Minimal/` / `Samples~/Callbacks/` | Polling and callback quick starts |
 | `Samples~/Example/` | Contracts, entities, behaviors and source integrations |
+| `Samples~/RelativeWorld/` | Double-precision spatial placement and a moving reference |
 
 Each top-level type has its own file. Runtime public types share the `Emas` namespace so application imports remain simple.

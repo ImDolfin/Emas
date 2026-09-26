@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 
 namespace Emas.Tests.Samples
@@ -11,7 +12,7 @@ namespace Emas.Tests.Samples
     /// </summary>
     public sealed class RelativeWorldTests
     {
-        private GameObject _host;
+        private Scene _scene;
         private float _timeScale;
 
         /// <summary>
@@ -30,13 +31,12 @@ namespace Emas.Tests.Samples
         [UnityTearDown]
         public IEnumerator TearDown()
         {
-            if (_host != null)
+            if (_scene.IsValid() && _scene.isLoaded)
             {
-                UnityEngine.Object.Destroy(_host);
+                yield return SceneManager.UnloadSceneAsync(_scene);
             }
 
             Time.timeScale = _timeScale;
-            yield return null;
         }
 
         /// <summary>
@@ -46,8 +46,15 @@ namespace Emas.Tests.Samples
         public IEnumerator RelativeWorld_KeepsEgoFixedAndProjectsUnchangedTraffic()
         {
             int defaultAnchorCount = Realm.Default.Anchors.Count;
-            _host = new GameObject("Relative world sample test");
-            Sample.RelativeWorld demo = _host.AddComponent<Sample.RelativeWorld>();
+            const string path = "Assets/Samples/RelativeWorld/RelativeWorld.unity";
+            yield return SceneManager.LoadSceneAsync(path, LoadSceneMode.Additive);
+            _scene = SceneManager.GetSceneByPath(path);
+            Assert.That(_scene.IsValid() && _scene.isLoaded, Is.True);
+            GameObject host = Array.Find(_scene.GetRootGameObjects(),
+                root => root.GetComponent<Emas.RelativeWorld.RelativeWorld>() != null);
+            Assert.That(host, Is.Not.Null);
+            Emas.RelativeWorld.RelativeWorld demo = host.GetComponent<Emas.RelativeWorld.RelativeWorld>();
+            Assert.That(demo, Is.Not.Null);
             Realm realm = demo.Realm;
             Ghost ego = GetCar(realm, "ego");
             Ghost parked = GetCar(realm, "parked");
@@ -76,7 +83,7 @@ namespace Emas.Tests.Samples
             Assert.That(distant.GetComponentInChildren<View>(), Is.Not.Null);
             Assert.That(Realm.Default.Anchors.Count, Is.EqualTo(defaultAnchorCount));
 
-            _host.SetActive(false);
+            host.SetActive(false);
             Assert.That(demo.Realm, Is.Null);
             Assert.That(realm.Query().Count, Is.Zero);
             yield return null;

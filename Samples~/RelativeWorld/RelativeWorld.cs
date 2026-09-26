@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Emas.Sample
+namespace Emas.RelativeWorld
 {
     /// <summary>
     /// Keeps the ego car fixed in Unity while traffic is projected relative to its large network coordinates.

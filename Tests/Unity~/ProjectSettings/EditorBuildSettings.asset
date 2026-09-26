@@ -14,4 +14,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Samples/Example/Scenes/Example.unity
     guid: 23e0445bad8e85e4e93e1622bf0d8304
+  - enabled: 1
+    path: Assets/Samples/RelativeWorld/RelativeWorld.unity
+    guid: 269a5c45a79f4cf2ac407a84b7ff6c83
   m_configObjects: {}

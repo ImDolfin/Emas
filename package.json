@@ -32,6 +32,11 @@
       "displayName": "Emas sample",
       "description": "A source-independent vehicle and aircraft discovery example.",
       "path": "Samples~/Example"
+    },
+    {
+      "displayName": "Relative world",
+      "description": "Double-precision spatial positions and a ghost-following reference frame.",
+      "path": "Samples~/RelativeWorld"
     }
   ],
   "license": "MIT"
