@@ -14,6 +14,54 @@ namespace Emas
             _sceneChanges = sceneChanges;
         }
 
+        internal void Request(Record record, DetailLevel detailLevel)
+        {
+            record.ViewVersion++;
+            record.ViewDirty = true;
+            record.RequestedDetailLevel = detailLevel;
+            record.ViewRequested = detailLevel.Level > 0;
+            if (!record.ViewRequested)
+            {
+                Destroy(record);
+            }
+        }
+
+        internal void Cancel(Record record)
+        {
+            record.ViewVersion++;
+            record.ViewDirty = false;
+            record.ViewRequested = false;
+            record.RequestedDetailLevel = DetailLevel.None;
+            Destroy(record);
+        }
+
+        internal bool SetDetailLevel(Record record, DetailLevel detailLevel)
+        {
+            record.ViewVersion++;
+            record.ViewDirty = true;
+            record.RequestedDetailLevel = detailLevel;
+            if (detailLevel.Level <= 0)
+            {
+                if (record.ViewRequested)
+                {
+                    record.ViewRequested = false;
+                    Destroy(record);
+                }
+
+                return false;
+            }
+
+            return record.ViewRequested;
+        }
+
+        internal static void ValidateDetailLevel(DetailLevel detailLevel)
+        {
+            if (detailLevel.Level < 0)
+            {
+                throw new System.ArgumentOutOfRangeException(nameof(detailLevel), "A detail level cannot be negative.");
+            }
+        }
+
         internal void Refresh(Record record)
         {
             if (record.RefreshingView || !_identities.Contains(record) || record.Ghost == null)

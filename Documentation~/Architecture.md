@@ -24,7 +24,7 @@ Manifestation blueprints are resolved by anchor and kind: an anchor registration
 
 ## Identity and deferred commands
 
-Each realm owns an internal `IdentityMap` keyed by `(anchor ID, kind, entity ID)`. It retains one current `Record` per key, so repeated reports update the same Ghost and Presence. Records supply their own keys when added; duplicate keys cannot overwrite existing records. Root-based lookup and removal also check the exact object instance, so a retained handle or cleanup from an old lifetime cannot affect a replacement with the same key. Disappearance grace retains the mapping; final removal releases it before Unity callbacks run. Root construction and lifecycle policy remain coordinated by the realm.
+Each realm owns an internal `IdentityMap` keyed by `(anchor ID, kind, entity ID)`. It retains one current `Record` per key, so repeated reports update the same Ghost and Presence. Records supply their own keys when added; duplicate keys cannot overwrite existing records. Root-based lookup and removal also check the exact object instance, so a retained handle or cleanup from an old lifetime cannot affect a replacement with the same key. Disappearance grace retains the mapping; final removal releases it before Unity callbacks run. The internal `Population` owns root construction and lifecycle policy, including identity insertion and removal; `Realm` coordinates when those changes are projected, activated and observed.
 
 `CommandQueue<T>` provides the shared FIFO, sequence tracking and reentrancy guard used by both detector dispatch and scene changes. Each subsystem supplies its command data and execution function. The queue has two drain modes: `ExecutePending(maximum)` processes only commands present at batch entry, while `ExecuteAll()` also drains commands enqueued by callbacks before returning. A nested drain returns immediately; the outer drain applies its own batch boundary to queued work. Clearing pending work during execution is safe.
 
@@ -84,19 +84,21 @@ Realm/anchor disposal is idempotent. Further mutations throw `ObjectDisposedExce
 
 ## Callback safety and internal boundaries
 
+`Realm` is the public facade and coordinator, implemented in a single file. It delegates entity transitions to `Population` and presentation requests to `ViewManager`, while retaining source failure and mutation boundaries and the ordering of projection, activation, view refresh and notifications. `Population` receives resolved anchor and blueprint inputs and owns its lifecycle operations. Per-Kind initializers supply the existing strategy for application-specific root setup; no additional public interfaces are needed.
+
 Identity map traversal uses snapshots and rechecks membership/registration after callbacks. Removal invalidates identity immediately. `Observe` retains departure keys until notification, so removed Unity objects need not stay alive. All-realm observations keep memberships separate per realm so identical keys do not collapse into one match. `ObserveWithRealm` supplies the owning realm on both entry and departure. Subscription disposal cancels pending notifications. The scene change queue waits for an Emas-triggered Unity activation or destruction call to return before applying scene changes requested by its callbacks, preventing unsafe hierarchy changes during activation callbacks.
 
 | Component | Responsibility |
 | --- | --- |
-| [Realm](../Runtime/Realm.cs) | Orchestrate anchors, configuration and update phases; apply detector attachment, failure and dispatch-budget policies |
+| [Realm](../Runtime/Realm.cs) | Public facade in one non-partial class; coordinate anchors, configuration, detector attachment/failure, source-change boundaries, dispatch and update phases |
+| [Population](../Runtime/Tracking/Population.cs) | Create roots and apply per-Kind initializer strategies and module data; own identity mutations, availability, detector ownership, grace/expiry, handover, rollback and removal |
 | [IdentityMap](../Runtime/Tracking/IdentityMap.cs) | Keep one current record per key and reject stale object references |
 | [CommandQueue&lt;T&gt;](../Runtime/Tracking/CommandQueue.cs) | Share FIFO ordering, sequence tracking and reentrancy-safe bounded or full drains |
-| [ViewManager](../Runtime/Views/ViewManager.cs) | Stage, bind, refresh and destroy views; contain presentation failures per ghost |
+| [ViewManager](../Runtime/Views/ViewManager.cs) | Own view requests and detail-level bookkeeping; stage, bind, refresh and destroy views; contain presentation failures per ghost |
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
 | [SceneChangeQueue](../Runtime/Unity/SceneChangeQueue.cs) | Use the shared queue to apply nested GameObject changes after the current scene operation returns |
 | [PresenceDetector](../Runtime/Tracking/PresenceDetector.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | SDK detection, attachment lifecycle and scene ownership |
 | [Presence](../Runtime/Entities/Presence.cs) / [EntityModule](../Runtime/Entities/EntityModule.cs) | Stable identity and per-presence SDK data application |
-| [Realm.Presences](../Runtime/Entities/Realm.Presences.cs) | Per-Kind initialization, root creation and module dispatch |
 
 Query interface filters use typed predicates and a reusable root-component list. Subscriptions reuse their match and departure buffers across updates while still scanning current ghosts and rechecking matches after callbacks. Scalar query results scan without building a match list. These are implementation choices, not measured performance guarantees.
 
@@ -108,7 +110,7 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | --- | --- |
 | `Runtime/` | `Realm` entry point and package metadata |
 | `Runtime/Entities/` | Presence handles, entity modules, Ghost contracts, spatial state and identity/coordinate values |
-| `Runtime/Tracking/` | Anchors, detectors and ownership storage |
+| `Runtime/Tracking/` | Anchors, detectors, population lifecycle, identity storage and command execution |
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | ManifestationBlueprint, ManifestationVariant, detail level and view lifecycle |
 | `Runtime/Unity/` | Prefab realm and anchor setup, automatic runner and queued scene changes |

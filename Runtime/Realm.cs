@@ -11,7 +11,7 @@ namespace Emas
     /// All operations require Unity's main thread. The application handles SDK threading before calling Emas.
     /// Dispose isolated realms when their owner stops; Unity advances Realm.Default automatically.
     /// </remarks>
-    public sealed partial class Realm : IDisposable
+    public sealed class Realm : IDisposable
     {
         /// <summary>
         /// Gets the shared realm advanced automatically by Unity.
@@ -51,7 +51,7 @@ namespace Emas
         private readonly IdentityMap _identities = new IdentityMap();
         private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
         private readonly Subscriptions _subscriptions;
-        private readonly Func<double> _elapsedSeconds;
+        private readonly Population _population;
         private readonly ViewManager _views;
         private readonly SpatialManager _spatial;
         private ReferenceFrame _referenceFrame;
@@ -74,11 +74,11 @@ namespace Emas
 
         internal Realm(Func<double> elapsedSeconds)
         {
-            _elapsedSeconds = elapsedSeconds ?? throw new ArgumentNullException(nameof(elapsedSeconds));
             _dispatch = new CommandQueue<DispatchCommand>(ExecuteDispatch);
             _subscriptions = new Subscriptions(this);
             _views = new ViewManager(_identities, _sceneChanges);
             _spatial = new SpatialManager(this, _identities);
+            _population = new Population(this, _identities, elapsedSeconds, _views, _subscriptions, _sceneChanges);
             RealmRegistry.Register(this);
         }
 
@@ -482,6 +482,76 @@ namespace Emas
         }
 
         /// <summary>
+        /// Registers the root type and module setup for one detected kind.
+        /// </summary>
+        /// <typeparam name="TGhost">The Ghost component used as the invisible root.</typeparam>
+        /// <param name="kind">The kind this initializer handles.</param>
+        /// <param name="initialize">Adds modules and configures a new or newly capable presence.</param>
+        /// <remarks>
+        /// Register before attaching detectors. The callback runs after root creation and before SDK data is
+        /// applied or the Ghost becomes available. It runs again when reported capabilities change; use
+        /// TryGetModule to avoid installing a duplicate module.
+        /// </remarks>
+        public void RegisterPresenceInitializer<TGhost>(Kind kind, Action<Presence, TGhost> initialize)
+            where TGhost : Ghost
+        {
+            ThrowIfDisposed();
+            _population.RegisterPresenceInitializer(kind, initialize);
+        }
+
+        /// <summary>
+        /// Finds a stable presence by identity, including one that is temporarily unavailable.
+        /// </summary>
+        /// <param name="key">The anchor, kind and entity identity.</param>
+        /// <param name="presence">The tracked presence, or null when absent.</param>
+        /// <returns>True while the realm retains this presence.</returns>
+        public bool TryGetPresence(Key key, out Presence presence)
+        {
+            presence = null;
+            return !_disposed && _population.TryGetPresence(key, out presence);
+        }
+
+        /// <summary>
+        /// Requests a manifestation for a detected presence at its current or Full detail level.
+        /// </summary>
+        /// <param name="presence">The presence to manifest.</param>
+        /// <returns>The current view, or null while no view can be shown.</returns>
+        public View Manifest(Presence presence)
+        {
+            return Manifest(_population.FindPresenceRoot(presence));
+        }
+
+        /// <summary>
+        /// Requests a manifestation for a detected presence at a specific detail level.
+        /// </summary>
+        /// <param name="presence">The presence to manifest.</param>
+        /// <param name="detailLevel">The desired detail level.</param>
+        /// <returns>The current view, or null while no view can be shown.</returns>
+        public View Manifest(Presence presence, DetailLevel detailLevel)
+        {
+            return Manifest(_population.FindPresenceRoot(presence), detailLevel);
+        }
+
+        /// <summary>
+        /// Removes the view of a presence while retaining its detection and Ghost root.
+        /// </summary>
+        /// <param name="presence">The presence to demanifest.</param>
+        public void Demanifest(Presence presence)
+        {
+            Demanifest(_population.FindPresenceRoot(presence));
+        }
+
+        /// <summary>
+        /// Changes the requested detail level of a presence's view.
+        /// </summary>
+        /// <param name="presence">The presence whose view should change.</param>
+        /// <param name="detailLevel">The desired detail level.</param>
+        public void SetDetailLevel(Presence presence, DetailLevel detailLevel)
+        {
+            SetDetailLevel(_population.FindPresenceRoot(presence), detailLevel);
+        }
+
+        /// <summary>
         /// Requests a view at Full detail when no view request exists, or refreshes the existing request.
         /// </summary>
         /// <param name="ghost">
@@ -538,20 +608,16 @@ namespace Emas
         public View Manifest(IGhost ghost, DetailLevel detailLevel)
         {
             ThrowIfDisposed();
-            ValidateDetailLevel(detailLevel);
+            ViewManager.ValidateDetailLevel(detailLevel);
             Record record = _identities.Find(ghost);
             if (record == null)
             {
                 return null;
             }
 
-            record.ViewVersion++;
-            record.ViewDirty = true;
-            record.RequestedDetailLevel = detailLevel;
-            record.ViewRequested = detailLevel.Level > 0;
-            if (!record.ViewRequested)
+            _views.Request(record, detailLevel);
+            if (detailLevel.Level <= 0)
             {
-                _views.Destroy(record);
                 return null;
             }
 
@@ -575,16 +641,10 @@ namespace Emas
         {
             ThrowIfDisposed();
             Record record = _identities.Find(ghost);
-            if (record == null)
+            if (record != null)
             {
-                return;
+                _views.Cancel(record);
             }
-
-            record.ViewVersion++;
-            record.ViewDirty = false;
-            record.ViewRequested = false;
-            record.RequestedDetailLevel = DetailLevel.None;
-            _views.Destroy(record);
         }
 
         /// <summary>
@@ -608,28 +668,9 @@ namespace Emas
         public void SetDetailLevel(IGhost ghost, DetailLevel detailLevel)
         {
             ThrowIfDisposed();
-            ValidateDetailLevel(detailLevel);
+            ViewManager.ValidateDetailLevel(detailLevel);
             Record record = _identities.Find(ghost);
-            if (record == null)
-            {
-                return;
-            }
-
-            record.ViewVersion++;
-            record.ViewDirty = true;
-            record.RequestedDetailLevel = detailLevel;
-            if (detailLevel.Level <= 0)
-            {
-                if (record.ViewRequested)
-                {
-                    record.ViewRequested = false;
-                    _views.Destroy(record);
-                }
-
-                return;
-            }
-
-            if (record.ViewRequested)
+            if (record != null && _views.SetDetailLevel(record, detailLevel))
             {
                 RefreshView(record);
             }
@@ -685,8 +726,8 @@ namespace Emas
                 if (!_disposed)
                 {
                     // Let publications in this update refresh their deadlines before expiring silent ghosts.
-                    RemoveUnpublishedHandoverGhosts();
-                    RemoveExpiredGhosts();
+                    _population.RemoveUnpublishedHandoverGhosts(_updateNumber, _dispatch.HasPendingThrough);
+                    _population.RemoveExpiredGhosts();
                     // Expose complete data and refresh views before notifying consumers.
                     FinalizeChanges(null);
                     _subscriptions.NotifyAll();
@@ -725,7 +766,7 @@ namespace Emas
             List<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count; index++)
             {
-                RemoveRecord(records[index]);
+                _population.RemoveRecord(records[index]);
             }
 
             _blueprints.Clear();
@@ -849,6 +890,71 @@ namespace Emas
             }
         }
 
+        internal Presence ReportPresence(PresenceDetector detector, string anchorId, string entityId,
+            Kind kind, string name, Variant? variant, IEnumerable<Type> capabilities, object data)
+        {
+            ThrowIfDisposed();
+            if (detector == null || !detector.IsActive)
+            {
+                throw new InvalidOperationException("Only an active detector can report a presence.");
+            }
+
+            if (!kind.IsValid || string.IsNullOrEmpty(anchorId) || string.IsNullOrEmpty(entityId))
+            {
+                throw new ArgumentException("Anchor, kind and entity identifiers are required.");
+            }
+
+            List<Type> capabilitySnapshot = null;
+            if (capabilities != null)
+            {
+                capabilitySnapshot = new List<Type>();
+                foreach (Type capability in capabilities)
+                {
+                    if (capability == null || !capability.IsInterface)
+                    {
+                        throw new ArgumentException("Presence capabilities must be interface types.", nameof(capabilities));
+                    }
+
+                    if (!capabilitySnapshot.Contains(capability))
+                    {
+                        capabilitySnapshot.Add(capability);
+                    }
+                }
+            }
+
+            long generation = detector.RegistrationGeneration;
+            string sourceContext = detector.CaptureErrorContext();
+            // Initializers and modules must finish before callbacks can observe or activate their roots.
+            _sourceDepth++;
+            try
+            {
+                return _population.ApplyPresenceReport(detector, anchorId, entityId, kind, name, variant, capabilitySnapshot, data,
+                    GetAnchorTransform(anchorId), ResolveManifestationBlueprint(anchorId, kind));
+            }
+            catch (Exception exception)
+            {
+                string context = PresenceDetector.DescribeError(sourceContext, "Report", kind, entityId);
+                detector.RecordError(exception, generation, context);
+                // Lifecycle and dispatched reports already have a failure boundary. Preserve startup rollback
+                // and let that boundary log once, while direct reports stop before pending roots can activate.
+                if (!detector.IsApplyingSourceChanges && detector.IsRegistration(this, generation))
+                {
+                    detector.HandleFailure(exception, context);
+                }
+
+                throw;
+            }
+            finally
+            {
+                _sourceDepth--;
+            }
+        }
+
+        internal IReadOnlyList<Presence> GetOwnedPresences(PresenceDetector detector)
+        {
+            return _population.GetOwnedPresences(detector);
+        }
+
         internal TGhost GetOrCreate<TGhost>(
             PresenceDetector owner,
             string anchorId,
@@ -868,164 +974,14 @@ namespace Emas
                 throw new ArgumentException("Anchor, kind and entity identifiers are required.");
             }
 
-            // Reuse a compatible root whenever this identity already exists.
-            Key key = new Key(anchorId, kind, entityId);
-            Record record;
-            if (_identities.TryGetValue(key, out record))
-            {
-                TGhost existingTyped = RequireGhost<TGhost>(record.Ghost);
-                if (owner != null && record.Owner != null && record.Owner != owner)
-                {
-                    throw new InvalidOperationException("The ghost is owned by another source.");
-                }
-
-                ManifestationBlueprintSnapshot resolved = ResolveManifestationBlueprint(anchorId, kind);
-                if (!ReferenceEquals(record.ManifestationBlueprint, resolved))
-                {
-                    record.ManifestationBlueprint = resolved;
-                    if (record.ViewRequested)
-                    {
-                        record.ViewVersion++;
-                        record.ViewDirty = true;
-                    }
-                }
-
-                bool variantChanged = variant.HasValue && record.Ghost.Variant != variant.Value;
-                record.Owner = owner ?? record.Owner;
-                if (owner != null)
-                {
-                    record.HandoverUpdate = 0;
-                    record.RegistrationGeneration = owner.RegistrationGeneration;
-                    record.LastPublishedAt = _elapsedSeconds();
-                    record.IsMissing = false;
-                    record.MissingUntil = 0;
-                }
-
-                record.Ghost.SetMetadata(nameValue, variant);
-                if (variantChanged)
-                {
-                    record.ViewVersion++;
-                    record.ViewDirty = true;
-                }
-
-                if (owner != null)
-                {
-                    if (!record.Ghost.IsAvailable)
-                    {
-                        record.Ghost.SetAvailable(false);
-                        record.PendingActivation = true;
-                    }
-                }
-
-                if (record.Presence != null)
-                {
-                    EnsurePresence(record);
-                }
-                return existingTyped;
-            }
-
-            ManifestationBlueprintSnapshot blueprint = ResolveManifestationBlueprint(anchorId, kind);
-            Ghost prefab = blueprint == null ? null : blueprint.GhostPrefab;
-            Transform anchorTransform = GetAnchorTransform(anchorId);
-            // Keep the root inactive until its identity and initial data are ready.
-            GameObject staging = new GameObject("[Emas Staging]");
-            staging.transform.SetParent(anchorTransform, false);
-            staging.SetActive(false);
-
-            TGhost typed;
-            try
-            {
-                if (prefab == null)
-                {
-                    GameObject gameObject = new GameObject("[Ghost] " + entityId);
-                    gameObject.transform.SetParent(staging.transform, false);
-                    typed = gameObject.AddComponent<TGhost>();
-                }
-                else
-                {
-                    Ghost clone = UnityEngine.Object.Instantiate(prefab, staging.transform, false);
-                    typed = clone.GetComponent<TGhost>();
-                    if (typed == null)
-                    {
-                        throw new InvalidOperationException("ManifestationBlueprint for kind " + kind.Id + " prefab " + prefab.name + " does not contain required component " + typeof(TGhost).FullName + ".");
-                    }
-                }
-
-                typed.gameObject.SetActive(false);
-                typed.Initialize(key, nameValue ?? entityId, variant ?? Variant.None);
-                typed.transform.SetParent(anchorTransform, false);
-                typed.gameObject.SetActive(false);
-            }
-            catch
-            {
-                UnityEngine.Object.Destroy(staging);
-                throw;
-            }
-
-            UnityEngine.Object.Destroy(staging);
-            typed.SetAvailable(false);
-            Record newRecord = new Record(typed, owner, blueprint);
-            newRecord.LastPublishedAt = owner == null ? 0 : _elapsedSeconds();
-            newRecord.PendingActivation = owner != null;
-            newRecord.ViewDirty = true;
-            _identities.Add(newRecord);
-            return typed;
+            return _population.GetOrCreate<TGhost>(owner, anchorId, entityId, kind, variant, nameValue,
+                GetAnchorTransform(anchorId), ResolveManifestationBlueprint(anchorId, kind));
         }
 
         internal void MarkPublished(PresenceDetector owner, IGhost ghost)
         {
             ThrowIfDisposed();
-            if (ghost == null)
-            {
-                throw new ArgumentNullException(nameof(ghost));
-            }
-
-            Record record = _identities.Find(ghost);
-            if (record == null || record.Ghost == null || record.Owner != owner
-                || !owner.IsRegistration(this, record.RegistrationGeneration))
-            {
-                throw new ArgumentException("The ghost is not owned by this source's current attachment.", nameof(ghost));
-            }
-
-            record.LastPublishedAt = _elapsedSeconds();
-            if (record.IsMissing)
-            {
-                record.IsMissing = false;
-                record.MissingUntil = 0;
-                record.PendingActivation = true;
-            }
-        }
-
-        private void RemoveExpiredGhosts()
-        {
-            double now = _elapsedSeconds();
-            List<Record> records = _identities.Snapshot();
-            for (int index = 0; index < records.Count && !_disposed; index++)
-            {
-                Record record = records[index];
-                PresenceDetector owner = record.Owner;
-                if (!_identities.Contains(record) || owner == null
-                    || !owner.IsRegistration(this, record.RegistrationGeneration))
-                {
-                    continue;
-                }
-
-                if (record.IsMissing)
-                {
-                    if (now >= record.MissingUntil)
-                    {
-                        RemoveRecord(record);
-                    }
-
-                    continue;
-                }
-
-                TimeSpan? timeout = owner.InactivityTimeout;
-                if (timeout.HasValue && now - record.LastPublishedAt >= timeout.Value.TotalSeconds)
-                {
-                    RemoveGhost(owner, record.Key);
-                }
-            }
+            _population.MarkPublished(owner, ghost);
         }
 
         internal void FinalizeSource(PresenceDetector owner)
@@ -1038,116 +994,27 @@ namespace Emas
 
         internal void RemoveGhost(PresenceDetector owner, Key key)
         {
-            Record record;
-            if (!_identities.TryGetValue(key, out record) || record.Owner != owner)
-            {
-                return;
-            }
-
-            if (record.IsMissing)
-            {
-                return;
-            }
-
-            TimeSpan grace = owner.DisappearanceGracePeriod;
-            if (grace <= TimeSpan.Zero)
-            {
-                RemoveRecord(record);
-                return;
-            }
-
-            record.IsMissing = true;
-            record.MissingUntil = _elapsedSeconds() + grace.TotalSeconds;
-            InvalidateAvailability(record);
-            if (record.Ghost != null)
-            {
-                _sceneChanges.SetActive(record.Ghost.gameObject, false);
-            }
+            _population.RemoveGhost(owner, key);
         }
 
         internal void RemoveSourceGhosts(PresenceDetector owner)
         {
-            long generation = owner.RegistrationGeneration;
-            List<Record> records = _identities.OwnedBy(owner);
-            // Hide the whole population before destruction callbacks can observe or reattach it.
-            for (int index = 0; index < records.Count; index++)
-            {
-                InvalidateAvailability(records[index]);
-            }
-
-            for (int index = 0; index < records.Count; index++)
-            {
-                Record record = records[index];
-                // Scene callbacks may reattach this source and reclaim a root that is still in this batch.
-                if (_identities.Contains(record) && record.Owner == owner && record.RegistrationGeneration <= generation)
-                {
-                    RemoveRecord(record);
-                }
-            }
+            _population.RemoveSourceGhosts(owner);
         }
 
         internal void CompleteSourceHandover(PresenceDetector owner)
         {
-            List<Record> records = _identities.OwnedBy(owner);
-            for (int index = 0; index < records.Count; index++)
-            {
-                Record record = records[index];
-                if (record.RegistrationGeneration != owner.RegistrationGeneration)
-                {
-                    record.HandoverUpdate = _updateNumber + 1;
-                    record.HandoverDispatchSequence = _dispatch.LastSequence;
-                }
-            }
-        }
-
-        private void RemoveUnpublishedHandoverGhosts()
-        {
-            List<Record> records = _identities.Snapshot();
-            for (int index = 0; index < records.Count; index++)
-            {
-                Record record = records[index];
-                if (!_identities.Contains(record) || record.HandoverUpdate == 0 || _updateNumber < record.HandoverUpdate)
-                {
-                    continue;
-                }
-
-                // Wait only for work queued by startup, so later traffic cannot prolong the handover indefinitely.
-                if (_dispatch.HasPendingThrough(record.HandoverDispatchSequence))
-                {
-                    continue;
-                }
-
-                record.HandoverUpdate = 0;
-                if (!record.PendingActivation && record.Ghost != null && !record.Ghost.IsAvailable)
-                {
-                    RemoveRecord(record);
-                }
-            }
+            _population.CompleteSourceHandover(owner, _updateNumber, _dispatch.LastSequence);
         }
 
         internal void TransferSource(PresenceDetector current, PresenceDetector replacement)
         {
-            List<Record> records = _identities.OwnedBy(current);
-            for (int index = 0; index < records.Count; index++)
-            {
-                Record record = records[index];
-                record.Owner = replacement;
-                record.RegistrationGeneration = -1;
-                InvalidateAvailability(record);
-            }
-
-            DeactivateRecords(records, replacement);
+            _population.TransferSource(current, replacement);
         }
 
         internal void MarkUnavailable(PresenceDetector owner)
         {
-            List<Record> records = _identities.OwnedBy(owner);
-            for (int index = 0; index < records.Count; index++)
-            {
-                InvalidateAvailability(records[index]);
-            }
-
-            DeactivateRecords(records, owner);
+            _population.MarkUnavailable(owner);
         }
 
         internal void NotifyAnchorDestroyed(Anchor anchor)
@@ -1157,16 +1024,7 @@ namespace Emas
 
         internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceDetector owner)
         {
-            List<IGhost> result = new List<IGhost>();
-            foreach (Record record in _identities.Values)
-            {
-                if (record.Owner == owner)
-                {
-                    result.Add(record.Ghost);
-                }
-            }
-
-            return result;
+            return _population.GetOwnedGhosts(owner);
         }
 
         private ManifestationBlueprintSnapshot ResolveManifestationBlueprint(string anchorId, Kind kind)
@@ -1214,23 +1072,7 @@ namespace Emas
         private Transform GetAnchorTransform(string anchorId)
         {
             Anchor anchor;
-            if (!_anchors.TryGetValue(anchorId, out anchor) || anchor.Transform == null)
-            {
-                throw new InvalidOperationException("The anchor '" + anchorId + "' does not exist.");
-            }
-
-            return anchor.Transform;
-        }
-
-        private TGhost RequireGhost<TGhost>(IGhost ghost) where TGhost : Ghost
-        {
-            TGhost typed = ghost as TGhost;
-            if (typed == null)
-            {
-                throw new InvalidOperationException("The existing ghost does not contain " + typeof(TGhost).FullName + ".");
-            }
-
-            return typed;
+            return _anchors.TryGetValue(anchorId, out anchor) ? anchor.Transform : null;
         }
 
         private void RefreshView(Record record)
@@ -1241,38 +1083,6 @@ namespace Emas
                 _spatial.Project(record, _referenceFrame);
                 _views.Refresh(record);
                 _spatial.RefreshSuppression(record);
-            }
-        }
-
-        private void RemoveRecord(Record record)
-        {
-            if (!_identities.Remove(record))
-            {
-                return;
-            }
-
-            if (record.Presence != null)
-            {
-                record.Presence.MarkRemoved();
-            }
-            InvalidateAvailability(record);
-            _views.Destroy(record);
-            if (record.Ghost != null)
-            {
-                _sceneChanges.Destroy(record.Ghost.gameObject);
-            }
-        }
-
-        private void RemoveAnchorGhosts(string anchorId)
-        {
-            List<Record> records = _identities.Snapshot();
-            for (int index = 0; index < records.Count; index++)
-            {
-                Record record = records[index];
-                if (string.Equals(record.Key.AnchorId, anchorId, StringComparison.Ordinal))
-                {
-                    RemoveRecord(record);
-                }
             }
         }
 
@@ -1306,81 +1116,18 @@ namespace Emas
             if (_anchors.TryGetValue(anchor.Id, out current) && current == anchor)
             {
                 _anchors.Remove(anchor.Id);
-                RemoveAnchorGhosts(anchor.Id);
+                _population.RemoveAnchorGhosts(anchor.Id);
             }
         }
 
         internal HashSet<Record> CaptureGhosts()
         {
-            return new HashSet<Record>(_identities.Values);
+            return _population.CaptureGhosts();
         }
 
         internal void RollbackSource(PresenceDetector owner, HashSet<Record> previous)
         {
-            long generation = owner.RegistrationGeneration;
-            List<Record> records = _identities.OwnedBy(owner);
-            for (int index = 0; index < records.Count; index++)
-            {
-                Record record = records[index];
-                // Preserve roots reclaimed by a newer attachment during earlier scene cleanup.
-                if (!_identities.Contains(record) || record.Owner != owner || record.RegistrationGeneration > generation)
-                {
-                    continue;
-                }
-
-                if (!previous.Contains(record))
-                {
-                    RemoveRecord(record);
-                }
-                else if (_identities.Contains(record) && record.Owner == owner)
-                {
-                    record.Owner = null;
-                    InvalidateAvailability(record);
-                    if (record.Ghost != null)
-                    {
-                        _sceneChanges.SetActive(record.Ghost.gameObject, false);
-                    }
-                }
-            }
-        }
-
-        private void InvalidateAvailability(Record record)
-        {
-            record.PendingActivation = false;
-            record.OwnershipVersion++;
-            record.ViewVersion++;
-            record.ViewDirty = true;
-            if (record.Ghost != null)
-            {
-                record.Ghost.SetAvailable(false);
-            }
-
-            if (record.Presence != null)
-            {
-                record.Presence.SetAvailable(false);
-            }
-
-            _subscriptions.Forget(record.Key);
-        }
-
-        private void DeactivateRecords(List<Record> records, PresenceDetector owner)
-        {
-            for (int index = 0; index < records.Count; index++)
-            {
-                Record record = records[index];
-                if (_identities.Contains(record) && record.Owner == owner && record.Ghost != null
-                    && !record.Ghost.IsAvailable)
-                {
-                    _sceneChanges.SetActive(record.Ghost.gameObject, false);
-                }
-            }
-        }
-
-        private bool CanFinalize(Record record, PresenceDetector onlyOwner)
-        {
-            return !_disposed && _identities.Contains(record) && record.Ghost != null
-                && record.Owner != null && (onlyOwner == null || record.Owner == onlyOwner)
-                && record.Owner.IsRegistration(this, record.RegistrationGeneration);
+            _population.RollbackSource(owner, previous);
         }
 
         private void FinalizeChanges(PresenceDetector onlyOwner)
@@ -1389,53 +1136,13 @@ namespace Emas
             try
             {
                 List<Record> records = _identities.Snapshot();
-                // Use one reference pose after source processing, before any root or view activation.
+                // Project complete source data before activating any roots or views.
                 _spatial.Project(records, _referenceFrame);
-                // Phase 1: make initialized roots available and activate them.
+                _population.ActivateRoots(records, onlyOwner);
                 for (int index = 0; index < records.Count; index++)
                 {
                     Record record = records[index];
-                    if (!CanFinalize(record, onlyOwner) || !record.PendingActivation)
-                    {
-                        continue;
-                    }
-
-                    PresenceDetector owner = record.Owner;
-                    long generation = record.RegistrationGeneration;
-                    long ownership = record.OwnershipVersion;
-                    try
-                    {
-                        record.PendingActivation = false;
-                        record.ViewDirty = true;
-                        record.Ghost.SetAvailable(true);
-                        if (record.Presence != null)
-                        {
-                            record.Presence.SetAvailable(true);
-                        }
-                        _sceneChanges.SetActive(record.Ghost.gameObject, true);
-                        if (!CanFinalize(record, onlyOwner) || record.OwnershipVersion != ownership)
-                        {
-                            continue;
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        if (owner.IsRegistration(this, generation))
-                        {
-                            owner.HandleFailure(exception, PresenceDetector.DescribeError(owner.CaptureErrorContext(), "Activate", record.Key.Kind, record.Key.EntityId));
-                        }
-                        else
-                        {
-                            Debug.LogException(exception);
-                        }
-                    }
-                }
-
-                // Phase 2: all source updates and root activation precede dirty view refresh.
-                for (int index = 0; index < records.Count; index++)
-                {
-                    Record record = records[index];
-                    if (!CanFinalize(record, onlyOwner) || !record.Ghost.IsAvailable || !record.ViewDirty)
+                    if (!_population.CanFinalize(record, onlyOwner) || !record.Ghost.IsAvailable || !record.ViewDirty)
                     {
                         continue;
                     }
@@ -1448,14 +1155,6 @@ namespace Emas
             finally
             {
                 _finalizing = false;
-            }
-        }
-
-        private static void ValidateDetailLevel(DetailLevel detailLevel)
-        {
-            if (detailLevel.Level < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(detailLevel), "A detail level cannot be negative.");
             }
         }
 

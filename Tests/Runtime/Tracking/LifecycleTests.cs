@@ -198,6 +198,64 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Replacement startup can reclaim retained identities across multiple dispatch batches.
+        /// Later queued traffic does not keep unreported identities alive after startup finishes.
+        /// </summary>
+        [Test]
+        public void Replacement_WaitsForStartupPublicationsBeforeRemovingUnreportedGhosts()
+        {
+            ProbeSource original = new ProbeSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("anchor", original);
+            ProbeGhost retained = original.Publish("retained");
+            ProbeGhost abandoned = original.Publish("abandoned");
+            _realm.Update();
+
+            ProbeSource replacement = new ProbeSource();
+            ProbeGhost reclaimed = null;
+            replacement.Starting = () =>
+            {
+                for (int index = 0; index < 256; index++)
+                {
+                    replacement.Queue(() => { });
+                }
+
+                replacement.Queue(() => reclaimed = replacement.Publish("retained"));
+            };
+            anchor.ReplaceDetector(original, replacement);
+            int laterCalls = 0;
+            Action laterTraffic = null;
+            laterTraffic = () =>
+            {
+                laterCalls++;
+                replacement.Queue(laterTraffic);
+            };
+            replacement.Queue(laterTraffic);
+
+            _realm.Update();
+
+            Assert.That(reclaimed, Is.Null);
+            Assert.That(_realm.TryGetGhost(retained.Key, out IGhost found), Is.True);
+            Assert.That(found, Is.SameAs(retained));
+            Assert.That(_realm.TryGetGhost(abandoned.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(abandoned));
+            Assert.That(retained.IsAvailable, Is.False);
+            Assert.That(abandoned.IsAvailable, Is.False);
+            Assert.That(_realm.Query().Count, Is.Zero);
+
+            _realm.Update();
+
+            Assert.That(reclaimed, Is.SameAs(retained));
+            Assert.That(_realm.Query().Single(), Is.SameAs(retained));
+            Assert.That(_realm.TryGetGhost(abandoned.Key, out found), Is.False);
+            Assert.That(laterCalls, Is.EqualTo(1));
+
+            _realm.Update();
+
+            Assert.That(laterCalls, Is.EqualTo(2));
+            Assert.That(_realm.Query().Single(), Is.SameAs(retained));
+        }
+
+        /// <summary>
         /// Variant-driven view activation observes the completed source update.
         /// </summary>
         [Test]
