@@ -138,39 +138,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Retained callback delegates and already queued work cannot enter a new registration.
-        /// </summary>
-        [Test]
-        public void CallbackRestart_RejectsOldCallbacksAndCleansUpOnce()
-        {
-            List<Action<string>> publishers = new List<Action<string>>();
-            int cleanups = 0;
-            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(Kind)
-                .IdentifyBy(id => id)
-                .Apply((id, ghost) =>
-                {
-                })
-                .Listen((publish, remove) =>
-                {
-                    publishers.Add(publish);
-                    publish("one");
-                    return () => cleanups++;
-                });
-            Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
-            _realm.Update();
-            IGhost ghost = _realm.Query().Single();
-            publishers[0](null);
-            anchor.RestartDetector(source);
-            publishers[0](null);
-            Assert.That(ghost.IsAvailable, Is.False);
-            _realm.Update();
-            Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
-            Assert.That(cleanups, Is.EqualTo(1));
-            anchor.Dispose();
-            Assert.That(cleanups, Is.EqualTo(2));
-        }
-
-        /// <summary>
         /// Captured dispatchers ignore old callbacks even after the same source starts again.
         /// </summary>
         [Test]

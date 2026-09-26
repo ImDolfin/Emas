@@ -69,11 +69,7 @@ namespace Emas.RelativeWorld
                     presence.AddModule(new GeoOrientationModule());
                 }
             });
-            PollingPresenceDetector<GeoPoseReading> detector = new PollingPresenceDetector<GeoPoseReading>(RelativeCar.Kind)
-                .ReadFrom(_sdk.ReadFrame)
-                .IdentifyBy(reading => reading.Id)
-                .WithName(reading => reading.Label)
-                .WithVariant(reading => reading.Variant);
+            GeoDetector detector = new GeoDetector(_sdk);
             detector.Name = "Geodetic SDK entities";
             _realm.GetOrCreateAnchor("relative-world", detector);
             _views = _realm.Query().OfKind(RelativeCar.Kind).OnAvailable(ghost => _realm.Manifest(ghost));

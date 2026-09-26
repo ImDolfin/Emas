@@ -73,15 +73,64 @@ IEnumerable<TrackedReading> ReadSnapshot()
 }
 ```
 
-The detector reads this method each realm update. Here `blueprint` is the asset from section 1:
+Implement a detector for this feed. It reports the complete snapshot at startup and on each realm update, then explicitly marks omitted IDs as disappeared. Scheduling and snapshot comparison belong to this application class:
 
 ```csharp
-var detector = new PollingPresenceDetector<TrackedReading>(TrackedGhost.Kind)
-    .ReadFrom(ReadSnapshot)
-    .IdentifyBy(reading => reading.Id)
-    .WithVariant(reading => string.IsNullOrWhiteSpace(reading.VariantId)
-        ? Variant.None : new Variant(reading.VariantId));
+using System;
+using System.Collections.Generic;
+using Emas;
 
+internal sealed class TrackedDetector : PresenceDetector
+{
+    private readonly Func<IEnumerable<TrackedReading>> _readSnapshot;
+
+    internal TrackedDetector(Func<IEnumerable<TrackedReading>> readSnapshot)
+    {
+        _readSnapshot = readSnapshot;
+    }
+
+    protected override void OnStart()
+    {
+        PublishSnapshot();
+    }
+
+    protected override void OnUpdate()
+    {
+        PublishSnapshot();
+    }
+
+    private void PublishSnapshot()
+    {
+        HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (TrackedReading reading in _readSnapshot())
+        {
+            if (!seen.Add(reading.Id))
+            {
+                throw new InvalidOperationException("The SDK returned a duplicate entity ID.");
+            }
+
+            Variant variant = string.IsNullOrWhiteSpace(reading.VariantId)
+                ? Variant.None : new Variant(reading.VariantId);
+            Report(reading.Id, TrackedGhost.Kind, reading, variant: variant);
+        }
+
+        foreach (Presence presence in OwnedPresences)
+        {
+            if (!seen.Contains(presence.Key.EntityId))
+            {
+                Disappear(presence.Key.Kind, presence.Key.EntityId);
+            }
+        }
+    }
+}
+```
+
+For an SDK that supplies change events, subscribe in `OnStart`, capture a dispatcher with `CaptureDispatcher()`, and unsubscribe in `OnStop`. Queue reports and explicit disappearances through that captured dispatcher so callbacks retained from an older attachment are ignored. All detector operations and callbacks run on Unity's main thread; the application handles any thread transfer. See the [callback sample](Samples~/Callbacks/FeedDetector.cs).
+
+Here `blueprint` is the asset from section 1 and `ReadSnapshot` is the SDK-reading method above:
+
+```csharp
+var detector = new TrackedDetector(ReadSnapshot);
 Realm realm = new Realm();
 realm.RegisterPresenceInitializer<TrackedGhost>(TrackedGhost.Kind, (presence, root) =>
 {
@@ -123,7 +172,7 @@ World  (RealmSetup: blueprint; Use Reference Frame; Follow Ghost)
   Items  (AnchorSetup: id "items"; SDK provider)
 ```
 
-Put `RealmSetup` on the root and assign the blueprint. On `Items`, put `AnchorSetup` and exactly one enabled component implementing `IDetectorProvider` on the **same** GameObject. Put `ReadSnapshot` from section 3 in that component. Its `CreateDetector()` returns the polling detector from section 3 with `.ReadFrom(ReadSnapshot)`. Have the same component implement `IRealmConfigurator`: its `ConfigureRealm(Realm realm)` registers the `TrackedGhost` initializer and `GeoPositionModule` shown above. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup updates and disposes its realm.
+Put `RealmSetup` on the root and assign the blueprint. On `Items`, put `AnchorSetup` and exactly one enabled component implementing `IDetectorProvider` on the **same** GameObject. Put `ReadSnapshot` from section 3 in that component. Its `CreateDetector()` returns `new TrackedDetector(ReadSnapshot)` from section 3. Have the same component implement `IRealmConfigurator`: its `ConfigureRealm(Realm realm)` registers the `TrackedGhost` initializer and `GeoPositionModule` shown above. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup updates and disposes its realm.
 
 For the moving origin, set **Follow Ghost** to anchor `items`, Kind `tracked.item`, entity `origin`. There are no latitude/longitude fields on `ReferenceFrame` or Realm Setup: their **Position** field is already-converted Cartesian `Double3`. For a fixed reference, convert its latitude/longitude/altitude with the same `YourGeo.Wgs84ToEnu` function and assign that `Double3` to `ReferenceFrame.Position` instead of following a Ghost. `Unity Position` chooses where the reference appears in the scene. If your module writes ordinary local Unity transforms instead of `Spatial`, omit the reference frame. See [Spatial](Documentation~/Spatial.md) for projection and reference loss.
 

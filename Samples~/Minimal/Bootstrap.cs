@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Emas.Minimal
 {
     /// <summary>
-    /// Configures marker presences and creates the polling detector for this prefab anchor.
+    /// Configures marker presences and creates the detector for this prefab anchor.
     /// </summary>
     public sealed class Bootstrap : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
@@ -28,9 +28,7 @@ namespace Emas.Minimal
         /// </summary>
         public PresenceDetector CreateDetector()
         {
-            return new PollingPresenceDetector<Reading>(Marker.Kind)
-                .ReadFrom(() => new[] { new Reading(id: "one", position: new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f)) })
-                .IdentifyBy(item => item.Id);
+            return new MarkerDetector();
         }
     }
 }

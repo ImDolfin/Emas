@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Removed the generic polling and callback detector adapters from the core package. Applications now subclass `PresenceDetector` directly; the quick-start and relative-world samples demonstrate small SDK-specific detectors with data reporting, callback dispatch and subscription cleanup.
 - Reduced the test suite to documented public API contracts and required sample consistency checks; removed duplicate scenarios, private implementation checks and test-assembly access to internals.
 - Fixed direct detector reports leaving partially initialized Ghosts available after initializer or module failures; failure cleanup now stops the affected registration.
 - Fixed late-enabled prefab anchors skipping presence configuration and reparented anchors retaining detector subscriptions after disable.

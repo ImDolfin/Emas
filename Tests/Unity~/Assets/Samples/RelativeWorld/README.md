@@ -2,7 +2,7 @@
 
 Import **Relative world** from the Emas package, open `RelativeWorld.unity`, and press Play. The scene has one **Relative World** component; it creates an isolated realm, camera, ground, and simple car manifestations.
 
-`SimulatedGeoSdk` supplies a complete snapshot with an `origin` and a `target` on each update. Each `GeoPoseReading` contains WGS84 latitude and longitude in degrees, ellipsoidal altitude in metres, and yaw, pitch, and roll. The one-generic `PollingPresenceDetector<GeoPoseReading>` identifies and forwards the readings without changing Ghosts.
+`SimulatedGeoSdk` supplies a complete snapshot with an `origin` and a `target` on each update. Each `GeoPoseReading` contains WGS84 latitude and longitude in degrees, ellipsoidal altitude in metres, and yaw, pitch, and roll. `GeoDetector` subclasses `PresenceDetector` and calls `Report` for both readings in `OnStart` and `OnUpdate`. These two sample entities are always present; an integration with departing entities should call `Disappear` for their IDs.
 
 The Realm initializes a `RelativeCar` root for each Presence and adds `GeoPositionModule` and `GeoOrientationModule`. The position module converts raw geodetic coordinates relative to the fixed datum **52.520008° N, 13.404954° E, 40 m** into double-precision ENU coordinates: `Double3.X` is east, `Y` is up, and `Z` is north. The orientation module maps SDK yaw clockwise from true north, pitch nose-up, and roll right-wing-down into the root's local **+Z forward, +X right, +Y up** convention. Both modules update `Spatial`; the detector handles identity and presence only.
 
@@ -14,6 +14,7 @@ The Realm initializes a `RelativeCar` root for each Presence and adds `GeoPositi
 | `RelativeCar.cs` | Provides the Ghost root and requires `Spatial`. |
 | `GeoPoseReading.cs` | Carries one raw SDK geodetic pose and stable ID. |
 | `SimulatedGeoSdk.cs` | Returns complete snapshots containing the origin and target. |
+| `GeoDetector.cs` | Reports the two SDK entities, their names, and their visual variants to the realm. |
 | `GeoPositionModule.cs` | Converts WGS84 latitude, longitude, and altitude into fixed-datum ENU `Double3` positions. |
 | `GeoOrientationModule.cs` | Converts SDK yaw, pitch, and roll into a `Spatial` rotation. |
 

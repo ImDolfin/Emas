@@ -4,7 +4,7 @@ Emas owns stable `Presence` handles, Ghost roots, availability and optional view
 
 [Architecture diagram](Diagrams/Architecture.html) / [Lifecycle diagram](Diagrams/Lifecycle.html)
 
-`RealmSetup` is an optional Inspector-configured owner of one isolated, automatically updated realm. Enabled `IRealmConfigurator` components beneath it register per-Kind presence initializers before any detector starts. Child `AnchorSetup` components each configure one anchor and create one detector through their colocated `IDetectorProvider`. The one-generic `PollingPresenceDetector<TSource>` reports complete SDK snapshots; `CallbackPresenceDetector<TSource>` queues individual reports and disappearances with subscription cleanup. Neither creates Ghosts or maps SDK data into them. Two-generic convenience adapters and direct code setup remain available.
+`RealmSetup` is an optional Inspector-configured owner of one isolated, automatically updated realm. Enabled `IRealmConfigurator` components beneath it register per-Kind presence initializers before any detector starts. Child `AnchorSetup` components each configure one anchor and create one detector through their colocated `IDetectorProvider`. Applications implement a small `PresenceDetector` subclass for each SDK feed. Its `OnStart`, `OnUpdate` and `OnStop` overrides own reading or subscriptions, while `Report`, `Detect` and `Disappear` send entity changes to the realm. Event handlers capture a dispatcher for their attachment in `OnStart` and unsubscribe in `OnStop`. Entity modules apply SDK payloads to Ghost roots. Direct code setup uses the same contracts.
 
 ## Ownership
 
@@ -34,7 +34,7 @@ Manifestation blueprints are resolved by anchor and kind: an anchor registration
 
 Newly queued actions wait for a later update. The budget limits action count, not execution time; application callbacks must remain short. Dispatch records the detector's registration generation, so stale work is discarded even if the same instance is reattached. Detector updates also capture that generation: a detector removed and reattached during an update first ticks in the following update.
 
-Successful startup outside an update finalizes directly reported roots immediately. Callback detector startup queues its initial reports for a later update. Variant changes and explicit view requests inside detector/finalization callbacks defer refresh until module updates are complete. Explicit requests outside those phases retain immediate behavior.
+Successful startup outside an update finalizes directly reported roots immediately. Reports queued through a captured dispatcher during startup run in a later update. Variant changes and explicit view requests inside detector/finalization callbacks defer refresh until module updates are complete. Explicit requests outside those phases retain immediate behavior.
 
 `Realm.Default` provides an automatically updated default realm. A direct-code isolated realm uses explicit `Update()`; `RealmSetup` updates its own isolated realm each frame. An all-realm query reads current state without advancing any realm. Each realm delivers its own subscription notifications during its update. A global subscription follows new realms and reports departures for its observed matches when a realm is disposed. All Emas calls require Unity's main thread. Applications handle SDK threading before reporting or removing presences. The queue and protected `Dispatch` defer main-thread work to later updates. Custom detectors can capture a dispatcher per attachment so callbacks retained from an old attachment cannot enter a new one. Emas provides no thread synchronization or marshalling.
 
@@ -64,7 +64,7 @@ Presentation range is measured in shared Cartesian coordinates before float conv
 
 A successful restart or replacement has a bounded startup handover. Existing roots and their Presences are unavailable until reported again; cleanup waits for the first subsequent realm update and for reports queued during startup to run, including any dispatch backlog. It then removes still-unreported roots. Detector failure removes roots immediately, so later recovery creates new instances. Unowned prepared ghosts remain until claimed or explicitly removed with their anchor.
 
-Detectors can set `DisappearanceGracePeriod` before attachment. A disappearance makes the Presence unavailable, deactivates its root and removes it from available queries immediately. A report during grace reuses the same Presence and Ghost root; after the deadline the realm removes them. The default zero removes immediately. `InactivityTimeout` separately detects silent feeds using unscaled time since each report. A timeout follows the same disappearance path. Direct Ghost integrations that update cached roots can call `MarkPublished`; one-generic adapters record activity through their reports.
+Detectors can set `DisappearanceGracePeriod` before attachment. A disappearance makes the Presence unavailable, deactivates its root and removes it from available queries immediately. A report during grace reuses the same Presence and Ghost root; after the deadline the realm removes them. The default zero removes immediately. `InactivityTimeout` separately detects silent feeds using unscaled time since each report. A timeout follows the same disappearance path. Direct Ghost integrations that update cached roots can call `MarkPublished`; `Detect` and `Report` record activity themselves.
 
 Demanifesting removes only the visual child and keeps the Presence and Ghost root. Failed view requests can retry through `Manifest` or a manifestation blueprint, variant or detail change; unchanged detector reports leave them alone.
 
@@ -87,7 +87,7 @@ Registry traversal uses snapshots and rechecks membership/registration after cal
 | [Presence](../Runtime/Entities/Presence.cs) / [EntityModule](../Runtime/Entities/EntityModule.cs) | Stable identity and per-presence SDK data application |
 | [Realm.Presences](../Runtime/Entities/Realm.Presences.cs) | Per-Kind initialization, root creation and module dispatch |
 
-Query interface filters use typed predicates and a reusable root-component list. Subscriptions reuse their match and departure buffers across updates while still scanning current ghosts and rechecking matches after callbacks. Scalar query results scan without building a match list; the two-generic polling adapter reuses its owned-root buffer. These are implementation choices, not measured performance guarantees.
+Query interface filters use typed predicates and a reusable root-component list. Subscriptions reuse their match and departure buffers across updates while still scanning current ghosts and rechecking matches after callbacks. Scalar query results scan without building a match list. These are implementation choices, not measured performance guarantees.
 
 Assembly dependencies: editor and tests may reference runtime; runtime never references editor, sample or SDK assemblies. Samples remain separate application assemblies. Package code targets C# 8, enforced by compiler response files.
 

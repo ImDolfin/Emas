@@ -8,7 +8,7 @@ Add `package.json` through **Package Manager > Add package from disk**, import *
 
 ## Build the same integration
 
-These four files show the [Quick start](../Samples~/Minimal/) detector and module flow without XML comments. Put each class in its own file in your application assembly, referencing `Emas.Runtime` if you use an assembly definition. If you imported the sample, edit its files instead of creating duplicate types.
+These five files show the [Quick start](../Samples~/Minimal/) detector and module flow without XML comments. Put each class in its own file in your application assembly, referencing `Emas.Runtime` if you use an assembly definition. If you imported the sample, edit its files instead of creating duplicate types.
 
 ### Reading.cs
 
@@ -72,6 +72,34 @@ namespace Emas.Minimal
 }
 ```
 
+### MarkerDetector.cs
+
+```csharp
+using UnityEngine;
+
+namespace Emas.Minimal
+{
+    internal sealed class MarkerDetector : PresenceDetector
+    {
+        protected override void OnStart()
+        {
+            PublishReading();
+        }
+
+        protected override void OnUpdate()
+        {
+            PublishReading();
+        }
+
+        private void PublishReading()
+        {
+            Reading reading = new Reading("one", new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f));
+            Report(reading.Id, Marker.Kind, reading);
+        }
+    }
+}
+```
+
 ### Bootstrap.cs
 
 ```csharp
@@ -95,9 +123,7 @@ namespace Emas.Minimal
 
         public PresenceDetector CreateDetector()
         {
-            return new PollingPresenceDetector<Reading>(Marker.Kind)
-                .ReadFrom(() => new[] { new Reading("one", new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f)) })
-                .IdentifyBy(item => item.Id);
+            return new MarkerDetector();
         }
     }
 }
@@ -147,24 +173,27 @@ Use `anchorSetup.Anchor.RestartDetector(detector)` to restart an attached detect
 
 For root interfaces, paired query arrivals and departures, and detector replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>` for optional root interfaces or `ghost.GetRequired<T>()` when a missing provider is an error.
 
-## Choose a detector
+## Implement your SDK detector
 
-| Detector | Choose when | Disappearance signal |
-| --- | --- | --- |
-| `PollingPresenceDetector<TSource>` | The SDK can return the complete current population | An ID omitted from a successful full read disappears |
-| `CallbackPresenceDetector<TSource>` | The SDK supplies individual changes and deletes | The SDK's delete callback reports that ID missing |
-| Custom `PresenceDetector` | The SDK needs a custom lifecycle or combines feeds | Call protected `Disappear(kind, id)` |
-| Two-generic detector adapters | A small integration deliberately maps SDK items straight into a typed Ghost | Polling omission or callback delete follows the same lifecycle |
+Use an application-specific subclass of `PresenceDetector`. Pass the application-owned SDK client to its constructor and override only the lifecycle methods that feed needs:
 
-Polling reads on startup and every realm update by default. Add `.PollEvery(System.TimeSpan.FromMilliseconds(500))` before attaching it for a slower feed. Startup still reads immediately; later polls use unscaled time and never catch up with several reads in one update. The SDK must return the full current population, not only changed items.
+| Override | Responsibility |
+| --- | --- |
+| `OnStart()` | Read initial data or subscribe to SDK events for this attachment |
+| `OnUpdate()` | Poll the SDK when needed; choose any polling interval in your detector |
+| `OnStop()` | Unsubscribe and release attachment-owned resources, including after startup failure |
 
-The callback adapter uses `IdentifyBy` and `Listen`. `Listen` receives publish and disappear callbacks and returns an unsubscribe action. Initial publications are deferred to a later realm update. Import **Callback quick start**, open `Callbacks.unity`, and inspect its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for subscription and cleanup.
+Call `Report(id, kind, reading, name, variant, capabilities)` to send SDK data to the realm, or `Detect(id, kind, name, variant, capabilities)` for metadata alone. The optional name labels the entity; the variant chooses its appearance. Call `Disappear(kind, id)` when the SDK removes an entity. The minimal sample has one permanent entity, so it needs no omission tracking or subscription cleanup.
 
-Both one-generic adapters support `WithName`, `WithVariant` and `WithCapabilities`. Capabilities are SDK-reported interface types; they do not add Unity components automatically. A realm initializer can inspect `presence.HasCapability<T>()` and install a matching module. It runs again when capabilities change, so check `presence.TryGetModule<T>(out module)` before adding another instance. Compatible `EntityModule<TData>` instances apply SDK updates to the Ghost. Unmatched payloads are ignored while the Presence remains tracked; exceptions from a module's `Apply` stop its detector.
+For a complete-snapshot SDK, compare each successful read's IDs with `OwnedPresences` and explicitly call `Disappear` for missing IDs. A missing item in a change-only feed is not a removal. Your detector owns the SDK's validation, scheduling and omission rules; Emas owns the resulting Presence lifecycle. The [README example](../README.md#3-connect-the-detector-and-realm) demonstrates snapshot comparison.
+
+For SDK events, call `CaptureDispatcher()` in `OnStart` and close each event handler over the returned dispatcher. Queue `Report` or `Disappear` through it, retain the exact delegates, and unsubscribe in `OnStop`. Each captured dispatcher belongs to one attachment, so callbacks retained after a restart cannot change the new attachment. `OnStop` also follows failed startup; make cleanup safe when only some subscriptions were acquired. Import **Callback quick start**, open `Callbacks.unity`, and inspect [FeedDetector.cs](../Samples~/Callbacks/FeedDetector.cs) for a complete example. SDK clients remain application-owned.
+
+Pass SDK-reported interface types through the optional `capabilities` argument. These do not add Unity components automatically. A realm initializer can inspect `presence.HasCapability<T>()` and install a matching module. It runs again when capabilities change, so check `presence.TryGetModule<T>(out module)` before adding another instance. Compatible `EntityModule<TData>` instances apply SDK updates to the Ghost. Unmatched payloads are ignored while the Presence remains tracked; exceptions from a module's `Apply` stop its detector.
 
 To detect silence in a feed that should publish regularly, set `detector.InactivityTimeout = System.TimeSpan.FromSeconds(10)` before attachment. Null, the default, disables inactivity expiry. Each detection or data report resets that entity's deadline. Set `detector.DisappearanceGracePeriod` to retain a disappeared Presence and Ghost root for a while; zero, the default, removes them immediately. Disappearance makes it unavailable to queries at once. A new detection or report during grace restores the same handle and root; after grace expires, either creates a new one. Detector failure and anchor removal always remove immediately.
 
-Call all Emas APIs, including SDK publish and disappear callbacks, on Unity's main thread. The SDK adapter handles any thread transfer. Copy mutable callback payloads before publishing or keep them unchanged until their queued report runs. See the exact lifecycle and module contracts in [API](API.md).
+Call all Emas APIs, including SDK publish and disappear callbacks, on Unity's main thread. The application handles any thread transfer; a captured dispatcher defers work on the main thread and does not transfer it between threads. Copy mutable callback payloads before publishing or keep them unchanged until their queued report runs. See the exact lifecycle and module contracts in [API](API.md).
 
 ## Keep a network vehicle fixed in Unity
 
@@ -179,6 +208,6 @@ Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference los
 | Nothing appears | Check the Realm Setup, Anchor Setup, Manifestation Blueprint and Manifestation Variant Inspectors for errors. Verify the kind ID and view prefab; an available ghost may intentionally have no view. |
 | A detector stops | Its Presences and Ghosts are removed. While the prefab realm runs, find the detector in `anchorSetup.Anchor.Detectors` and inspect `LastErrorContext` and `LastError`. Fix the cause, then call `anchorSetup.Anchor.RestartDetector(detector)`. If startup stopped the realm, use the Console or an application-held detector reference. **Window > Emas** shows only `Realm.Default`. |
 | One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its manifestation blueprint, variant or detail to retry. |
-| Polling entities disappear | Return the full population, not only changes. Null snapshots, duplicate or empty IDs, invalid capability types and selector or module exceptions stop the detector. |
-| Restart creates duplicates | Unsubscribe in callback cleanup; dispose consumer query subscriptions when their owner stops. |
+| Polled entities disappear unexpectedly | Check your detector's snapshot comparison and timeout. Compare omissions only for complete reads; use explicit SDK removals for change-only feeds. Exceptions escaping lifecycle methods or dispatched actions stop the detector. |
+| Restart creates duplicates | Unsubscribe in `OnStop`, capture a new dispatcher in each `OnStart`, and dispose consumer query subscriptions when their owner stops. |
 | No tests appear | Open the prepared **`Tests/Unity~`** project through Unity Hub. Package import alone does not opt a consumer into tests. See [Validation](Validation.md). |

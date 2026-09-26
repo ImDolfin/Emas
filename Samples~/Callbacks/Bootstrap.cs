@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 
 namespace Emas.Callbacks
@@ -36,32 +35,7 @@ namespace Emas.Callbacks
         {
             SimulatedFeed feed = new SimulatedFeed();
             _feed = feed;
-            return new CallbackPresenceDetector<Reading>(Marker.Kind)
-                .IdentifyBy(item => item.Id)
-                .Listen((publish, remove) =>
-                {
-                    feed.Changed += publish;
-                    feed.Removed += remove;
-                    Action unsubscribe = () =>
-                    {
-                        feed.Changed -= publish;
-                        feed.Removed -= remove;
-                    };
-                    try
-                    {
-                        if (feed.Current != null)
-                        {
-                            publish(feed.Current);
-                        }
-
-                        return unsubscribe;
-                    }
-                    catch
-                    {
-                        unsubscribe();
-                        throw;
-                    }
-                });
+            return new FeedDetector(feed);
         }
 
         private void Update()

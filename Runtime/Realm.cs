@@ -1139,13 +1139,6 @@ namespace Emas
         internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceDetector owner)
         {
             List<IGhost> result = new List<IGhost>();
-            GetOwnedGhosts(owner, result);
-            return result;
-        }
-
-        internal void GetOwnedGhosts(PresenceDetector owner, List<IGhost> result)
-        {
-            result.Clear();
             foreach (Record record in _ghosts.Values)
             {
                 if (record.Owner == owner)
@@ -1153,6 +1146,8 @@ namespace Emas
                     result.Add(record.Ghost);
                 }
             }
+
+            return result;
         }
 
         private void ExecuteDispatch(DispatchItem item)

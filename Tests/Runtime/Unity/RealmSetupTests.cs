@@ -67,8 +67,7 @@ namespace Emas.Tests
         public void EnabledAnchor_ConfiguresPresenceOncePerRealmLifetime()
         {
             RealmSetup setup = CreateRealm("on-demand source");
-            TestProvider provider = CreateAnchor(setup, () => new PollingPresenceDetector<string>(TestKind)
-                .ReadFrom(() => new[] { "one" }).IdentifyBy(value => value));
+            TestProvider provider = CreateAnchor(setup, () => new ReadingDetector());
             TestConfigurator configurator = provider.gameObject.AddComponent<TestConfigurator>();
             provider.gameObject.SetActive(false);
             setup.gameObject.SetActive(true);
@@ -151,10 +150,7 @@ namespace Emas.Tests
         {
             RealmSetup setup = CreateRealm("automatic lifecycle");
             string currentId = "first";
-            TestProvider provider = CreateAnchor(setup, () => new PollingPresenceDetector<string, Probe>(TestKind)
-                .ReadFrom(() => new[] { currentId })
-                .IdentifyBy(value => value)
-                .Apply((value, ghost) => { }));
+            TestProvider provider = CreateAnchor(setup, () => new CurrentEntityDetector(() => currentId));
             setup.gameObject.SetActive(true);
             yield return null;
 
@@ -263,6 +259,42 @@ namespace Emas.Tests
             protected override void OnStart()
             {
                 GetOrCreate<Probe>("one", TestKind);
+            }
+        }
+
+        private sealed class ReadingDetector : PresenceDetector
+        {
+            protected override void OnStart()
+            {
+                Report("one", TestKind, "one");
+            }
+        }
+
+        private sealed class CurrentEntityDetector : PresenceDetector
+        {
+            private readonly Func<string> _readId;
+            private string _previousId;
+
+            internal CurrentEntityDetector(Func<string> readId)
+            {
+                _readId = readId;
+            }
+
+            protected override void OnStart()
+            {
+                OnUpdate();
+            }
+
+            protected override void OnUpdate()
+            {
+                string id = _readId();
+                if (_previousId != null && _previousId != id)
+                {
+                    Disappear(TestKind, _previousId);
+                }
+
+                Detect(id, TestKind);
+                _previousId = id;
             }
         }
 

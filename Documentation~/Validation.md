@@ -42,12 +42,12 @@ Keep a test when it protects a distinct behavior that an application depends on.
 
 ## Results
 
-The reduced suite passed in Unity **2022.3.62f3** on **2026-09-26**, package **0.1.0**. All **142 tests** passed with no failures or skips, down from 315 tests (173 removed, approximately 55%). Both test assemblies compile without access to internal production APIs.
+The simplified package passed in Unity **2022.3.62f3** on **2026-09-26**, package **0.1.0**. All **121 tests** passed with no failures or skips. Removing the generic detector adapters removed 21 adapter-specific cases from the previous 142-test suite; core diagnostic, restart, dispatch and prefab setup coverage remains, with direct `PresenceDetector` subclasses replacing adapter-based fixtures. Both test assemblies compile without access to internal production APIs.
 
 | Editor | Test Framework | EditMode | PlayMode |
 | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 133 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 112 passed |
 
-The ignored XML reports and logs are in `Tests/Unity~/TestResults/PublicContracts/`. Every retained test has an XML purpose summary; an independent suite review checked for private/internal access, duplicate purposes and unused probes.
+The ignored XML reports and logs are in `Tests/Unity~/TestResults/DetectorSimplification/`. EditMode verifies the imported samples match the package; PlayMode covers the updated minimal, callback and relative-world scenes, including automatic startup and detector restart.
 
-The previous suite passed **16 EditMode** and **299 PlayMode** tests on **2026-09-26**, before this reduction. Earlier **2026-09-22** checks passed on Unity 6.3 LTS (6000.3.24f1) and Windows Mono players; those runs predate later API changes and do not validate the current suite. Unity 6 and player runs have not been repeated for this revision. IL2CPP, other platforms, performance and rendering quality have not been validated.
+The previous public-contract suite passed **9 EditMode** and **133 PlayMode** tests on **2026-09-26**, before the generic detector adapters were removed. Earlier **2026-09-22** checks passed on Unity 6.3 LTS (6000.3.24f1) and Windows Mono players; those runs predate later API changes and do not validate the current suite. Unity 6 and player runs have not been repeated for this revision. IL2CPP, other platforms, performance and rendering quality have not been validated.

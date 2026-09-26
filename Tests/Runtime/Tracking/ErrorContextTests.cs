@@ -8,6 +8,7 @@ namespace Emas.Tests
     /// </summary>
     public sealed class ErrorContextTests
     {
+        private static readonly Kind VehicleKind = new Kind("car");
         private Realm _realm;
 
         /// <summary>
@@ -29,64 +30,58 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Mapping diagnostics identify the anchor, source, operation and entity while retaining the original exception.
+        /// Report diagnostics identify the anchor, detector, operation and entity while retaining the original exception.
         /// </summary>
         [Test]
-        public void MappingFailure_IdentifiesOperationAndEntity()
+        public void ReportFailure_IdentifiesOperationAndEntity()
         {
-            Exception failure = new InvalidOperationException("SDK rejected item");
-            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"))
-                .IdentifyBy(id => id).Apply((id, ghost) =>
+            Exception failure = new InvalidOperationException("module rejected item");
+            _realm.RegisterPresenceInitializer<TestGhost>(VehicleKind, (presence, root) =>
+                presence.AddModule(new ReportingModule(() =>
                 {
                     throw failure;
-                })
-                .Listen((publish, remove) =>
-                {
-                    publish("42");
-                    return null;
-                });
-            source.Name = "SDK One";
+                })));
+            ReportingDetector source = new ReportingDetector { Name = "SDK One" };
             _realm.GetOrCreateAnchor("vehicles", source);
-            ExpectedErrors.Verify(_realm.Update, "vehicles.*SDK One.*Apply.*SDK rejected item");
+            ExpectedErrors.Verify(_realm.Update, "vehicles.*SDK One.*Report.*module rejected item");
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.LastErrorContext, Does.Contain("anchor 'vehicles'").And.Contain("source 'SDK One'"));
-            Assert.That(source.LastErrorContext, Does.Contain("operation 'Apply'").And.Contain("kind 'car'").And.Contain("entity '42'"));
+            Assert.That(source.LastErrorContext, Does.Contain("operation 'Report'").And.Contain("kind 'car'").And.Contain("entity '42'"));
             string recorded = source.LastErrorContext;
             source.Name = "Renamed";
             Assert.That(source.LastErrorContext, Is.EqualTo(recorded));
         }
 
         /// <summary>
-        /// Primary mapping context survives a second failure during unsubscribe and clears on restart.
+        /// Primary report context survives a second failure during cleanup and clears on restart.
         /// </summary>
         [Test]
         public void Cleanup_PreservesPrimaryContextAndRestartClearsIt()
         {
             bool failing = true;
-            InvalidOperationException primary = new InvalidOperationException("mapping failed");
-            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"))
-                .IdentifyBy(id => id).Apply((id, ghost) =>
+            InvalidOperationException primary = new InvalidOperationException("report failed");
+            _realm.RegisterPresenceInitializer<TestGhost>(VehicleKind, (presence, root) =>
+                presence.AddModule(new ReportingModule(() =>
                 {
                     if (failing)
                     {
                         throw primary;
                     }
-                })
-                .Listen((publish, remove) =>
+                })));
+            ReportingDetector source = new ReportingDetector
+            {
+                Name = "Shared SDK",
+                Stopping = () =>
                 {
-                    publish("42");
-                    return () =>
+                    if (failing)
                     {
-                        if (failing)
-                        {
-                            throw new Exception("unsubscribe failed");
-                        }
-                    };
-                });
-            source.Name = "Shared SDK";
+                        throw new Exception("cleanup failed");
+                    }
+                }
+            };
             Anchor anchor = _realm.GetOrCreateAnchor("vehicles", source);
-            ExpectedErrors.Verify(_realm.Update, "operation 'Apply'.*entity '42'.*mapping failed", "operation 'Unsubscribe'.*unsubscribe failed");
-            Assert.That(source.LastErrorContext, Does.Contain("Apply").And.Contain("42"));
+            ExpectedErrors.Verify(_realm.Update, "operation 'Report'.*entity '42'.*report failed", "operation 'OnStop'.*cleanup failed");
+            Assert.That(source.LastErrorContext, Does.Contain("Report").And.Contain("42"));
             Assert.That(source.LastError, Is.SameAs(primary));
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);
@@ -104,14 +99,45 @@ namespace Emas.Tests
         [Test]
         public void Name_UsesTypeFallback()
         {
-            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"));
-            Assert.That(source.Name, Is.EqualTo("CallbackPresenceDetector"));
+            ReportingDetector source = new ReportingDetector();
+            Assert.That(source.Name, Is.EqualTo("ReportingDetector"));
             source.Name = "Vehicle SDK";
             Assert.That(source.Name, Is.EqualTo("Vehicle SDK"));
             source.Name = " ";
-            Assert.That(source.Name, Is.EqualTo("CallbackPresenceDetector"));
+            Assert.That(source.Name, Is.EqualTo("ReportingDetector"));
             source.Name = null;
-            Assert.That(source.Name, Is.EqualTo("CallbackPresenceDetector"));
+            Assert.That(source.Name, Is.EqualTo("ReportingDetector"));
+        }
+
+        private sealed class ReportingDetector : PresenceDetector
+        {
+            internal Action Stopping;
+
+            protected override void OnUpdate()
+            {
+                Report("42", VehicleKind, "42");
+            }
+
+            protected override void OnStop()
+            {
+                Stopping?.Invoke();
+            }
+        }
+
+        private sealed class ReportingModule : EntityModule<string>
+        {
+            private readonly Action _apply;
+
+            internal ReportingModule(Action apply)
+            {
+                _apply = apply;
+            }
+
+            /// <summary>Applies the consumer behavior whose failures must retain report context.</summary>
+            public override void Apply(string data)
+            {
+                _apply();
+            }
         }
 
         private sealed class TestGhost : Ghost
