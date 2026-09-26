@@ -4,10 +4,10 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Maps double-precision simulation coordinates to a nearby Unity world pose.
+    /// Maps double-precision shared Cartesian coordinates to a nearby Unity world pose.
     /// </summary>
     /// <remarks>
-    /// Assign to Realm.ReferenceFrame to enable spatial projection. Simulation positions share one Cartesian
+    /// Assign to Realm.ReferenceFrame to enable spatial projection. Positions share one Cartesian
     /// coordinate system and unit. Supply position and rotation independently, or follow a spatial ghost by key.
     /// All configuration and conversion calls require Unity's main thread.
     /// </remarks>
@@ -23,7 +23,7 @@ namespace Emas
         private bool _isReferenceAvailable;
 
         /// <summary>
-        /// Gets or sets the simulation position mapped to UnityPosition.
+        /// Gets or sets the shared Cartesian position mapped to UnityPosition.
         /// </summary>
         /// <remarks>
         /// Setting this establishes a manual reference. A followed ghost overwrites it during realm projection.
@@ -44,7 +44,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets or sets the simulation reference orientation, independently of position.
+        /// Gets or sets the reference orientation in the shared Cartesian frame, independently of position.
         /// </summary>
         public Quaternion Rotation
         {
@@ -94,7 +94,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets or sets whether simulation reference rotation is cancelled, keeping its Unity heading fixed.
+        /// Gets or sets whether the reference rotation is cancelled, keeping its Unity heading fixed.
         /// </summary>
         /// <remarks>
         /// True by default. False follows position only, while UnityRotation still defines the scene alignment.
@@ -106,7 +106,7 @@ namespace Emas
         } = true;
 
         /// <summary>
-        /// Gets or sets the maximum presentation distance in simulation units, or null for no distance limit.
+        /// Gets or sets the maximum presentation distance in shared coordinate units, or null for no distance limit.
         /// </summary>
         /// <remarks>
         /// A configured limit must be positive and finite. Outside it, ghosts remain available and their views
@@ -180,7 +180,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Converts a simulation position to Unity world space, subtracting the reference before float conversion.
+        /// Converts a shared Cartesian position to Unity world space, subtracting the reference before float conversion.
         /// </summary>
         /// <returns>
         /// False if no reference position exists, the point exceeds MaxDistance, or the result cannot fit in Vector3.
@@ -192,7 +192,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Converts a Unity world position back into double-precision simulation coordinates.
+        /// Converts a Unity world position back into double-precision shared Cartesian coordinates.
         /// </summary>
         public Double3 ToSimulationPosition(Vector3 unityPosition)
         {
@@ -209,7 +209,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Converts a simulation orientation to Unity world orientation using the current rotation mode.
+        /// Converts an orientation in the shared Cartesian frame to Unity world orientation using the current rotation mode.
         /// </summary>
         public Quaternion ToUnityRotation(Quaternion rotation)
         {
@@ -218,7 +218,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Converts a Unity world orientation back into simulation orientation.
+        /// Converts a Unity world orientation back into the shared Cartesian frame.
         /// </summary>
         public Quaternion ToSimulationRotation(Quaternion unityRotation)
         {
@@ -228,7 +228,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Calculates the distance from the simulation reference entirely in double precision.
+        /// Calculates the distance from the reference position entirely in double precision.
         /// </summary>
         public double DistanceTo(Double3 position)
         {
@@ -264,7 +264,7 @@ namespace Emas
         {
             if (!SpatialMath.IsFinite(position.X) || !SpatialMath.IsFinite(position.Y) || !SpatialMath.IsFinite(position.Z))
             {
-                throw new ArgumentOutOfRangeException(parameter, "Simulation positions must be finite.");
+                throw new ArgumentOutOfRangeException(parameter, "Spatial positions must be finite.");
             }
         }
 
@@ -309,7 +309,7 @@ namespace Emas
                 }
                 catch (ArgumentOutOfRangeException)
                 {
-                    // Finite simulation coordinates can have a separation beyond representable range.
+                    // Finite coordinates can have a separation beyond representable range.
                     return false;
                 }
             }

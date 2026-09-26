@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas.Sample
 {
     /// <summary>
-    /// Represents screen-coordinate data from the simulated cockpit source.
+    /// Represents screen-coordinate data from the sample cockpit source.
     /// </summary>
 
     public sealed class CockpitMarkerData

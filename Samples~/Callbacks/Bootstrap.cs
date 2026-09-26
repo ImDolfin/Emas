@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Emas.Callbacks
 {
     /// <summary>
-    /// Configures marker presences, creates the callback detector, and advances its simulated feed.
+    /// Configures marker presences, creates the callback detector, and advances its sample feed.
     /// </summary>
     /// <remarks>
     /// This feed raises events on Unity's main thread. SDK adapters must deliver events there before calling Emas.
@@ -30,7 +30,7 @@ namespace Emas.Callbacks
         }
 
         /// <summary>
-        /// Creates a detector connected to the simulated SDK feed.
+        /// Creates a detector connected to the sample SDK feed.
         /// </summary>
         public PresenceDetector CreateDetector()
         {

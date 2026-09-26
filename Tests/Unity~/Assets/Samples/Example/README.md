@@ -12,4 +12,4 @@ Open `Scenes/Example.unity` and press Play. Cars and aircraft use application co
 
 The displayed counts use `Observe`: entry callbacks retain ghost keys and request views, departure callbacks remove keys. `OnDisable` disposes subscriptions and clears those sets. Sources have diagnostic labels visible in **Window > Emas**.
 
-Positions are local to the owning anchor. The simulated SDKs already use that frame; a real adapter must convert units, axes and coordinates before calling the concrete ghost's setters. Consumers only receive the read-only interfaces. The separate cockpit marker illustrates screen-local data without an Emas ghost.
+Positions are local to the owning anchor. The example feeds already use that frame; SDK adapters must convert units, axes, and coordinates before calling the concrete Ghost's setters. Consumers only receive the read-only interfaces. The separate cockpit marker illustrates screen-local data without an Emas ghost.

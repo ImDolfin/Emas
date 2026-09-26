@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Reworded package comments, tooltips and documentation around generic SDK data and shared coordinates.
 - Added Inspector tooltips to prefab realm settings and preserved blueprint tooltips in custom inspectors.
 - Added a generic README setup and usage guide, including how SDK geodetic readings pass through EntityModules into Spatial and a ReferenceFrame.
 - Renamed `PresenceSource` to `PresenceDetector`, the polling and callback detector types, `ISourceProvider.CreateSource()` to `IDetectorProvider.CreateDetector()`, and Anchor detector-management APIs. Unity script GUIDs were preserved.
@@ -11,7 +12,7 @@
 - Renamed `Blueprint` to `ManifestationBlueprint` and split each variant's detail-level prefabs into its own `ManifestationVariant` asset; unassigned kinds keep the built-in silent Ghost root, and empty blueprints no longer request or warn about missing views. Existing assets with nonempty `_views` mappings require one `ManifestationVariant` asset per variant; copy each detail mapping and assign those assets to the blueprint.
 - Renamed the internal `SceneEffects` helper to `SceneChangeQueue` to clarify its role in handling nested GameObject changes.
 - Added `Query.All()` to search and subscribe across every live realm, including realms started later; `ObserveWithRealm` distinguishes duplicate keys across realms and reports departures when a realm is disposed.
-- Added optional realm reference frames, double-precision simulation coordinates and independent root spatial channels; moving origins reproject entities without republication, preserve the last reference on loss and suppress distant presentation while retaining tracking.
+- Added optional realm reference frames, double-precision shared coordinates and independent root spatial channels; moving origins reproject entities without republication, preserve the last reference on loss and suppress distant presentation while retaining tracking.
 - Replaced `SceneSetup` with prefab-configured `RealmSetup` and `AnchorSetup`: each setup owns an isolated, automatically updated realm with any number of one-detector anchors, realm blueprint defaults, anchor overrides and an optional reference frame. Direct realm setup remains unchanged.
 - Reworked the importable Relative world sample around complete WGS84 SDK snapshots for a moving origin and target. A one-generic polling detector forwards raw geodetic readings; per-Presence position and orientation modules convert them into a fixed double-precision ENU frame, and a rotating ReferenceFrame keeps the origin fixed in Unity.
 

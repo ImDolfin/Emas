@@ -102,11 +102,11 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | --- | --- |
 | `Realm.ReferenceFrame` | Optional spatial projection configuration; null preserves ordinary positioning |
 | `Double3(x, y, z)` | Double-precision Cartesian position or displacement; preserve SDK double values |
-| `Double3.Distance(a, b)` | Distance between simulation positions in double precision |
+| `Double3.Distance(a, b)` | Distance between shared Cartesian positions in double precision |
 | `Spatial.SetPosition(position)` / `Position` / `HasPosition` | Publish and read the root's independent double-precision position channel |
 | `Spatial.SetRotation(rotation)` / `Rotation` / `HasRotation` | Publish and read the optional orientation channel; without it Emas leaves root rotation untouched |
 | `Spatial.IsInRange` | Whether the latest spatial projection can be presented |
-| `ReferenceFrame.Position` / `Rotation` | Manual simulation reference pose, or the latest resolved followed pose |
+| `ReferenceFrame.Position` / `Rotation` | Manual reference pose in shared Cartesian coordinates, or the latest resolved followed pose |
 | `ReferenceFrame.UnityPosition` / `UnityRotation` | Desired Unity world pose of the reference; defaults to zero/identity |
 | `ReferenceFrame.FollowedGhost` | Optional key to follow within this realm; null uses manual configuration |
 | `ReferenceFrame.FollowRotation` | Follow reference orientation as well as position; defaults to true |
@@ -114,9 +114,9 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `ReferenceFrame.HasPosition` | Whether manual configuration or following has provided a usable cached reference position |
 | `ReferenceFrame.IsReferenceAvailable` | Whether the configured reference is currently available; loss preserves the last valid pose |
 | `TryToUnityPosition(position, out result)` | Project with reference initialization and presentation-range checks |
-| `ToSimulationPosition(position)` | Convert a Unity world position back into simulation coordinates |
+| `ToSimulationPosition(position)` | Convert a Unity world position into shared Cartesian coordinates |
 | `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the frame mapping |
-| `DistanceTo(position)` | Double-precision distance from the cached simulation reference |
+| `DistanceTo(position)` | Double-precision distance from the cached reference |
 
 Add enabled `Spatial` components to participating Ghost roots. Detector adapters or entity modules normalize positions into shared Cartesian units/axes for the realm. The realm subtracts the reference in doubles before converting to Unity floats and projects the root in world space, accounting for Anchor parents. Reference movement reprojects all spatial ghosts without requiring another entity publication. Position, rotation and articulation updates remain independent; the spatial API emits no general data-change events.
 

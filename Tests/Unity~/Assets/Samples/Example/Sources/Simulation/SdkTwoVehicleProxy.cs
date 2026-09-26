@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas.Sample
 {
     /// <summary>
-    /// Represents a proxy shape supplied by the second simulated SDK.
+    /// Represents a proxy shape supplied by the second sample SDK.
     /// </summary>
 
     public sealed class SdkTwoVehicleProxy

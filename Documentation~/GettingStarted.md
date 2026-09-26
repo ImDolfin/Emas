@@ -168,7 +168,7 @@ Call all Emas APIs, including SDK publish and disappear callbacks, on Unity's ma
 
 ## Keep a network vehicle fixed in Unity
 
-For moving-reference worlds or large global coordinates, configure the **Reference Frame** section of Realm Setup or assign `realm.ReferenceFrame` by code, and add `Spatial` to participating Ghost roots. Choose a manual simulation position or a ghost key to follow; optionally set a presentation distance. Publish simulation positions as `Double3`; the realm calculates the relative displacement before converting to Unity floats. Position and orientation publications can arrive independently. A presentation range hides distant views while keeping their data tracked.
+For moving-reference worlds or large global coordinates, configure the **Reference Frame** section of Realm Setup or assign `realm.ReferenceFrame` by code, and add `Spatial` to participating Ghost roots. Choose a manual reference position in the shared coordinate system or a ghost key to follow; optionally set a presentation distance. Publish positions in that shared system as `Double3`; the realm calculates the relative displacement before converting to Unity floats. Position and orientation publications can arrive independently. A presentation range hides distant views while keeping their data tracked.
 
 Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and SDK data mapping. Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play to see the demonstration with its own realm and generated visuals.
 

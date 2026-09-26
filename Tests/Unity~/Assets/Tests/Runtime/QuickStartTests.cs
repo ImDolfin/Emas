@@ -19,7 +19,7 @@ namespace Emas.Tests.Samples
         private float _timeScale;
 
         /// <summary>
-        /// Pauses sample simulation so event timing is controlled by each test.
+        /// Pauses the sample feed so event timing is controlled by each test.
         /// </summary>
         [SetUp]
         public void SetUp()

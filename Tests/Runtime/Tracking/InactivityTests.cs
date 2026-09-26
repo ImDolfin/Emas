@@ -320,7 +320,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// The public realm clock expires inactive ghosts even while scaled simulation time is paused.
+        /// The public realm clock expires inactive ghosts even while scaled Unity time is paused.
         /// </summary>
         [UnityTest]
         public IEnumerator PublicClock_ExpiresWhileTimeScaleIsZero()

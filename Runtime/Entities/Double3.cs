@@ -5,16 +5,16 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Stores a finite three-dimensional simulation position or offset in double precision.
+    /// Stores a finite three-dimensional position or offset in double precision.
     /// </summary>
     [Serializable]
     public struct Double3 : IEquatable<Double3>
     {
-        [Tooltip("X coordinate in the shared simulation coordinate system.")]
+        [Tooltip("X coordinate of this three-dimensional position or offset.")]
         [SerializeField] private double _x;
-        [Tooltip("Y coordinate in the shared simulation coordinate system.")]
+        [Tooltip("Y coordinate of this three-dimensional position or offset.")]
         [SerializeField] private double _y;
-        [Tooltip("Z coordinate in the shared simulation coordinate system.")]
+        [Tooltip("Z coordinate of this three-dimensional position or offset.")]
         [SerializeField] private double _z;
 
         /// <summary>
@@ -93,7 +93,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Calculates distance in simulation units without converting to float precision.
+        /// Calculates distance in coordinate units without converting to float precision.
         /// Returns positive infinity if the distance exceeds the capacity of a double.
         /// </summary>
         public static double Distance(Double3 left, Double3 right)

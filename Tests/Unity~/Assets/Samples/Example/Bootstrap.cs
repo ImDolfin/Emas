@@ -45,7 +45,7 @@ namespace Emas.Sample
             _anchor = Realm.Default.GetOrCreateAnchor(
                 AnchorId,
                 _firstCarSource,
-                new SimulatedAircraftDetector { Name = "Simulated aircraft" });
+                new SimulatedAircraftDetector { Name = "Sample aircraft" });
 
             Realm realm = _anchor.Realm;
             _carSubscription = realm.Query()

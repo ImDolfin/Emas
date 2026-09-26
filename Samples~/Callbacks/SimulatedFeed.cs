@@ -30,10 +30,10 @@ namespace Emas.Callbacks
         } = new Reading("one", Vector3.zero);
 
         /// <summary>
-        /// Advances the simulated SDK and emits individual changes.
+        /// Advances the sample feed and emits individual changes.
         /// </summary>
         /// <param name="deltaTime">
-        /// Seconds since the last simulation step.
+        /// Seconds since the previous update.
         /// </param>
         public void Advance(float deltaTime)
         {

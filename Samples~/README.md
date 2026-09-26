@@ -11,4 +11,4 @@ Import through Package Manager before opening a scene.
 
 Imported samples appear beneath `Assets/Samples/Emas/0.1.0/`, in a folder matching their displayed sample name.
 
-Each sample is a standalone application assembly referencing Emas. Their sources are deterministic simulations with no network dependencies.
+Each sample is a standalone application assembly referencing Emas. Their feeds generate deterministic example data without network dependencies.

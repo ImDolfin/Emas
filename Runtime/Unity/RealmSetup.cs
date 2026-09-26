@@ -23,7 +23,7 @@ namespace Emas
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
         [Header("Reference Frame")]
-        [Tooltip("Project Spatial Ghosts relative to a manual or followed simulation reference.")]
+        [Tooltip("Project Spatial Ghosts relative to a manual or followed reference point.")]
         [SerializeField]
         private bool _useReferenceFrame;
         [Tooltip("Use a Ghost in this realm as the moving reference. Identify it with the next three fields.")]
@@ -41,16 +41,16 @@ namespace Emas
         [Tooltip("Manual Cartesian reference position in the same units as Spatial positions. Convert latitude, longitude and altitude before entering it.")]
         [SerializeField]
         private Double3 _position;
-        [Tooltip("Simulation reference orientation. A followed Ghost's published Spatial rotation replaces it.")]
+        [Tooltip("Reference orientation in the shared Cartesian frame. A followed Ghost's published Spatial rotation replaces it.")]
         [SerializeField]
         private Quaternion _rotation = Quaternion.identity;
         [Tooltip("Unity world position where the reference point appears, usually near the scene origin.")]
         [SerializeField]
         private Vector3 _unityPosition;
-        [Tooltip("Unity world orientation of the reference; aligns simulation axes with the scene.")]
+        [Tooltip("Unity world orientation of the reference; aligns shared Cartesian axes with the scene.")]
         [SerializeField]
         private Quaternion _unityRotation = Quaternion.identity;
-        [Tooltip("Cancel the simulation reference rotation, fixing its Unity heading at Unity Rotation. Disable to follow position only.")]
+        [Tooltip("Cancel the reference rotation, fixing its Unity heading at Unity Rotation. Disable to follow position only.")]
         [SerializeField]
         private bool _followRotation = true;
         [Tooltip("Hide distant spatial presentation without removing tracked Presences.")]

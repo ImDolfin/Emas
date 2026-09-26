@@ -89,7 +89,7 @@ namespace Emas.RelativeWorld
         /// <summary>
         /// Advances both SDK entities, then applies one complete snapshot before spatial projection.
         /// </summary>
-        /// <param name="seconds">Elapsed simulation time, in seconds.</param>
+        /// <param name="seconds">Elapsed time since the previous update, in seconds.</param>
         public void Advance(double seconds)
         {
             if (_realm == null)

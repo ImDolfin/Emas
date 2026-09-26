@@ -14,7 +14,7 @@ namespace Emas.Sample
         /// Reads the current cockpit marker data.
         /// </summary>
         /// <param name="elapsedSeconds">
-        /// The simulated source time.
+        /// Elapsed source time, in seconds.
         /// </param>
         /// <returns>
         /// The current source screen ID and normalized coordinate.

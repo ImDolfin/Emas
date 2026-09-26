@@ -14,7 +14,7 @@ namespace Emas.Sample
         /// Reads the current SDK One vehicle population.
         /// </summary>
         /// <param name="elapsedSeconds">
-        /// The simulated source time.
+        /// Elapsed source time, in seconds.
         /// </param>
         /// <returns>
         /// The current SDK One proxies.

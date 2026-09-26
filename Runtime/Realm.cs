@@ -84,7 +84,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets or sets optional projection from double-precision simulation coordinates into Unity world space.
+        /// Gets or sets optional projection from shared double-precision Cartesian coordinates into Unity world space.
         /// </summary>
         /// <remarks>
         /// Null, the default, leaves transforms application-controlled. Spatial components opt individual ghosts in.

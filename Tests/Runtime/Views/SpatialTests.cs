@@ -83,7 +83,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Double subtraction retains nearby millimetre-scale offsets at large simulation coordinates.
+        /// Double subtraction retains nearby millimetre-scale offsets at large world coordinates.
         /// </summary>
         [Test]
         public void Projection_SubtractsBeforeConvertingToFloat()

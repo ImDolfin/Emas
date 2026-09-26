@@ -49,7 +49,7 @@ namespace Emas.RelativeWorld
         }
 
         /// <summary>
-        /// Projects one WGS84 observation into the shared east/up/north simulation frame.
+        /// Projects one WGS84 observation into the shared fixed-datum east/up/north frame.
         /// </summary>
         /// <param name="reading">The geographic SDK observation.</param>
         public override void Apply(GeoPoseReading reading)

@@ -1,6 +1,6 @@
 # Relative worlds and large coordinates
 
-Configure a reference frame for a realm when simulation positions should be projected relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, ordinary application positioning continues to work.
+Configure a reference frame for a realm when shared Cartesian positions should be projected relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, ordinary application positioning continues to work.
 
 ## Configure a prefab realm
 
@@ -13,9 +13,9 @@ Screen (RealmSetup: manifestation blueprints and reference frame)
 Environment (another RealmSetup with its own anchors and reference frame)
 ```
 
-For a car that stays near the Unity origin, enable **Use Reference Frame** and **Follow Ghost** on the screen's Realm Setup. Enter the car's anchor ID (`vehicles`), kind ID and entity ID (`my-car`). Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in simulation units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
+For a car that stays near the Unity origin, enable **Use Reference Frame** and **Follow Ghost** on the screen's Realm Setup. Enter the car's anchor ID (`vehicles`), kind ID and entity ID (`my-car`). Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in the shared coordinate units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
 
-For a fixed origin, leave **Follow Ghost** off and enter the simulation **Position** as doubles, plus its **Rotation**. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete detector-provider wiring.
+For a fixed origin, leave **Follow Ghost** off and enter the frame's **Position** as doubles in the same coordinate system as the Ghosts, plus its **Rotation**. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete detector-provider wiring.
 
 ## Keep your car fixed by code
 
@@ -30,7 +30,7 @@ realm.ReferenceFrame = new ReferenceFrame
 };
 ```
 
-`FollowedGhost` identifies a ghost in this realm. Its enabled `Spatial` component supplies the reference's latest simulation position and, when published, rotation. Your car maps to the configured Unity pose; other spatial ghosts move and rotate relative to it. `FollowRotation = false` follows position only, allowing your car's heading to change in Unity.
+`FollowedGhost` identifies a ghost in this realm. Its enabled `Spatial` component supplies the reference's latest shared Cartesian position and, when published, rotation. Your car maps to the configured Unity pose; other spatial ghosts move and rotate relative to it. `FollowRotation = false` follows position only, allowing your car's heading to change in Unity.
 
 You can also drive the frame manually, without a reference ghost:
 
@@ -53,7 +53,7 @@ frame.Position = new Double3(reference.X, reference.Y, reference.Z);
 
 ## Apply spatial channels through entity modules
 
-A root that uses shared simulation coordinates needs `Spatial`. For example:
+A root that uses shared Cartesian coordinates needs `Spatial`. For example:
 
 ```csharp
 [RequireComponent(typeof(Spatial))]
@@ -124,21 +124,21 @@ The relative displacement is calculated in double precision before its final con
 ```text
 Unity position = Unity reference position
                + Unity reference rotation
-               * inverse(simulation reference rotation)
-               * (entity simulation position - simulation reference position)
+               * inverse(reference rotation)
+               * (entity position - reference position)
 ```
 
-With position-only following, the inverse simulation-reference rotation is omitted. Absolute positions around one billion metres can therefore yield nearby Unity positions such as `20.25 m` without first rounding the global values into floats. Converting an already-rounded global `Vector3` to `Double3` cannot recover precision.
+With position-only following, the inverse reference rotation is omitted. Absolute positions around one billion metres can therefore yield nearby Unity positions such as `20.25 m` without first rounding the global values into floats. Converting an already-rounded global `Vector3` to `Double3` cannot recover precision.
 
 Projected roots stay beneath their Anchors. Projection sets world position and compensates for parent placement; do not add an Anchor's offset to spatial coordinates a second time. Ordinary ghosts without an enabled `Spatial` retain their existing positioning behavior. Network scenery that should move with the reference should use spatial projection too; a local cockpit can remain fixed in the Unity scene.
 
 Disabling `Spatial` stops projection and restores renderers and colliders that spatial culling had disabled. Setting `Realm.ReferenceFrame` to null releases projection and restores that presentation on the next realm update; requested views resume through the usual refresh phase. Roots keep their last projected world pose in either case. Emas does not restore a previous transform pose; application positioning can take over from the current pose.
 
-Only one system should write a participating root's position and published rotation. Remove old root-position behaviors such as the example's `ApplyPosition` from spatial ghost prefabs. Dynamic Rigidbody simulation or other transform writers require an application-specific integration; spatial projection directly places the root.
+Only one system should write a participating root's position and published rotation. Remove old root-position behaviors such as the example's `ApplyPosition` from spatial ghost prefabs. Dynamic Rigidbody motion or other transform writers require an application-specific integration; spatial projection directly places the root.
 
 ## Limit distant presentation
 
-`MaxDistance` is an optional positive distance in simulation units, measured in doubles from the reference. Null disables the configured range limit. Select a range appropriate for your visual scale; relative coordinates far from the reference still have the precision limits of Unity floats.
+`MaxDistance` is an optional positive distance in the shared coordinate units, measured in doubles from the reference. Null disables the configured range limit. Select a range appropriate for your visual scale; relative coordinates far from the reference still have the precision limits of Unity floats.
 
 A spatial ghost without a position, without an initialized reference, or outside the presentation range keeps its tracking identity and data. Its requested view is suppressed; entering range creates the requested view automatically. `Spatial.IsInRange` describes its latest projection result. Root rendering and colliders are also suppressed outside the range while root scripts remain active. This is a presentation limit, not entity removal or a query-availability filter.
 
@@ -153,11 +153,11 @@ Application consumers can use the same conversion and distance rules:
 | Method | Use |
 | --- | --- |
 | `TryToUnityPosition(position, out unityPosition)` | Project a double position when the reference is initialized and the position is within its presentation range |
-| `ToSimulationPosition(unityPosition)` | Convert a Unity world position back into the frame's simulation coordinates |
+| `ToSimulationPosition(unityPosition)` | Convert a Unity world position back into the frame's shared Cartesian coordinates |
 | `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the frame's active rotation mapping |
-| `DistanceTo(position)` | Compute simulation distance from the cached reference in doubles |
+| `DistanceTo(position)` | Compute distance from the cached reference in doubles |
 
-Check `HasPosition` before inverse-position, rotation-conversion or reference-distance operations when following a ghost that has not published yet. `TryToUnityPosition` returns false while no reference exists or a result cannot fit in finite Unity floats. Use `Double3.Distance(a, b)` for distances between simulation entities independently of a reference frame. Followed state is resolved during realm updates, so conversion helpers use the latest resolved reference.
+Check `HasPosition` before inverse-position, rotation-conversion or reference-distance operations when following a ghost that has not published yet. `TryToUnityPosition` returns false while no reference exists or a result cannot fit in finite Unity floats. Use `Double3.Distance(a, b)` for distances between positions in the shared coordinate system independently of a reference frame. Followed state is resolved during realm updates, so conversion helpers use the latest resolved reference.
 
 ## Run the example
 

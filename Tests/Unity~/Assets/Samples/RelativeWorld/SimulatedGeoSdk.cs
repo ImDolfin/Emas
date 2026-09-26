@@ -4,14 +4,14 @@ using System.Collections.Generic;
 namespace Emas.RelativeWorld
 {
     /// <summary>
-    /// Simulates one SDK snapshot containing a moving reference entity and a moving target entity.
+    /// Provides complete SDK-style snapshots for a moving reference entity and target entity.
     /// </summary>
     internal sealed class SimulatedGeoSdk
     {
         private double _elapsed;
 
         /// <summary>
-        /// Advances the SDK simulation before the next complete snapshot is read.
+        /// Advances both example entities before the next complete snapshot is read.
         /// </summary>
         internal void Advance(double seconds)
         {

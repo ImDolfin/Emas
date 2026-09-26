@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Emas
 {
     /// <summary>
-    /// Base class for detecting entities from one external SDK or simulation feed.
+    /// Base class for detecting entities from an external data source.
     /// </summary>
     /// <remarks>
     /// Use all detector operations on Unity's main thread. The application handles SDK threading before calling Emas.

@@ -4,10 +4,10 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Stores independent simulation position and rotation updates for optional realm-relative placement.
+    /// Stores independent position and rotation updates for optional realm-relative placement.
     /// </summary>
     /// <remarks>
-    /// Place on the Ghost root. Positions use the realm's shared Cartesian simulation coordinates and retain doubles.
+    /// Place on the Ghost root. Positions use the realm's shared Cartesian coordinates and retain doubles.
     /// Realm projection owns this root's world pose when a reference frame is configured; views inherit that pose.
     /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished
     /// when inactivity expiry is enabled. Disable this component to release spatial placement and range suppression.
@@ -27,7 +27,7 @@ namespace Emas
         private readonly HashSet<Collider> _hiddenColliders = new HashSet<Collider>();
 
         /// <summary>
-        /// Gets the last simulation position, which is meaningful after HasPosition becomes true.
+        /// Gets the last position in shared Cartesian coordinates, which is meaningful after HasPosition becomes true.
         /// </summary>
         public Double3 Position
         {
@@ -38,7 +38,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets the last simulation rotation, independently of position.
+        /// Gets the last rotation in the shared Cartesian frame, independently of position.
         /// </summary>
         public Quaternion Rotation
         {
@@ -49,7 +49,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets whether a simulation position has been supplied.
+        /// Gets whether a position in shared Cartesian coordinates has been supplied.
         /// </summary>
         public bool HasPosition
         {
@@ -60,7 +60,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets whether a simulation rotation has been supplied; otherwise the root's rotation is left alone.
+        /// Gets whether a rotation in the shared Cartesian frame has been supplied; otherwise the root's rotation is left alone.
         /// </summary>
         public bool HasRotation
         {
@@ -87,7 +87,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Supplies a simulation position without changing rotation or other ghost data.
+        /// Supplies a position in shared Cartesian coordinates without changing rotation or other ghost data.
         /// </summary>
         public void SetPosition(Double3 position)
         {
@@ -97,7 +97,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Supplies a simulation rotation without changing position or other ghost data.
+        /// Supplies a rotation in the shared Cartesian frame without changing position or other ghost data.
         /// </summary>
         public void SetRotation(Quaternion rotation)
         {

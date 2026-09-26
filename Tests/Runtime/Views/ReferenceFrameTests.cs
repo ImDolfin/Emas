@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas.Tests
 {
     /// <summary>
-    /// Verifies reference configuration and conversion between simulation and Unity coordinates.
+    /// Verifies reference configuration and conversion between shared coordinates and Unity coordinates.
     /// </summary>
     public sealed class ReferenceFrameTests
     {
@@ -99,7 +99,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Presentation distance is measured in double simulation coordinates and includes its boundary.
+        /// Presentation distance is measured in double-precision shared coordinates and includes its boundary.
         /// </summary>
         [Test]
         public void MaxDistance_UsesSimulationDistanceAndCanBeCleared()
