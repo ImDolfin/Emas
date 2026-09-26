@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Added a generic README setup and usage guide, including how SDK geodetic readings pass through EntityModules into Spatial and a ReferenceFrame.
 - Renamed `PresenceSource` to `PresenceDetector`, the polling and callback detector types, `ISourceProvider.CreateSource()` to `IDetectorProvider.CreateDetector()`, and Anchor detector-management APIs. Unity script GUIDs were preserved.
 - Added a stable realm-owned `Presence` handle for each detected identity, with labels, visual variants, typed capability interfaces, availability and a Ghost root. Per-Kind `RegisterPresenceInitializer<TGhost>` callbacks install developer-supplied `EntityModule<TData>` instances before SDK data is applied; `IRealmConfigurator` runs these registrations before prefab detectors start.
 - Added one-generic polling and callback detectors that identify and report SDK data without creating or mutating Ghosts. A report with no matching module still tracks its Presence and ignores that payload; an unassigned manifestation blueprint keeps the root viewless. Two-generic adapters and direct code integrations remain available.
