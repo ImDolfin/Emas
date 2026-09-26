@@ -84,44 +84,57 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Invalid scene entries produce actionable errors before any default realm is created.
+        /// Prefab realm and anchor Inspectors report configuration errors before starting a realm.
         /// </summary>
         [Test]
-        public void SceneSetup_ValidatesWithoutCreatingRealm()
+        public void RealmSetup_ValidatesPrefabConfiguration()
         {
             GameObject go = new GameObject("setup validation");
             Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            UnityEditor.Editor editor = null;
+            UnityEditor.Editor realmEditor = null;
+            UnityEditor.Editor anchorEditor = null;
             try
             {
-                SceneSetup setup = go.AddComponent<SceneSetup>();
-                editor = UnityEditor.Editor.CreateEditor(setup);
-                Assert.That(editor, Is.TypeOf<SceneSetupInspector>());
-                Assert.That(setup.GetConfigurationError(), Is.Null);
-                SerializedObject serialized = new SerializedObject(setup);
+                go.SetActive(false);
+                RealmSetup realm = go.AddComponent<RealmSetup>();
+                AnchorSetup anchor = go.AddComponent<AnchorSetup>();
+                go.AddComponent<InspectorProvider>();
+                go.SetActive(true);
+                realmEditor = UnityEditor.Editor.CreateEditor(realm);
+                anchorEditor = UnityEditor.Editor.CreateEditor(anchor);
+                Assert.That(realmEditor, Is.TypeOf<RealmSetupInspector>());
+                Assert.That(anchorEditor, Is.TypeOf<AnchorSetupInspector>());
+                Assert.That(realm.GetConfigurationError(), Is.Null);
+
+                SerializedObject serialized = new SerializedObject(anchor);
                 serialized.FindProperty("_anchorId").stringValue = "";
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                Assert.That(setup.GetConfigurationError(), Does.Contain("anchor ID"));
-                Assert.That(Assert.Throws<InvalidOperationException>(() => setup.Track()).Message, Is.EqualTo(setup.GetConfigurationError()));
+                Assert.That(realm.GetConfigurationError(), Does.Contain("anchor ID"));
+                Assert.That(Assert.Throws<InvalidOperationException>(() => realm.StartRealm()).Message,
+                    Is.EqualTo(realm.GetConfigurationError()));
+
                 serialized.FindProperty("_anchorId").stringValue = "valid";
                 SerializedProperty entries = serialized.FindProperty("_blueprints");
                 entries.arraySize = 1;
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                Assert.That(setup.GetConfigurationError(), Does.Contain("index 0 is null"));
+                Assert.That(realm.GetConfigurationError(), Does.Contain("index 0 is null"));
+
                 blueprint.Configure(new Kind("test"), null, null, null);
                 entries.arraySize = 2;
                 entries.GetArrayElementAtIndex(0).objectReferenceValue = blueprint;
                 entries.GetArrayElementAtIndex(1).objectReferenceValue = blueprint;
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                Assert.That(setup.GetConfigurationError(), Does.Contain("duplicates kind"));
+                Assert.That(realm.GetConfigurationError(), Does.Contain("duplicates kind"));
+
                 entries.arraySize = 1;
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                Assert.That(setup.GetConfigurationError(), Is.Null);
-                Assert.That(setup.Anchor, Is.Null);
+                Assert.That(realm.GetConfigurationError(), Is.Null);
+                Assert.That(realm.Realm, Is.Null);
             }
             finally
             {
-                UnityEngine.Object.DestroyImmediate(editor);
+                UnityEngine.Object.DestroyImmediate(realmEditor);
+                UnityEngine.Object.DestroyImmediate(anchorEditor);
                 UnityEngine.Object.DestroyImmediate(go);
                 UnityEngine.Object.DestroyImmediate(blueprint);
             }
@@ -230,6 +243,17 @@ namespace Emas.Editor.Tests
             }
 
             yield return new ExitPlayMode();
+        }
+
+        private sealed class InspectorProvider : MonoBehaviour, ISourceProvider
+        {
+            /// <summary>
+            /// Returns no source because this test only inspects configuration.
+            /// </summary>
+            public PresenceSource CreateSource()
+            {
+                return null;
+            }
         }
 
         private sealed class InspectorGhost : Ghost

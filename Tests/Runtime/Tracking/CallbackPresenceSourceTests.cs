@@ -1,13 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
 namespace Emas.Tests
 {
     /// <summary>
-    /// Verifies callback publication, registration lifetimes and Inspector integration.
+    /// Verifies callback publication and registration lifetimes.
     /// </summary>
     public sealed class CallbackPresenceSourceTests
     {
@@ -588,41 +587,6 @@ namespace Emas.Tests
             Assert.That(Find("b"), Is.Not.SameAs(b));
             Assert.That(Find("b").Value, Is.EqualTo(7));
             Assert.That(current.IsActive, Is.True);
-        }
-
-        /// <summary>
-        /// Inspector tracking creates views, cleans up on disable and permits fresh subscriptions.
-        /// </summary>
-        [Test]
-        public void SceneSetup_ManifestsCleansUpAndRestarts()
-        {
-            GameObject owner = new GameObject("callback setup");
-            _objects.Add(owner);
-            SceneSetup setup = owner.AddComponent<SceneSetup>();
-            GameObject prefab = new GameObject("callback view");
-            _objects.Add(prefab);
-            prefab.SetActive(false);
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            _objects.Add(blueprint);
-            blueprint.Configure(Population, null, new Blueprint.ViewMapping[0], prefab);
-            typeof(SceneSetup).GetField("_blueprints", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(setup, new[] { blueprint });
-            Feed feed = new Feed();
-            CallbackPresenceSource<Item, Probe> source = Source(feed);
-            setup.Track(source);
-            Action<Item> oldPublish = feed.Publish;
-            feed.Publish(new Item("a"));
-            _realm.Update();
-            Assert.That(Find("a").GetComponentInChildren<View>(), Is.Not.Null);
-            setup.enabled = false;
-            Assert.That(_realm.Query().Count, Is.Zero);
-            Assert.That(feed.Stops, Is.EqualTo(1));
-            setup.enabled = true;
-            setup.Track(source);
-            oldPublish(new Item("old"));
-            feed.Publish(new Item("b"));
-            _realm.Update();
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
-            Assert.That(Find("b").GetComponentInChildren<View>(), Is.Not.Null);
         }
 
         /// <summary>

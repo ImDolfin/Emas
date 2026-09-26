@@ -1,8 +1,23 @@
 # Relative worlds and large coordinates
 
-Assign a `ReferenceFrame` to a realm when simulation positions should be projected relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, ordinary application positioning continues to work.
+Configure a reference frame for a realm when simulation positions should be projected relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, ordinary application positioning continues to work.
 
-## Keep your car fixed in Unity
+## Configure a prefab realm
+
+Add **Emas > Realm Setup** to the prefab root. Its **Blueprints** list holds defaults for that realm. Add one **Emas > Anchor Setup** for each source frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor Id** within this realm and exactly one enabled component implementing `ISourceProvider` on the same object. That component returns a `PresenceSource` from `CreateSource()`. Anchor blueprints can override the realm defaults. For example:
+
+```text
+Screen (RealmSetup: blueprints and reference frame)
+  Vehicles (AnchorSetup: id vehicles; CarSourceProvider)
+  Signs (AnchorSetup: id signs; SignSourceProvider)
+Environment (another RealmSetup with its own anchors and reference frame)
+```
+
+For a car that stays near the Unity origin, enable **Use Reference Frame** and **Follow Ghost** on the screen's Realm Setup. Enter the car's anchor ID (`vehicles`), kind ID and entity ID (`my-car`). Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in simulation units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
+
+For a fixed origin, leave **Follow Ghost** off and enter the simulation **Position** as doubles, plus its **Rotation**. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete source-provider wiring.
+
+## Keep your car fixed by code
 
 ```csharp
 realm.ReferenceFrame = new ReferenceFrame
@@ -34,7 +49,7 @@ realm.ReferenceFrame = frame;
 frame.Position = new Double3(reference.X, reference.Y, reference.Z);
 ```
 
-`Realm.Default` updates automatically. An isolated `new Realm()` needs an application-owned `Update()` call after its incoming data is processed and must be disposed when its owner stops. Choose a small Unity reference position near the scene origin.
+`Realm.Default` updates automatically. An isolated `new Realm()` needs an application-owned `Update()` call after its incoming data is processed and must be disposed when its owner stops. A `RealmSetup` advances its own isolated realm automatically. Choose a small Unity reference position near the scene origin.
 
 ## Publish spatial channels independently
 

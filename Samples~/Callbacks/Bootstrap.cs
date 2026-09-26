@@ -4,25 +4,27 @@ using UnityEngine;
 namespace Emas.Callbacks
 {
     /// <summary>
-    /// Connects SDK events and their unsubscribe action to Inspector-configured tracking.
+    /// Creates the callback source and advances its simulated feed.
     /// </summary>
     /// <remarks>
-    /// This simulated feed raises events on Unity's main thread. SDK adapters must deliver events on that thread before calling Emas.
+    /// This feed raises events on Unity's main thread. SDK adapters must deliver events there before calling Emas.
     /// </remarks>
-    public sealed class Bootstrap : MonoBehaviour
+    public sealed class Bootstrap : MonoBehaviour, ISourceProvider
     {
         private SimulatedFeed _feed;
 
-        private void OnEnable()
+        /// <summary>
+        /// Creates a source connected to the simulated SDK feed.
+        /// </summary>
+        public PresenceSource CreateSource()
         {
             SimulatedFeed feed = new SimulatedFeed();
             _feed = feed;
-            GetComponent<SceneSetup>().Track(new CallbackPresenceSource<Reading, Marker>(Marker.Kind)
+            return new CallbackPresenceSource<Reading, Marker>(Marker.Kind)
                 .IdentifyBy(item => item.Id)
                 .Apply((item, ghost) => ghost.SetPosition(item.Position))
                 .Listen((publish, remove) =>
                 {
-                    // Attach live listeners before publishing the feed's current item.
                     feed.Changed += publish;
                     feed.Removed += remove;
                     Action unsubscribe = () =>
@@ -44,12 +46,15 @@ namespace Emas.Callbacks
                         unsubscribe();
                         throw;
                     }
-                }));
+                });
         }
 
         private void Update()
         {
-            _feed.Advance(Time.deltaTime);
+            if (_feed != null)
+            {
+                _feed.Advance(Time.deltaTime);
+            }
         }
     }
 }

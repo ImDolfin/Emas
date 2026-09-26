@@ -66,14 +66,14 @@ using UnityEngine;
 
 namespace Emas.Minimal
 {
-    public sealed class Bootstrap : MonoBehaviour
+    public sealed class Bootstrap : MonoBehaviour, ISourceProvider
     {
-        private void OnEnable()
+        public PresenceSource CreateSource()
         {
-            GetComponent<SceneSetup>().Track(new PollingPresenceSource<Reading, Marker>(Marker.Kind)
+            return new PollingPresenceSource<Reading, Marker>(Marker.Kind)
                 .ReadFrom(() => new[] { new Reading(id: "one", position: new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f)) })
                 .IdentifyBy(item => item.Id)
-                .Apply((item, ghost) => ghost.SetPosition(item.Position)));
+                .Apply((item, ghost) => ghost.SetPosition(item.Position));
         }
     }
 }
@@ -85,25 +85,28 @@ namespace Emas.Minimal
 
 1. Create a cube prefab for the visual child. Keep its local position/rotation at zero and scale at one.
 2. Create **Assets > Create > Emas > Blueprint**. Set **Kind Id** to `minimal.marker` and **Fallback View Prefab** to the cube prefab. Leave **Ghost Prefab** and **Views** empty.
-3. Create a scene object named Tracking. Add **Emas > Scene Setup** and the `Bootstrap` component. Set a unique **Anchor Id**, assign the blueprint and leave **Automatic Views** enabled.
-4. Press Play. Emas creates a `Marker` root beneath the anchor, updates its data and attaches the cube view. Move Tracking to see the coordinate frame move with it.
+3. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `Bootstrap`. On Realm Setup, assign the blueprint as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled.
+4. Press Play. Realm Setup creates its own realm, attaches the anchor's one source, and updates the realm each frame. Emas creates a `Marker` root beneath the anchor and attaches the cube view. Move Tracking to move its anchor frame.
 
-Unity advances `Realm.Default` automatically. `SceneSetup.StopTracking()` removes its anchor, ghosts and views while leaving the component enabled; another `Track` call starts again. Disabling also removes tracking; the bootstrap calls `Track` again on re-enable. Toggle the whole Tracking object so both components share that lifetime. Inspector blueprints apply only to that anchor and leave with it. An empty blueprint list is valid for data-only tracking.
+Each Realm Setup owns one isolated realm. You can put several in a scene or prefab, with any number of Anchor Setup objects beneath each one. Each anchor needs exactly one enabled component implementing `ISourceProvider` on the same object; `CreateSource()` supplies one presence source each time that anchor starts. Assign any number of default blueprints to Realm Setup and optional overrides to each anchor, with at most one per kind in either list. Empty blueprint lists are valid for data-only tracking. A nested Realm Setup owns its own anchors. Use `realmSetup.Realm` for queries and lookups; it is null while stopped. The setup starts on the first update after enable in Play Mode and calls its realm's `Update()` each frame. `StopRealm()` disposes that realm and its anchors; `StartRealm()` can start it again. Disabling the component or its object also stops it.
 
-Use `setup.Anchor.RestartSource(source)` to restart an attached source and `ReplaceSource` to change its instance. A successful handover reuses compatible roots republished during startup; unreported roots are removed after the first subsequent update and queued startup publications finish. A source failure removes its population immediately, so restarting a failed source creates new roots.
+Direct code setup is unchanged: `Realm.Default` is still automatically updated, and a realm created with `new Realm()` is still advanced through explicit `Update()` calls. You can configure its anchors, sources, blueprints and reference frame through the existing APIs.
+
+Use `anchorSetup.Anchor.RestartSource(source)` to restart an attached source and `ReplaceSource` to change its instance. A successful handover reuses compatible roots republished during startup; unreported roots are removed after the first subsequent update and queued startup publications finish. A source failure removes its population immediately, so restarting a failed source creates new roots.
 
 When you already know the identity, look it up directly:
 
 ```csharp
-Key key = new Key("default", Marker.Kind, "one");
+Realm realm = GetComponent<RealmSetup>().Realm;
+Key key = new Key("quick-start", Marker.Kind, "one");
 IGhost ghost;
-if (Realm.Default.TryGetGhost(key, out ghost) && ghost.IsAvailable)
+if (realm != null && realm.TryGetGhost(key, out ghost) && ghost.IsAvailable)
 {
     Debug.Log(ghost.Name);
 }
 ```
 
-The anchor ID must match your SceneSetup. Lookup also finds prepared ghosts and unavailable roots during startup handover; removal returns `false`.
+The anchor ID must match your Anchor Setup. Lookup also finds prepared ghosts and unavailable roots during startup handover; removal returns `false`.
 
 For interface-based consumers, paired query arrivals/departures and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>` for optional interfaces or `ghost.GetRequired<T>()` when a missing provider should fail immediately; the application owns those interfaces.
 
@@ -125,7 +128,7 @@ Call all Emas APIs, including publish/remove callbacks, on Unity's main thread. 
 
 ## Keep a network vehicle fixed in Unity
 
-For moving-reference worlds or large global coordinates, assign `realm.ReferenceFrame` and add `Spatial` to participating Ghost roots. Publish simulation positions as `Double3`; the realm calculates the relative displacement before converting to Unity floats. Position and orientation publications can arrive independently. A presentation range hides distant views while keeping their data tracked.
+For moving-reference worlds or large global coordinates, configure the **Reference Frame** section of Realm Setup or assign `realm.ReferenceFrame` by code, and add `Spatial` to participating Ghost roots. Choose a manual simulation position or a ghost key to follow; optionally set a presentation distance. Publish simulation positions as `Double3`; the realm calculates the relative displacement before converting to Unity floats. Position and orientation publications can arrive independently. A presentation range hides distant views while keeping their data tracked.
 
 Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and source mapping. Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play to see the demonstration with its own realm and generated visuals.
 
@@ -133,7 +136,7 @@ Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference los
 
 | Symptom | Check |
 | --- | --- |
-| Nothing appears | Check Blueprint and SceneSetup Inspector errors, matching kind IDs and the view prefab. A ghost can be available without a view. |
+| Nothing appears | Check Realm Setup, Anchor Setup and Blueprint Inspector errors, matching kind IDs and the view prefab. A ghost can be available without a view. |
 | A source stops | Its ghosts are removed. Open **Window > Emas** during Play Mode or read `source.LastErrorContext` and `source.LastError`. Fix the cause and call `anchor.RestartSource(source)` to repopulate. Assign `source.Name` to distinguish feeds. |
 | One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its blueprint, variant or detail to retry. |
 | Polling entities disappear | Return the full population, not only changes. Null, duplicate/empty IDs and mapping exceptions stop the source. |

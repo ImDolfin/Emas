@@ -318,6 +318,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2106575760}
   - component: {fileID: 2106575759}
+  - component: {fileID: 2106575761}
   - component: {fileID: 2106575758}
   m_Layer: 0
   m_Name: Tracking
@@ -347,13 +348,42 @@ MonoBehaviour:
   m_GameObject: {fileID: 2106575757}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 540e4d24e1644b7e9540dce904ba7ba3, type: 3}
+  m_Script: {fileID: 11500000, guid: 9ea85fc665404e9b9e20cbc07c27f910, type: 3}
   m_Name:
   m_EditorClassIdentifier:
   _anchorId: callback-quick-start
+  _blueprints: []
+  _automaticViews: 1
+--- !u!114 &2106575761
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2106575757}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0dc0ad5657534e5fbe65dcabc9d84ea9, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
   _blueprints:
   - {fileID: 11400000, guid: 82ae0c9abd5c4d098ca60d741e2dfeea, type: 2}
-  _automaticViews: 1
+  _useReferenceFrame: 0
+  _followGhost: 0
+  _referenceAnchorId:
+  _referenceKind:
+    _id:
+  _referenceEntityId:
+  _position:
+    _x: 0
+    _y: 0
+    _z: 0
+  _rotation: {x: 0, y: 0, z: 0, w: 1}
+  _unityPosition: {x: 0, y: 0, z: 0}
+  _unityRotation: {x: 0, y: 0, z: 0, w: 1}
+  _followRotation: 1
+  _limitDistance: 0
+  _maxDistance: 5000
 --- !u!4 &2106575760
 Transform:
   m_ObjectHideFlags: 0

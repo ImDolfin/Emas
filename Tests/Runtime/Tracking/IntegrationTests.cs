@@ -1,15 +1,12 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
     /// <summary>
-    /// Exercises complete-snapshot polling and Inspector-owned tracking against Unity.
+    /// Exercises complete-snapshot polling and direct realm tracking against Unity.
     /// </summary>
     public sealed class IntegrationTests
     {
@@ -33,7 +30,6 @@ namespace Emas.Tests
         [TearDown]
         public void TearDown()
         {
-            StopSetupWhenEnabled.Target = null;
             _realm.Dispose();
             foreach (UnityEngine.Object value in _objects)
             {
@@ -92,16 +88,15 @@ namespace Emas.Tests
                 });
             }
 
-            SceneSetup setup = CreateSetup();
-            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => setup.Track(source));
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
+                _realm.GetOrCreateAnchor("default", source));
             Assert.That(error.Message, Is.EqualTo("Polling source is missing required steps: " + missing + ". Configure them before tracking."));
             Assert.That(reads, Is.Zero);
-            Assert.That(setup.Anchor, Is.Null);
             Assert.That(_realm.ContainsAnchor("default"), Is.False);
             source.ReadFrom(() => new[] { "a" }).IdentifyBy(id => id).Apply((item, ghost) =>
             {
             });
-            setup.Track(source);
+            _realm.GetOrCreateAnchor("default", source);
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
         }
 
@@ -286,142 +281,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Scene ownership cleans up immediately on disable and can be started again.
-        /// </summary>
-        [Test]
-        public void Setup_DisableCleansUpAndAllowsRestart()
-        {
-            SceneSetup setup = CreateSetup();
-            Anchor anchor = setup.Track(Source(() => new[] { "a" }));
-            Assert.That(setup.Anchor, Is.SameAs(anchor));
-            Assert.That(anchor.Transform.parent, Is.EqualTo(setup.transform));
-            setup.enabled = false;
-            Assert.That(setup.Anchor, Is.Null);
-            Assert.That(_realm.Query().Count, Is.Zero);
-            Assert.Throws<InvalidOperationException>(() => setup.Track());
-            setup.enabled = true;
-            Assert.That(setup.Track(Source(() => new[] { "b" })), Is.Not.SameAs(anchor));
-        }
-
-        /// <summary>
-        /// Setup refuses to take over another owner's anchor.
-        /// </summary>
-        [Test]
-        public void Setup_RejectsDuplicateOwnershipAndRepeatedStart()
-        {
-            Anchor existing = _realm.GetOrCreateAnchor("default", Source(() => new[] { "a" }));
-            SceneSetup setup = CreateSetup();
-            Assert.Throws<InvalidOperationException>(() => setup.Track());
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
-            existing.Dispose();
-            setup.Track();
-            Assert.Throws<InvalidOperationException>(() => setup.Track());
-        }
-
-        /// <summary>
-        /// Inspector-assigned blueprints produce views only when enabled.
-        /// </summary>
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Setup_AutomaticViewsRespectInspectorSetting(bool automatic)
-        {
-            SceneSetup setup = CreateSetup();
-            GameObject prefab = new GameObject("view prefab");
-            _objects.Add(prefab);
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            _objects.Add(blueprint);
-            blueprint.Configure(Population, null, new Blueprint.ViewMapping[0], prefab);
-            SetField(setup, "_blueprints", new[] { blueprint });
-            SetField(setup, "_automaticViews", automatic);
-            setup.Track(Source(() => new[] { "a" }));
-            _realm.Update();
-            Probe ghost = (Probe)_realm.Query().Single();
-            Assert.That(ghost.GetComponentInChildren<View>() != null, Is.EqualTo(automatic));
-            setup.enabled = false;
-            Assert.That(_realm.Query().Count, Is.Zero);
-        }
-
-        /// <summary>
-        /// Separate scene setups can use the same kind without changing each other's later ghosts or leaving realm defaults.
-        /// </summary>
-        [Test]
-        public void Setup_BlueprintsStayWithTheirAnchors()
-        {
-            SceneSetup first = CreateSetup();
-            SceneSetup second = CreateSetup();
-            SetField(second, "_anchorId", "second");
-            GameObject firstPrefab = new GameObject("first view");
-            GameObject secondPrefab = new GameObject("second view");
-            _objects.Add(firstPrefab);
-            _objects.Add(secondPrefab);
-            firstPrefab.SetActive(false);
-            secondPrefab.SetActive(false);
-            Blueprint firstBlueprint = ScriptableObject.CreateInstance<Blueprint>();
-            Blueprint secondBlueprint = ScriptableObject.CreateInstance<Blueprint>();
-            _objects.Add(firstBlueprint);
-            _objects.Add(secondBlueprint);
-            firstBlueprint.Configure(Population, null, null, firstPrefab);
-            secondBlueprint.Configure(Population, null, null, secondPrefab);
-            SetField(first, "_blueprints", new[] { firstBlueprint });
-            SetField(second, "_blueprints", new[] { secondBlueprint });
-
-            List<string> firstIds = new List<string> { "a" };
-            first.Track(Source(() => firstIds));
-            second.Track(Source(() => new[] { "b" }));
-            _realm.Update();
-            Probe firstGhost = (Probe)_realm.Query().InAnchor("default").Single();
-            Probe secondGhost = (Probe)_realm.Query().InAnchor("second").Single();
-            Assert.That(firstGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("first view"));
-            Assert.That(secondGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("second view"));
-
-            firstIds.Add("later");
-            _realm.Update();
-            IGhost later;
-            Assert.That(_realm.TryGetGhost(new Key("default", Population, "later"), out later), Is.True);
-            Assert.That(((Probe)later).GetComponentInChildren<View>().gameObject.name, Is.EqualTo("first view"));
-
-            first.StopTracking();
-            _realm.GetOrCreateAnchor("unconfigured", Source(() => new[] { "c" }));
-            Probe unconfigured = (Probe)_realm.Query().InAnchor("unconfigured").Single();
-            Assert.That(_realm.Manifest(unconfigured), Is.Null);
-            Assert.That(secondGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("second view"));
-        }
-
-        /// <summary>
-        /// Configuration errors identify the offending entry and leave setup ready to retry.
-        /// </summary>
-        [TestCase("null", "is null")]
-        [TestCase("kind", "requires a non-empty kind ID")]
-        [TestCase("duplicate", "duplicates kind 'tests.polling'")]
-        public void Setup_ValidatesBlueprintsBeforeStarting(string failure, string expectedReason)
-        {
-            SceneSetup setup = CreateSetup();
-            Blueprint first = ScriptableObject.CreateInstance<Blueprint>();
-            _objects.Add(first);
-            first.Configure(Population, null, null, null);
-            Blueprint invalid = null;
-            if (failure != "null")
-            {
-                invalid = ScriptableObject.CreateInstance<Blueprint>();
-                invalid.name = "Invalid blueprint";
-                _objects.Add(invalid);
-                if (failure == "duplicate")
-                {
-                    invalid.Configure(Population, null, null, null);
-                }
-            }
-
-            SetField(setup, "_blueprints", new[] { first, invalid });
-            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => setup.Track());
-            Assert.That(error.Message, Does.Contain("index 1"));
-            Assert.That(error.Message, Does.Contain(expectedReason));
-            Assert.That(_realm.ContainsAnchor("default"), Is.False);
-            Assert.That(setup.Anchor, Is.Null);
-            SetField(setup, "_blueprints", new[] { first });
-            Assert.That(setup.Track(), Is.Not.Null);
-        }
-
-        /// <summary>
         /// Reusing an anchor preserves its frame and starts only newly attached sources.
         /// </summary>
         [Test]
@@ -443,176 +302,6 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Count, Is.EqualTo(2));
         }
 
-        /// <summary>
-        /// A startup exception rolls back the scene owner's population.
-        /// </summary>
-        [Test]
-        public void Setup_StartupFailureCanBeRetried()
-        {
-            SceneSetup setup = CreateSetup();
-            Assert.Throws<InvalidOperationException>(() => setup.Track(Source(() => null)));
-            Assert.That(setup.Anchor, Is.Null);
-            Assert.That(_realm.ContainsAnchor("default"), Is.False);
-            Assert.That(setup.Track(Source(() => new[] { "a" })), Is.Not.Null);
-        }
-
-        /// <summary>
-        /// Disabling from a startup callback cannot leave tracking behind.
-        /// </summary>
-        [Test]
-        public void Setup_DisableDuringStartupCleansUp()
-        {
-            SceneSetup setup = CreateSetup();
-            PollingPresenceSource<string, Probe> source = new PollingPresenceSource<string, Probe>(Population)
-                .ReadFrom(() => new[] { "a" })
-                .IdentifyBy(id => id)
-                .Apply((item, ghost) => setup.enabled = false);
-            Assert.Throws<InvalidOperationException>(() => setup.Track(source));
-            Assert.That(setup.Anchor, Is.Null);
-            Assert.That(_realm.ContainsAnchor("default"), Is.False);
-        }
-
-        /// <summary>
-        /// A view activation callback can disable setup without leaving views or subscriptions alive.
-        /// </summary>
-        [Test]
-        public void Setup_ViewCallbackCanDisableOwner()
-        {
-            SceneSetup setup = CreateSetup();
-            GameObject prefab = new GameObject("callback view");
-            _objects.Add(prefab);
-            prefab.SetActive(false);
-            prefab.AddComponent<StopSetupWhenEnabled>();
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            _objects.Add(blueprint);
-            blueprint.Configure(Population, null, new Blueprint.ViewMapping[0], prefab);
-            SetField(setup, "_blueprints", new[] { blueprint });
-            bool publish = false;
-            setup.Track(Source(() => publish ? new[] { "a" } : new string[0]));
-            StopSetupWhenEnabled.Target = setup;
-            publish = true;
-            _realm.Update();
-            Assert.That(setup.Anchor, Is.Null);
-            Assert.That(_realm.Query().Count, Is.Zero);
-            Assert.That(_realm.ContainsAnchor("default"), Is.False);
-        }
-
-        private sealed class StopSetupWhenEnabled : MonoBehaviour
-        {
-            internal static SceneSetup Target;
-
-            private void OnEnable()
-            {
-                if (Target != null)
-                {
-                    Target.enabled = false;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Another component can begin tracking during the object's enable callbacks.
-        /// </summary>
-        [Test]
-        public void Setup_CanStartFromAnotherComponentsOnEnable()
-        {
-            GameObject owner = new GameObject("early bootstrap");
-            _objects.Add(owner);
-            owner.SetActive(false);
-            owner.AddComponent<EarlyBootstrap>();
-            SceneSetup setup = owner.AddComponent<SceneSetup>();
-            owner.SetActive(true);
-            Assert.That(setup.Anchor, Is.Not.Null);
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
-        }
-
-        [DefaultExecutionOrder(-100)]
-        private sealed class EarlyBootstrap : MonoBehaviour
-        {
-            private void OnEnable()
-            {
-                GetComponent<SceneSetup>().Track(Source(() => new[] { "a" }));
-            }
-        }
-
-        /// <summary>
-        /// Explicit stop releases automatic views and listeners while leaving the component ready to track again.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator Setup_StopTrackingReleasesViewsAndAllowsTrackAgain()
-        {
-            SceneSetup setup = CreateSetup();
-            GameObject prefab = new GameObject("view prefab");
-            _objects.Add(prefab);
-            Blueprint blueprint = ScriptableObject.CreateInstance<Blueprint>();
-            _objects.Add(blueprint);
-            blueprint.Configure(Population, null, null, prefab);
-            SetField(setup, "_blueprints", new[] { blueprint });
-            int stops = 0;
-            CallbackPresenceSource<string, Probe> source = new CallbackPresenceSource<string, Probe>(Population)
-                .IdentifyBy(id => id).Apply((id, ghost) =>
-                {
-                })
-                .Listen((publish, remove) =>
-                {
-                    publish("a");
-                    return () => stops++;
-                });
-            setup.StopTracking();
-            setup.Track(source);
-            _realm.Update();
-            Ghost ghost = (Ghost)_realm.Query().Single();
-            View view = ghost.GetComponentInChildren<View>();
-            Assert.That(view, Is.Not.Null);
-            setup.StopTracking();
-            setup.StopTracking();
-            Assert.That(setup.isActiveAndEnabled, Is.True);
-            Assert.That(setup.Anchor, Is.Null);
-            Assert.That(_realm.Query().Count, Is.Zero);
-            Assert.That(stops, Is.EqualTo(1));
-            yield return null;
-            Assert.That(ghost == null && view == null, Is.True);
-            setup.Track(source);
-            _realm.Update();
-            Assert.That(((Ghost)_realm.Query().Single()).GetComponentInChildren<View>(), Is.Not.Null);
-            setup.StopTracking();
-            Assert.That(stops, Is.EqualTo(2));
-        }
-
-        /// <summary>
-        /// Stopping during Listen immediately cleans up the returned subscription and leaves no anchor behind.
-        /// </summary>
-        [Test]
-        public void Setup_StopTrackingDuringStartupCleansUpAndCanRetry()
-        {
-            SceneSetup setup = CreateSetup();
-            int stops = 0;
-            CallbackPresenceSource<string, Probe> source = new CallbackPresenceSource<string, Probe>(Population)
-                .IdentifyBy(id => id).Apply((id, ghost) =>
-                {
-                })
-                .Listen((publish, remove) =>
-                {
-                    publish("stale");
-                    setup.StopTracking();
-                    return () => stops++;
-                });
-            Assert.Throws<InvalidOperationException>(() => setup.Track(source));
-            Assert.That(stops, Is.EqualTo(1));
-            Assert.That(setup.Anchor, Is.Null);
-            Assert.That(source.IsAttached, Is.False);
-            source.Listen((publish, remove) =>
-            {
-                publish("new");
-                return () => stops++;
-            });
-            setup.Track(source);
-            _realm.Update();
-            Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("new"));
-            setup.StopTracking();
-            Assert.That(stops, Is.EqualTo(2));
-        }
-
         private static IEnumerable<string> BrokenSnapshot()
         {
             yield return "a";
@@ -627,18 +316,6 @@ namespace Emas.Tests
                 .Apply((item, ghost) =>
                 {
                 });
-        }
-
-        private SceneSetup CreateSetup()
-        {
-            GameObject target = new GameObject("scene setup");
-            _objects.Add(target);
-            return target.AddComponent<SceneSetup>();
-        }
-
-        private static void SetField(SceneSetup setup, string name, object value)
-        {
-            typeof(SceneSetup).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(setup, value);
         }
 
         private sealed class Probe : Ghost

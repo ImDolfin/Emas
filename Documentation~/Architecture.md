@@ -4,13 +4,13 @@ Emas owns identity, availability and optional views. Applications own source int
 
 [Architecture diagram](Diagrams/Architecture.html) / [Lifecycle diagram](Diagrams/Lifecycle.html)
 
-`SceneSetup` is an optional Inspector-configured owner around the default realm. `PollingPresenceSource` adapts complete source snapshots; `CallbackPresenceSource` queues individual publications and removals with subscription cleanup. All use the same tracking and lifecycle path described below.
+`RealmSetup` is an optional Inspector-configured owner of one isolated, automatically updated realm. Child `AnchorSetup` components each configure one anchor and create one source through their colocated `ISourceProvider`. `PollingPresenceSource` adapts complete source snapshots; `CallbackPresenceSource` queues individual publications and removals with subscription cleanup. All use the same tracking and lifecycle path described below.
 
 ## Ownership
 
 ```text
-Realm
-  Anchor (scene frame; one or more sources)
+Realm (direct code setup or one RealmSetup)
+  Anchor (one source in a prefab setup; code may attach more)
     Ghost (identity, application data, root behaviors)
       View (optional visual child)
 ```
@@ -19,7 +19,7 @@ Identity is `(anchor ID, kind, entity ID)`. Display names are labels. Each ident
 
 Queries see available ghosts only. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors.
 
-Blueprints are resolved by anchor and kind: an anchor registration takes precedence over the realm-wide default. `SceneSetup` installs its Inspector blueprints on its owned anchor, so setups sharing a kind do not replace each other's configuration. Each realm or anchor registration holds a snapshot of its blueprint settings. Asset edits do not alter that scope until re-registration, which refreshes requested views on the next update while keeping existing roots. Re-registering after a kind change releases the old kind in that scope and refreshes both kinds. Removing an anchor override restores the realm default. Root prefab changes affect newly created ghosts.
+Blueprints are resolved by anchor and kind: an anchor registration takes precedence over the realm-wide default. `AnchorSetup` installs its Inspector blueprints on its own anchor, so anchors sharing a kind can use different views. Each realm or anchor registration holds a snapshot of its blueprint settings. Asset edits do not alter that scope until re-registration, which refreshes requested views on the next update while keeping existing roots. Re-registering after a kind change releases the old kind in that scope and refreshes both kinds. Removing an anchor override restores the realm default. Root prefab changes affect newly created ghosts.
 
 ## Update order
 
@@ -35,7 +35,7 @@ Newly queued actions wait for a later update. The budget limits action count, no
 
 Successful startup outside an update finalizes directly populated ghosts immediately. Callback-source startup queues its initial publications for a later update. Variant changes and explicit view requests inside source/finalization callbacks defer refresh until source data is complete. Explicit requests outside those phases retain immediate behavior.
 
-`Realm.Default` provides an automatically updated default realm. An isolated realm uses explicit `Update()` instead. All Emas calls require Unity's main thread. Applications handle SDK threading before publishing or removing entities. The queue and protected `Dispatch` defer main-thread work to later updates. Custom sources can capture a dispatcher per attachment so callbacks retained from an old attachment cannot enter a new one. Emas provides no thread synchronization or marshalling.
+`Realm.Default` provides an automatically updated default realm. A direct-code isolated realm uses explicit `Update()`; `RealmSetup` updates its own isolated realm each frame. All Emas calls require Unity's main thread. Applications handle SDK threading before publishing or removing entities. The queue and protected `Dispatch` defer main-thread work to later updates. Custom sources can capture a dispatcher per attachment so callbacks retained from an old attachment cannot enter a new one. Emas provides no thread synchronization or marshalling.
 
 ## Optional spatial projection
 
@@ -58,7 +58,7 @@ Presentation range is measured in simulation coordinates before float conversion
 | Failed multi-source anchor attachment | Remove sources newly attached by that call in reverse order; restore prepared identities and retain an existing anchor's earlier sources |
 | Attach an already registered source | Reject without changing its original population |
 | Remove ghost/source | Remove the selected identity/owned population and associated views |
-| Stop SceneSetup, dispose/remove anchor or unload its scene | Remove owned and prepared records; stop sources |
+| Stop RealmSetup, disable AnchorSetup, dispose/remove anchor or unload its scene | Remove owned and prepared records; stop sources |
 | Dispose realm | Remove anchors, records, views, subscriptions, blueprints and queued work |
 
 A successful restart or replacement has a bounded startup handover. Existing roots are unavailable until republished; cleanup waits for the first subsequent realm update and for publications queued during startup to run, including any dispatch backlog. It then removes still-unreported roots. Source failure removes roots immediately, so later recovery creates new instances. Unowned prepared ghosts remain until claimed or explicitly removed with their anchor.
@@ -97,9 +97,9 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Runtime/Tracking/` | Anchors, sources and ownership storage |
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | Blueprint, detail level and view lifecycle |
-| `Runtime/Unity/` | Scene setup, automatic runner and nested scene effects |
+| `Runtime/Unity/` | Prefab realm and anchor setup, automatic runner and nested scene effects |
 | `Editor/Diagnostics/` | Passive default-realm diagnostics |
-| `Editor/Inspectors/` | Blueprint and SceneSetup authoring validation |
+| `Editor/Inspectors/` | Blueprint, RealmSetup and AnchorSetup authoring validation |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
 | `Samples~/Minimal/` / `Samples~/Callbacks/` | Polling and callback quick starts |
 | `Samples~/Example/` | Contracts, entities, behaviors and source integrations |

@@ -10,7 +10,7 @@ namespace Emas
     [CreateAssetMenu(fileName = "New Emas Blueprint", menuName = "Emas/Blueprint")]
     public sealed class Blueprint : ScriptableObject
     {
-        [Tooltip("Entity kind this blueprint configures. Each SceneSetup can assign one blueprint per kind.")]
+        [Tooltip("Entity kind this blueprint configures. Each AnchorSetup can assign one blueprint per kind.")]
         [SerializeField]
         private string _kindId;
         [Tooltip("Optional root prefab. Leave empty to create a root with the requested Ghost component.")]

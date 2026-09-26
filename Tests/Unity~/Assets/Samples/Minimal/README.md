@@ -4,7 +4,7 @@ Open `QuickStart.unity` and press Play. One cube follows a polled position.
 
 - `Reading`: replace this sample record with your SDK's item type.
 - `Marker`: the application ghost; its setter moves the root.
-- `Bootstrap`: connects the source using one `SceneSetup.Track` call.
-- Tracking object's Inspector: anchor ID, blueprint and automatic views.
+- `Bootstrap`: implements `ISourceProvider` and creates one polling source for its anchor.
+- Tracking object's Inspector: `RealmSetup` owns an isolated realm and its default blueprint; `AnchorSetup` sets the anchor ID and automatic views. Anchors can also override realm blueprints.
 
-Disable/re-enable the Tracking object to stop/restart it. Polling expects a complete collection; empty means all entities departed.
+Disable/re-enable the Tracking object to dispose/recreate its realm and source. Polling expects a complete collection; empty means all entities departed.

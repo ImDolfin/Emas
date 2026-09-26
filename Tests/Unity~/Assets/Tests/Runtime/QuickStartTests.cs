@@ -15,6 +15,7 @@ namespace Emas.Tests.Samples
     public sealed class QuickStartTests
     {
         private Scene _scene;
+        private Realm _currentRealm;
         private float _timeScale;
 
         /// <summary>
@@ -44,26 +45,31 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// Inspector-configured polling creates a view and restarts after disable cleanup.
+        /// Prefab-owned polling creates a view and restarts after disable cleanup.
         /// </summary>
         [UnityTest]
         public IEnumerator Polling_CreatesViewAndRestarts()
         {
             yield return Load("Assets/Samples/Minimal/QuickStart.unity");
-            SceneSetup setup = Find<SceneSetup>();
+            RealmSetup setup = Find<RealmSetup>();
+            AnchorSetup anchorSetup = Find<AnchorSetup>();
+            _currentRealm = setup.Realm;
             Ghost original = AssertView("quick-start");
             View originalView = original.GetComponentInChildren<View>();
-            setup.Anchor.RestartSource(setup.Anchor.Sources[0]);
+            anchorSetup.Anchor.RestartSource(anchorSetup.Anchor.Sources[0]);
             yield return null;
             Assert.That(AssertView("quick-start"), Is.SameAs(original));
             Assert.That(original.GetComponentInChildren<View>(), Is.SameAs(originalView));
 
             setup.gameObject.SetActive(false);
-            Assert.That(Population("quick-start").Count, Is.Zero);
+            Assert.That(anchorSetup.Anchor, Is.Null);
+            Assert.That(_currentRealm.Anchors.Count, Is.Zero);
 
             setup.gameObject.SetActive(true);
             yield return null;
             yield return null;
+            _currentRealm = setup.Realm;
+            Assert.That(_currentRealm, Is.Not.Null);
             AssertView("quick-start");
         }
 
@@ -75,7 +81,9 @@ namespace Emas.Tests.Samples
         {
             const string anchor = "callback-quick-start";
             yield return Load("Assets/Samples/Callbacks/Callbacks.unity");
-            SceneSetup setup = Find<SceneSetup>();
+            RealmSetup setup = Find<RealmSetup>();
+            AnchorSetup anchorSetup = Find<AnchorSetup>();
+            _currentRealm = setup.Realm;
             Bootstrap bootstrap = Find<Bootstrap>();
             bootstrap.enabled = false;
             SimulatedFeed feed = FeedOf(bootstrap);
@@ -83,7 +91,7 @@ namespace Emas.Tests.Samples
             Vector3 position = ghost.transform.localPosition;
             AssertListeners(feed, 1);
             View originalView = ghost.GetComponentInChildren<View>();
-            setup.Anchor.RestartSource(setup.Anchor.Sources[0]);
+            anchorSetup.Anchor.RestartSource(anchorSetup.Anchor.Sources[0]);
             AssertListeners(feed, 1);
             Assert.That(ghost.IsAvailable, Is.False);
             yield return null;
@@ -110,7 +118,8 @@ namespace Emas.Tests.Samples
             AssertView(anchor);
 
             setup.gameObject.SetActive(false);
-            Assert.That(Population(anchor).Count, Is.Zero);
+            Assert.That(anchorSetup.Anchor, Is.Null);
+            Assert.That(_currentRealm.Anchors.Count, Is.Zero);
             AssertListeners(feed, 0);
             feed.Advance(1f);
 
@@ -118,6 +127,8 @@ namespace Emas.Tests.Samples
             setup.gameObject.SetActive(true);
             yield return null;
             yield return null;
+            _currentRealm = setup.Realm;
+            Assert.That(_currentRealm, Is.Not.Null);
             SimulatedFeed restarted = FeedOf(bootstrap);
             Assert.That(restarted, Is.Not.SameAs(feed));
             AssertListeners(restarted, 1);
@@ -126,7 +137,7 @@ namespace Emas.Tests.Samples
 
             setup.gameObject.SetActive(false);
             AssertListeners(restarted, 0);
-            Assert.That(Population(anchor).Count, Is.Zero);
+            Assert.That(_currentRealm.Anchors.Count, Is.Zero);
         }
 
         /// <summary>
@@ -233,12 +244,12 @@ namespace Emas.Tests.Samples
             return null;
         }
 
-        private static Query Population(string anchor)
+        private Query Population(string anchor)
         {
-            return Realm.Default.Query().InAnchor(anchor);
+            return _currentRealm.Query().InAnchor(anchor);
         }
 
-        private static Ghost AssertView(string anchor)
+        private Ghost AssertView(string anchor)
         {
             Query query = Population(anchor);
             Assert.That(query.Count, Is.EqualTo(1));

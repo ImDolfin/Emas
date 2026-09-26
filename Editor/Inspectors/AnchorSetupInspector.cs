@@ -3,21 +3,21 @@ using UnityEditor;
 namespace Emas.Editor
 {
     /// <summary>
-    /// Validates scene tracking settings without starting a realm or source.
+    /// Validates one prefab anchor and its source provider without starting a realm.
     /// </summary>
-    [CustomEditor(typeof(SceneSetup))]
+    [CustomEditor(typeof(AnchorSetup))]
     [CanEditMultipleObjects]
-    public sealed class SceneSetupInspector : UnityEditor.Editor
+    public sealed class AnchorSetupInspector : UnityEditor.Editor
     {
         /// <summary>
-        /// Draws settings and shared runtime configuration errors.
+        /// Draws anchor settings and configuration errors.
         /// </summary>
         public override void OnInspectorGUI()
         {
             DrawDefaultInspector();
             foreach (UnityEngine.Object value in targets)
             {
-                string error = ((SceneSetup)value).GetConfigurationError();
+                string error = ((AnchorSetup)value).GetConfigurationError();
                 if (error != null)
                 {
                     EditorGUILayout.HelpBox(error, MessageType.Error);

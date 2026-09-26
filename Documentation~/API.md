@@ -9,9 +9,10 @@ Runtime APIs use the `Emas` namespace. All operations require Unity's main threa
 | `PollingPresenceSource<TSource, TGhost>(kind)` | Poll on startup and every update by default; create/update entities and remove those absent from a successful complete snapshot |
 | `PollingPresenceSource.PollEvery(interval)` | Optionally space reads by a non-negative `TimeSpan`; zero restores every-update polling |
 | `CallbackPresenceSource<TSource, TGhost>(kind)` | Subscribe once per attachment; queue individual publications and explicit removals |
-| `SceneSetup.Track(params PresenceSource[] sources)` | Register Inspector blueprints on one owned anchor under the component transform |
-| `SceneSetup.Anchor` | Current owned anchor, or null when stopped; use it for source restart or replacement |
-| `SceneSetup.StopTracking()` | Release the owned anchor, ghosts, views and subscriptions; keep the component enabled and ready for another `Track` |
+| `ISourceProvider.CreateSource()` | A colocated MonoBehaviour creates one source whenever its prefab anchor starts |
+| `RealmSetup.Realm` | The isolated realm owned and automatically updated by this component, or null while stopped |
+| `RealmSetup.StartRealm()` / `StopRealm()` | Start an isolated realm from prefab settings or dispose it and all of its anchors and sources |
+| `AnchorSetup.Anchor` | The live anchor configured by this component, or null while stopped; use it for source restart or replacement |
 
 For polling, configure `.ReadFrom(read)`, `.IdentifyBy(idSelector)` and `.Apply(copyData)` before tracking; optional `.WithVariant(selector)` selects appearances. Callbacks cannot change while attached to an anchor.
 
@@ -35,7 +36,7 @@ For callbacks, configure `.IdentifyBy(idSelector)`, `.Apply(copyData)` and `.Lis
 
 Subscription and cleanup run on the Unity thread. Initial items may be published inside `Listen`; they are also deferred.
 
-`SceneSetup` must be enabled and its anchor ID unused. Call `Track` once per tracking lifetime. Automatic views apply only to its assigned blueprint kinds. `StopTracking` and disable clean up tracking and subscriptions; call `Track` again to start another lifetime. Repeated stops are harmless. Stopping during startup cancels that attempt and cleans up any returned callback subscription. Inspector blueprint registrations end with the owned anchor; other anchors are unaffected.
+Put one `RealmSetup` on a prefab or scene object and any number of `AnchorSetup` components on that object or its children. Each active anchor needs a unique ID within its realm and exactly one enabled `MonoBehaviour` implementing `ISourceProvider` on the same GameObject. Its `CreateSource()` returns one new or detached `PresenceSource` whenever the anchor starts. Assign zero or more realm default blueprints and zero or more anchor overrides, with at most one per kind in either list. Automatic views apply to kinds configured by realm defaults or anchor overrides. Nested Realm Setup objects own their own anchors. Each Realm Setup starts on the first update after enable in Play Mode, updates its isolated realm each frame, and stops on disable. `StopRealm()` is repeatable; `StartRealm()` starts a fresh realm while enabled. Source startup failure disposes the partial realm. Configured reference-frame settings create a separate `ReferenceFrame` for each realm. Direct `Realm.Default` and `new Realm()` integrations retain their existing lifecycle and APIs.
 
 ## Tracking and lifecycle
 
@@ -164,7 +165,7 @@ Declare named constants in application classes for autocomplete. Kinds and varia
 | `SetDetailLevel(ghost, detailLevel)` | Update detail level; does not create a request for a never-requested ghost |
 | `Demanifest(ghost)` or detail level None | Remove the view and request, preserving the ghost |
 
-A blueprint supplies a kind, optional ghost prefab, view mappings and optional fallback. Each anchor uses its own registered blueprint first, then a realm-wide default for that kind. `SceneSetup` registers Inspector blueprints only on its anchor. Each scope captures blueprint settings at registration. Asset edits, including kind changes, take effect for that scope only when it registers the asset again; this releases its old kind and refreshes requested views for both kinds on the next realm update. Removing an anchor override restores the realm default on the next update. Existing ghost roots remain intact; a new ghost prefab applies to roots created later. `ResolveViewPrefab(variant, detailLevel)` selects a prefab; `FallbackViewPrefab` exposes the configured fallback asset. Configure through the Inspector or `Configure(kind, ghostPrefab, views, fallbackViewPrefab)`. A mapping is `ViewMapping(variant, detailLevel, prefab)`; duplicate variant/detail level pairs, non-positive mapping detail levels, whitespace-only variant IDs and null view prefabs are rejected.
+A blueprint supplies a kind, optional ghost prefab, view mappings and optional fallback. Each anchor uses its own registered blueprint first, then a realm-wide default for that kind. `RealmSetup` registers its Inspector blueprints as realm defaults; `AnchorSetup` registers its Inspector overrides only on its anchor. Each scope captures blueprint settings at registration. Asset edits, including kind changes, take effect for that scope only when it registers the asset again; this releases its old kind and refreshes requested views for both kinds on the next realm update. Removing an anchor override restores the realm default on the next update. Existing ghost roots remain intact; a new ghost prefab applies to roots created later. `ResolveViewPrefab(variant, detailLevel)` selects a prefab; `FallbackViewPrefab` exposes the configured fallback asset. Configure through the Inspector or `Configure(kind, ghostPrefab, views, fallbackViewPrefab)`. A mapping is `ViewMapping(variant, detailLevel, prefab)`; duplicate variant/detail level pairs, non-positive mapping detail levels, whitespace-only variant IDs and null view prefabs are rejected.
 
 Selection for positive levels: **exact variant/detail level > highest lower positive detail level for that variant > fallback > no view**. `DetailLevel.None` always resolves to no prefab. Missing selection removes an obsolete view and reports a diagnostic. Selecting the same prefab rebinds it; another prefab replaces only the child. Without a ghost prefab, Emas creates a root with the requested ghost component.
 
@@ -176,4 +177,4 @@ Emas catches view creation/refresh failures per ghost, cleans up the failed view
 
 Source: [realm](../Runtime/Realm.cs), [queries](../Runtime/Queries/Query.cs), [blueprints](../Runtime/Views/Blueprint.cs).
 
-Integration policy: [Guidelines](Guidelines.md). Authoring errors appear in Blueprint/SceneSetup Inspectors using the same validation as runtime registration. **Window > Emas** passively shows existing default-realm anchors, source labels, health, available/owned counts and failure context with expandable exception details; isolated realms can be inspected through the snapshot APIs.
+Integration policy: [Guidelines](Guidelines.md). Authoring errors appear in Blueprint/RealmSetup/AnchorSetup Inspectors using the same validation as runtime registration. **Window > Emas** passively shows existing default-realm anchors, source labels, health, available/owned counts and failure context with expandable exception details; isolated realms can be inspected through the snapshot APIs.
