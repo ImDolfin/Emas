@@ -8,7 +8,7 @@ namespace Emas.Tests
     /// <summary>
     /// Checks public source health and collection snapshots across registration lifetimes.
     /// </summary>
-    public sealed class SourceStatusTests
+    public sealed class DetectorStatusTests
     {
         private Realm _realm;
 
@@ -54,15 +54,15 @@ namespace Emas.Tests
             {
                 throw new Exception("cleanup failure");
             };
-            ExpectedErrors.Verify(() => Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source)), Is.SameAs(primary)), "cleanup failure");
+            ExpectedErrors.Verify(() => Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source)), Is.SameAs(primary)), "cleanup failure");
             Assert.That(source.LastError, Is.SameAs(primary));
             Assert.That(source.IsAttached || source.IsActive, Is.False);
             Assert.That(source.Stops, Is.EqualTo(1));
             source.Starting = () => Assert.That(source.LastError, Is.Null);
             source.Stopping = null;
-            anchor.AddSource(source);
+            anchor.AddDetector(source);
             Assert.That(source.IsActive && source.IsAttached, Is.True);
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             Assert.That(source.IsAttached || source.IsActive, Is.False);
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.LastErrorContext, Is.Null);
@@ -122,7 +122,7 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Single(), Is.SameAs(other));
             Assert.That(healthy.LastError, Is.Null);
             ProbeSource replacement = new ProbeSource();
-            anchor.ReplaceSource(source, replacement);
+            anchor.ReplaceDetector(source, replacement);
             StatusGhost recovered = replacement.Publish("failed");
             Assert.That(recovered, Is.Not.SameAs(ghost));
             _realm.Update();
@@ -158,7 +158,7 @@ namespace Emas.Tests
                 }
                 else
                 {
-                    anchor.RemoveSource(source);
+                    anchor.RemoveDetector(source);
                 }
             }, "cleanup only");
 
@@ -177,8 +177,8 @@ namespace Emas.Tests
             int starts = 0;
             int oldStops = 0;
             int newStops = 0;
-            CallbackPresenceSource<string, StatusGhost> source = null;
-            source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
+            CallbackPresenceDetector<string, StatusGhost> source = null;
+            source = new CallbackPresenceDetector<string, StatusGhost>(new Kind("status"))
                 .IdentifyBy(id => id).Apply((id, ghost) =>
                 {
                 })
@@ -186,8 +186,8 @@ namespace Emas.Tests
                 {
                     if (++starts == 1)
                     {
-                        anchor.RemoveSource(source);
-                        anchor.AddSource(source);
+                        anchor.RemoveDetector(source);
+                        anchor.AddDetector(source);
                         return () =>
                         {
                             oldStops++;
@@ -198,7 +198,7 @@ namespace Emas.Tests
                     publish("current");
                     return () => newStops++;
                 });
-            ExpectedErrors.Verify(() => anchor.AddSource(source), "obsolete cleanup");
+            ExpectedErrors.Verify(() => anchor.AddDetector(source), "obsolete cleanup");
             _realm.Update();
             Assert.That(source.IsActive && source.IsAttached, Is.True);
             Assert.That(source.LastError, Is.Null);
@@ -206,7 +206,7 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
             Assert.That(oldStops, Is.EqualTo(1));
             Assert.That(newStops, Is.Zero);
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             Assert.That(newStops, Is.EqualTo(1));
         }
 
@@ -218,8 +218,8 @@ namespace Emas.Tests
         {
             Anchor anchor = _realm.GetOrCreateAnchor("status");
             int starts = 0;
-            CallbackPresenceSource<string, StatusGhost> source = null;
-            source = new CallbackPresenceSource<string, StatusGhost>(new Kind("status"))
+            CallbackPresenceDetector<string, StatusGhost> source = null;
+            source = new CallbackPresenceDetector<string, StatusGhost>(new Kind("status"))
                 .IdentifyBy(id => id).Apply((id, ghost) =>
                 {
                 })
@@ -227,20 +227,20 @@ namespace Emas.Tests
                 {
                     if (++starts == 1)
                     {
-                        anchor.RemoveSource(source);
-                        anchor.AddSource(source);
+                        anchor.RemoveDetector(source);
+                        anchor.AddDetector(source);
                         throw new InvalidOperationException("obsolete startup");
                     }
 
                     publish("current");
                     return null;
                 });
-            Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source));
+            Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
             _realm.Update();
             Assert.That(source.IsAttached && source.IsActive, Is.True);
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.LastErrorContext, Is.Null);
-            Assert.That(anchor.Sources, Is.EquivalentTo(new[] { source }));
+            Assert.That(anchor.Detectors, Is.EquivalentTo(new[] { source }));
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
         }
 
@@ -263,8 +263,8 @@ namespace Emas.Tests
                 }
 
                 reattached = true;
-                anchor.RemoveSource(second);
-                anchor.AddSource(second);
+                anchor.RemoveDetector(second);
+                anchor.AddDetector(second);
             };
             second.Updating = () => secondUpdates++;
 
@@ -284,11 +284,11 @@ namespace Emas.Tests
             ProbeSource source = new ProbeSource();
             Anchor anchor = _realm.GetOrCreateAnchor("first", source);
             IReadOnlyList<Anchor> anchors = _realm.Anchors;
-            IReadOnlyList<PresenceSource> sources = anchor.Sources;
+            IReadOnlyList<PresenceDetector> sources = anchor.Detectors;
             Assert.Throws<NotSupportedException>(() => ((IList<Anchor>)anchors).Clear());
-            Assert.Throws<NotSupportedException>(() => ((IList<PresenceSource>)sources).Clear());
+            Assert.Throws<NotSupportedException>(() => ((IList<PresenceDetector>)sources).Clear());
             ProbeSource replacement = new ProbeSource();
-            anchor.ReplaceSource(source, replacement);
+            anchor.ReplaceDetector(source, replacement);
             replacement.Stopping = () => Assert.That(_realm.Anchors, Is.Empty);
             _realm.GetOrCreateAnchor("second", new ProbeSource
             {
@@ -296,16 +296,16 @@ namespace Emas.Tests
             });
             Assert.That(anchors.Count, Is.EqualTo(1));
             Assert.That(sources[0], Is.SameAs(source));
-            Assert.That(anchor.Sources[0], Is.SameAs(replacement));
+            Assert.That(anchor.Detectors[0], Is.SameAs(replacement));
             Assert.That(_realm.Anchors.Count, Is.EqualTo(2));
             _realm.Dispose();
             Assert.That(_realm.Anchors, Is.Empty);
-            Assert.That(anchor.Sources, Is.Empty);
+            Assert.That(anchor.Detectors, Is.Empty);
             Assert.That(anchors.Count, Is.EqualTo(1));
             Assert.That(sources.Count, Is.EqualTo(1));
         }
 
-        private sealed class ProbeSource : PresenceSource
+        private sealed class ProbeSource : PresenceDetector
         {
             internal Action Starting;
             internal Action Updating;

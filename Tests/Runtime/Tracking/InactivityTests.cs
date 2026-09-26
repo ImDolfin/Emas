@@ -65,7 +65,7 @@ namespace Emas.Tests
             Assert.That(source.InactivityTimeout, Is.EqualTo(TimeSpan.FromSeconds(2)));
             Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
             Assert.Throws<InvalidOperationException>(() => source.InactivityTimeout = null);
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             Assert.DoesNotThrow(() => source.InactivityTimeout = null);
         }
 
@@ -167,7 +167,7 @@ namespace Emas.Tests
                 Assert.Throws<ArgumentException>(() => source.RecordPublication(sameKey));
             }
 
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             Assert.Throws<InvalidOperationException>(() => source.RecordPublication(ghost));
         }
 
@@ -178,7 +178,7 @@ namespace Emas.Tests
         public void CallbackPublication_AtDeadlinePreservesIdentity()
         {
             Action<string> publish = null;
-            CallbackPresenceSource<string, TestGhost> source = new CallbackPresenceSource<string, TestGhost>(Kind)
+            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(Kind)
                 .IdentifyBy(id => id)
                 .Apply((id, ghost) => ghost.Position++)
                 .Listen((onPublish, onRemove) =>
@@ -207,7 +207,7 @@ namespace Emas.Tests
         [Test]
         public void PollingPublication_AtDeadlinePreservesIdentity()
         {
-            PollingPresenceSource<string, TestGhost> source = new PollingPresenceSource<string, TestGhost>(Kind, () => _now)
+            PollingPresenceDetector<string, TestGhost> source = new PollingPresenceDetector<string, TestGhost>(Kind, () => _now)
                 .ReadFrom(() => new[] { "one" })
                 .IdentifyBy(id => id)
                 .Apply((id, ghost) => ghost.Position++)
@@ -364,7 +364,7 @@ namespace Emas.Tests
             Assert.That(_realm.TryGetGhost(key, out found), Is.False);
         }
 
-        private sealed class Probe : PresenceSource
+        private sealed class Probe : PresenceDetector
         {
             internal TestGhost Publish(string id)
             {

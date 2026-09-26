@@ -133,7 +133,7 @@ namespace Emas
                     }
                     catch (Exception exception)
                     {
-                        PresenceSource.LogError(exception, "query departure for " + key);
+                        PresenceDetector.LogError(exception, "query departure for " + key);
                     }
                 }
 
@@ -159,7 +159,7 @@ namespace Emas
                         }
                         catch (Exception exception)
                         {
-                            PresenceSource.LogError(exception, "query arrival for " + ghost.Key);
+                            PresenceDetector.LogError(exception, "query arrival for " + ghost.Key);
                         }
                     }
                 }

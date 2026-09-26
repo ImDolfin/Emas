@@ -255,7 +255,7 @@ namespace Emas.Tests
             RealmSetup setup = CreateRealm("retry");
             bool fail = true;
             TestProvider provider = CreateAnchor(setup, "retry",
-                () => fail ? (PresenceSource)new FailingSource() : new PublishingSource(FirstKind));
+                () => fail ? (PresenceDetector)new FailingSource() : new PublishingSource(FirstKind));
             setup.gameObject.SetActive(true);
             Assert.Throws<InvalidOperationException>(() => setup.StartRealm());
             Assert.That(setup.Realm, Is.Null);
@@ -278,7 +278,7 @@ namespace Emas.Tests
             RealmSetup setup = CreateRealm("stopping source");
             bool stop = true;
             TestProvider provider = CreateAnchor(setup, "source", () =>
-                new PollingPresenceSource<string, Probe>(FirstKind)
+                new PollingPresenceDetector<string, Probe>(FirstKind)
                     .ReadFrom(() =>
                     {
                         if (stop)
@@ -311,7 +311,7 @@ namespace Emas.Tests
             SetField(setup, "_blueprints", new[] { blueprint });
             bool publish = false;
             CreateAnchor(setup, "source", () =>
-                new PollingPresenceSource<string, Probe>(FirstKind)
+                new PollingPresenceDetector<string, Probe>(FirstKind)
                     .ReadFrom(() => publish ? new[] { "one" } : new string[0])
                     .IdentifyBy(id => id)
                     .Apply((id, ghost) => { }));
@@ -338,7 +338,7 @@ namespace Emas.Tests
             AnchorSetup anchor = missing.AddComponent<AnchorSetup>();
             SetField(anchor, "_anchorId", "left");
             setup.gameObject.SetActive(true);
-            Assert.That(setup.GetConfigurationError(), Does.Contain("exactly one ISourceProvider"));
+            Assert.That(setup.GetConfigurationError(), Does.Contain("exactly one IDetectorProvider"));
             Assert.Throws<InvalidOperationException>(() => setup.StartRealm());
             Assert.That(setup.Realm, Is.Null);
 
@@ -367,7 +367,7 @@ namespace Emas.Tests
         }
 
         private TestProvider CreateAnchor(RealmSetup realm, string id,
-            Func<PresenceSource> factory, params ManifestationBlueprint[] blueprints)
+            Func<PresenceDetector> factory, params ManifestationBlueprint[] blueprints)
         {
             GameObject owner = new GameObject(id);
             _objects.Add(owner);
@@ -423,22 +423,22 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class TestProvider : MonoBehaviour, ISourceProvider
+        private sealed class TestProvider : MonoBehaviour, IDetectorProvider
         {
-            internal Func<PresenceSource> Factory;
+            internal Func<PresenceDetector> Factory;
             internal int Calls;
 
             /// <summary>
             /// Creates this test anchor's source.
             /// </summary>
-            public PresenceSource CreateSource()
+            public PresenceDetector CreateDetector()
             {
                 Calls++;
                 return Factory();
             }
         }
 
-        private sealed class PublishingSource : PresenceSource
+        private sealed class PublishingSource : PresenceDetector
         {
             private readonly Kind[] _kinds;
 
@@ -456,7 +456,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class FailingSource : PresenceSource
+        private sealed class FailingSource : PresenceDetector
         {
             protected override void OnStart()
             {
@@ -464,7 +464,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class SpatialSource : PresenceSource
+        private sealed class SpatialSource : PresenceDetector
         {
             protected override void OnStart()
             {

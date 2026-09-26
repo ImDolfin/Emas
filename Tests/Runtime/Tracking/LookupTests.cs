@@ -159,7 +159,7 @@ namespace Emas.Tests
         {
         }
 
-        private sealed class Probe : PresenceSource
+        private sealed class Probe : PresenceDetector
         {
             internal TestGhost Publish(string id)
             {
@@ -168,7 +168,7 @@ namespace Emas.Tests
 
             internal void Delete(string id)
             {
-                Remove(Kind, id);
+                Disappear(Kind, id);
             }
         }
     }

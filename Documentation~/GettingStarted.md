@@ -1,6 +1,6 @@
 # Getting started
 
-Emas turns application data into stable scene ghosts with optional visual children. Use Unity 2022.3 or newer; see [validated versions](Validation.md#results).
+Emas tracks SDK entities as stable Presences, initializes invisible Ghost roots and adds visual manifestations when requested. Use Unity 2022.3 or newer; see [validated versions](Validation.md#results).
 
 ## Run the sample
 
@@ -8,7 +8,7 @@ Add `package.json` through **Package Manager > Add package from disk**, import *
 
 ## Build the same integration
 
-These three files are the complete [Quick start](../Samples~/Minimal/) code, without XML comments. Put them in separate files in your application assembly, referencing `Emas.Runtime` if you use an assembly definition. If you imported the sample, edit those files instead of creating duplicate types.
+These four files show the [Quick start](../Samples~/Minimal/) detector and module flow without XML comments. Put each class in its own file in your application assembly, referencing `Emas.Runtime` if you use an assembly definition. If you imported the sample, edit its files instead of creating duplicate types.
 
 ### Reading.cs
 
@@ -25,17 +25,8 @@ namespace Emas.Minimal
             Position = position;
         }
 
-        public string Id
-        {
-            get;
-            private set;
-        }
-
-        public Vector3 Position
-        {
-            get;
-            private set;
-        }
+        public string Id { get; private set; }
+        public Vector3 Position { get; private set; }
     }
 }
 ```
@@ -59,6 +50,28 @@ namespace Emas.Minimal
 }
 ```
 
+### MarkerPositionModule.cs
+
+```csharp
+namespace Emas.Minimal
+{
+    public sealed class MarkerPositionModule : EntityModule<Reading>
+    {
+        private readonly Marker _marker;
+
+        public MarkerPositionModule(Marker marker)
+        {
+            _marker = marker;
+        }
+
+        public override void Apply(Reading reading)
+        {
+            _marker.SetPosition(reading.Position);
+        }
+    }
+}
+```
+
 ### Bootstrap.cs
 
 ```csharp
@@ -66,90 +79,106 @@ using UnityEngine;
 
 namespace Emas.Minimal
 {
-    public sealed class Bootstrap : MonoBehaviour, ISourceProvider
+    public sealed class Bootstrap : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
-        public PresenceSource CreateSource()
+        public void ConfigureRealm(Realm realm)
         {
-            return new PollingPresenceSource<Reading, Marker>(Marker.Kind)
-                .ReadFrom(() => new[] { new Reading(id: "one", position: new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f)) })
-                .IdentifyBy(item => item.Id)
-                .Apply((item, ghost) => ghost.SetPosition(item.Position));
+            realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
+            {
+                MarkerPositionModule module;
+                if (!presence.TryGetModule(out module))
+                {
+                    presence.AddModule(new MarkerPositionModule(marker));
+                }
+            });
+        }
+
+        public PresenceDetector CreateDetector()
+        {
+            return new PollingPresenceDetector<Reading>(Marker.Kind)
+                .ReadFrom(() => new[] { new Reading("one", new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f)) })
+                .IdentifyBy(item => item.Id);
         }
     }
 }
 ```
 
-`Reading` stands in for your SDK payload. Replace `ReadFrom` with a complete collection from your client and map its data in `Apply`. `IdentifyBy` must return stable, non-empty IDs. Positions here are **anchor-local**, not world coordinates.
+`Reading` stands in for an SDK observation. The detector identifies its entity and forwards each reading to the realm. `ConfigureRealm` runs before the anchor's detector starts, chooses the `Marker` Ghost root and installs the module that copies position data into it. The detector never creates or updates the Ghost itself. Positions here are **anchor-local** Unity coordinates.
 
 ### Configure the scene and view
 
-1. Create a cube prefab for the visual child. Keep its local position/rotation at zero and scale at one.
+1. Create a cube prefab for the visual child. Keep its local position and rotation at zero and scale at one.
 2. Create **Assets > Create > Emas > Manifestation Blueprint**. Set **Kind Id** to `minimal.marker` and **Fallback View Prefab** to the cube prefab. Leave **Ghost Prefab** and **Variants** empty.
 3. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `Bootstrap`. On Realm Setup, assign the manifestation blueprint as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled.
-4. Press Play. Realm Setup creates its own realm, attaches the anchor's one source, and updates the realm each frame. Emas creates a `Marker` root beneath the anchor and attaches the cube view. Move Tracking to move its anchor frame.
+4. Press Play. Realm Setup creates its realm, calls `Bootstrap.ConfigureRealm`, then attaches the anchor's detector. Emas creates a `Presence` and an invisible `Marker` root beneath the anchor, applies each reading through `MarkerPositionModule` and attaches the cube view. Move Tracking to move its anchor frame.
 
-For multiple appearances of one kind, create a **Manifestation Variant** asset for each appearance and assign its detail-level view prefabs. Add those assets to the kind's **Manifestation Blueprint > Variants** list. Leave a kind without a blueprint when it needs a Ghost root but no view.
+For several appearances of one Kind, create a **Manifestation Variant** asset for each appearance and assign its detail-level view prefabs. Add those assets to the Kind's Manifestation Blueprint. A Kind with no blueprint still gets its Ghost root and remains visually silent until a view is configured.
 
-Each Realm Setup owns one isolated realm. You can put several in a scene or prefab, with any number of Anchor Setup objects beneath each one. Each anchor needs exactly one enabled component implementing `ISourceProvider` on the same object; `CreateSource()` supplies one presence source each time that anchor starts. Assign any number of default manifestation blueprints to Realm Setup and optional overrides to each anchor, with at most one per kind in either list. Leave a kind without a manifestation blueprint to use the built-in silent default: Emas creates its Ghost root and no view. An assigned blueprint with no view prefabs is silent too. A nested Realm Setup owns its own anchors. Use `realmSetup.Realm` for queries and lookups scoped to that setup; it is null while stopped. The setup starts on the first update after enable in Play Mode and calls its realm's `Update()` each frame. `StopRealm()` disposes that realm and its anchors; `StartRealm()` can start it again. Disabling the component or its object also stops it.
+Each Realm Setup owns one isolated realm and can have several Anchor Setup objects beneath it. Each active anchor needs exactly one enabled `IDetectorProvider` component on the same GameObject; its `CreateDetector()` returns a new or detached detector each time that anchor starts. Enabled `IRealmConfigurator` components beneath the Realm Setup register root and module initializers before detectors start. Nested Realm Setup objects own their own configurators and anchors. Assign realm default manifestation blueprints and optional anchor overrides, at most one per Kind in each list. A blueprint without any view prefabs is silent too. `realmSetup.Realm` is null while stopped. The setup starts on the first update after enable in Play Mode, updates its realm each frame and disposes it on disable or `StopRealm()`. `StartRealm()` creates a fresh realm.
 
-Direct code setup is unchanged: `Realm.Default` is still automatically updated, and a realm created with `new Realm()` is still advanced through explicit `Update()` calls. You can configure its anchors, sources, manifestation blueprints and reference frame through the existing APIs.
+`Realm.Default` is still updated automatically. With `new Realm()`, register initializers and blueprints, attach detectors to anchors, and call `Update()` yourself.
 
-To find markers without knowing which realm owns them, query all live realms:
+### Find and manifest a presence
+
+A query can find available Ghost roots across all live realms, including realms created later:
 
 ```csharp
 Query markers = Query.All().OfKind(Marker.Kind);
 System.IDisposable subscription = markers.OnAvailable(ghost => Debug.Log(ghost.Name));
 ```
 
-The query includes the default realm, realms created by code, prefab realms and any realms started later. Its `Count` and enumeration read current available matches. Dispose `subscription` when the consumer stops. Use `realmSetup.Realm.Query(markers)` when you want the same filters scoped to one setup.
+Dispose the subscription when its consumer stops. Use `realmSetup.Realm.Query(markers)` to apply the same filters to one setup.
 
-Use `anchorSetup.Anchor.RestartSource(source)` to restart an attached source and `ReplaceSource` to change its instance. A successful handover reuses compatible roots republished during startup; unreported roots are removed after the first subsequent update and queued startup publications finish. A source failure removes its population immediately, so restarting a failed source creates new roots.
-
-When you already know the identity, look it up directly:
+When you know the identity, use the stable `Presence` handle. This example requests a view explicitly; turn off **Automatic Views** on the anchor when you want to control manifestation yourself.
 
 ```csharp
 Realm realm = GetComponent<RealmSetup>().Realm;
 Key key = new Key("quick-start", Marker.Kind, "one");
-IGhost ghost;
-if (realm != null && realm.TryGetGhost(key, out ghost) && ghost.IsAvailable)
+Presence presence;
+if (realm != null && realm.TryGetPresence(key, out presence) && presence.IsAvailable)
 {
-    Debug.Log(ghost.Name);
+    realm.Manifest(presence, DetailLevel.Full);
 }
 ```
 
-The anchor ID must match your Anchor Setup. Lookup also finds prepared ghosts and unavailable roots during startup handover; removal returns `false`.
+`realm.Demanifest(presence)` removes its view while retaining the detected Presence and Ghost root. `realm.SetDetailLevel(presence, DetailLevel.Reduced)` changes a requested view's detail. `TryGetPresence` can also find an unavailable Presence during startup handover or disappearance grace; check `IsAvailable` before consuming its data. `TryGetGhost` remains available when you only need the root.
 
-For interface-based consumers, paired query arrivals/departures and source replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>` for optional interfaces or `ghost.GetRequired<T>()` when a missing provider should fail immediately; the application owns those interfaces.
+Use `anchorSetup.Anchor.RestartDetector(detector)` to restart an attached detector and `ReplaceDetector` to change its instance. A successful handover reuses compatible roots and Presence handles when IDs are reported again. Detector failure removes its population immediately, so recovery creates new handles and roots.
 
-## Choose a source
+For root interfaces, paired query arrivals and departures, and detector replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>` for optional root interfaces or `ghost.GetRequired<T>()` when a missing provider is an error.
 
-| Source | Choose when | What deletion means |
+## Choose a detector
+
+| Detector | Choose when | Disappearance signal |
 | --- | --- | --- |
-| `PollingPresenceSource` | The SDK can return the complete current population on startup and each update | Omitted IDs disappear after a successful read; an empty collection removes all |
-| `CallbackPresenceSource` | The SDK supplies individual changes and removals | An explicit remove callback or configured inactivity timeout deletes an ID |
-| Custom `PresenceSource` | The integration needs its own lifecycle or multiple feeds | Call protected `Remove` or configure an inactivity timeout |
+| `PollingPresenceDetector<TSource>` | The SDK can return the complete current population | An ID omitted from a successful full read disappears |
+| `CallbackPresenceDetector<TSource>` | The SDK supplies individual changes and deletes | The SDK's delete callback reports that ID missing |
+| Custom `PresenceDetector` | The SDK needs a custom lifecycle or combines feeds | Call protected `Disappear(kind, id)` |
+| Two-generic detector adapters | A small integration deliberately maps SDK items straight into a typed Ghost | Polling omission or callback delete follows the same lifecycle |
 
-Polling reads on every update by default. For slower feeds, add `.PollEvery(System.TimeSpan.FromMilliseconds(500))` to the builder before tracking. Startup still reads immediately; later reads use unscaled elapsed time, without catch-up bursts. Existing data remains available between reads unless its configured inactivity timeout expires. Restart resets the interval.
+Polling reads on startup and every realm update by default. Add `.PollEvery(System.TimeSpan.FromMilliseconds(500))` before attaching it for a slower feed. Startup still reads immediately; later polls use unscaled time and never catch up with several reads in one update. The SDK must return the full current population, not only changed items.
 
-The callback builder uses `IdentifyBy`, `Apply` and `Listen`. `Listen` receives publish/remove callbacks and returns an unsubscribe action. Publish initial data inside `Listen`; every event is deferred to a later realm update. Import **Callback quick start**, open `Callbacks.unity`, and inspect its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for complete wiring, initial population and cleanup.
+The callback adapter uses `IdentifyBy` and `Listen`. `Listen` receives publish and disappear callbacks and returns an unsubscribe action. Initial publications are deferred to a later realm update. Import **Callback quick start**, open `Callbacks.unity`, and inspect its [bootstrap](../Samples~/Callbacks/Bootstrap.cs) for subscription and cleanup.
 
-To remove entities that silently stop publishing, set `source.InactivityTimeout = System.TimeSpan.FromSeconds(10)` before tracking, choosing a duration suited to your feed. Null, the default, disables expiry. Each partial publication refreshes that entity's deadline; custom sources updating cached ghosts call protected `MarkPublished(ghost)`. Expiry removes the root and view. A later publication creates a new root.
+Both one-generic adapters support `WithName`, `WithVariant` and `WithCapabilities`. Capabilities are SDK-reported interface types; they do not add Unity components automatically. A realm initializer can inspect `presence.HasCapability<T>()` and install a matching module. It runs again when capabilities change, so check `presence.TryGetModule<T>(out module)` before adding another instance. Compatible `EntityModule<TData>` instances apply SDK updates to the Ghost. Unmatched payloads are ignored while the Presence remains tracked; exceptions from a module's `Apply` stop its detector.
 
-Call all Emas APIs, including publish/remove callbacks, on Unity's main thread. Your SDK adapter is responsible for delivering events there. Keep callback payloads unchanged until processed. SDK ownership, coordinate conversion and recovery are covered in [Guidelines](Guidelines.md); exact scheduling and failure contracts are in [API](API.md).
+To detect silence in a feed that should publish regularly, set `detector.InactivityTimeout = System.TimeSpan.FromSeconds(10)` before attachment. Null, the default, disables inactivity expiry. Each detection or data report resets that entity's deadline. Set `detector.DisappearanceGracePeriod` to retain a disappeared Presence and Ghost root for a while; zero, the default, removes them immediately. Disappearance makes it unavailable to queries at once. A new detection or report during grace restores the same handle and root; after grace expires, either creates a new one. Detector failure and anchor removal always remove immediately.
+
+Call all Emas APIs, including SDK publish and disappear callbacks, on Unity's main thread. The SDK adapter handles any thread transfer. Copy mutable callback payloads before publishing or keep them unchanged until their queued report runs. See the exact lifecycle and module contracts in [API](API.md).
 
 ## Keep a network vehicle fixed in Unity
 
 For moving-reference worlds or large global coordinates, configure the **Reference Frame** section of Realm Setup or assign `realm.ReferenceFrame` by code, and add `Spatial` to participating Ghost roots. Choose a manual simulation position or a ghost key to follow; optionally set a presentation distance. Publish simulation positions as `Double3`; the realm calculates the relative displacement before converting to Unity floats. Position and orientation publications can arrive independently. A presentation range hides distant views while keeping their data tracked.
 
-Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and source mapping. Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play to see the demonstration with its own realm and generated visuals.
+Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and SDK data mapping. Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play to see the demonstration with its own realm and generated visuals.
 
 ## Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
 | Nothing appears | Check the Realm Setup, Anchor Setup, Manifestation Blueprint and Manifestation Variant Inspectors for errors. Verify the kind ID and view prefab; an available ghost may intentionally have no view. |
-| A source stops | Its ghosts are removed. Open **Window > Emas** during Play Mode or read `source.LastErrorContext` and `source.LastError`. Fix the cause and call `anchor.RestartSource(source)` to repopulate. Assign `source.Name` to distinguish feeds. |
+| A detector stops | Its Presences and Ghosts are removed. While the prefab realm runs, find the detector in `anchorSetup.Anchor.Detectors` and inspect `LastErrorContext` and `LastError`. Fix the cause, then call `anchorSetup.Anchor.RestartDetector(detector)`. If startup stopped the realm, use the Console or an application-held detector reference. **Window > Emas** shows only `Realm.Default`. |
 | One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its manifestation blueprint, variant or detail to retry. |
-| Polling entities disappear | Return the full population, not only changes. Null, duplicate/empty IDs and mapping exceptions stop the source. |
+| Polling entities disappear | Return the full population, not only changes. Null snapshots, duplicate or empty IDs, invalid capability types and selector or module exceptions stop the detector. |
 | Restart creates duplicates | Unsubscribe in callback cleanup; dispose consumer query subscriptions when their owner stops. |
 | No tests appear | Open the prepared **`Tests/Unity~`** project through Unity Hub. Package import alone does not opt a consumer into tests. See [Validation](Validation.md). |

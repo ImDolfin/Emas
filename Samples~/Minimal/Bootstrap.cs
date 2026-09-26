@@ -3,19 +3,34 @@ using UnityEngine;
 namespace Emas.Minimal
 {
     /// <summary>
-    /// Creates the polling source configured by this prefab anchor.
+    /// Configures marker presences and creates the polling detector for this prefab anchor.
     /// </summary>
-    public sealed class Bootstrap : MonoBehaviour, ISourceProvider
+    public sealed class Bootstrap : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
         /// <summary>
-        /// Creates a source that reads the sample's current position.
+        /// Registers the marker root and its SDK position module before tracking starts.
         /// </summary>
-        public PresenceSource CreateSource()
+        /// <param name="realm">The realm owned by this prefab setup.</param>
+        public void ConfigureRealm(Realm realm)
         {
-            return new PollingPresenceSource<Reading, Marker>(Marker.Kind)
+            realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
+            {
+                MarkerPositionModule module;
+                if (!presence.TryGetModule(out module))
+                {
+                    presence.AddModule(new MarkerPositionModule(marker));
+                }
+            });
+        }
+
+        /// <summary>
+        /// Creates a detector that reads the sample's current SDK position.
+        /// </summary>
+        public PresenceDetector CreateDetector()
+        {
+            return new PollingPresenceDetector<Reading>(Marker.Kind)
                 .ReadFrom(() => new[] { new Reading(id: "one", position: new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f)) })
-                .IdentifyBy(item => item.Id)
-                .Apply((item, ghost) => ghost.SetPosition(item.Position));
+                .IdentifyBy(item => item.Id);
         }
     }
 }

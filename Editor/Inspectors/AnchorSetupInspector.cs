@@ -3,7 +3,7 @@ using UnityEditor;
 namespace Emas.Editor
 {
     /// <summary>
-    /// Validates one prefab anchor and its source provider without starting a realm.
+    /// Validates one prefab anchor and its detector provider without starting a realm.
     /// </summary>
     [CustomEditor(typeof(AnchorSetup))]
     [CanEditMultipleObjects]

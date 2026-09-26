@@ -377,7 +377,7 @@ namespace Emas.Tests
         {
             RegisterView(true);
             TestSource referenceSource = new TestSource();
-            _anchor.AddSource(referenceSource);
+            _anchor.AddDetector(referenceSource);
             _realm.ReferenceFrame = new ReferenceFrame
             {
                 FollowedGhost = new Key("simulation", SpatialKind, "reference")
@@ -602,7 +602,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class TestSource : PresenceSource
+        private sealed class TestSource : PresenceDetector
         {
             internal Action NextUpdate { get; set; }
 
@@ -632,7 +632,7 @@ namespace Emas.Tests
 
             internal void RemoveEntity(string entityId)
             {
-                Remove(SpatialKind, entityId);
+                Disappear(SpatialKind, entityId);
             }
 
             protected override void OnUpdate()

@@ -8,7 +8,7 @@ namespace Emas
     /// Owns one automatically updated realm and the configured anchors beneath this GameObject.
     /// </summary>
     /// <remarks>
-    /// Add AnchorSetup components to this prefab or its children. Each anchor has one source provider.
+    /// Add AnchorSetup components to this prefab or its children. Each anchor has one detector provider.
     /// Realm manifestation blueprints supply defaults; an anchor can override them for its own kinds. This component owns its realm; it never changes Realm.Default.
     /// Disable it to stop sources and remove all owned ghosts and views. Direct Realm construction
     /// and manual Update calls remain available independently.
@@ -75,7 +75,7 @@ namespace Emas
         /// </summary>
         /// <remarks>
         /// Called automatically on the first Update after enabling in Play Mode, after providers have enabled. It may also be called explicitly while enabled.
-        /// Each anchor's source provider creates one source per start. StopRealm or disabling releases the realm.
+        /// Each anchor's detector provider creates one detector per start. StopRealm or disabling releases the realm.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// The setup is disabled, already running, invalid, or stopped during source startup.
@@ -112,6 +112,8 @@ namespace Emas
                         _realmViewKinds.Add(blueprint.Kind);
                     }
                 }
+
+                ConfigurePresenceInitializers(realm);
 
                 foreach (AnchorSetup setup in anchors)
                 {
@@ -284,6 +286,24 @@ namespace Emas
             anchor?.Dispose();
         }
 
+        private void ConfigurePresenceInitializers(Realm realm)
+        {
+            MonoBehaviour[] components = GetComponentsInChildren<MonoBehaviour>(true);
+            foreach (MonoBehaviour component in components)
+            {
+                if (component == null || !component.isActiveAndEnabled
+                    || component.GetComponentInParent<RealmSetup>() != this)
+                {
+                    continue;
+                }
+
+                IRealmConfigurator configurator = component as IRealmConfigurator;
+                if (configurator != null)
+                {
+                    configurator.ConfigureRealm(realm);
+                }
+            }
+        }
         private void AttachAnchor(AnchorSetup setup, Realm realm, int lifetime, bool validate)
         {
             Anchor anchor = null;
@@ -329,13 +349,13 @@ namespace Emas
                 }
 
                 _subscriptions.Add(setup, subscription);
-                PresenceSource source = setup.CreateSourceProvider().CreateSource();
+                PresenceDetector source = setup.CreateDetectorProvider().CreateDetector();
                 if (source == null)
                 {
-                    throw new InvalidOperationException("AnchorSetup source provider returned null.");
+                    throw new InvalidOperationException("AnchorSetup detector provider returned null.");
                 }
 
-                anchor.AddSource(source);
+                anchor.AddDetector(source);
                 if (_lifetime != lifetime || !setup.isActiveAndEnabled || !isActiveAndEnabled
                     || !ReferenceEquals(_realm, realm))
                 {

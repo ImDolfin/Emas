@@ -5,7 +5,7 @@ namespace Emas.RelativeWorld
     /// <summary>
     /// Publishes nearby cars at large simulation coordinates without converting them to floats.
     /// </summary>
-    internal sealed class RelativeCarSource : PresenceSource
+    internal sealed class RelativeCarDetector : PresenceDetector
     {
         internal static readonly Double3 Origin = new Double3(1000000000.125, 0.0, 1000000000.375);
 

@@ -84,7 +84,7 @@ namespace Emas
             catch (Exception exception)
             {
                 visible = false;
-                PresenceSource.LogError(exception, "spatial projection for " + record.Key);
+                PresenceDetector.LogError(exception, "spatial projection for " + record.Key);
             }
 
             if (_ghosts.Contains(record) && record.SpatialVisible != visible)

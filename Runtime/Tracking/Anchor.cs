@@ -12,21 +12,21 @@ namespace Emas
     /// </remarks>
     public sealed class Anchor : IDisposable
     {
-        private readonly List<PresenceSource> _sources = new List<PresenceSource>();
-        private readonly HashSet<PresenceSource> _restarting = new HashSet<PresenceSource>();
+        private readonly List<PresenceDetector> _sources = new List<PresenceDetector>();
+        private readonly HashSet<PresenceDetector> _restarting = new HashSet<PresenceDetector>();
         private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
         private readonly GameObject _gameObject;
         private bool _disposed;
 
         private struct SourceTick
         {
-            internal SourceTick(PresenceSource source)
+            internal SourceTick(PresenceDetector source)
             {
                 Source = source;
                 Generation = source.RegistrationGeneration;
             }
 
-            internal readonly PresenceSource Source;
+            internal readonly PresenceDetector Source;
             internal readonly long Generation;
         }
 
@@ -86,11 +86,11 @@ namespace Emas
         /// <remarks>
         /// Read on the Unity thread. Earlier snapshots do not change; disposed anchors return an empty snapshot.
         /// </remarks>
-        public IReadOnlyList<PresenceSource> Sources
+        public IReadOnlyList<PresenceDetector> Detectors
         {
             get
             {
-                return new List<PresenceSource>(_sources).AsReadOnly();
+                return new List<PresenceDetector>(_sources).AsReadOnly();
             }
         }
 
@@ -153,7 +153,7 @@ namespace Emas
             return _blueprints.TryGet(kindId, out blueprint);
         }
 
-        internal bool ContainsSource(PresenceSource source)
+        internal bool ContainsSource(PresenceDetector source)
         {
             return _sources.Contains(source);
         }
@@ -176,7 +176,7 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The anchor or realm was disposed.
         /// </exception>
-        public void AddSource(PresenceSource source)
+        public void AddDetector(PresenceDetector source)
         {
             ThrowIfDisposed();
             if (source == null)
@@ -218,7 +218,7 @@ namespace Emas
             }
         }
 
-        internal void RollbackAddedSource(PresenceSource source, HashSet<Record> previous)
+        internal void RollbackAddedSource(PresenceDetector source, HashSet<Record> previous)
         {
             if (!_sources.Remove(source) || !source.IsAttachedTo(this))
             {
@@ -246,7 +246,7 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The anchor or realm was disposed.
         /// </exception>
-        public void RemoveSource(PresenceSource source)
+        public void RemoveDetector(PresenceDetector source)
         {
             ThrowIfDisposed();
             if (source == null || !_sources.Remove(source))
@@ -281,7 +281,7 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The anchor or realm was disposed.
         /// </exception>
-        public void RestartSource(PresenceSource source)
+        public void RestartDetector(PresenceDetector source)
         {
             ThrowIfDisposed();
             if (source == null)
@@ -339,7 +339,7 @@ namespace Emas
             }
         }
 
-        private bool CanContinueRestart(PresenceSource source, long generation)
+        private bool CanContinueRestart(PresenceDetector source, long generation)
         {
             return !_disposed && _sources.Contains(source) && !source.IsAttached
                 && source.RegistrationGeneration == generation;
@@ -370,7 +370,7 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The anchor or realm was disposed.
         /// </exception>
-        public void ReplaceSource(PresenceSource current, PresenceSource replacement)
+        public void ReplaceDetector(PresenceDetector current, PresenceDetector replacement)
         {
             ThrowIfDisposed();
             if (current == null || replacement == null)
@@ -444,7 +444,7 @@ namespace Emas
 
             _disposed = true;
             _blueprints.Clear();
-            List<PresenceSource> sources = new List<PresenceSource>(_sources);
+            List<PresenceDetector> sources = new List<PresenceDetector>(_sources);
             _sources.Clear();
             // Remove registration and records before scene callbacks can reenter the realm.
             Realm.NotifyAnchorDisposed(this);
@@ -490,7 +490,7 @@ namespace Emas
             }
         }
 
-        internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceSource source)
+        internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceDetector source)
         {
             return Realm.GetOwnedGhosts(source);
         }

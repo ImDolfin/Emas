@@ -1,290 +1,317 @@
 {
-  "schema_version": 1,
-  "diagram_type": "architecture",
-  "meta": {
-    "title": "Emas: Realm, Ghosts and Optional Views",
-    "locale": "en",
-    "quality_profile": "showcase",
-    "viewBox": [
-      1390,
-      700
-    ],
-    "legend": {
-      "entries": {
-        "backend": {
-          "label": "Presence / behavior"
-        },
-        "frontend": {
-          "label": "Scene / application"
-        },
-        "database": {
-          "label": "Manifestation assets"
-        },
-        "external": {
-          "label": "External source"
-        }
-      }
-    },
-    "views": [
-      {
-        "id": "discovery",
-        "label": "Discovery",
-        "focus": [
-          "network",
-          "source",
-          "realm",
-          "ghost",
-          "anchor"
-        ],
-        "note": "Presence sources publish via GetOrCreate<TGhost>. Realm creates roots beneath the anchor and activates them after initialization."
-      },
-      {
-        "id": "query-and-view",
-        "label": "Query + views",
-        "focus": [
-          "application",
-          "realm",
-          "ghost",
-          "blueprint",
-          "view"
-        ],
-        "note": "Queries match available ghosts only. The realm owns Manifest, Demanifest and view refresh; the view is a child of the ghost."
-      },
-      {
-        "id": "root-behaviors",
-        "label": "Root behavior",
-        "focus": [
-          "ghost",
-          "behaviors",
-          "view"
-        ],
-        "note": "Demanifest destroys only the view. Root components continue while the ghost is available and active."
-      },
-      {
-        "id": "update-phases",
-        "label": "Update phases",
-        "focus": [
-          "source",
-          "realm",
-          "ghost",
-          "view",
-          "application"
-        ],
-        "note": "Apply source changes, activate initialized roots, refresh views, then notify. Dispatch handles at most 256 queued actions per update."
-      }
-    ]
-  },
-  "components": [
-    {
-      "id": "network",
-      "type": "external",
-      "label": "External source",
-      "sublabel": "Application SDK / simulation",
-      "pos": [
-        40,
-        305
-      ],
-      "size": [
-        180,
-        80
-      ]
-    },
-    {
-      "id": "source",
-      "type": "backend",
-      "label": "PresenceSource",
-      "sublabel": "Application source integration",
-      "pos": [
-        330,
-        305
-      ],
-      "size": [
-        180,
-        80
-      ]
-    },
-    {
-      "id": "realm",
-      "type": "backend",
-      "label": "Realm",
-      "sublabel": "Ghosts / views / availability",
-      "pos": [
-        620,
-        305
-      ],
-      "size": [
-        180,
-        80
-      ]
-    },
-    {
-      "id": "ghost",
-      "type": "frontend",
-      "label": "Ghost",
-      "sublabel": "Identity + root components",
-      "pos": [
-        910,
-        305
-      ],
-      "size": [
-        180,
-        80
-      ]
-    },
-    {
-      "id": "view",
-      "type": "frontend",
-      "label": "View",
-      "sublabel": "Realm-managed view child",
-      "pos": [
-        1200,
-        305
-      ],
-      "size": [
-        180,
-        80
-      ]
-    },
-    {
-      "id": "application",
-      "type": "frontend",
-      "label": "Application",
-      "sublabel": "Realm.Default or isolated",
-      "pos": [
-        620,
-        65
-      ],
-      "size": [
-        180,
-        80
-      ]
-    },
-    {
-      "id": "blueprint",
-      "type": "database",
-      "label": "ManifestationBlueprint",
-      "sublabel": "Ghost prefab + variant assets",
-      "pos": [
-        1200,
-        65
-      ],
-      "size": [
-        180,
-        80
-      ]
-    },
-    {
-      "id": "anchor",
-      "type": "frontend",
-      "label": "Anchor",
-      "sublabel": "Scene frame + sources",
-      "pos": [
-        620,
-        545
-      ],
-      "size": [
-        180,
-        80
-      ]
-    },
-    {
-      "id": "behaviors",
-      "type": "backend",
-      "label": "Root behaviors",
-      "sublabel": "Movement / application logic",
-      "pos": [
-        910,
-        545
-      ],
-      "size": [
-        180,
-        80
-      ]
-    }
-  ],
-  "connections": [
-    {
-      "id": "source-data",
-      "from": "network",
-      "to": "source",
-      "label": "Read data",
-      "variant": "emphasis"
-    },
-    {
-      "id": "publish",
-      "from": "source",
-      "to": "realm",
-      "label": "GetOrCreate<T>",
-      "variant": "emphasis"
-    },
-    {
-      "id": "create-root",
-      "from": "realm",
-      "to": "ghost",
-      "label": "Create / reuse",
-      "variant": "emphasis"
-    },
-    {
-      "id": "view-child",
-      "from": "ghost",
-      "to": "view",
-      "label": "Parents view",
-      "variant": "emphasis"
-    },
-    {
-      "id": "api",
-      "from": "application",
-      "to": "realm",
-      "label": "Query / Manifest",
-      "labelDy": 90
-    },
-    {
-      "id": "select",
-      "from": "blueprint",
-      "to": "view",
-      "label": "Variant asset + level",
-      "labelDy": 90
-    },
-    {
-      "id": "own-anchor",
-      "from": "realm",
-      "to": "anchor",
-      "label": "Owns lifetime",
-      "labelDy": 90
-    },
-    {
-      "id": "root-parts",
-      "from": "ghost",
-      "to": "behaviors",
-      "label": "Root components",
-      "labelDy": 90
-    }
-  ],
-  "cards": [
-    {
-      "dot": "cyan",
-      "title": "Availability and identity",
-      "items": [
-        "Queries return available ghosts only.",
-        "Key = anchor ID + kind + entity ID."
-      ]
-    },
-    {
-      "dot": "violet",
-      "title": "Manifestation selection",
-      "items": [
-        "One blueprint per Kind; Ghost prefab optional.",
-        "Variant assets map detail levels to views.",
-        "Exact level, closest lower, then fallback."
-      ]
-    },
-    {
-      "dot": "emerald",
-      "title": "One ordered update",
-      "items": [
-        "Apply source data; activate initialized roots.",
-        "Refresh requested views; notify matches."
-      ]
-    }
-  ]
+    "schema_version":  1,
+    "diagram_type":  "architecture",
+    "meta":  {
+                 "title":  "Emas: Detection to Manifestation",
+                 "locale":  "en",
+                 "quality_profile":  "showcase",
+                 "viewBox":  [
+                                 1390,
+                                 720
+                             ],
+                 "legend":  {
+                                "entries":  {
+                                                "backend":  {
+                                                                "label":  "Tracking and conversion"
+                                                            },
+                                                "frontend":  {
+                                                                 "label":  "Scene and application"
+                                                             },
+                                                "database":  {
+                                                                 "label":  "Manifestation assets"
+                                                             },
+                                                "external":  {
+                                                                 "label":  "External SDK"
+                                                             }
+                                            }
+                            },
+                 "views":  [
+                               {
+                                   "id":  "discovery",
+                                   "label":  "Discovery",
+                                   "focus":  [
+                                                 "sdk",
+                                                 "detector",
+                                                 "realm",
+                                                 "presence",
+                                                 "anchor"
+                                             ],
+                                   "note":  "The detector reads SDK entities and reports kind, ID, label, variant, capabilities, and data. The Realm owns each stable Presence."
+                               },
+                               {
+                                   "id":  "initialization",
+                                   "label":  "Initialization",
+                                   "focus":  [
+                                                 "realm",
+                                                 "presence",
+                                                 "modules",
+                                                 "ghost"
+                                             ],
+                                   "note":  "A per-kind Realm initializer creates the Ghost root and installs EntityModules before SDK data is applied."
+                               },
+                               {
+                                   "id":  "presentation",
+                                   "label":  "Presentation",
+                                   "focus":  [
+                                                 "application",
+                                                 "realm",
+                                                 "presence",
+                                                 "ghost",
+                                                 "blueprint",
+                                                 "view"
+                                             ],
+                                   "note":  "Manifest(Presence, detail) requests an optional View from the kind\u0027s blueprint. Demanifest retains the Presence and Ghost."
+                               },
+                               {
+                                   "id":  "availability",
+                                   "label":  "Availability",
+                                   "focus":  [
+                                                 "detector",
+                                                 "realm",
+                                                 "presence",
+                                                 "ghost",
+                                                 "view"
+                                             ],
+                                   "note":  "Disappear makes the Presence unavailable; configured grace can retain its root for recovery before removal."
+                               }
+                           ]
+             },
+    "components":  [
+                       {
+                           "id":  "sdk",
+                           "type":  "external",
+                           "label":  "External SDK",
+                           "sublabel":  "Detected entities",
+                           "pos":  [
+                                       35,
+                                       310
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "detector",
+                           "type":  "backend",
+                           "label":  "PresenceDetector",
+                           "sublabel":  "ID, caps + SDK data",
+                           "pos":  [
+                                       265,
+                                       310
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "realm",
+                           "type":  "backend",
+                           "label":  "Realm",
+                           "sublabel":  "Owns tracking + setup",
+                           "pos":  [
+                                       495,
+                                       310
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "presence",
+                           "type":  "backend",
+                           "label":  "Presence",
+                           "sublabel":  "Stable detected entity",
+                           "pos":  [
+                                       725,
+                                       310
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "ghost",
+                           "type":  "frontend",
+                           "label":  "Ghost root",
+                           "sublabel":  "Invisible entity root",
+                           "pos":  [
+                                       955,
+                                       310
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "view",
+                           "type":  "frontend",
+                           "label":  "View",
+                           "sublabel":  "Optional manifestation",
+                           "pos":  [
+                                       1185,
+                                       310
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "application",
+                           "type":  "frontend",
+                           "label":  "Application",
+                           "sublabel":  "Queries + Manifest",
+                           "pos":  [
+                                       495,
+                                       60
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "blueprint",
+                           "type":  "database",
+                           "label":  "ManifestationBlueprint",
+                           "sublabel":  "Variant + detail views",
+                           "pos":  [
+                                       1185,
+                                       60
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "anchor",
+                           "type":  "frontend",
+                           "label":  "Anchor",
+                           "sublabel":  "Scene reference frame",
+                           "pos":  [
+                                       495,
+                                       560
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       },
+                       {
+                           "id":  "modules",
+                           "type":  "backend",
+                           "label":  "EntityModules",
+                           "sublabel":  "Convert SDK updates",
+                           "pos":  [
+                                       955,
+                                       560
+                                   ],
+                           "size":  [
+                                        170,
+                                        80
+                                    ]
+                       }
+                   ],
+    "connections":  [
+                        {
+                            "id":  "read",
+                            "from":  "sdk",
+                            "to":  "detector",
+                            "label":  "Detect",
+                            "variant":  "emphasis"
+                        },
+                        {
+                            "id":  "report",
+                            "from":  "detector",
+                            "to":  "realm",
+                            "label":  "Report",
+                            "variant":  "emphasis"
+                        },
+                        {
+                            "id":  "create-presence",
+                            "from":  "realm",
+                            "to":  "presence",
+                            "label":  "Create",
+                            "variant":  "emphasis"
+                        },
+                        {
+                            "id":  "initialize-root",
+                            "from":  "presence",
+                            "to":  "ghost",
+                            "label":  "Bind root",
+                            "variant":  "emphasis"
+                        },
+                        {
+                            "id":  "view-child",
+                            "from":  "ghost",
+                            "to":  "view",
+                            "label":  "Child view",
+                            "variant":  "emphasis"
+                        },
+                        {
+                            "id":  "api",
+                            "from":  "application",
+                            "to":  "realm",
+                            "label":  "Query / Manifest",
+                            "labelDy":  24
+                        },
+                        {
+                            "id":  "select",
+                            "from":  "blueprint",
+                            "to":  "view",
+                            "label":  "Variant + level",
+                            "labelDy":  24
+                        },
+                        {
+                            "id":  "own-anchor",
+                            "from":  "realm",
+                            "to":  "anchor",
+                            "label":  "Owns frame",
+                            "labelDy":  24
+                        },
+                        {
+                            "id":  "own-modules",
+                            "from":  "presence",
+                            "to":  "modules",
+                            "label":  "Install modules"
+                        },
+                        {
+                            "id":  "apply-data",
+                            "from":  "modules",
+                            "to":  "ghost",
+                            "label":  "Apply SDK data"
+                        }
+                    ],
+    "cards":  [
+                  {
+                      "dot":  "cyan",
+                      "title":  "Detection and identity",
+                      "items":  [
+                                    "Detector reports Kind, ID, label, variant, capability interfaces, and SDK data.",
+                                    "Realm retains one Presence per anchor + Kind + entity ID."
+                                ]
+                  },
+                  {
+                      "dot":  "emerald",
+                      "title":  "Realm initialization",
+                      "items":  [
+                                    "A per-Kind initializer creates the Ghost root and installs EntityModules.",
+                                    "EntityModule\u003cTData\u003e converts SDK updates into Spatial or application state."
+                                ]
+                  },
+                  {
+                      "dot":  "violet",
+                      "title":  "Optional presentation",
+                      "items":  [
+                                    "Manifest(Presence, detail) selects a View from the kind\u0027s variant assets.",
+                                    "Demanifest removes the View; disappearance can retain the Presence during grace."
+                                ]
+                  }
+              ]
 }

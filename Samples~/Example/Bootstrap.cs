@@ -16,7 +16,7 @@ namespace Emas.Sample
         private readonly HashSet<Key> _cars = new HashSet<Key>();
         private readonly HashSet<Key> _aircraft = new HashSet<Key>();
         private Anchor _anchor;
-        private SdkOneCarSource _firstCarSource;
+        private SdkOneCarDetector _firstCarSource;
         private SimulatedCockpitFeed _cockpitFeed;
         private bool _sourceReplaced;
         private float _replacementTimer;
@@ -41,11 +41,11 @@ namespace Emas.Sample
             RegisterCarManifestationBlueprint();
             RegisterAircraftManifestationBlueprint();
 
-            _firstCarSource = new SdkOneCarSource { Name = "SDK One cars" };
+            _firstCarSource = new SdkOneCarDetector { Name = "SDK One cars" };
             _anchor = Realm.Default.GetOrCreateAnchor(
                 AnchorId,
                 _firstCarSource,
-                new SimulatedAircraftSource { Name = "Simulated aircraft" });
+                new SimulatedAircraftDetector { Name = "Simulated aircraft" });
 
             Realm realm = _anchor.Realm;
             _carSubscription = realm.Query()
@@ -83,7 +83,7 @@ namespace Emas.Sample
         {
             if (_anchor != null && !_sourceReplaced)
             {
-                _anchor.ReplaceSource(_firstCarSource, new SdkTwoCarSource { Name = "SDK Two cars" });
+                _anchor.ReplaceDetector(_firstCarSource, new SdkTwoCarDetector { Name = "SDK Two cars" });
                 _sourceReplaced = true;
             }
         }

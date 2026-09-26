@@ -11,7 +11,7 @@ namespace Emas.Editor
     public sealed class DiagnosticsWindow : EditorWindow
     {
         private Vector2 _scroll;
-        private readonly HashSet<PresenceSource> _expandedErrors = new HashSet<PresenceSource>();
+        private readonly HashSet<PresenceDetector> _expandedErrors = new HashSet<PresenceDetector>();
 
         /// <summary>
         /// Opens diagnostics; opening or refreshing never creates a realm or starts tracking.
@@ -43,14 +43,14 @@ namespace Emas.Editor
                 EditorGUILayout.HelpBox("The default realm has no anchors.", MessageType.Info);
             }
 
-            HashSet<PresenceSource> failedSources = new HashSet<PresenceSource>();
+            HashSet<PresenceDetector> failedSources = new HashSet<PresenceDetector>();
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
             foreach (AnchorStatus anchor in anchors)
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 EditorGUILayout.LabelField(anchor.Id, EditorStyles.boldLabel);
                 EditorGUILayout.LabelField("Available ghosts", anchor.Available.ToString());
-                foreach (SourceStatus source in anchor.Sources)
+                foreach (SourceStatus source in anchor.Detectors)
                 {
                     EditorGUILayout.LabelField(source.Name, EditorStyles.boldLabel);
                     EditorGUILayout.LabelField("Status", source.Status);
@@ -91,7 +91,7 @@ namespace Emas.Editor
             foreach (Anchor anchor in realm.Anchors)
             {
                 List<SourceStatus> sources = new List<SourceStatus>();
-                foreach (PresenceSource source in anchor.Sources)
+                foreach (PresenceDetector source in anchor.Detectors)
                 {
                     IReadOnlyList<IGhost> ghosts = realm.GetOwnedGhosts(source);
                     int available = 0;
@@ -119,7 +119,7 @@ namespace Emas.Editor
                 {
                     Id = anchor.Id,
                     Available = realm.Query().InAnchor(anchor.Id).Count,
-                    Sources = sources.AsReadOnly()
+                    Detectors = sources.AsReadOnly()
                 });
             }
 
@@ -130,12 +130,12 @@ namespace Emas.Editor
         {
             internal string Id;
             internal int Available;
-            internal IReadOnlyList<SourceStatus> Sources;
+            internal IReadOnlyList<SourceStatus> Detectors;
         }
 
         internal sealed class SourceStatus
         {
-            internal PresenceSource Source;
+            internal PresenceDetector Source;
             internal string Name;
             internal string Status;
             internal string ErrorContext;

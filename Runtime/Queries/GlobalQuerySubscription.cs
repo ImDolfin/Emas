@@ -81,7 +81,7 @@ namespace Emas
                 }
                 catch (Exception exception)
                 {
-                    PresenceSource.LogError(exception, "query departure for " + key);
+                    PresenceDetector.LogError(exception, "query departure for " + key);
                 }
             }
         }

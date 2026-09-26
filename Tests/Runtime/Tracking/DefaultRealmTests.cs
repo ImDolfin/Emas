@@ -44,7 +44,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class CountingSource : PresenceSource
+        private sealed class CountingSource : PresenceDetector
         {
             internal int Updates;
 

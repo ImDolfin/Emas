@@ -8,7 +8,7 @@ namespace Emas.Tests
     /// <summary>
     /// Verifies callback publication and registration lifetimes.
     /// </summary>
-    public sealed class CallbackPresenceSourceTests
+    public sealed class CallbackPresenceDetectorTests
     {
         private static readonly Kind Population = new Kind("tests.callbacks");
         private readonly List<UnityEngine.Object> _objects = new List<UnityEngine.Object>();
@@ -46,8 +46,8 @@ namespace Emas.Tests
         [Test]
         public void Configuration_RejectsInvalidArguments()
         {
-            Assert.Throws<ArgumentException>(() => new CallbackPresenceSource<Item, Probe>(default(Kind)));
-            CallbackPresenceSource<Item, Probe> source = new CallbackPresenceSource<Item, Probe>(Population);
+            Assert.Throws<ArgumentException>(() => new CallbackPresenceDetector<Item, Probe>(default(Kind)));
+            CallbackPresenceDetector<Item, Probe> source = new CallbackPresenceDetector<Item, Probe>(Population);
             Assert.Throws<ArgumentNullException>(() => source.IdentifyBy(null));
             Assert.Throws<ArgumentNullException>(() => source.Apply(null));
             Assert.Throws<ArgumentNullException>(() => source.WithVariant(null));
@@ -64,7 +64,7 @@ namespace Emas.Tests
         public void Configuration_ReportsMissingStepsAndAllowsRetry(string missing)
         {
             Feed feed = new Feed();
-            CallbackPresenceSource<Item, Probe> source = new CallbackPresenceSource<Item, Probe>(Population);
+            CallbackPresenceDetector<Item, Probe> source = new CallbackPresenceDetector<Item, Probe>(Population);
             if (!missing.Contains("IdentifyBy"))
             {
                 source.IdentifyBy(item => item.Id);
@@ -81,11 +81,11 @@ namespace Emas.Tests
             }
 
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
-            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source));
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
             Assert.That(error.Message, Is.EqualTo("Callback source is missing required steps: " + missing + ". Configure them before tracking."));
             Assert.That(feed.Starts, Is.Zero);
             source.IdentifyBy(item => item.Id).Apply((item, ghost) => ghost.Value = item.Value).Listen(feed.Subscribe);
-            anchor.AddSource(source);
+            anchor.AddDetector(source);
             feed.Publish(new Item("a"));
             _realm.Update();
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
@@ -99,7 +99,7 @@ namespace Emas.Tests
         public void Configuration_LockedUntilDetached(bool fail)
         {
             Feed feed = new Feed();
-            CallbackPresenceSource<Item, Probe> source = Source(feed);
+            CallbackPresenceDetector<Item, Probe> source = Source(feed);
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
             if (fail)
             {
@@ -108,7 +108,7 @@ namespace Emas.Tests
             }
 
             AssertConfigurationLocked(source);
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             Assert.DoesNotThrow(() => source.IdentifyBy(item => item.Id).Apply((item, ghost) =>
             {
             })
@@ -152,7 +152,7 @@ namespace Emas.Tests
         public void Variants_MapClearAndPreserve()
         {
             Feed feed = new Feed();
-            CallbackPresenceSource<Item, Probe> source = Source(feed).WithVariant(item => item.Variant);
+            CallbackPresenceDetector<Item, Probe> source = Source(feed).WithVariant(item => item.Variant);
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
             feed.Publish(new Item("a", variant: "first"));
             _realm.Update();
@@ -164,7 +164,7 @@ namespace Emas.Tests
             feed.Publish(new Item("a", variant: "retained"));
             _realm.Update();
             Feed next = new Feed();
-            anchor.ReplaceSource(source, Source(next));
+            anchor.ReplaceDetector(source, Source(next));
             next.Publish(new Item("a"));
             _realm.Update();
             Assert.That(Find("a"), Is.SameAs(ghost));
@@ -180,7 +180,7 @@ namespace Emas.Tests
             Feed feed = new Feed();
             List<string> calls = new List<string>();
             List<Probe> ghosts = new List<Probe>();
-            CallbackPresenceSource<Item, Probe> source = Source(feed)
+            CallbackPresenceDetector<Item, Probe> source = Source(feed)
                 .IdentifyBy(item =>
                 {
                     calls.Add("identify:" + item.Value);
@@ -254,17 +254,17 @@ namespace Emas.Tests
         public void Restart_RejectsOldCallbacksAndQueuedWork(bool otherRealm)
         {
             Feed feed = new Feed();
-            CallbackPresenceSource<Item, Probe> source = Source(feed);
+            CallbackPresenceDetector<Item, Probe> source = Source(feed);
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
             Action<Item> oldPublish = feed.Publish;
             Action<string> oldRemove = feed.Remove;
             oldPublish(new Item("queued"));
             oldPublish(null);
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             using (Realm second = new Realm())
             {
                 Realm destination = otherRealm ? second : _realm;
-                destination.GetOrCreateAnchor("callbacks").AddSource(source);
+                destination.GetOrCreateAnchor("callbacks").AddDetector(source);
                 oldPublish(new Item("late"));
                 oldPublish(null);
                 feed.Publish(new Item("current", 5));
@@ -296,7 +296,7 @@ namespace Emas.Tests
         public void Cleanup_RunsOnce(string stop, bool throws)
         {
             Feed feed = new Feed();
-            CallbackPresenceSource<Item, Probe> source = Source(feed);
+            CallbackPresenceDetector<Item, Probe> source = Source(feed);
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
             if (throws)
             {
@@ -310,7 +310,7 @@ namespace Emas.Tests
             {
                 if (stop == "source")
                 {
-                    anchor.RemoveSource(source);
+                    anchor.RemoveDetector(source);
                 }
                 else if (stop == "anchor")
                 {
@@ -322,7 +322,7 @@ namespace Emas.Tests
                 }
                 else
                 {
-                    anchor.ReplaceSource(source, Source(new Feed()));
+                    anchor.ReplaceDetector(source, Source(new Feed()));
                 }
             }, throws ? new[] { "cleanup failed" } : Array.Empty<string>());
 
@@ -339,12 +339,12 @@ namespace Emas.Tests
         public void Listen_InterruptedStartupCleansUpLateReturn(bool throws)
         {
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
-            CallbackPresenceSource<Item, Probe> source = Source(new Feed());
+            CallbackPresenceDetector<Item, Probe> source = Source(new Feed());
             int stops = 0;
             source.Listen((publish, remove) =>
             {
                 publish(new Item("stale"));
-                anchor.RemoveSource(source);
+                anchor.RemoveDetector(source);
                 AssertConfigurationLocked(source);
                 return () =>
                 {
@@ -355,7 +355,7 @@ namespace Emas.Tests
                     }
                 };
             });
-            ExpectedErrors.Verify(() => anchor.AddSource(source),
+            ExpectedErrors.Verify(() => anchor.AddDetector(source),
                 throws ? new[] { "late cleanup failed" } : Array.Empty<string>());
             _realm.Update();
             Assert.That(stops, Is.EqualTo(1));
@@ -369,15 +369,15 @@ namespace Emas.Tests
         public void Listen_ThrowingStartupCanBeCorrected()
         {
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
-            CallbackPresenceSource<Item, Probe> source = Source(new Feed()).Listen((publish, remove) =>
+            CallbackPresenceDetector<Item, Probe> source = Source(new Feed()).Listen((publish, remove) =>
             {
                 publish(new Item("old"));
                 throw new InvalidOperationException("listen failed");
             });
-            Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source));
+            Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
             Feed feed = new Feed();
             source.Listen(feed.Subscribe);
-            anchor.AddSource(source);
+            anchor.AddDetector(source);
             feed.Publish(new Item("new"));
             _realm.Update();
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("new"));
@@ -396,7 +396,7 @@ namespace Emas.Tests
         {
             Feed feed = new Feed();
             bool fail = false;
-            CallbackPresenceSource<Item, Probe> source = Source(feed)
+            CallbackPresenceDetector<Item, Probe> source = Source(feed)
                 .Apply((item, ghost) =>
                 {
                     if (fail && failure == "apply")
@@ -438,7 +438,7 @@ namespace Emas.Tests
             Assert.That(_realm.TryGetGhost(retained.Key, out found), Is.False);
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("healthy"));
             Feed recovery = new Feed();
-            anchor.ReplaceSource(source, Source(recovery));
+            anchor.ReplaceDetector(source, Source(recovery));
             recovery.Publish(new Item("a", 42));
             _realm.Update();
             Probe recovered = Find("a");
@@ -457,14 +457,14 @@ namespace Emas.Tests
         {
             Feed feed = new Feed();
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
-            CallbackPresenceSource<Item, Probe> source = Source(feed);
+            CallbackPresenceDetector<Item, Probe> source = Source(feed);
             int variants = 0;
             int mappings = 0;
             source.IdentifyBy(item =>
             {
                 if (stage == "identify")
                 {
-                    anchor.RemoveSource(source);
+                    anchor.RemoveDetector(source);
                 }
 
                 return item.Id;
@@ -473,16 +473,16 @@ namespace Emas.Tests
                 variants++;
                 if (stage == "variant")
                 {
-                    anchor.RemoveSource(source);
+                    anchor.RemoveDetector(source);
                 }
 
                 return item.Variant;
             }).Apply((item, ghost) =>
             {
                 mappings++;
-                anchor.RemoveSource(source);
+                anchor.RemoveDetector(source);
             });
-            anchor.AddSource(source);
+            anchor.AddDetector(source);
             feed.Publish(new Item("a"));
             feed.Publish(new Item("b"));
             _realm.Update();
@@ -499,7 +499,7 @@ namespace Emas.Tests
         public void Replacement_RemovesUnreportedEntitiesAfterHandover()
         {
             Feed first = new Feed();
-            CallbackPresenceSource<Item, Probe> source = Source(first);
+            CallbackPresenceDetector<Item, Probe> source = Source(first);
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
             first.Publish(new Item("a"));
             first.Publish(new Item("b"));
@@ -507,8 +507,8 @@ namespace Emas.Tests
             Probe a = Find("a");
             Probe b = Find("b");
             Feed second = new Feed();
-            CallbackPresenceSource<Item, Probe> replacement = Source(second);
-            anchor.ReplaceSource(source, replacement);
+            CallbackPresenceDetector<Item, Probe> replacement = Source(second);
+            anchor.ReplaceDetector(source, replacement);
             IGhost found;
             Assert.That(_realm.TryGetGhost(b.Key, out found), Is.True);
             Assert.That(found, Is.SameAs(b));
@@ -533,7 +533,7 @@ namespace Emas.Tests
         public void Handover_DrainsInitialCallbacksBeforeRemovingUnreportedGhosts(bool restart)
         {
             Feed first = new Feed();
-            CallbackPresenceSource<Item, Probe> source = Source(first);
+            CallbackPresenceDetector<Item, Probe> source = Source(first);
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
             first.Publish(new Item("a"));
             first.Publish(new Item("b"));
@@ -550,16 +550,16 @@ namespace Emas.Tests
 
                 next.Publish(new Item("a", 42));
             };
-            CallbackPresenceSource<Item, Probe> current;
+            CallbackPresenceDetector<Item, Probe> current;
             if (restart)
             {
                 current = source;
-                anchor.RestartSource(source);
+                anchor.RestartDetector(source);
             }
             else
             {
                 current = Source(next);
-                anchor.ReplaceSource(source, current);
+                anchor.ReplaceDetector(source, current);
             }
 
             for (int index = 0; index < 300; index++)
@@ -599,7 +599,7 @@ namespace Emas.Tests
             List<int> stops = new List<int>();
             int starts = 0;
             bool fail = false;
-            CallbackPresenceSource<Item, Probe> source = Source(feed).Apply((item, ghost) =>
+            CallbackPresenceDetector<Item, Probe> source = Source(feed).Apply((item, ghost) =>
             {
                 if (fail)
                 {
@@ -618,8 +618,8 @@ namespace Emas.Tests
             Probe.Disabled = () =>
             {
                 Probe.Disabled = null;
-                anchor.RemoveSource(source);
-                anchor.AddSource(source);
+                anchor.RemoveDetector(source);
+                anchor.AddDetector(source);
             };
             fail = true;
             feed.Publish(new Item("a"));
@@ -630,7 +630,7 @@ namespace Emas.Tests
             feed.Publish(new Item("b"));
             _realm.Update();
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("b"));
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             Assert.That(stops, Is.EqualTo(new[] { 1, 2 }));
         }
 
@@ -640,7 +640,7 @@ namespace Emas.Tests
         [Test]
         public void Publication_AcceptsValueTypePayloads()
         {
-            _realm.GetOrCreateAnchor("callbacks", new CallbackPresenceSource<int, Probe>(Population)
+            _realm.GetOrCreateAnchor("callbacks", new CallbackPresenceDetector<int, Probe>(Population)
                 .IdentifyBy(value => "a")
                 .Apply((value, ghost) => ghost.Value = value)
                 .Listen((publish, remove) =>
@@ -666,7 +666,7 @@ namespace Emas.Tests
             return null;
         }
 
-        private static void AssertConfigurationLocked(CallbackPresenceSource<Item, Probe> source)
+        private static void AssertConfigurationLocked(CallbackPresenceDetector<Item, Probe> source)
         {
             Assert.Throws<InvalidOperationException>(() => source.IdentifyBy(item => item.Id));
             Assert.Throws<InvalidOperationException>(() => source.Apply((item, ghost) =>
@@ -676,9 +676,9 @@ namespace Emas.Tests
             Assert.Throws<InvalidOperationException>(() => source.Listen((publish, remove) => null));
         }
 
-        private static CallbackPresenceSource<Item, Probe> Source(Feed feed)
+        private static CallbackPresenceDetector<Item, Probe> Source(Feed feed)
         {
-            return new CallbackPresenceSource<Item, Probe>(Population)
+            return new CallbackPresenceDetector<Item, Probe>(Population)
                 .IdentifyBy(item => item.Id)
                 .Apply((item, ghost) => ghost.Value = item.Value)
                 .Listen(feed.Subscribe);

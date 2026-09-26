@@ -246,18 +246,18 @@ namespace Emas.Editor.Tests
             {
                 FailedSource source = new FailedSource(true) { Name = "Vehicle feed" };
                 Anchor anchor = realm.GetOrCreateAnchor("diagnostic", new FailedSource());
-                Assert.Throws<InvalidOperationException>(() => anchor.ReplaceSource(anchor.Sources[0], source));
+                Assert.Throws<InvalidOperationException>(() => anchor.ReplaceDetector(anchor.Detectors[0], source));
                 System.Collections.Generic.IReadOnlyList<DiagnosticsWindow.AnchorStatus> first = DiagnosticsWindow.Capture();
                 System.Collections.Generic.IReadOnlyList<DiagnosticsWindow.AnchorStatus> second = DiagnosticsWindow.Capture();
                 Assert.That(first.Count, Is.EqualTo(1));
                 Assert.That(first[0].Id, Is.EqualTo("diagnostic"));
                 Assert.That(first[0].Available, Is.Zero);
-                Assert.That(first[0].Sources[0].Status, Is.EqualTo("Stopped (attached)"));
-                Assert.That(first[0].Sources[0].Error, Is.SameAs(source.LastError));
-                Assert.That(first[0].Sources[0].Name, Is.EqualTo("Vehicle feed"));
-                Assert.That(first[0].Sources[0].ErrorContext, Is.EqualTo(source.LastErrorContext));
-                Assert.That(first[0].Sources[0].ErrorContext, Does.Contain("diagnostic").And.Contain("OnStart"));
-                Assert.That(second[0].Sources[0].Error.Message, Is.EqualTo("diagnostic failure"));
+                Assert.That(first[0].Detectors[0].Status, Is.EqualTo("Stopped (attached)"));
+                Assert.That(first[0].Detectors[0].Error, Is.SameAs(source.LastError));
+                Assert.That(first[0].Detectors[0].Name, Is.EqualTo("Vehicle feed"));
+                Assert.That(first[0].Detectors[0].ErrorContext, Is.EqualTo(source.LastErrorContext));
+                Assert.That(first[0].Detectors[0].ErrorContext, Does.Contain("diagnostic").And.Contain("OnStart"));
+                Assert.That(second[0].Detectors[0].Error.Message, Is.EqualTo("diagnostic failure"));
                 Assert.That(source.Updates, Is.Zero);
                 realm.Dispose();
                 Assert.That(DiagnosticsWindow.Capture(), Is.Null);
@@ -270,12 +270,12 @@ namespace Emas.Editor.Tests
             yield return new ExitPlayMode();
         }
 
-        private sealed class InspectorProvider : MonoBehaviour, ISourceProvider
+        private sealed class InspectorProvider : MonoBehaviour, IDetectorProvider
         {
             /// <summary>
             /// Returns no source because this test only inspects configuration.
             /// </summary>
-            public PresenceSource CreateSource()
+            public PresenceDetector CreateDetector()
             {
                 return null;
             }
@@ -295,7 +295,7 @@ namespace Emas.Editor.Tests
             }
         }
 
-        private sealed class FailedSource : PresenceSource
+        private sealed class FailedSource : PresenceDetector
         {
             internal int Updates;
             private readonly bool _fail;

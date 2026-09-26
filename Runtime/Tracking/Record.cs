@@ -4,7 +4,7 @@ namespace Emas
 {
     internal sealed class Record
     {
-        internal Record(Ghost ghost, PresenceSource owner, ManifestationBlueprintSnapshot blueprint)
+        internal Record(Ghost ghost, PresenceDetector owner, ManifestationBlueprintSnapshot blueprint)
         {
             Key = ghost.Key;
             Ghost = ghost;
@@ -16,12 +16,16 @@ namespace Emas
 
         internal readonly Key Key;
         internal readonly Ghost Ghost;
-        internal PresenceSource Owner;
+        internal Presence Presence;
+        internal PresenceDetector Owner;
         internal ManifestationBlueprintSnapshot ManifestationBlueprint;
         internal View View;
         internal UnityEngine.GameObject ViewPrefab;
         internal bool SpatialVisible = true;
         internal bool ViewRequested;
+        internal bool PresenceInitialized;
+        internal bool IsMissing;
+        internal double MissingUntil;
         internal bool PendingActivation;
         internal bool ViewDirty;
         internal bool RefreshingView;

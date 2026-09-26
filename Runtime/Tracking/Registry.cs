@@ -40,7 +40,7 @@ namespace Emas
             return _records.TryGetValue(record.Key, out current) && ReferenceEquals(current, record);
         }
 
-        internal List<Record> OwnedBy(PresenceSource owner)
+        internal List<Record> OwnedBy(PresenceDetector owner)
         {
             List<Record> result = new List<Record>();
             foreach (Record record in _records.Values)

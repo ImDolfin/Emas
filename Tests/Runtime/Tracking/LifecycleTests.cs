@@ -68,7 +68,7 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
             Assert.That(ghost.transform.parent, Is.SameAs(firstAnchor.Transform));
             Anchor secondAnchor = _realm.GetOrCreateAnchor("second");
-            Assert.Throws<InvalidOperationException>(() => secondAnchor.AddSource(source));
+            Assert.Throws<InvalidOperationException>(() => secondAnchor.AddDetector(source));
             Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
         }
 
@@ -87,10 +87,10 @@ namespace Emas.Tests
                 source.Publish("new");
                 throw new InvalidOperationException("start failed");
             };
-            Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source));
+            Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
             Assert.That(source.StopCount, Is.EqualTo(1));
             ProbeSource replacement = new ProbeSource();
-            anchor.AddSource(replacement);
+            anchor.AddDetector(replacement);
             Assert.That(replacement.Publish("prepared"), Is.SameAs(prepared));
             _realm.Update();
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
@@ -127,7 +127,7 @@ namespace Emas.Tests
                 _realm.GetOrCreateAnchor("anchor", retained, added, alsoAdded, failing));
 
             Assert.That(error.Message, Is.EqualTo("start failed"));
-            Assert.That(anchor.Sources, Is.EquivalentTo(new[] { retained }));
+            Assert.That(anchor.Detectors, Is.EquivalentTo(new[] { retained }));
             Assert.That(retained.IsActive, Is.True);
             Assert.That(retained.StopCount, Is.Zero);
             Assert.That(added.IsAttached, Is.False);
@@ -170,10 +170,10 @@ namespace Emas.Tests
                         }
                     }
                 };
-                anchor.AddSource(source);
+                anchor.AddDetector(source);
             };
 
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
 
             Assert.That(source.IsActive && source.IsAttached, Is.True);
             Assert.That(source.StartCount, Is.EqualTo(2));
@@ -212,14 +212,14 @@ namespace Emas.Tests
                 // At least one prepared root is still active when the first rollback scene effect runs.
                 ProbeGhost candidate = first.IsAvailable ? first : second;
                 source.Starting = () => reclaimed = source.Publish(candidate.Key.EntityId);
-                anchor.AddSource(source);
+                anchor.AddDetector(source);
                 Assert.That(reclaimed, Is.SameAs(candidate));
             };
 
             Assert.Throws<InvalidOperationException>(() => _realm.GetOrCreateAnchor("anchor", source, failing));
 
             Assert.That(source.IsActive && source.IsAttached, Is.True);
-            Assert.That(anchor.Sources, Is.EqualTo(new[] { source }));
+            Assert.That(anchor.Detectors, Is.EqualTo(new[] { source }));
             Assert.That(_realm.Query().Single(), Is.SameAs(reclaimed));
             IGhost found;
             Assert.That(_realm.TryGetGhost(new Key("anchor", Kind, "temporary"), out found), Is.False);
@@ -271,9 +271,9 @@ namespace Emas.Tests
             IGhost found;
             Assert.That(_realm.TryGetGhost(prepared.Key, out found), Is.False);
             Assert.That(found, Is.Null);
-            Assert.Throws<ObjectDisposedException>(() => anchor.AddSource(new ProbeSource()));
-            Assert.Throws<ObjectDisposedException>(() => anchor.RemoveSource(source));
-            Assert.Throws<ObjectDisposedException>(() => anchor.ReplaceSource(source, new ProbeSource()));
+            Assert.Throws<ObjectDisposedException>(() => anchor.AddDetector(new ProbeSource()));
+            Assert.Throws<ObjectDisposedException>(() => anchor.RemoveDetector(source));
+            Assert.Throws<ObjectDisposedException>(() => anchor.ReplaceDetector(source, new ProbeSource()));
             Anchor next = _realm.GetOrCreateAnchor("anchor");
             Assert.That(next, Is.Not.SameAs(anchor));
             Assert.That(_realm.Prepare<ProbeGhost>("anchor", Kind, "prepared"), Is.Not.SameAs(prepared));
@@ -357,7 +357,7 @@ namespace Emas.Tests
             _realm.Update();
             ProbeSource replacement = new ProbeSource();
             ProbeGhost.Disabled = ghost => _realm.RemoveAnchor("anchor");
-            Assert.DoesNotThrow(() => anchor.ReplaceSource(source, replacement));
+            Assert.DoesNotThrow(() => anchor.ReplaceDetector(source, replacement));
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
             Assert.That(replacement.StartCount, Is.EqualTo(0));
         }
@@ -378,7 +378,7 @@ namespace Emas.Tests
                 failed.Publish("car");
                 throw new InvalidOperationException("replacement failed");
             };
-            Assert.Throws<InvalidOperationException>(() => anchor.ReplaceSource(source, failed));
+            Assert.Throws<InvalidOperationException>(() => anchor.ReplaceDetector(source, failed));
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
@@ -389,9 +389,9 @@ namespace Emas.Tests
             Assert.That(failed.IsAttached, Is.True);
             Assert.That(failed.IsActive, Is.False);
             Anchor otherAnchor = _realm.GetOrCreateAnchor("other");
-            Assert.Throws<InvalidOperationException>(() => otherAnchor.AddSource(failed));
+            Assert.Throws<InvalidOperationException>(() => otherAnchor.AddDetector(failed));
             ProbeSource recovery = new ProbeSource();
-            anchor.ReplaceSource(failed, recovery);
+            anchor.ReplaceDetector(failed, recovery);
             ProbeGhost recovered = recovery.Publish("car");
             Assert.That(recovered, Is.Not.SameAs(ghost));
             Assert.That(recovered.Key, Is.EqualTo(ghost.Key));
@@ -611,8 +611,8 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
             int calls = 0;
             source.Queue(() => calls++);
-            anchor.RemoveSource(source);
-            anchor.AddSource(source);
+            anchor.RemoveDetector(source);
+            anchor.AddDetector(source);
             source.Queue(() => calls += 10);
             _realm.Update();
             Assert.That(calls, Is.EqualTo(10));
@@ -659,7 +659,7 @@ namespace Emas.Tests
                 if (!replaced)
                 {
                     replaced = true;
-                    anchor.ReplaceSource(source, replacement);
+                    anchor.ReplaceDetector(source, replacement);
                 }
             };
             int notifications = 0;
@@ -808,7 +808,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class ProbeSource : PresenceSource
+        private sealed class ProbeSource : PresenceDetector
         {
             internal Action Starting;
             internal Action Updating;
@@ -830,7 +830,7 @@ namespace Emas.Tests
 
             internal void Depart(string id)
             {
-                Remove(Kind, id);
+                Disappear(Kind, id);
             }
 
             internal void Queue(Action action)

@@ -16,7 +16,7 @@ namespace Emas
     /// <remarks>
     /// Configure while detached on the Unity thread. Reads on startup and every update unless PollEvery sets an interval. Use full snapshots, not delta batches.
     /// </remarks>
-    public sealed class PollingPresenceSource<TSource, TGhost> : PresenceSource where TGhost : Ghost
+    public sealed class PollingPresenceDetector<TSource, TGhost> : PresenceDetector where TGhost : Ghost
     {
         private bool _polling;
         private readonly Kind _kind;
@@ -40,12 +40,12 @@ namespace Emas
         /// <exception cref="ArgumentException">
         /// The kind is empty or invalid.
         /// </exception>
-        public PollingPresenceSource(Kind kind)
+        public PollingPresenceDetector(Kind kind)
             : this(kind, () => Time.realtimeSinceStartupAsDouble)
         {
         }
 
-        internal PollingPresenceSource(Kind kind, Func<double> elapsedSeconds)
+        internal PollingPresenceDetector(Kind kind, Func<double> elapsedSeconds)
         {
             if (!kind.IsValid)
             {
@@ -71,7 +71,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read/subscription is still executing.
         /// </exception>
-        public PollingPresenceSource<TSource, TGhost> ReadFrom(Func<IEnumerable<TSource>> read)
+        public PollingPresenceDetector<TSource, TGhost> ReadFrom(Func<IEnumerable<TSource>> read)
         {
             ThrowIfConfiguringWhileTracking();
             _read = read ?? throw new ArgumentNullException(nameof(read));
@@ -93,7 +93,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read/subscription is still executing.
         /// </exception>
-        public PollingPresenceSource<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
+        public PollingPresenceDetector<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
         {
             ThrowIfConfiguringWhileTracking();
             _identify = identify ?? throw new ArgumentNullException(nameof(identify));
@@ -115,7 +115,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read/subscription is still executing.
         /// </exception>
-        public PollingPresenceSource<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
+        public PollingPresenceDetector<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
         {
             ThrowIfConfiguringWhileTracking();
             _apply = apply ?? throw new ArgumentNullException(nameof(apply));
@@ -137,7 +137,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read/subscription is still executing.
         /// </exception>
-        public PollingPresenceSource<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
+        public PollingPresenceDetector<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
         {
             ThrowIfConfiguringWhileTracking();
             _variant = variant ?? throw new ArgumentNullException(nameof(variant));
@@ -165,7 +165,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read is still executing.
         /// </exception>
-        public PollingPresenceSource<TSource, TGhost> PollEvery(TimeSpan interval)
+        public PollingPresenceDetector<TSource, TGhost> PollEvery(TimeSpan interval)
         {
             ThrowIfConfiguringWhileTracking();
             if (interval < TimeSpan.Zero)
@@ -322,7 +322,7 @@ namespace Emas
                     {
                         operation = "Remove";
                         entityId = ghost.Key.EntityId;
-                        Remove(ghost.Key.Kind, ghost.Key.EntityId);
+                        Disappear(ghost.Key.Kind, ghost.Key.EntityId);
                     }
                 }
             }

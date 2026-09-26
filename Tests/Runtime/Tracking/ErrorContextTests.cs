@@ -50,11 +50,11 @@ namespace Emas.Tests
                     throw failure;
                 }
             };
-            PresenceSource source;
+            PresenceDetector source;
             Anchor anchor = _realm.GetOrCreateAnchor("vehicles");
             if (callback)
             {
-                source = new CallbackPresenceSource<string, TestGhost>(new Kind("car"))
+                source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"))
                     .IdentifyBy(identify).WithVariant(variant).Apply(apply)
                     .Listen((publish, remove) =>
                     {
@@ -62,15 +62,15 @@ namespace Emas.Tests
                         return null;
                     });
                 source.Name = "SDK One";
-                anchor.AddSource(source);
+                anchor.AddDetector(source);
                 ExpectedErrors.Verify(_realm.Update, "vehicles.*SDK One.*" + operation + ".*SDK rejected item");
             }
             else
             {
-                source = new PollingPresenceSource<string, TestGhost>(new Kind("car"))
+                source = new PollingPresenceDetector<string, TestGhost>(new Kind("car"))
                     .ReadFrom(() => new[] { "42" }).IdentifyBy(identify).WithVariant(variant).Apply(apply);
                 source.Name = "SDK One";
-                Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source)), Is.SameAs(failure));
+                Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source)), Is.SameAs(failure));
             }
 
             Assert.That(source.LastError, Is.SameAs(failure));
@@ -94,7 +94,7 @@ namespace Emas.Tests
         {
             bool failing = true;
             InvalidOperationException primary = new InvalidOperationException("mapping failed");
-            CallbackPresenceSource<string, TestGhost> source = new CallbackPresenceSource<string, TestGhost>(new Kind("car"))
+            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"))
                 .IdentifyBy(id => id).Apply((id, ghost) =>
                 {
                     if (failing)
@@ -121,7 +121,7 @@ namespace Emas.Tests
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);
             failing = false;
-            anchor.RestartSource(source);
+            anchor.RestartDetector(source);
             Assert.That(source.LastErrorContext, Is.Null);
             _realm.Update();
             Assert.That(source.LastError, Is.Null);
@@ -135,7 +135,7 @@ namespace Emas.Tests
         [TestCase(true)]
         public void Callback_IdentifiesSubscriptionFailures(bool cleanup)
         {
-            CallbackPresenceSource<string, TestGhost> source = new CallbackPresenceSource<string, TestGhost>(new Kind("car"))
+            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"))
                 .IdentifyBy(id => id).Apply((id, ghost) =>
                 {
                 })
@@ -154,12 +154,12 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("vehicles");
             if (cleanup)
             {
-                anchor.AddSource(source);
-                ExpectedErrors.Verify(() => anchor.RemoveSource(source), "vehicles.*Unsubscribe.*cleanup failed");
+                anchor.AddDetector(source);
+                ExpectedErrors.Verify(() => anchor.RemoveDetector(source), "vehicles.*Unsubscribe.*cleanup failed");
             }
             else
             {
-                Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source));
+                Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
             }
 
             Assert.That(source.LastErrorContext, Does.Contain(cleanup ? "Unsubscribe" : "Listen"));
@@ -174,14 +174,14 @@ namespace Emas.Tests
         [Test]
         public void Name_UsesTypeFallback()
         {
-            CallbackPresenceSource<string, TestGhost> source = new CallbackPresenceSource<string, TestGhost>(new Kind("car"));
-            Assert.That(source.Name, Is.EqualTo("CallbackPresenceSource"));
+            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"));
+            Assert.That(source.Name, Is.EqualTo("CallbackPresenceDetector"));
             source.Name = "Vehicle SDK";
             Assert.That(source.Name, Is.EqualTo("Vehicle SDK"));
             source.Name = " ";
-            Assert.That(source.Name, Is.EqualTo("CallbackPresenceSource"));
+            Assert.That(source.Name, Is.EqualTo("CallbackPresenceDetector"));
             source.Name = null;
-            Assert.That(source.Name, Is.EqualTo("CallbackPresenceSource"));
+            Assert.That(source.Name, Is.EqualTo("CallbackPresenceDetector"));
         }
 
         private sealed class TestGhost : Ghost

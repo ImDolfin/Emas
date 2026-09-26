@@ -11,7 +11,7 @@ namespace Emas
     /// All operations require Unity's main thread. The application handles SDK threading before calling Emas.
     /// Dispose isolated realms when their owner stops; Unity advances Realm.Default automatically.
     /// </remarks>
-    public sealed class Realm : IDisposable
+    public sealed partial class Realm : IDisposable
     {
         /// <summary>
         /// Gets the shared realm advanced automatically by Unity.
@@ -227,7 +227,7 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The realm was disposed.
         /// </exception>
-        public Anchor GetOrCreateAnchor(string id, params PresenceSource[] sources)
+        public Anchor GetOrCreateAnchor(string id, params PresenceDetector[] sources)
         {
             return GetOrCreateAnchor(id, null, sources);
         }
@@ -260,7 +260,7 @@ namespace Emas
         /// <exception cref="ObjectDisposedException">
         /// The realm was disposed.
         /// </exception>
-        public Anchor GetOrCreateAnchor(string id, Transform frame, params PresenceSource[] sources)
+        public Anchor GetOrCreateAnchor(string id, Transform frame, params PresenceDetector[] sources)
         {
             ThrowIfDisposed();
             if (string.IsNullOrEmpty(id))
@@ -270,7 +270,7 @@ namespace Emas
 
             Anchor anchor;
             bool created = false;
-            List<PresenceSource> newSources = null;
+            List<PresenceDetector> newSources = null;
             HashSet<Record> previousRecords = null;
             if (!_anchors.TryGetValue(id, out anchor))
             {
@@ -293,19 +293,19 @@ namespace Emas
                 {
                     for (int index = 0; index < sources.Length; index++)
                     {
-                        PresenceSource source = sources[index];
+                        PresenceDetector source = sources[index];
                         if (!created && !anchor.ContainsSource(source))
                         {
                             if (newSources == null)
                             {
-                                newSources = new List<PresenceSource>();
+                                newSources = new List<PresenceDetector>();
                                 previousRecords = CaptureGhosts();
                             }
 
                             newSources.Add(source);
                         }
 
-                        anchor.AddSource(source);
+                        anchor.AddDetector(source);
                     }
                 }
 
@@ -326,7 +326,7 @@ namespace Emas
             }
         }
 
-        private void RollbackAnchorSources(Anchor anchor, List<PresenceSource> sources, HashSet<Record> previous)
+        private void RollbackAnchorSources(Anchor anchor, List<PresenceDetector> sources, HashSet<Record> previous)
         {
             for (int index = sources.Count - 1; index >= 0; index--)
             {
@@ -342,7 +342,7 @@ namespace Emas
                 }
                 catch (Exception exception)
                 {
-                    PresenceSource.LogError(exception, "rolling back source attachment to anchor '" + anchor.Id + "'");
+                    PresenceDetector.LogError(exception, "rolling back source attachment to anchor '" + anchor.Id + "'");
                 }
             }
         }
@@ -811,7 +811,7 @@ namespace Emas
             return _subscriptions.Subscribe(query, callback, onLeave, _sourceDepth == 0 && !_finalizing);
         }
 
-        internal void Dispatch(PresenceSource source, long generation, Action action)
+        internal void Dispatch(PresenceDetector source, long generation, Action action)
         {
             if (action == null)
             {
@@ -831,7 +831,7 @@ namespace Emas
         }
 
         internal TGhost GetOrCreate<TGhost>(
-            PresenceSource owner,
+            PresenceDetector owner,
             string anchorId,
             string entityId,
             Kind kind,
@@ -878,6 +878,8 @@ namespace Emas
                     record.HandoverUpdate = 0;
                     record.RegistrationGeneration = owner.RegistrationGeneration;
                     record.LastPublishedAt = _elapsedSeconds();
+                    record.IsMissing = false;
+                    record.MissingUntil = 0;
                 }
 
                 record.Ghost.SetMetadata(nameValue, variant);
@@ -896,6 +898,10 @@ namespace Emas
                     }
                 }
 
+                if (record.Presence != null)
+                {
+                    EnsurePresence(record);
+                }
                 return existingTyped;
             }
 
@@ -947,7 +953,7 @@ namespace Emas
             return typed;
         }
 
-        internal void MarkPublished(PresenceSource owner, IGhost ghost)
+        internal void MarkPublished(PresenceDetector owner, IGhost ghost)
         {
             ThrowIfDisposed();
             if (ghost == null)
@@ -972,22 +978,32 @@ namespace Emas
             for (int index = 0; index < records.Count && !_disposed; index++)
             {
                 Record record = records[index];
-                PresenceSource owner = record.Owner;
+                PresenceDetector owner = record.Owner;
                 if (!_ghosts.Contains(record) || owner == null
                     || !owner.IsRegistration(this, record.RegistrationGeneration))
                 {
                     continue;
                 }
 
+                if (record.IsMissing)
+                {
+                    if (now >= record.MissingUntil)
+                    {
+                        RemoveRecord(record.Key, record);
+                    }
+
+                    continue;
+                }
+
                 TimeSpan? timeout = owner.InactivityTimeout;
                 if (timeout.HasValue && now - record.LastPublishedAt >= timeout.Value.TotalSeconds)
                 {
-                    RemoveRecord(record.Key, record);
+                    RemoveGhost(owner, record.Key);
                 }
             }
         }
 
-        internal void FinalizeSource(PresenceSource owner)
+        internal void FinalizeSource(PresenceDetector owner)
         {
             if (!_updating && _sourceDepth == 0 && !_finalizing && !_disposed)
             {
@@ -995,7 +1011,7 @@ namespace Emas
             }
         }
 
-        internal void RemoveGhost(PresenceSource owner, Key key)
+        internal void RemoveGhost(PresenceDetector owner, Key key)
         {
             Record record;
             if (!_ghosts.TryGetValue(key, out record) || record.Owner != owner)
@@ -1003,10 +1019,28 @@ namespace Emas
                 return;
             }
 
-            RemoveRecord(key, record);
+            if (record.IsMissing)
+            {
+                return;
+            }
+
+            TimeSpan grace = owner.DisappearanceGracePeriod;
+            if (grace <= TimeSpan.Zero)
+            {
+                RemoveRecord(key, record);
+                return;
+            }
+
+            record.IsMissing = true;
+            record.MissingUntil = _elapsedSeconds() + grace.TotalSeconds;
+            InvalidateAvailability(record);
+            if (record.Ghost != null)
+            {
+                _sceneChanges.SetActive(record.Ghost.gameObject, false);
+            }
         }
 
-        internal void RemoveSourceGhosts(PresenceSource owner)
+        internal void RemoveSourceGhosts(PresenceDetector owner)
         {
             long generation = owner.RegistrationGeneration;
             List<Record> records = _ghosts.OwnedBy(owner);
@@ -1027,7 +1061,7 @@ namespace Emas
             }
         }
 
-        internal void CompleteSourceHandover(PresenceSource owner)
+        internal void CompleteSourceHandover(PresenceDetector owner)
         {
             List<Record> records = _ghosts.OwnedBy(owner);
             for (int index = 0; index < records.Count; index++)
@@ -1066,7 +1100,7 @@ namespace Emas
             }
         }
 
-        internal void TransferSource(PresenceSource current, PresenceSource replacement)
+        internal void TransferSource(PresenceDetector current, PresenceDetector replacement)
         {
             List<Record> records = _ghosts.OwnedBy(current);
             for (int index = 0; index < records.Count; index++)
@@ -1080,7 +1114,7 @@ namespace Emas
             DeactivateRecords(records, replacement);
         }
 
-        internal void MarkUnavailable(PresenceSource owner)
+        internal void MarkUnavailable(PresenceDetector owner)
         {
             List<Record> records = _ghosts.OwnedBy(owner);
             for (int index = 0; index < records.Count; index++)
@@ -1096,14 +1130,14 @@ namespace Emas
             anchor.Dispose();
         }
 
-        internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceSource owner)
+        internal IReadOnlyList<IGhost> GetOwnedGhosts(PresenceDetector owner)
         {
             List<IGhost> result = new List<IGhost>();
             GetOwnedGhosts(owner, result);
             return result;
         }
 
-        internal void GetOwnedGhosts(PresenceSource owner, List<IGhost> result)
+        internal void GetOwnedGhosts(PresenceDetector owner, List<IGhost> result)
         {
             result.Clear();
             foreach (Record record in _ghosts.Values)
@@ -1129,10 +1163,10 @@ namespace Emas
             }
             catch (Exception exception)
             {
-                string context = PresenceSource.DescribeError(sourceContext, "Dispatch");
+                string context = PresenceDetector.DescribeError(sourceContext, "Dispatch");
                 if (item.Source == null)
                 {
-                    PresenceSource.LogError(exception, context);
+                    PresenceDetector.LogError(exception, context);
                 }
                 else if (item.Source.IsRegistration(this, item.Generation))
                 {
@@ -1240,6 +1274,10 @@ namespace Emas
             }
 
             _ghosts.Remove(key);
+            if (record.Presence != null)
+            {
+                record.Presence.MarkRemoved();
+            }
             InvalidateAvailability(record);
             _views.Destroy(record);
             if (record.Ghost != null)
@@ -1300,7 +1338,7 @@ namespace Emas
             return new HashSet<Record>(_ghosts.Values);
         }
 
-        internal void RollbackSource(PresenceSource owner, HashSet<Record> previous)
+        internal void RollbackSource(PresenceDetector owner, HashSet<Record> previous)
         {
             long generation = owner.RegistrationGeneration;
             List<Record> records = _ghosts.OwnedBy(owner);
@@ -1340,10 +1378,15 @@ namespace Emas
                 record.Ghost.SetAvailable(false);
             }
 
+            if (record.Presence != null)
+            {
+                record.Presence.SetAvailable(false);
+            }
+
             _subscriptions.Forget(record.Key);
         }
 
-        private void DeactivateRecords(List<Record> records, PresenceSource owner)
+        private void DeactivateRecords(List<Record> records, PresenceDetector owner)
         {
             for (int index = 0; index < records.Count; index++)
             {
@@ -1356,14 +1399,14 @@ namespace Emas
             }
         }
 
-        private bool CanFinalize(Record record, PresenceSource onlyOwner)
+        private bool CanFinalize(Record record, PresenceDetector onlyOwner)
         {
             return !_disposed && _ghosts.Contains(record) && record.Ghost != null
                 && record.Owner != null && (onlyOwner == null || record.Owner == onlyOwner)
                 && record.Owner.IsRegistration(this, record.RegistrationGeneration);
         }
 
-        private void FinalizeChanges(PresenceSource onlyOwner)
+        private void FinalizeChanges(PresenceDetector onlyOwner)
         {
             _finalizing = true;
             try
@@ -1380,7 +1423,7 @@ namespace Emas
                         continue;
                     }
 
-                    PresenceSource owner = record.Owner;
+                    PresenceDetector owner = record.Owner;
                     long generation = record.RegistrationGeneration;
                     long ownership = record.OwnershipVersion;
                     try
@@ -1388,6 +1431,10 @@ namespace Emas
                         record.PendingActivation = false;
                         record.ViewDirty = true;
                         record.Ghost.SetAvailable(true);
+                        if (record.Presence != null)
+                        {
+                            record.Presence.SetAvailable(true);
+                        }
                         _sceneChanges.SetActive(record.Ghost.gameObject, true);
                         if (!CanFinalize(record, onlyOwner) || record.OwnershipVersion != ownership)
                         {
@@ -1398,7 +1445,7 @@ namespace Emas
                     {
                         if (owner.IsRegistration(this, generation))
                         {
-                            owner.HandleFailure(exception, PresenceSource.DescribeError(owner.CaptureErrorContext(), "Activate", record.Key.Kind, record.Key.EntityId));
+                            owner.HandleFailure(exception, PresenceDetector.DescribeError(owner.CaptureErrorContext(), "Activate", record.Key.Kind, record.Key.EntityId));
                         }
                         else
                         {
@@ -1437,7 +1484,7 @@ namespace Emas
 
         private sealed class DispatchItem
         {
-            public DispatchItem(PresenceSource source, long generation, Action action, long sequence)
+            public DispatchItem(PresenceDetector source, long generation, Action action, long sequence)
             {
                 Source = source;
                 Generation = generation;
@@ -1445,7 +1492,7 @@ namespace Emas
                 Sequence = sequence;
             }
 
-            public readonly PresenceSource Source;
+            public readonly PresenceDetector Source;
             public readonly long Generation;
             public readonly Action Action;
             public readonly long Sequence;

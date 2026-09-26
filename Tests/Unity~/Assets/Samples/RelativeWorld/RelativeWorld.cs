@@ -12,7 +12,7 @@ namespace Emas.RelativeWorld
     public sealed class RelativeWorld : MonoBehaviour
     {
         private Realm _realm;
-        private RelativeCarSource _source;
+        private RelativeCarDetector _source;
         private IDisposable _views;
         private ManifestationBlueprint _manifestationBlueprint;
         private ManifestationVariant[] _manifestationVariants;
@@ -56,7 +56,7 @@ namespace Emas.RelativeWorld
             _manifestationBlueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             _manifestationBlueprint.Configure(RelativeCar.Kind, null, _manifestationVariants, null);
             _realm.RegisterManifestationBlueprint(_manifestationBlueprint);
-            _source = new RelativeCarSource { Name = "Large-coordinate cars" };
+            _source = new RelativeCarDetector { Name = "Large-coordinate cars" };
             _realm.GetOrCreateAnchor("relative-world", _source);
             _views = _realm.Query().OfKind(RelativeCar.Kind).OnAvailable(ghost => _realm.Manifest(ghost));
             CreateEnvironment();

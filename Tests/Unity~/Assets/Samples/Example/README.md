@@ -5,7 +5,7 @@ Open `Scenes/Example.unity` and press Play. Cars and aircraft use application co
 | Responsibility | Read first |
 | --- | --- |
 | Read-only application data | `Contracts/I3DPosition.cs`, `IArticulate.cs` |
-| Source mapping and mutation | `Entities/CarGhost.cs`, `Sources/Presence/SdkOneCarSource.cs` |
+| Source mapping and mutation | `Entities/CarGhost.cs`, `Sources/Presence/SdkOneCarDetector.cs` |
 | Paired query membership, subscription disposal and replacement | `Bootstrap.cs` (`OnEnable`, `OnDisable`, `ReplaceCarSource`) |
 | Root position consumption | `Behaviors/ApplyPosition.cs` |
 | View consumption through `View.Ghost.TryGet<T>` | `Behaviors/VehicleLogic.cs`, `ArticulationLogic.cs` |

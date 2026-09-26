@@ -141,7 +141,7 @@ namespace Emas
                 // Presentation failures belong to this view, not to the source population.
                 // Keep the request so a new request or appearance change can retry it.
                 Destroy(record);
-                PresenceSource.LogError(exception, context);
+                PresenceDetector.LogError(exception, context);
             }
             finally
             {
@@ -164,7 +164,7 @@ namespace Emas
             }
             catch (System.Exception exception)
             {
-                PresenceSource.LogError(exception, "view removal for " + record.Key);
+                PresenceDetector.LogError(exception, "view removal for " + record.Key);
             }
         }
 

@@ -4,13 +4,13 @@ using System.Collections.Generic;
 namespace Emas
 {
     /// <summary>
-    /// Base class for one network or simulation integration.
+    /// Base class for detecting entities from one external SDK or simulation feed.
     /// </summary>
     /// <remarks>
-    /// Use all source operations on Unity's main thread. The application handles SDK threading before calling Emas.
-    /// Attach through an Anchor. Sources own ghost data, not SDK clients.
+    /// Use all detector operations on Unity's main thread. The application handles SDK threading before calling Emas.
+    /// Attach through an Anchor. Report detections and SDK updates to the Realm; EntityModules apply updates to Ghost roots. SDK clients remain application-owned.
     /// </remarks>
-    public abstract class PresenceSource
+    public abstract class PresenceDetector
     {
         private Anchor _anchor;
         private bool _started;
@@ -21,6 +21,7 @@ namespace Emas
         private string _sourceContext;
         private int _lifecycleDepth;
         private TimeSpan? _inactivityTimeout;
+        private TimeSpan _disappearanceGracePeriod;
 
         /// <summary>
         /// Gets the anchor currently hosting this source.
@@ -51,6 +52,16 @@ namespace Emas
         }
 
         /// <summary>
+        /// Gets a snapshot of presences monitored by this detector, including unavailable ones.
+        /// </summary>
+        protected IReadOnlyList<Presence> OwnedPresences
+        {
+            get
+            {
+                return _anchor == null ? new List<Presence>() : _anchor.Realm.GetOwnedPresences(this);
+            }
+        }
+        /// <summary>
         /// Starts one attachment; acquire subscriptions and publish initial data here.
         /// </summary>
         /// <remarks>
@@ -80,6 +91,54 @@ namespace Emas
         {
         }
 
+        /// <summary>
+        /// Detects an entity so the realm can create its stable Presence, root and modules.
+        /// </summary>
+        /// <param name="entityId">The stable SDK entity ID.</param>
+        /// <param name="kind">The detected kind.</param>
+        /// <param name="name">An optional entity label.</param>
+        /// <param name="variant">An optional visual variant.</param>
+        /// <param name="capabilities">Typed capability interfaces reported by the SDK.</param>
+        /// <returns>The stable realm-owned presence handle.</returns>
+        protected Presence Detect(string entityId, Kind kind, string name = null, Variant? variant = null,
+            IEnumerable<Type> capabilities = null)
+        {
+            return ReportPresence(entityId, kind, name, variant, capabilities, null);
+        }
+
+        /// <summary>
+        /// Reports an SDK update for the realm to apply through the presence's entity modules.
+        /// </summary>
+        /// <typeparam name="TData">The SDK update type.</typeparam>
+        /// <param name="entityId">The stable SDK entity ID.</param>
+        /// <param name="kind">The detected kind.</param>
+        /// <param name="data">The SDK data forwarded to compatible entity modules.</param>
+        /// <param name="name">An optional entity label.</param>
+        /// <param name="variant">An optional visual variant.</param>
+        /// <param name="capabilities">Typed capability interfaces reported by the SDK.</param>
+        /// <returns>The stable realm-owned presence handle.</returns>
+        protected Presence Report<TData>(string entityId, Kind kind, TData data, string name = null,
+            Variant? variant = null, IEnumerable<Type> capabilities = null)
+        {
+            if ((object)data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            return ReportPresence(entityId, kind, name, variant, capabilities, data);
+        }
+
+        private Presence ReportPresence(string entityId, Kind kind, string name, Variant? variant,
+            IEnumerable<Type> capabilities, object data)
+        {
+            if (_anchor == null || !_started)
+            {
+                throw new InvalidOperationException("The detector is not active on an anchor.");
+            }
+
+            _anchor.ThrowIfDisposed();
+            return _anchor.Realm.ReportPresence(this, _anchor.Id, entityId, kind, name, variant, capabilities, data);
+        }
         /// <summary>
         /// Obtains or creates a typed ghost owned by this source.
         /// </summary>
@@ -200,7 +259,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Removes one ghost owned by this source.
+        /// Reports that one owned presence has disappeared.
         /// </summary>
         /// <param name="kind">
         /// The ghost kind.
@@ -209,9 +268,9 @@ namespace Emas
         /// The source entity ID.
         /// </param>
         /// <remarks>
-        /// Unknown IDs and inactive registrations are ignored. An active call destroys the owned root and view.
+        /// Unknown IDs and inactive registrations are ignored. The Realm hides the presence immediately and removes it after DisappearanceGracePeriod.
         /// </remarks>
-        protected void Remove(Kind kind, string entityId)
+        protected void Disappear(Kind kind, string entityId)
         {
             if (_anchor != null && _started)
             {
@@ -279,14 +338,14 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets or sets how long an owned ghost may go without publication before removal.
+        /// Gets or sets how long an owned presence may go without publication before it disappears.
         /// </summary>
         /// <value>
         /// A positive timeout, or null to disable inactivity expiry, which is the default.
         /// </value>
         /// <remarks>
         /// Configure while detached. Uses unscaled real time and removes expired ghosts during the next realm update,
-        /// after queued publications and source updates. GetOrCreate and MarkPublished reset the individual ghost's deadline.
+        /// after queued publications and detector updates. Report, GetOrCreate and MarkPublished reset the individual presence's deadline.
         /// Any partial data update counts as activity. Enable only for feeds that publish often enough to establish continued presence;
         /// feeds that publish only changed values should normally leave expiry disabled.
         /// </remarks>
@@ -318,6 +377,34 @@ namespace Emas
             }
         }
 
+        /// <summary>
+        /// Gets or sets how long a disappeared presence remains unavailable before removal.
+        /// </summary>
+        /// <remarks>
+        /// Zero, the default, removes immediately. A later report during the grace period reuses the same
+        /// Presence and Ghost root. Configure while detached on Unity's main thread.
+        /// </remarks>
+        public TimeSpan DisappearanceGracePeriod
+        {
+            get
+            {
+                return _disappearanceGracePeriod;
+            }
+            set
+            {
+                if (IsAttached || IsInLifecycle)
+                {
+                    throw new InvalidOperationException("Configure disappearance grace before attaching the detector to an anchor.");
+                }
+
+                if (value < TimeSpan.Zero)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "Disappearance grace cannot be negative.");
+                }
+
+                _disappearanceGracePeriod = value;
+            }
+        }
         /// <summary>
         /// Gets whether this registration is starting or accepting updates.
         /// </summary>

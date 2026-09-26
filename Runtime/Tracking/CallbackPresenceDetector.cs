@@ -17,7 +17,7 @@ namespace Emas
     /// All calls, including publish/remove callbacks, require Unity's main thread; the application handles SDK threading.
     /// Configure while detached. Published items must remain unchanged until processed; copy mutable SDK data before publishing.
     /// </remarks>
-    public sealed class CallbackPresenceSource<TSource, TGhost> : PresenceSource where TGhost : Ghost
+    public sealed class CallbackPresenceDetector<TSource, TGhost> : PresenceDetector where TGhost : Ghost
     {
         private readonly Kind _kind;
         private Func<TSource, string> _identify;
@@ -38,7 +38,7 @@ namespace Emas
         /// <exception cref="ArgumentException">
         /// The kind is empty or invalid.
         /// </exception>
-        public CallbackPresenceSource(Kind kind)
+        public CallbackPresenceDetector(Kind kind)
         {
             if (!kind.IsValid)
             {
@@ -63,7 +63,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read/subscription is still executing.
         /// </exception>
-        public CallbackPresenceSource<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
+        public CallbackPresenceDetector<TSource, TGhost> IdentifyBy(Func<TSource, string> identify)
         {
             ThrowIfConfiguringWhileTracking();
             _identify = identify ?? throw new ArgumentNullException(nameof(identify));
@@ -85,7 +85,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read/subscription is still executing.
         /// </exception>
-        public CallbackPresenceSource<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
+        public CallbackPresenceDetector<TSource, TGhost> Apply(Action<TSource, TGhost> apply)
         {
             ThrowIfConfiguringWhileTracking();
             _apply = apply ?? throw new ArgumentNullException(nameof(apply));
@@ -107,7 +107,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read/subscription is still executing.
         /// </exception>
-        public CallbackPresenceSource<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
+        public CallbackPresenceDetector<TSource, TGhost> WithVariant(Func<TSource, Variant> variant)
         {
             ThrowIfConfiguringWhileTracking();
             _variant = variant ?? throw new ArgumentNullException(nameof(variant));
@@ -132,7 +132,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is attached or a read/subscription is still executing.
         /// </exception>
-        public CallbackPresenceSource<TSource, TGhost> Listen(Func<Action<TSource>, Action<string>, Action> subscribe)
+        public CallbackPresenceDetector<TSource, TGhost> Listen(Func<Action<TSource>, Action<string>, Action> subscribe)
         {
             ThrowIfConfiguringWhileTracking();
             _subscribe = subscribe ?? throw new ArgumentNullException(nameof(subscribe));
@@ -304,7 +304,7 @@ namespace Emas
             try
             {
                 ValidateId(id);
-                Remove(_kind, id);
+                Disappear(_kind, id);
             }
             catch (Exception exception)
             {

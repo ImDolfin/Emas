@@ -4,18 +4,18 @@ Configure a reference frame for a realm when simulation positions should be proj
 
 ## Configure a prefab realm
 
-Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list holds defaults for that realm. Add one **Emas > Anchor Setup** for each source frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor Id** within this realm and exactly one enabled component implementing `ISourceProvider` on the same object. That component returns a `PresenceSource` from `CreateSource()`. Anchor manifestation blueprints can override the realm defaults. Each blueprint covers one Kind and may reference separate Manifestation Variant assets for different appearances, each with its own detail-level views. For example:
+Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list holds visual defaults for that realm. Add one **Emas > Anchor Setup** for each anchor frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor Id** within this realm and exactly one enabled component implementing `IDetectorProvider` on the same object. That component returns a `PresenceDetector` from `CreateDetector()`. An enabled `IRealmConfigurator` beneath the Realm Setup can register the Ghost root type and spatial modules for each Kind before detectors start. Anchor manifestation blueprints can override the realm defaults. Each blueprint covers one Kind and may reference separate Manifestation Variant assets for different appearances, each with its own detail-level views. For example:
 
 ```text
 Screen (RealmSetup: manifestation blueprints and reference frame)
-  Vehicles (AnchorSetup: id vehicles; CarSourceProvider)
-  Signs (AnchorSetup: id signs; SignSourceProvider)
+  Vehicles (AnchorSetup: id vehicles; CarDetectorProvider)
+  Signs (AnchorSetup: id signs; SignDetectorProvider)
 Environment (another RealmSetup with its own anchors and reference frame)
 ```
 
 For a car that stays near the Unity origin, enable **Use Reference Frame** and **Follow Ghost** on the screen's Realm Setup. Enter the car's anchor ID (`vehicles`), kind ID and entity ID (`my-car`). Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in simulation units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
 
-For a fixed origin, leave **Follow Ghost** off and enter the simulation **Position** as doubles, plus its **Rotation**. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete source-provider wiring.
+For a fixed origin, leave **Follow Ghost** off and enter the simulation **Position** as doubles, plus its **Rotation**. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete detector-provider wiring.
 
 ## Keep your car fixed by code
 
@@ -51,9 +51,9 @@ frame.Position = new Double3(reference.X, reference.Y, reference.Z);
 
 `Realm.Default` updates automatically. An isolated `new Realm()` needs an application-owned `Update()` call after its incoming data is processed and must be disposed when its owner stops. A `RealmSetup` advances its own isolated realm automatically. Choose a small Unity reference position near the scene origin.
 
-## Publish spatial channels independently
+## Apply spatial channels through entity modules
 
-A concrete ghost can require the spatial component:
+A root that uses shared simulation coordinates needs `Spatial`. For example:
 
 ```csharp
 [RequireComponent(typeof(Spatial))]
@@ -62,29 +62,62 @@ public sealed class Car : Ghost
 }
 ```
 
-In your source's position handler:
+Assume `PositionPacket` carries an ID and raw double coordinates, and `RotationPacket` carries the same ID and a `Quaternion`. The detector forwards these SDK packets unchanged. Separate modules convert coordinates into the realm's shared Cartesian frame and update the independent spatial channels. The example's X/Y/Z axes already match that frame; replace the conversion in `Apply` for geodetic or other SDK coordinates:
 
 ```csharp
-Car car = GetOrCreate<Car>(id, CarKind);
-car.GetComponent<Spatial>().SetPosition(new Double3(packet.X, packet.Y, packet.Z));
+public sealed class PositionModule : EntityModule<PositionPacket>
+{
+    public override void Apply(PositionPacket packet)
+    {
+        Presence.Root.GetComponent<Spatial>().SetPosition(
+            new Double3(packet.X, packet.Y, packet.Z));
+    }
+}
+
+public sealed class RotationModule : EntityModule<RotationPacket>
+{
+    public override void Apply(RotationPacket packet)
+    {
+        Presence.Root.GetComponent<Spatial>().SetRotation(packet.Rotation);
+    }
+}
 ```
 
-In a separate orientation handler:
+Register the root type and modules for this Kind before attaching the detector. Use `IRealmConfigurator.ConfigureRealm` for a prefab realm, or call the same registration on a realm built by code:
 
 ```csharp
-Car car = GetOrCreate<Car>(id, CarKind);
-car.GetComponent<Spatial>().SetRotation(packet.Rotation);
+realm.RegisterPresenceInitializer<Car>(CarKind, (presence, car) =>
+{
+    PositionModule position;
+    if (!presence.TryGetModule(out position))
+    {
+        presence.AddModule(new PositionModule());
+    }
+
+    RotationModule rotation;
+    if (!presence.TryGetModule(out rotation))
+    {
+        presence.AddModule(new RotationModule());
+    }
+});
 ```
 
-Articulation continues to update its own data or child transforms. Publishing orientation leaves the cached position intact; position leaves orientation intact. `HasPosition` and `HasRotation` indicate which channels have arrived. Without a rotation publication, Emas leaves that ghost root's rotation under application control.
+Inside a custom `PresenceDetector`, each SDK event reports its data to the Realm:
 
-Sources using a cached owned ghost still call `MarkPublished(ghost)` after writing fresh data if they use inactivity expiry. `Spatial.SetPosition` and `SetRotation` store spatial state; they do not publish tracking membership or emit general data-change notifications.
+```csharp
+Report(positionPacket.Id, CarKind, positionPacket);
+Report(rotationPacket.Id, CarKind, rotationPacket);
+```
 
-After source processing, the realm resolves the reference once and projects all participating ghosts using their latest spatial state. A reference movement repositions unchanged entities too. Partial channels do not trigger unrelated application refreshes. For interpolated feeds, evaluate the reference and entity samples at a common presentation time before assigning their spatial state.
+The detector identifies the Presence and forwards the packet. The Realm creates its root and modules when first reported, then invokes the module matching the packet type. A new position packet leaves cached rotation intact; a rotation packet leaves position intact. `Spatial.HasPosition` and `HasRotation` indicate which channels have arrived. Without rotation data, Emas leaves the Ghost root's rotation under application control.
+
+Every `Report` records activity for `InactivityTimeout`. `Spatial.SetPosition` and `SetRotation` store spatial state; neither reports tracking membership on its own. Direct code integrations using cached Ghost roots can still call `MarkPublished(ghost)` after fresh data.
+
+After detector processing, the Realm resolves the reference once and projects all participating roots using their latest spatial state. A reference movement repositions unchanged entities too. Partial channels do not trigger unrelated application refreshes. For interpolated feeds, evaluate the reference and entity samples at a common presentation time before reporting them.
 
 ## Preserve precision before Unity
 
-Store and transport global positions as `Double3`, which has three `double` components. Convert SDK axes and units into one shared Cartesian coordinate system for the realm. Different sources must agree on that system; source-specific geodetic or geocentric conversion belongs in the adapter.
+Store and transport global positions as `Double3`, which has three `double` components. Convert SDK axes and units into one shared Cartesian coordinate system for the realm. Different detectors must feed the same system; SDK-specific geodetic or geocentric conversion belongs in an `EntityModule<TData>` after the detector forwards raw SDK coordinates.
 
 The relative displacement is calculated in double precision before its final conversion to a Unity position:
 
@@ -109,7 +142,7 @@ Only one system should write a participating root's position and published rotat
 
 A spatial ghost without a position, without an initialized reference, or outside the presentation range keeps its tracking identity and data. Its requested view is suppressed; entering range creates the requested view automatically. `Spatial.IsInRange` describes its latest projection result. Root rendering and colliders are also suppressed outside the range while root scripts remain active. This is a presentation limit, not entity removal or a query-availability filter.
 
-`Demanifest` still cancels the view request. Source failure, explicit removal and inactivity expiry still remove the ghost under the ordinary tracking rules.
+`Demanifest` still cancels the view request. Detector failure removes the population; explicit disappearance and inactivity expiry make a Presence unavailable immediately and remove its root after any configured disappearance grace period.
 
 ## Reference loss and conversion helpers
 
@@ -130,4 +163,4 @@ Check `HasPosition` before inverse-position, rotation-conversion or reference-di
 
 Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play. Its component creates an isolated realm, camera and simple car views. The green ego car stays at the Unity origin while orange traffic moves inversely. One distant car's view appears as it enters the configured 45-metre range. Network traffic positions are published once, while the ego car keeps publishing independent position and orientation updates.
 
-Read [RelativeWorld.cs](../Samples~/RelativeWorld/RelativeWorld.cs) for ownership and configuration, and [RelativeCarSource.cs](../Samples~/RelativeWorld/RelativeCarSource.cs) for double-precision mapping. Disable the component to release its realm and generated objects.
+Read [RelativeWorld.cs](../Samples~/RelativeWorld/RelativeWorld.cs) for ownership and configuration, and [RelativeCarDetector.cs](../Samples~/RelativeWorld/RelativeCarDetector.cs) for double-precision mapping. This sample uses the supported direct custom-detector API; the module approach above keeps new SDK detection and root updates separate. Disable the component to release its realm and generated objects.

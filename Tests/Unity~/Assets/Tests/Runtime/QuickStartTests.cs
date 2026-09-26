@@ -56,7 +56,7 @@ namespace Emas.Tests.Samples
             _currentRealm = setup.Realm;
             Ghost original = AssertView("quick-start");
             View originalView = original.GetComponentInChildren<View>();
-            anchorSetup.Anchor.RestartSource(anchorSetup.Anchor.Sources[0]);
+            anchorSetup.Anchor.RestartDetector(anchorSetup.Anchor.Detectors[0]);
             yield return null;
             Assert.That(AssertView("quick-start"), Is.SameAs(original));
             Assert.That(original.GetComponentInChildren<View>(), Is.SameAs(originalView));
@@ -91,7 +91,7 @@ namespace Emas.Tests.Samples
             Vector3 position = ghost.transform.localPosition;
             AssertListeners(feed, 1);
             View originalView = ghost.GetComponentInChildren<View>();
-            anchorSetup.Anchor.RestartSource(anchorSetup.Anchor.Sources[0]);
+            anchorSetup.Anchor.RestartDetector(anchorSetup.Anchor.Detectors[0]);
             AssertListeners(feed, 1);
             Assert.That(ghost.IsAvailable, Is.False);
             yield return null;
@@ -164,12 +164,12 @@ namespace Emas.Tests.Samples
 
             Assert.That(roots.Count, Is.GreaterThan(0));
             Anchor anchor = Realm.Default.Anchors[0];
-            PresenceSource originalSource = anchor.Sources[0];
+            PresenceDetector originalSource = anchor.Detectors[0];
             bootstrap.ReplaceCarSource();
             yield return null;
             yield return null;
             Assert.That(originalSource.IsAttached || originalSource.IsActive, Is.False);
-            Assert.That(anchor.Sources[0], Is.TypeOf<Emas.Sample.SdkTwoCarSource>());
+            Assert.That(anchor.Detectors[0], Is.TypeOf<Emas.Sample.SdkTwoCarDetector>());
             Assert.That(cars.Count, Is.EqualTo(roots.Count));
             foreach (IGhost ghost in cars)
             {
@@ -179,7 +179,7 @@ namespace Emas.Tests.Samples
 
             bootstrap.gameObject.SetActive(false);
             Assert.That(cars.Count, Is.Zero);
-            Assert.That(anchor.Sources, Is.Empty);
+            Assert.That(anchor.Detectors, Is.Empty);
             foreach (string name in new[] { "_carSubscription", "_aircraftSubscription" })
             {
                 Assert.That(typeof(Emas.Sample.Bootstrap).GetField(name,

@@ -8,6 +8,6 @@ The green ego car stays at the Unity origin while its simulation coordinates mov
 | --- | --- |
 | `RelativeWorld.cs` | Owns the realm, configures the ghost-following `ReferenceFrame`, builds views, and calls `realm.Update()`. |
 | `RelativeCar.cs` | Requires `Spatial` on each car Ghost root. |
-| `RelativeCarSource.cs` | Publishes `Double3` positions and rotations independently without converting global positions to floats. |
+| `RelativeCarDetector.cs` | Publishes `Double3` positions and rotations independently without converting global positions to floats. |
 
 Disable the **Relative World** object to release its realm and generated scene objects. The sample has its own assembly and can be imported without **Emas sample**. For coordinate mapping, reference loss, and range behavior, see the [relative-world guide](../../Documentation~/Spatial.md).

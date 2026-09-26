@@ -170,7 +170,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class TestSource : PresenceSource
+        private sealed class TestSource : PresenceDetector
         {
             internal Action Updating;
             internal int StopCount;

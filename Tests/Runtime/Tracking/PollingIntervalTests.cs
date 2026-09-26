@@ -50,7 +50,7 @@ namespace Emas.Tests
         [Test]
         public void ZeroInterval_PollsEveryUpdate()
         {
-            PollingPresenceSource<string, TestGhost> source = CreateSource().PollEvery(TimeSpan.FromSeconds(1));
+            PollingPresenceDetector<string, TestGhost> source = CreateDetector().PollEvery(TimeSpan.FromSeconds(1));
             Assert.That(source.PollEvery(TimeSpan.Zero), Is.SameAs(source));
 
             _realm.GetOrCreateAnchor("anchor", source);
@@ -65,7 +65,7 @@ namespace Emas.Tests
         [Test]
         public void NegativeInterval_IsRejected()
         {
-            PollingPresenceSource<string, TestGhost> source = CreateSource().PollEvery(TimeSpan.FromSeconds(1));
+            PollingPresenceDetector<string, TestGhost> source = CreateDetector().PollEvery(TimeSpan.FromSeconds(1));
             ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
                 () => source.PollEvery(TimeSpan.FromTicks(-1)));
             Assert.That(error.ParamName, Is.EqualTo("interval"));
@@ -82,7 +82,7 @@ namespace Emas.Tests
         public void Interval_RetainsDataAndMembershipUntilDeadline()
         {
             _items.Add("removed");
-            _realm.GetOrCreateAnchor("anchor", CreateSource().PollEvery(TimeSpan.FromSeconds(0.5)));
+            _realm.GetOrCreateAnchor("anchor", CreateDetector().PollEvery(TimeSpan.FromSeconds(0.5)));
             Key key = new Key("anchor", Kind, "one");
             IGhost retained;
             Assert.That(_realm.TryGetGhost(key, out retained), Is.True);
@@ -114,7 +114,7 @@ namespace Emas.Tests
         [Test]
         public void DelayedUpdate_DoesNotCatchUp()
         {
-            _realm.GetOrCreateAnchor("anchor", CreateSource().PollEvery(TimeSpan.FromSeconds(0.5)));
+            _realm.GetOrCreateAnchor("anchor", CreateDetector().PollEvery(TimeSpan.FromSeconds(0.5)));
             _now = 100;
             _realm.Update();
             _realm.Update();
@@ -134,14 +134,14 @@ namespace Emas.Tests
         public void Configuration_IsLockedDuringDetachedRead()
         {
             Anchor anchor = _realm.GetOrCreateAnchor("anchor");
-            PollingPresenceSource<string, TestGhost> source = CreateSource();
+            PollingPresenceDetector<string, TestGhost> source = CreateDetector();
             source.ReadFrom(() =>
             {
-                anchor.RemoveSource(source);
+                anchor.RemoveDetector(source);
                 Assert.Throws<InvalidOperationException>(() => source.PollEvery(TimeSpan.FromSeconds(1)));
                 return Array.Empty<string>();
             });
-            anchor.AddSource(source);
+            anchor.AddDetector(source);
             Assert.That(source.IsAttached, Is.False);
             Assert.DoesNotThrow(() => source.PollEvery(TimeSpan.FromSeconds(1)));
         }
@@ -152,7 +152,7 @@ namespace Emas.Tests
         [Test]
         public void Restart_ResetsDeadline()
         {
-            PollingPresenceSource<string, TestGhost> source = CreateSource().PollEvery(TimeSpan.FromSeconds(1));
+            PollingPresenceDetector<string, TestGhost> source = CreateDetector().PollEvery(TimeSpan.FromSeconds(1));
             Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
             IGhost original = _realm.Query().Single();
             _fail = true;
@@ -169,7 +169,7 @@ namespace Emas.Tests
             _fail = false;
             _now += 0.25;
             int before = _reads;
-            anchor.RestartSource(source);
+            anchor.RestartDetector(source);
             Assert.That(_reads, Is.EqualTo(before + 1));
             Assert.That(_realm.Query().Single(), Is.Not.SameAs(original));
             Assert.That(_realm.Query().Single().Key, Is.EqualTo(original.Key));
@@ -188,13 +188,13 @@ namespace Emas.Tests
         [Test]
         public void FailedStartup_CanRetryImmediately()
         {
-            PollingPresenceSource<string, TestGhost> source = CreateSource().PollEvery(TimeSpan.FromHours(1));
+            PollingPresenceDetector<string, TestGhost> source = CreateDetector().PollEvery(TimeSpan.FromHours(1));
             Anchor anchor = _realm.GetOrCreateAnchor("anchor");
             _fail = true;
-            Assert.Throws<InvalidOperationException>(() => anchor.AddSource(source));
+            Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
             Assert.That(source.IsAttached, Is.False);
             _fail = false;
-            anchor.AddSource(source);
+            anchor.AddDetector(source);
             Assert.That(_reads, Is.EqualTo(2));
             Assert.That(source.LastError, Is.Null);
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
@@ -213,7 +213,7 @@ namespace Emas.Tests
             try
             {
                 Time.timeScale = 0;
-                PollingPresenceSource<string, TestGhost> source = new PollingPresenceSource<string, TestGhost>(Kind)
+                PollingPresenceDetector<string, TestGhost> source = new PollingPresenceDetector<string, TestGhost>(Kind)
                     .PollEvery(TimeSpan.FromMilliseconds(100))
                     .ReadFrom(() =>
                     {
@@ -241,10 +241,10 @@ namespace Emas.Tests
             }
         }
 
-        private PollingPresenceSource<string, TestGhost> CreateSource()
+        private PollingPresenceDetector<string, TestGhost> CreateDetector()
         {
             // A controlled clock makes exact deadlines and long gaps deterministic.
-            return new PollingPresenceSource<string, TestGhost>(Kind, () => _now)
+            return new PollingPresenceDetector<string, TestGhost>(Kind, () => _now)
                 .ReadFrom(() =>
                 {
                     _reads++;

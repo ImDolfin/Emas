@@ -175,12 +175,12 @@ namespace Emas.Tests
             InvalidOperationException multiple = Assert.Throws<InvalidOperationException>(() => query.Single());
             Assert.That(multiple.Message, Is.EqualTo("Expected exactly one ghost, but found 2."));
 
-            anchor.RemoveSource(first);
+            anchor.RemoveDetector(first);
             Assert.That(query.Count, Is.EqualTo(1));
             Assert.That(query.FirstOrDefault(), Is.SameAs(secondGhost));
             Assert.That(query.Single(), Is.SameAs(secondGhost));
 
-            anchor.RemoveSource(second);
+            anchor.RemoveDetector(second);
             Assert.That(query.Count, Is.Zero);
             Assert.That(query.FirstOrDefault(), Is.Null);
             InvalidOperationException empty = Assert.Throws<InvalidOperationException>(() => query.Single());
@@ -245,7 +245,7 @@ namespace Emas.Tests
             int calls = 0;
             IDisposable subscription = _realm.Query().OfKind(kind).OnAvailable(ghost => calls++);
             TestSource replacement = new TestSource(kind);
-            anchor.ReplaceSource(first, replacement);
+            anchor.ReplaceDetector(first, replacement);
             replacement.Publish("42", new Variant("small-car"));
             _realm.Update();
 
@@ -352,8 +352,8 @@ namespace Emas.Tests
                 localAnchor.RegisterManifestationBlueprint(local);
                 TestSource localSource = new TestSource(kind);
                 TestSource globalSource = new TestSource(kind);
-                localAnchor.AddSource(localSource);
-                globalAnchor.AddSource(globalSource);
+                localAnchor.AddDetector(localSource);
+                globalAnchor.AddDetector(globalSource);
                 TestGhost localGhost = localSource.Publish("one", Variant.None);
                 TestGhost globalGhost = globalSource.Publish("two", Variant.None);
                 _realm.Update();
@@ -411,7 +411,7 @@ namespace Emas.Tests
                 Anchor anchor = _realm.GetOrCreateAnchor("simulation");
                 anchor.RegisterManifestationBlueprint(localManifestationBlueprint);
                 TestSource source = new TestSource(kind);
-                anchor.AddSource(source);
+                anchor.AddDetector(source);
                 TestGhost ghost = source.Publish("42", Variant.None);
                 _realm.Update();
                 View localView = _realm.Manifest(ghost);
@@ -458,8 +458,8 @@ namespace Emas.Tests
                 localAnchor.RegisterManifestationBlueprint(shared);
                 TestSource localSource = new TestSource(kind);
                 TestSource globalSource = new TestSource(kind);
-                localAnchor.AddSource(localSource);
-                globalAnchor.AddSource(globalSource);
+                localAnchor.AddDetector(localSource);
+                globalAnchor.AddDetector(globalSource);
                 TestGhost localGhost = localSource.Publish("one", Variant.None);
                 TestGhost globalGhost = globalSource.Publish("two", Variant.None);
                 _realm.Update();
@@ -525,8 +525,8 @@ namespace Emas.Tests
 
                 TestSource oldSource = new TestSource(oldKind);
                 TestSource newSource = new TestSource(newKind);
-                anchor.AddSource(oldSource);
-                anchor.AddSource(newSource);
+                anchor.AddDetector(oldSource);
+                anchor.AddDetector(newSource);
                 TestGhost oldGhost = oldSource.Publish("old", Variant.None);
                 TestGhost newGhost = newSource.Publish("new", Variant.None);
                 _realm.Update();
@@ -731,8 +731,8 @@ namespace Emas.Tests
                 localAnchor.RegisterManifestationBlueprint(blueprint);
                 TestSource localSource = new TestSource(kind);
                 TestSource globalSource = new TestSource(kind);
-                localAnchor.AddSource(localSource);
-                globalAnchor.AddSource(globalSource);
+                localAnchor.AddDetector(localSource);
+                globalAnchor.AddDetector(globalSource);
                 TestGhost localGhost = localSource.Publish("one", appearance);
                 TestGhost globalGhost = globalSource.Publish("two", appearance);
                 _realm.Update();
@@ -780,7 +780,7 @@ namespace Emas.Tests
         {
         }
 
-        private sealed class TestSource : PresenceSource
+        private sealed class TestSource : PresenceDetector
         {
             internal TestSource(Kind kind)
             {

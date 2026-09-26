@@ -4,11 +4,11 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Configures one prefab anchor with one source provider and any number of manifestation blueprints.
+    /// Configures one prefab anchor with one detector provider and any number of manifestation blueprints.
     /// </summary>
     /// <remarks>
     /// Place on the anchor GameObject under a RealmSetup. Add exactly one enabled MonoBehaviour
-    /// implementing ISourceProvider to the same GameObject. Disabling this component removes its anchor;
+    /// implementing IDetectorProvider to the same GameObject. Disabling this component removes its anchor;
     /// enabling it again starts a fresh source attachment while its realm is running.
     /// </remarks>
     [DisallowMultipleComponent]
@@ -64,13 +64,13 @@ namespace Emas
             }
         }
 
-        internal ISourceProvider CreateSourceProvider()
+        internal IDetectorProvider CreateDetectorProvider()
         {
             MonoBehaviour[] behaviours = GetComponents<MonoBehaviour>();
-            ISourceProvider provider = null;
+            IDetectorProvider provider = null;
             foreach (MonoBehaviour behaviour in behaviours)
             {
-                ISourceProvider candidate = behaviour as ISourceProvider;
+                IDetectorProvider candidate = behaviour as IDetectorProvider;
                 if (candidate == null)
                 {
                     continue;
@@ -98,19 +98,19 @@ namespace Emas
             int sourceCount = 0;
             foreach (MonoBehaviour behaviour in behaviours)
             {
-                if (behaviour is ISourceProvider)
+                if (behaviour is IDetectorProvider)
                 {
                     sourceCount++;
                     if (!behaviour.isActiveAndEnabled)
                     {
-                        return "AnchorSetup requires its source provider to be enabled.";
+                        return "AnchorSetup requires its detector provider to be enabled.";
                     }
                 }
             }
 
             if (sourceCount != 1)
             {
-                return "AnchorSetup requires exactly one ISourceProvider component on the same GameObject.";
+                return "AnchorSetup requires exactly one IDetectorProvider component on the same GameObject.";
             }
 
             HashSet<Kind> kinds = new HashSet<Kind>();

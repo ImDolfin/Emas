@@ -117,12 +117,12 @@ namespace Emas.Tests
             if (replace)
             {
                 Probe replacement = new Probe();
-                _anchor.ReplaceSource(_source, replacement);
+                _anchor.ReplaceDetector(_source, replacement);
                 _source = replacement;
             }
             else
             {
-                _anchor.RestartSource(_source);
+                _anchor.RestartDetector(_source);
             }
 
             Assert.That(_source.Publish("one"), Is.SameAs(ghost));
@@ -266,7 +266,7 @@ namespace Emas.Tests
             int entries = 0;
             IDisposable subscription = null;
             subscription = _realm.Query().Observe(ghost => entries++, key => subscription.Dispose());
-            _anchor.RestartSource(_source);
+            _anchor.RestartDetector(_source);
             _source.Publish("one");
             _realm.Update();
             Assert.That(entries, Is.EqualTo(1));
@@ -317,7 +317,7 @@ namespace Emas.Tests
             }));
         }
 
-        private sealed class Probe : PresenceSource
+        private sealed class Probe : PresenceDetector
         {
             internal Action Updating;
 
@@ -328,7 +328,7 @@ namespace Emas.Tests
 
             internal void RemoveId(string id)
             {
-                Remove(new Kind("observe"), id);
+                Disappear(new Kind("observe"), id);
             }
 
             protected override void OnUpdate()

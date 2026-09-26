@@ -271,7 +271,7 @@ namespace Emas.Tests
             return realm;
         }
 
-        private sealed class ProbeSource : PresenceSource
+        private sealed class ProbeSource : PresenceDetector
         {
             internal TestGhost Publish(string id, string name = null, Variant? variant = null)
             {
@@ -280,7 +280,7 @@ namespace Emas.Tests
 
             internal void RemoveId(string id)
             {
-                Remove(TestKind, id);
+                Disappear(TestKind, id);
             }
         }
 

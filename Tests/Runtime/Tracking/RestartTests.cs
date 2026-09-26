@@ -59,14 +59,14 @@ namespace Emas.Tests
                 source.Enqueue(() => Assert.Fail("Old work ran after restart."));
             }
 
-            anchor.RestartSource(source);
+            anchor.RestartDetector(source);
             Assert.That(source.Starts, Is.EqualTo(2));
             Assert.That(source.Stops, Is.EqualTo(1));
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.LastErrorContext, Is.Null);
             Assert.That(source.IsAttached && source.IsActive, Is.True);
             Assert.That(ghost.IsAvailable, Is.False);
-            Assert.That(anchor.Sources, Is.EqualTo(new[] { source }));
+            Assert.That(anchor.Detectors, Is.EqualTo(new[] { source }));
             TestGhost recovered = source.Publish("one");
             if (fail)
             {
@@ -98,7 +98,7 @@ namespace Emas.Tests
                 source.Publish("partial");
                 throw failure;
             };
-            Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.RestartSource(source)), Is.SameAs(failure));
+            Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source)), Is.SameAs(failure));
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.LastErrorContext, Does.Contain("OnStart"));
             Assert.That(source.IsAttached, Is.True);
@@ -111,7 +111,7 @@ namespace Emas.Tests
             Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
             Assert.That(_realm.TryGetGhost(new Key("restart", Kind, "partial"), out found), Is.False);
             source.Starting = () => source.Publish("one");
-            anchor.RestartSource(source);
+            anchor.RestartDetector(source);
             Assert.That(_realm.Query().Single(), Is.Not.SameAs(ghost));
             Assert.That(_realm.Query().Single().Key, Is.EqualTo(ghost.Key));
             Assert.That(source.Starts, Is.EqualTo(3));
@@ -131,7 +131,7 @@ namespace Emas.Tests
             {
                 throw new InvalidOperationException("cleanup failed");
             };
-            ExpectedErrors.Verify(() => anchor.RestartSource(source), "operation 'OnStop'.*cleanup failed");
+            ExpectedErrors.Verify(() => anchor.RestartDetector(source), "operation 'OnStop'.*cleanup failed");
             source.Stopping = null;
             Assert.That(source.IsActive, Is.True);
             Assert.That(source.Stops, Is.EqualTo(1));
@@ -146,7 +146,7 @@ namespace Emas.Tests
         {
             List<Action<string>> publishers = new List<Action<string>>();
             int cleanups = 0;
-            CallbackPresenceSource<string, TestGhost> source = new CallbackPresenceSource<string, TestGhost>(Kind)
+            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(Kind)
                 .IdentifyBy(id => id)
                 .Apply((id, ghost) =>
                 {
@@ -161,7 +161,7 @@ namespace Emas.Tests
             _realm.Update();
             IGhost ghost = _realm.Query().Single();
             publishers[0](null);
-            anchor.RestartSource(source);
+            anchor.RestartDetector(source);
             publishers[0](null);
             Assert.That(ghost.IsAvailable, Is.False);
             _realm.Update();
@@ -179,15 +179,15 @@ namespace Emas.Tests
         {
             Anchor anchor = _realm.GetOrCreateAnchor("restart");
             Probe source = new Probe();
-            Assert.Throws<ArgumentNullException>(() => anchor.RestartSource(null));
-            Assert.Throws<InvalidOperationException>(() => anchor.RestartSource(source));
-            source.Starting = () => Assert.Throws<InvalidOperationException>(() => anchor.RestartSource(source));
-            source.Stopping = () => Assert.Throws<InvalidOperationException>(() => anchor.RestartSource(source));
-            anchor.AddSource(source);
-            anchor.RestartSource(source);
+            Assert.Throws<ArgumentNullException>(() => anchor.RestartDetector(null));
+            Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source));
+            source.Starting = () => Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source));
+            source.Stopping = () => Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source));
+            anchor.AddDetector(source);
+            anchor.RestartDetector(source);
             source.Stopping = null;
             anchor.Dispose();
-            Assert.Throws<ObjectDisposedException>(() => anchor.RestartSource(source));
+            Assert.Throws<ObjectDisposedException>(() => anchor.RestartDetector(source));
         }
 
         /// <summary>
@@ -199,7 +199,7 @@ namespace Emas.Tests
             Probe source = new Probe();
             Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
             source.Stopping = anchor.Dispose;
-            anchor.RestartSource(source);
+            anchor.RestartDetector(source);
             Assert.That(source.Starts, Is.EqualTo(1));
             Assert.That(source.Stops, Is.EqualTo(1));
             Assert.That(source.IsAttached, Is.False);
@@ -217,13 +217,13 @@ namespace Emas.Tests
             source.Stopping = () =>
             {
                 source.Stopping = null;
-                anchor.RemoveSource(source);
-                anchor.AddSource(source);
+                anchor.RemoveDetector(source);
+                anchor.AddDetector(source);
             };
-            anchor.RestartSource(source);
+            anchor.RestartDetector(source);
             Assert.That(source.Starts, Is.EqualTo(2));
             Assert.That(source.IsAttached && source.IsActive, Is.True);
-            Assert.That(anchor.Sources, Is.EqualTo(new[] { source }));
+            Assert.That(anchor.Detectors, Is.EqualTo(new[] { source }));
             source.Publish("new");
             _realm.Update();
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
@@ -244,7 +244,7 @@ namespace Emas.Tests
             observer.Stopping = () =>
             {
                 attempts++;
-                Assert.Throws<InvalidOperationException>(() => anchor.RestartSource(source));
+                Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source));
             };
             source.Updating = () =>
             {
@@ -277,8 +277,8 @@ namespace Emas.Tests
             observer.Stopping = () =>
             {
                 reattachments++;
-                anchor.RemoveSource(source);
-                anchor.AddSource(source);
+                anchor.RemoveDetector(source);
+                anchor.AddDetector(source);
             };
             source.Updating = () => throw new InvalidOperationException("update failed");
 
@@ -292,7 +292,7 @@ namespace Emas.Tests
             Assert.That(source.LastError, Is.Null);
 
             observer.Stopping = null;
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             Assert.That(newCleanup, Is.EqualTo(1));
         }
 
@@ -310,14 +310,14 @@ namespace Emas.Tests
             int calls = 0;
             original(() => calls++);
 
-            anchor.RestartSource(source);
+            anchor.RestartDetector(source);
             Action<Action> current = source.Captured;
             original(() => calls += 100);
             current(() => calls += 10);
             _realm.Update();
             Assert.That(calls, Is.EqualTo(10));
 
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             current(() => calls += 100);
             _realm.Update();
             Assert.That(calls, Is.EqualTo(10));
@@ -333,7 +333,7 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class Probe : PresenceSource
+        private sealed class Probe : PresenceDetector
         {
             internal Action Starting;
             internal Action Updating;

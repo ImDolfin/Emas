@@ -4,7 +4,9 @@
 2. The cube moves for four seconds, disappears for two, then returns.
 3. Toggle **Tracking** off and on to exercise unsubscribe and restart.
 
-`Bootstrap` connects `SimulatedFeed.Changed` and `Removed` through `Listen`, publishes the initial reading, and returns an unsubscribe action. `RealmSetup` owns an isolated realm and its default manifestation blueprint; `AnchorSetup` owns this anchor and its automatic views. `Bootstrap` implements `ISourceProvider` and creates a fresh callback source on each start. The feed remains application-owned.
+`Bootstrap` configures the realm before its detector starts. It registers a `Marker` root initializer that adds one `MarkerPositionModule` to each `Presence`. The callback detector identifies readings and forwards them to the realm; the module applies each reading's position to the root. The detector does not update Ghosts directly.
+
+`Bootstrap` connects `SimulatedFeed.Changed` and `Removed` through `Listen`, publishes the initial reading, and returns an unsubscribe action. `RealmSetup` owns an isolated realm and its default manifestation blueprint; `AnchorSetup` owns the anchor and its automatic views. The feed remains application-owned.
 
 `Marker.asset` is the manifestation blueprint for `callbacks.marker`. It references `Default Marker Variant.asset`, where an empty variant ID means `Variant.None` and the Full detail level uses `Marker.prefab`. Add another variant asset for each appearance and configure its detail levels there.
 

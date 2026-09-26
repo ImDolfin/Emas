@@ -48,8 +48,8 @@ namespace Emas.Tests
         [Test]
         public void Polling_ValidatesArguments()
         {
-            Assert.Throws<ArgumentException>(() => new PollingPresenceSource<string, Probe>(default(Kind)));
-            PollingPresenceSource<string, Probe> source = new PollingPresenceSource<string, Probe>(Population);
+            Assert.Throws<ArgumentException>(() => new PollingPresenceDetector<string, Probe>(default(Kind)));
+            PollingPresenceDetector<string, Probe> source = new PollingPresenceDetector<string, Probe>(Population);
             Assert.Throws<ArgumentNullException>(() => source.ReadFrom(null));
             Assert.Throws<ArgumentNullException>(() => source.IdentifyBy(null));
             Assert.Throws<ArgumentNullException>(() => source.Apply(null));
@@ -66,7 +66,7 @@ namespace Emas.Tests
         public void Polling_RequiresCompleteConfiguration(string missing)
         {
             int reads = 0;
-            PollingPresenceSource<string, Probe> source = new PollingPresenceSource<string, Probe>(Population);
+            PollingPresenceDetector<string, Probe> source = new PollingPresenceDetector<string, Probe>(Population);
             if (!missing.Contains("ReadFrom"))
             {
                 source.ReadFrom(() =>
@@ -108,7 +108,7 @@ namespace Emas.Tests
         public void Polling_ConfigurationIsLockedUntilDetached(bool fail)
         {
             bool broken = false;
-            PollingPresenceSource<string, Probe> source = Source(() => broken ? null : new[] { "a" });
+            PollingPresenceDetector<string, Probe> source = Source(() => broken ? null : new[] { "a" });
             Anchor anchor = _realm.GetOrCreateAnchor("poll", source);
             if (fail)
             {
@@ -121,10 +121,10 @@ namespace Emas.Tests
             Assert.Throws<InvalidOperationException>(() => source.Apply((item, ghost) => ghost.Value = 99));
             Assert.Throws<InvalidOperationException>(() => source.WithVariant(item => new Variant("changed")));
             Assert.Throws<InvalidOperationException>(() => source.PollEvery(TimeSpan.FromSeconds(1)));
-            anchor.RemoveSource(source);
+            anchor.RemoveDetector(source);
             source.ReadFrom(() => new[] { "b" }).IdentifyBy(id => id)
                 .Apply((item, ghost) => ghost.Value = 3).WithVariant(item => new Variant("new")).PollEvery(TimeSpan.Zero);
-            anchor.AddSource(source);
+            anchor.AddDetector(source);
             Probe ghost = (Probe)_realm.Query().Single();
             Assert.That(ghost.Key.EntityId, Is.EqualTo("b"));
             Assert.That(ghost.Value, Is.EqualTo(3));
@@ -139,7 +139,7 @@ namespace Emas.Tests
         {
             List<string> ids = new List<string> { "a", "b" };
             int value = 1;
-            _realm.GetOrCreateAnchor("poll", new PollingPresenceSource<string, Probe>(Population)
+            _realm.GetOrCreateAnchor("poll", new PollingPresenceDetector<string, Probe>(Population)
                 .ReadFrom(() => ids)
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) => ghost.Value = value));
@@ -165,7 +165,7 @@ namespace Emas.Tests
         public void Polling_MapsVariants()
         {
             Variant variant = new Variant("first");
-            _realm.GetOrCreateAnchor("poll", new PollingPresenceSource<string, Probe>(Population)
+            _realm.GetOrCreateAnchor("poll", new PollingPresenceDetector<string, Probe>(Population)
                 .ReadFrom(() => new[] { "a" })
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) =>
@@ -184,11 +184,11 @@ namespace Emas.Tests
         [Test]
         public void Polling_ReplacementRemovesAbsentTransferredGhosts()
         {
-            PollingPresenceSource<string, Probe> first = Source(() => new[] { "a", "b" });
+            PollingPresenceDetector<string, Probe> first = Source(() => new[] { "a", "b" });
             Anchor anchor = _realm.GetOrCreateAnchor("poll", first);
             IGhost retained = _realm.Query("a").Single();
             IGhost removed = _realm.Query("b").Single();
-            anchor.ReplaceSource(first, Source(() => new[] { "a" }));
+            anchor.ReplaceDetector(first, Source(() => new[] { "a" }));
             Assert.That(_realm.Query().Single(), Is.SameAs(retained));
             Assert.That(removed.IsAvailable, Is.False);
         }
@@ -206,7 +206,7 @@ namespace Emas.Tests
             Func<IEnumerable<string>> read = () => !fail ? new[] { "a", "b" } :
                 failure == "null" ? null : failure == "duplicate" ? new[] { "a", "a" } :
                 failure == "empty-id" ? new[] { "" } : BrokenSnapshot();
-            PollingPresenceSource<string, Probe> source = Source(read);
+            PollingPresenceDetector<string, Probe> source = Source(read);
             Anchor anchor = _realm.GetOrCreateAnchor("poll", source);
             IGhost retained = _realm.Query("a").Single();
             fail = true;
@@ -225,7 +225,7 @@ namespace Emas.Tests
             IGhost found;
             Assert.That(_realm.TryGetGhost(retained.Key, out found), Is.False);
             Assert.That(_realm.TryGetGhost(new Key("poll", Population, "b"), out found), Is.False);
-            anchor.ReplaceSource(source, Source(() => new[] { "a" }));
+            anchor.ReplaceDetector(source, Source(() => new[] { "a" }));
             Assert.That(_realm.Query().Single(), Is.Not.SameAs(retained));
             Assert.That(_realm.Query().Single().Key, Is.EqualTo(retained.Key));
         }
@@ -237,7 +237,7 @@ namespace Emas.Tests
         public void Polling_MappingFailureRemovesEntirePopulation()
         {
             bool fail = false;
-            PollingPresenceSource<string, Probe> source = new PollingPresenceSource<string, Probe>(Population)
+            PollingPresenceDetector<string, Probe> source = new PollingPresenceDetector<string, Probe>(Population)
                 .ReadFrom(() => fail ? new[] { "a" } : new[] { "a", "b" })
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) =>
@@ -264,7 +264,7 @@ namespace Emas.Tests
         public void Polling_CanRemoveAnchorDuringMapping()
         {
             bool remove = false;
-            PollingPresenceSource<string, Probe> source = new PollingPresenceSource<string, Probe>(Population)
+            PollingPresenceDetector<string, Probe> source = new PollingPresenceDetector<string, Probe>(Population)
                 .ReadFrom(() => new[] { "a", "b" })
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) =>
@@ -287,7 +287,7 @@ namespace Emas.Tests
         public void GetOrCreateAnchor_ReusesAnchorAndStartsOnlyNewSources()
         {
             int reads = 0;
-            PollingPresenceSource<string, Probe> first = Source(() =>
+            PollingPresenceDetector<string, Probe> first = Source(() =>
             {
                 reads++;
                 return new[] { "a" };
@@ -308,9 +308,9 @@ namespace Emas.Tests
             throw new InvalidOperationException("snapshot failed");
         }
 
-        private static PollingPresenceSource<string, Probe> Source(Func<IEnumerable<string>> read)
+        private static PollingPresenceDetector<string, Probe> Source(Func<IEnumerable<string>> read)
         {
-            return new PollingPresenceSource<string, Probe>(Population)
+            return new PollingPresenceDetector<string, Probe>(Population)
                 .ReadFrom(read)
                 .IdentifyBy(id => id)
                 .Apply((item, ghost) =>

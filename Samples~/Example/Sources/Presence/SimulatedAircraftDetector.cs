@@ -8,14 +8,14 @@ namespace Emas.Sample
     /// Publishes an independently moving aircraft population.
     /// </summary>
 
-    public sealed class SimulatedAircraftSource : PresenceSource
+    public sealed class SimulatedAircraftDetector : PresenceDetector
     {
         private readonly SimulatedAircraftFeed _feed;
 
         /// <summary>
         /// Creates a source with the default aircraft feed.
         /// </summary>
-        public SimulatedAircraftSource()
+        public SimulatedAircraftDetector()
             : this(new SimulatedAircraftFeed())
         {
         }
@@ -29,7 +29,7 @@ namespace Emas.Sample
         /// <exception cref="ArgumentNullException">
         /// Thrown when the feed is null.
         /// </exception>
-        public SimulatedAircraftSource(SimulatedAircraftFeed feed)
+        public SimulatedAircraftDetector(SimulatedAircraftFeed feed)
         {
             if (feed == null)
             {
