@@ -969,6 +969,12 @@ namespace Emas
             }
 
             record.LastPublishedAt = _elapsedSeconds();
+            if (record.IsMissing)
+            {
+                record.IsMissing = false;
+                record.MissingUntil = 0;
+                record.PendingActivation = true;
+            }
         }
 
         private void RemoveExpiredGhosts()
@@ -1159,7 +1165,14 @@ namespace Emas
             string sourceContext = item.Source == null ? "realm" : item.Source.CaptureErrorContext();
             try
             {
-                ApplySourceChanges(item.Action);
+                if (item.Source == null)
+                {
+                    ApplySourceChanges(item.Action);
+                }
+                else
+                {
+                    item.Source.ApplySourceChanges(this, item.Action);
+                }
             }
             catch (Exception exception)
             {

@@ -5,14 +5,15 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Implement on an enabled MonoBehaviour beneath a RealmSetup. A nested RealmSetup uses its own configurators.
-    /// The method runs once for each realm lifetime before any detector attaches.
+    /// Each active component runs once per realm lifetime before detectors attach. Newly enabled
+    /// configurators run before a later-enabled anchor starts its detector.
     /// </remarks>
     public interface IRealmConfigurator
     {
         /// <summary>
-        /// Adds per-kind presence initializers to the newly created realm.
+        /// Adds per-kind presence initializers to the owning realm before detection.
         /// </summary>
-        /// <param name="realm">The realm that is about to start its detectors.</param>
+        /// <param name="realm">The realm that is about to attach detectors.</param>
         void ConfigureRealm(Realm realm);
     }
 }

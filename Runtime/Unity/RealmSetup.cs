@@ -63,6 +63,7 @@ namespace Emas
         private readonly Dictionary<AnchorSetup, IDisposable> _subscriptions =
             new Dictionary<AnchorSetup, IDisposable>();
         private readonly HashSet<Kind> _realmViewKinds = new HashSet<Kind>();
+        private readonly HashSet<MonoBehaviour> _configuredComponents = new HashSet<MonoBehaviour>();
         private Realm _realm;
         private bool _starting;
         private bool _autoStartPending;
@@ -104,7 +105,6 @@ namespace Emas
             }
 
             ReferenceFrame frame = CreateReferenceFrame();
-            AnchorSetup[] anchors = ActiveAnchors();
             _starting = true;
             int lifetime = ++_lifetime;
             Realm realm = new Realm();
@@ -122,12 +122,7 @@ namespace Emas
                     }
                 }
 
-                ConfigurePresenceInitializers(realm);
-
-                foreach (AnchorSetup setup in anchors)
-                {
-                    AttachAnchor(setup, realm, lifetime, false);
-                }
+                AttachActiveAnchors(realm, lifetime, false);
 
                 if (_lifetime != lifetime || !isActiveAndEnabled || !ReferenceEquals(_realm, realm))
                 {
@@ -176,11 +171,12 @@ namespace Emas
 
             _subscriptions.Clear();
             _realmViewKinds.Clear();
+            _configuredComponents.Clear();
             foreach (KeyValuePair<AnchorSetup, IDisposable> item in subscriptions)
             {
                 if (item.Key != null)
                 {
-                    item.Key.Bind(null);
+                    item.Key.Bind(null, null);
                 }
             }
 
@@ -261,7 +257,7 @@ namespace Emas
         {
             Realm realm = _realm;
             if (realm == null || _starting || !isActiveAndEnabled || !setup.isActiveAndEnabled
-                || setup.Owner() != this || _subscriptions.ContainsKey(setup))
+                || setup.Owner() != this || setup.AttachmentOwner != null || _subscriptions.ContainsKey(setup))
             {
                 return;
             }
@@ -277,7 +273,16 @@ namespace Emas
                 throw new InvalidOperationException("RealmSetup has duplicate anchor ID '" + setup.Id + "'.");
             }
 
-            AttachAnchor(setup, realm, _lifetime, true);
+            int lifetime = _lifetime;
+            _starting = true;
+            try
+            {
+                AttachActiveAnchors(realm, lifetime, true);
+            }
+            finally
+            {
+                _starting = false;
+            }
         }
 
         internal void StopAnchor(AnchorSetup setup)
@@ -289,30 +294,76 @@ namespace Emas
             }
 
             _subscriptions.Remove(setup);
-            subscription?.Dispose();
             Anchor anchor = setup.Anchor;
-            setup.Bind(null);
+            setup.Bind(null, null);
+            subscription?.Dispose();
             anchor?.Dispose();
         }
 
-        private void ConfigurePresenceInitializers(Realm realm)
+        private void AttachActiveAnchors(Realm realm, int lifetime, bool validate)
         {
-            MonoBehaviour[] components = GetComponentsInChildren<MonoBehaviour>(true);
-            foreach (MonoBehaviour component in components)
+            bool attached;
+            do
             {
-                if (component == null || !component.isActiveAndEnabled
-                    || component.GetComponentInParent<RealmSetup>() != this)
+                // A detector callback can enable another anchor or configurator before its next attachment.
+                ConfigurePresenceInitializers(realm, lifetime);
+                attached = false;
+                foreach (AnchorSetup candidate in ActiveAnchors())
                 {
-                    continue;
-                }
-
-                IRealmConfigurator configurator = component as IRealmConfigurator;
-                if (configurator != null)
-                {
-                    configurator.ConfigureRealm(realm);
+                    if (candidate != null && candidate.isActiveAndEnabled && candidate.Owner() == this
+                        && candidate.AttachmentOwner == null && !_subscriptions.ContainsKey(candidate))
+                    {
+                        AttachAnchor(candidate, realm, lifetime, validate);
+                        attached = true;
+                        break;
+                    }
                 }
             }
+            while (attached);
         }
+
+        private void ConfigurePresenceInitializers(Realm realm, int lifetime)
+        {
+            bool configured;
+            do
+            {
+                configured = false;
+                MonoBehaviour[] components = GetComponentsInChildren<MonoBehaviour>(true);
+                foreach (MonoBehaviour component in components)
+                {
+                    if (component == null || !component.enabled || !component.gameObject.activeInHierarchy
+                        || component.GetComponentInParent<RealmSetup>() != this)
+                    {
+                        continue;
+                    }
+
+                    IRealmConfigurator configurator = component as IRealmConfigurator;
+                    if (configurator == null || !_configuredComponents.Add(component))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        configurator.ConfigureRealm(realm);
+                    }
+                    catch
+                    {
+                        _configuredComponents.Remove(component);
+                        throw;
+                    }
+
+                    if (_lifetime != lifetime || !isActiveAndEnabled || !ReferenceEquals(_realm, realm))
+                    {
+                        throw new InvalidOperationException("RealmSetup stopped during configuration.");
+                    }
+
+                    configured = true;
+                }
+            }
+            while (configured);
+        }
+
         private void AttachAnchor(AnchorSetup setup, Realm realm, int lifetime, bool validate)
         {
             Anchor anchor = null;
@@ -328,8 +379,13 @@ namespace Emas
                     }
                 }
 
+                if (realm.ContainsAnchor(setup.Id))
+                {
+                    throw new InvalidOperationException("RealmSetup has duplicate anchor ID '" + setup.Id + "'.");
+                }
+
                 anchor = realm.GetOrCreateAnchor(setup.Id, setup.transform);
-                setup.Bind(anchor);
+                setup.Bind(anchor, this);
                 ManifestationBlueprint[] blueprints = setup.Blueprints;
                 HashSet<Kind> kinds = new HashSet<Kind>(_realmViewKinds);
                 foreach (ManifestationBlueprint blueprint in blueprints)
@@ -366,21 +422,25 @@ namespace Emas
 
                 anchor.AddDetector(source);
                 if (_lifetime != lifetime || !setup.isActiveAndEnabled || !isActiveAndEnabled
-                    || !ReferenceEquals(_realm, realm))
+                    || !ReferenceEquals(_realm, realm) || !ReferenceEquals(setup.Anchor, anchor))
                 {
                     throw new InvalidOperationException("RealmSetup stopped during source startup.");
                 }
             }
             catch
             {
-                if (_subscriptions.ContainsKey(setup))
+                if (ReferenceEquals(setup.Anchor, anchor) && _subscriptions.ContainsKey(setup))
                 {
                     StopAnchor(setup);
                 }
                 else
                 {
                     subscription?.Dispose();
-                    setup.Bind(null);
+                    if (ReferenceEquals(setup.Anchor, anchor))
+                    {
+                        setup.Bind(null, null);
+                    }
+
                     anchor?.Dispose();
                 }
 
@@ -394,7 +454,8 @@ namespace Emas
             List<AnchorSetup> anchors = new List<AnchorSetup>(candidates.Length);
             foreach (AnchorSetup candidate in candidates)
             {
-                if (candidate != null && candidate.isActiveAndEnabled && candidate.Owner() == this)
+                if (candidate != null && candidate.isActiveAndEnabled && candidate.Owner() == this
+                    && (candidate.AttachmentOwner == null || candidate.AttachmentOwner == this))
                 {
                     anchors.Add(candidate);
                 }

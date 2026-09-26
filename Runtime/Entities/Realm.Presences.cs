@@ -143,6 +143,36 @@ namespace Emas
                 }
             }
 
+            long generation = detector.RegistrationGeneration;
+            string sourceContext = detector.CaptureErrorContext();
+            // Initializers and modules must finish before callbacks can observe or activate their roots.
+            _sourceDepth++;
+            try
+            {
+                return ApplyPresenceReport(detector, anchorId, entityId, kind, name, variant, capabilitySnapshot, data);
+            }
+            catch (Exception exception)
+            {
+                string context = PresenceDetector.DescribeError(sourceContext, "Report", kind, entityId);
+                detector.RecordError(exception, generation, context);
+                // Lifecycle and dispatched reports already have a failure boundary. Preserve startup rollback
+                // and let that boundary log once, while direct reports stop before pending roots can activate.
+                if (!detector.IsApplyingSourceChanges && detector.IsRegistration(this, generation))
+                {
+                    detector.HandleFailure(exception, context);
+                }
+
+                throw;
+            }
+            finally
+            {
+                _sourceDepth--;
+            }
+        }
+
+        private Presence ApplyPresenceReport(PresenceDetector detector, string anchorId, string entityId,
+            Kind kind, string name, Variant? variant, List<Type> capabilitySnapshot, object data)
+        {
             Key key = new Key(anchorId, kind, entityId);
             IPresenceInitializer initializer;
             Ghost root;

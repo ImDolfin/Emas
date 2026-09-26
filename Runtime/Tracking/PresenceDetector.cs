@@ -15,6 +15,7 @@ namespace Emas
         private Anchor _anchor;
         private bool _started;
         private long _registrationGeneration;
+        private long? _sourceChangeGeneration;
         private Exception _lastError;
         private string _lastErrorContext;
         private string _name;
@@ -231,9 +232,10 @@ namespace Emas
         /// The current ghost owned by this attachment.
         /// </param>
         /// <remarks>
-        /// Call after updating cached ghost data to reset its inactivity deadline. Any partial data update counts as activity.
+        /// Call after updating cached ghost data to reset its inactivity deadline and cancel disappearance grace.
+        /// Any partial data update counts as activity. A ghost retained during grace becomes available after source processing completes.
         /// GetOrCreate already records activity, so no additional call is needed when publishing through it.
-        /// This does not notify consumers or change ghost data.
+        /// This does not invoke callbacks synchronously or change ghost data.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// The source is inactive.
@@ -488,6 +490,28 @@ namespace Emas
             }
         }
 
+        internal bool IsApplyingSourceChanges
+        {
+            get
+            {
+                return _sourceChangeGeneration == _registrationGeneration;
+            }
+        }
+
+        internal void ApplySourceChanges(Realm realm, Action action)
+        {
+            long? previousGeneration = _sourceChangeGeneration;
+            _sourceChangeGeneration = _registrationGeneration;
+            try
+            {
+                realm.ApplySourceChanges(action);
+            }
+            finally
+            {
+                _sourceChangeGeneration = previousGeneration;
+            }
+        }
+
         internal string CaptureErrorContext()
         {
             if (_sourceContext == null)
@@ -588,7 +612,7 @@ namespace Emas
             string context = DescribeError(CaptureErrorContext(), "OnStart");
             try
             {
-                anchor.Realm.ApplySourceChanges(() => InvokeLifecycle(OnStart));
+                ApplySourceChanges(anchor.Realm, () => InvokeLifecycle(OnStart));
                 if (IsRegistration(anchor.Realm, generation))
                 {
                     anchor.Realm.FinalizeSource(this);
@@ -618,7 +642,7 @@ namespace Emas
             string sourceContext = CaptureErrorContext();
             try
             {
-                anchor.Realm.ApplySourceChanges(OnUpdate);
+                ApplySourceChanges(anchor.Realm, OnUpdate);
                 if (IsRegistration(anchor.Realm, generation))
                 {
                     anchor.Realm.FinalizeSource(this);

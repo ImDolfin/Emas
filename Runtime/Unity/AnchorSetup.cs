@@ -25,6 +25,7 @@ namespace Emas
         [SerializeField]
         private bool _automaticViews = true;
         private Anchor _anchor;
+        private RealmSetup _attachmentOwner;
 
         /// <summary>
         /// Gets the configured anchor ID.
@@ -53,6 +54,14 @@ namespace Emas
             get
             {
                 return _automaticViews;
+            }
+        }
+
+        internal RealmSetup AttachmentOwner
+        {
+            get
+            {
+                return _attachmentOwner;
             }
         }
 
@@ -101,7 +110,7 @@ namespace Emas
                 if (behaviour is IDetectorProvider)
                 {
                     sourceCount++;
-                    if (!behaviour.isActiveAndEnabled)
+                    if (!behaviour.enabled || !behaviour.gameObject.activeInHierarchy)
                     {
                         return "AnchorSetup requires its detector provider to be enabled.";
                     }
@@ -140,9 +149,10 @@ namespace Emas
             return null;
         }
 
-        internal void Bind(Anchor anchor)
+        internal void Bind(Anchor anchor, RealmSetup owner)
         {
             _anchor = anchor;
+            _attachmentOwner = owner;
         }
 
         internal RealmSetup Owner()
@@ -173,7 +183,7 @@ namespace Emas
 
         private void OnDisable()
         {
-            RealmSetup owner = Owner();
+            RealmSetup owner = _attachmentOwner;
             if (owner != null)
             {
                 owner.StopAnchor(this);

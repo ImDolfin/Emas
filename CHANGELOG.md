@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Fixed direct detector reports leaving partially initialized Ghosts available after initializer or module failures; failure cleanup now stops the affected registration.
+- Fixed late-enabled prefab anchors skipping presence configuration and reparented anchors retaining detector subscriptions after disable.
+- Fixed cached `MarkPublished` updates failing to restore retained Ghosts or cancel disappearance grace after inactivity.
+
 - Reworded package comments, tooltips and documentation around generic SDK data and shared coordinates.
 - Added Inspector tooltips to prefab realm settings and preserved blueprint tooltips in custom inspectors.
 - Added a generic README setup and usage guide, including how SDK geodetic readings pass through EntityModules into Spatial and a ReferenceFrame.

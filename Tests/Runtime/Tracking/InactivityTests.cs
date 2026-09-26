@@ -145,6 +145,60 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Cached publications restore a retained root and renew its inactivity deadline during grace.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void MarkPublished_DuringGraceRestoresRootAndRenewsDeadline(bool dispatch)
+        {
+            Probe source = ExpiringSource();
+            source.DisappearanceGracePeriod = TimeSpan.FromSeconds(2);
+            _realm.GetOrCreateAnchor("anchor", source);
+            TestGhost original = source.Publish("one");
+            Key key = original.Key;
+            _realm.Update();
+            List<string> events = new List<string>();
+            using (_realm.Query().Observe(ghost => events.Add("enter"), departed => events.Add("leave")))
+            {
+                _now = 12;
+                _realm.Update();
+                Assert.That(original.IsAvailable, Is.False);
+                Assert.That(original.gameObject.activeSelf, Is.False);
+
+                _now = 13;
+                original.Articulation = 7;
+                if (dispatch)
+                {
+                    source.EnqueuePublication(original);
+                }
+                else
+                {
+                    source.RecordPublication(original);
+                }
+
+                Assert.That(original.IsAvailable, Is.False);
+                _realm.Update();
+                Assert.That(_realm.Query().Single(), Is.SameAs(original));
+                Assert.That(original.gameObject.activeSelf, Is.True);
+                Assert.That(original.Articulation, Is.EqualTo(7));
+                Assert.That(events, Is.EqualTo(new[] { "enter", "leave", "enter" }));
+
+                _now = 14;
+                _realm.Update();
+                Assert.That(_realm.Query().Single(), Is.SameAs(original));
+                _now = 15;
+                _realm.Update();
+                Assert.That(original.IsAvailable, Is.False);
+                Assert.That(_realm.TryGetGhost(key, out IGhost retained), Is.True);
+                Assert.That(retained, Is.SameAs(original));
+                _now = 17;
+                _realm.Update();
+                AssertMissing(key);
+                Assert.That(events, Is.EqualTo(new[] { "enter", "leave", "enter", "leave" }));
+            }
+        }
+
+        /// <summary>
         /// Activity cannot be recorded for another source, another realm, or an inactive attachment.
         /// </summary>
         [Test]
@@ -374,6 +428,11 @@ namespace Emas.Tests
             internal void RecordPublication(IGhost ghost)
             {
                 MarkPublished(ghost);
+            }
+
+            internal void EnqueuePublication(IGhost ghost)
+            {
+                Dispatch(() => MarkPublished(ghost));
             }
         }
 

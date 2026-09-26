@@ -138,6 +138,257 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Late-enabled anchors receive their root and modules once per realm lifetime.
+        /// </summary>
+        [Test]
+        public void LateEnabledAnchor_ConfiguresBeforeDetectionAndOncePerLifetime()
+        {
+            RealmSetup setup = CreateRealm("late configuration");
+            TestProvider active = CreateConfiguredAnchor(setup, "active", FirstKind);
+            TestProvider late = CreateConfiguredAnchor(setup, "late", SecondKind);
+            late.gameObject.SetActive(false);
+            TestConfigurator activeConfigurator = active.GetComponent<TestConfigurator>();
+            TestConfigurator lateConfigurator = late.GetComponent<TestConfigurator>();
+            setup.gameObject.SetActive(true);
+            setup.StartRealm();
+
+            Assert.That(activeConfigurator.Calls, Is.EqualTo(1));
+            Assert.That(lateConfigurator.Calls, Is.Zero);
+            late.gameObject.SetActive(true);
+            AssertConfiguredPresence(setup.Realm, "late", SecondKind);
+            Assert.That(activeConfigurator.Calls, Is.EqualTo(1));
+            Assert.That(lateConfigurator.Calls, Is.EqualTo(1));
+
+            late.gameObject.SetActive(false);
+            late.gameObject.SetActive(true);
+            AssertConfiguredPresence(setup.Realm, "late", SecondKind);
+            Assert.That(lateConfigurator.Calls, Is.EqualTo(1));
+            Assert.That(late.Calls, Is.EqualTo(2));
+
+            setup.StopRealm();
+            setup.StartRealm();
+            AssertConfiguredPresence(setup.Realm, "active", FirstKind);
+            AssertConfiguredPresence(setup.Realm, "late", SecondKind);
+            Assert.That(activeConfigurator.Calls, Is.EqualTo(2));
+            Assert.That(lateConfigurator.Calls, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// A provider and configurator added after AnchorSetup can initialize during late activation.
+        /// </summary>
+        [Test]
+        public void LateEnabledAnchor_ProviderAfterAnchorSetupConfiguresBeforeDetection()
+        {
+            RealmSetup setup = CreateRealm("late provider order");
+            GameObject owner = new GameObject("source");
+            _objects.Add(owner);
+            owner.SetActive(false);
+            owner.transform.SetParent(setup.transform, false);
+            AnchorSetup anchorSetup = owner.AddComponent<AnchorSetup>();
+            SetField(anchorSetup, "_anchorId", "source");
+            ConfiguredProvider provider = owner.AddComponent<ConfiguredProvider>();
+            setup.gameObject.SetActive(true);
+            setup.StartRealm();
+
+            owner.SetActive(true);
+            AssertConfiguredPresence(setup.Realm, "source", FirstKind);
+            Assert.That(provider.ConfigurationCalls, Is.EqualTo(1));
+            Assert.That(provider.DetectorCalls, Is.EqualTo(1));
+
+            owner.SetActive(false);
+            owner.SetActive(true);
+            AssertConfiguredPresence(setup.Realm, "source", FirstKind);
+            Assert.That(provider.ConfigurationCalls, Is.EqualTo(1));
+            Assert.That(provider.DetectorCalls, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// Configurators can enable another anchor before either detector starts.
+        /// </summary>
+        [Test]
+        public void LateConfiguration_EnablesAndConfiguresAnotherAnchor()
+        {
+            RealmSetup setup = CreateRealm("configuration callback");
+            TestProvider target = CreateConfiguredAnchor(setup, "target", SecondKind);
+            TestProvider trigger = CreateConfiguredAnchor(setup, "trigger", FirstKind);
+            target.gameObject.SetActive(false);
+            trigger.gameObject.SetActive(false);
+            trigger.GetComponent<TestConfigurator>().OnConfigure = realm => target.gameObject.SetActive(true);
+            setup.gameObject.SetActive(true);
+            setup.StartRealm();
+
+            trigger.gameObject.SetActive(true);
+            AssertConfiguredPresence(setup.Realm, "trigger", FirstKind);
+            AssertConfiguredPresence(setup.Realm, "target", SecondKind);
+            Assert.That(trigger.GetComponent<TestConfigurator>().Calls, Is.EqualTo(1));
+            Assert.That(target.GetComponent<TestConfigurator>().Calls, Is.EqualTo(1));
+            Assert.That(trigger.Calls, Is.EqualTo(1));
+            Assert.That(target.Calls, Is.EqualTo(1));
+        }
+
+        /// <summary>
+        /// Anchors enabled during source startup configure and attach before startup completes.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SourceStartup_CanEnableAnotherConfiguredAnchor(bool lateStart)
+        {
+            RealmSetup setup = CreateRealm("source enables anchor");
+            TestProvider target = CreateConfiguredAnchor(setup, "target", SecondKind);
+            TestProvider trigger = CreateAnchor(setup, "trigger", () =>
+                new PollingPresenceDetector<string, Probe>(FirstKind)
+                    .ReadFrom(() =>
+                    {
+                        target.gameObject.SetActive(true);
+                        return new[] { "one" };
+                    })
+                    .IdentifyBy(value => value)
+                    .Apply((value, ghost) => { }));
+            target.gameObject.SetActive(false);
+            trigger.gameObject.SetActive(!lateStart);
+            setup.gameObject.SetActive(true);
+            setup.StartRealm();
+            if (lateStart)
+            {
+                trigger.gameObject.SetActive(true);
+            }
+
+            AssertConfiguredPresence(setup.Realm, "target", SecondKind);
+            Assert.That(target.GetComponent<TestConfigurator>().Calls, Is.EqualTo(1));
+            Assert.That(target.Calls, Is.EqualTo(1));
+            Assert.That(trigger.Calls, Is.EqualTo(1));
+            Assert.That(setup.Realm.Query().Count, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// A configurator enabled by an earlier detector runs before its active anchor attaches.
+        /// </summary>
+        [Test]
+        public void SourceStartup_CanEnableConfiguratorOnAnotherActiveAnchor()
+        {
+            RealmSetup setup = CreateRealm("source enables configurator");
+            TestConfigurator targetConfigurator = null;
+            TestProvider trigger = CreateAnchor(setup, "trigger", () =>
+                new PollingPresenceDetector<string, Probe>(FirstKind)
+                    .ReadFrom(() =>
+                    {
+                        targetConfigurator.enabled = true;
+                        return new[] { "one" };
+                    })
+                    .IdentifyBy(value => value)
+                    .Apply((value, ghost) => { }));
+            TestProvider target = CreateConfiguredAnchor(setup, "target", SecondKind);
+            targetConfigurator = target.GetComponent<TestConfigurator>();
+            targetConfigurator.enabled = false;
+            setup.gameObject.SetActive(true);
+            setup.StartRealm();
+
+            AssertConfiguredPresence(setup.Realm, "target", SecondKind);
+            Assert.That(targetConfigurator.Calls, Is.EqualTo(1));
+            Assert.That(target.Calls, Is.EqualTo(1));
+            Assert.That(trigger.Calls, Is.EqualTo(1));
+            Assert.That(setup.Realm.Query().Count, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// Stopping during configuration prevents detector startup and permits a fresh configuration.
+        /// </summary>
+        [Test]
+        public void Configuration_CanStopRealmAndRetry()
+        {
+            RealmSetup setup = CreateRealm("stopped configuration");
+            TestProvider provider = CreateConfiguredAnchor(setup, "source", FirstKind);
+            TestConfigurator configurator = provider.GetComponent<TestConfigurator>();
+            configurator.OnConfigure = realm => setup.StopRealm();
+            setup.gameObject.SetActive(true);
+
+            Assert.Throws<InvalidOperationException>(() => setup.StartRealm());
+            Assert.That(setup.Realm, Is.Null);
+            Assert.That(provider.Calls, Is.Zero);
+            Assert.That(provider.GetComponent<AnchorSetup>().Anchor, Is.Null);
+
+            configurator.OnConfigure = null;
+            setup.StartRealm();
+            AssertConfiguredPresence(setup.Realm, "source", FirstKind);
+            Assert.That(configurator.Calls, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// Disabling a moved anchor releases the realm that originally attached it.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ReparentedAnchor_DisablingDetachesOriginalRealm(bool disableGameObject)
+        {
+            RealmSetup setup = CreateRealm("original owner");
+            PublishingSource source = null;
+            TestProvider provider = CreateAnchor(setup, "source", () =>
+            {
+                source = new PublishingSource(FirstKind);
+                return source;
+            });
+            AnchorSetup anchorSetup = provider.GetComponent<AnchorSetup>();
+            setup.gameObject.SetActive(true);
+            setup.StartRealm();
+            Anchor original = anchorSetup.Anchor;
+            provider.transform.SetParent(null, false);
+            Assert.That(anchorSetup.Anchor, Is.SameAs(original));
+
+            if (disableGameObject)
+            {
+                provider.gameObject.SetActive(false);
+            }
+            else
+            {
+                anchorSetup.enabled = false;
+            }
+
+            Assert.That(anchorSetup.Anchor, Is.Null);
+            Assert.That(source.IsAttached, Is.False);
+            Assert.That(original.Detectors, Is.Empty);
+            Assert.That(setup.Realm.ContainsAnchor("source"), Is.False);
+            Assert.That(setup.Realm.Query().Count, Is.Zero);
+
+            provider.transform.SetParent(setup.transform, false);
+            provider.gameObject.SetActive(true);
+            anchorSetup.enabled = true;
+            Assert.That(provider.Calls, Is.EqualTo(2));
+            Assert.That(setup.Realm.Query().Count, Is.EqualTo(1));
+        }
+
+        /// <summary>
+        /// Moving an attached anchor into another realm does not attach it twice.
+        /// </summary>
+        [Test]
+        public void ReparentedAnchor_ChangesRealmAfterReenable()
+        {
+            RealmSetup first = CreateRealm("original realm");
+            RealmSetup second = CreateRealm("next realm");
+            TestProvider provider = CreateAnchor(first, "source", () => new PublishingSource(FirstKind));
+            AnchorSetup setup = provider.GetComponent<AnchorSetup>();
+            first.gameObject.SetActive(true);
+            first.StartRealm();
+            Anchor original = setup.Anchor;
+            second.gameObject.SetActive(true);
+            provider.transform.SetParent(second.transform, false);
+            second.StartRealm();
+
+            Assert.That(setup.Anchor, Is.SameAs(original));
+            Assert.That(provider.Calls, Is.EqualTo(1));
+            Assert.That(first.Realm.Query().Count, Is.EqualTo(1));
+            Assert.That(second.Realm.Query().Count, Is.Zero);
+
+            setup.enabled = false;
+            Assert.That(first.Realm.Query().Count, Is.Zero);
+            setup.enabled = true;
+            Assert.That(setup.Anchor.Realm, Is.SameAs(second.Realm));
+            Assert.That(provider.Calls, Is.EqualTo(2));
+            first.StopRealm();
+            Assert.That(setup.Anchor.Realm, Is.SameAs(second.Realm));
+            Assert.That(second.Realm.Query().Count, Is.EqualTo(1));
+        }
+
+        /// <summary>
         /// An empty anchor override keeps its ghosts silent while another anchor uses the realm view.
         /// </summary>
         [Test]
@@ -380,6 +631,25 @@ namespace Emas.Tests
             return provider;
         }
 
+        private TestProvider CreateConfiguredAnchor(RealmSetup realm, string id, Kind kind)
+        {
+            TestProvider provider = CreateAnchor(realm, id, () => new PollingPresenceDetector<string>(kind)
+                .ReadFrom(() => new[] { "one" }).IdentifyBy(value => value));
+            TestConfigurator configurator = provider.gameObject.AddComponent<TestConfigurator>();
+            configurator.Kind = kind;
+            return provider;
+        }
+
+        private static void AssertConfiguredPresence(Realm realm, string anchorId, Kind kind)
+        {
+            Presence presence;
+            Assert.That(realm.TryGetPresence(new Key(anchorId, kind, "one"), out presence), Is.True);
+            Assert.That(realm.Query().InAnchor(anchorId).Single(), Is.TypeOf<Probe>());
+            ReadingModule module;
+            Assert.That(presence.TryGetModule(out module), Is.True);
+            Assert.That(module.Value, Is.EqualTo("one"));
+        }
+
         private ManifestationBlueprint CreateManifestationBlueprint(Kind kind, string name)
         {
             GameObject prefab = new GameObject(name);
@@ -435,6 +705,64 @@ namespace Emas.Tests
             {
                 Calls++;
                 return Factory();
+            }
+        }
+
+        private sealed class ConfiguredProvider : MonoBehaviour, IDetectorProvider, IRealmConfigurator
+        {
+            internal int ConfigurationCalls;
+            internal int DetectorCalls;
+
+            /// <summary>
+            /// Installs the test root and module before this provider starts detection.
+            /// </summary>
+            public void ConfigureRealm(Realm realm)
+            {
+                ConfigurationCalls++;
+                realm.RegisterPresenceInitializer<Probe>(FirstKind,
+                    (presence, root) => presence.AddModule(new ReadingModule()));
+            }
+
+            /// <summary>
+            /// Creates a detector after the provider has configured its root.
+            /// </summary>
+            public PresenceDetector CreateDetector()
+            {
+                Assert.That(ConfigurationCalls, Is.EqualTo(1));
+                DetectorCalls++;
+                return new PollingPresenceDetector<string>(FirstKind)
+                    .ReadFrom(() => new[] { "one" }).IdentifyBy(value => value);
+            }
+        }
+
+        private sealed class TestConfigurator : MonoBehaviour, IRealmConfigurator
+        {
+            internal Kind Kind;
+            internal int Calls;
+            internal Action<Realm> OnConfigure;
+
+            /// <summary>
+            /// Installs this test anchor's root and data module.
+            /// </summary>
+            public void ConfigureRealm(Realm realm)
+            {
+                Calls++;
+                realm.RegisterPresenceInitializer<Probe>(Kind,
+                    (presence, root) => presence.AddModule(new ReadingModule()));
+                OnConfigure?.Invoke(realm);
+            }
+        }
+
+        private sealed class ReadingModule : EntityModule<string>
+        {
+            internal string Value;
+
+            /// <summary>
+            /// Records the data delivered after root initialization.
+            /// </summary>
+            public override void Apply(string data)
+            {
+                Value = data;
             }
         }
 

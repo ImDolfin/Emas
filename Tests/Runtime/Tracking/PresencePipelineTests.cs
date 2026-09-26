@@ -113,6 +113,273 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Failed direct reports stop their detector and remove both partial and previously published roots.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Report_DirectFailureStopsDetectorAndRemovesPopulation(bool moduleFailure)
+        {
+            bool fail = false;
+            Presence failedPresence = null;
+            InvalidOperationException failure = new InvalidOperationException("report failed");
+            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            {
+                presence.AddModule(new ActionModule(() =>
+                {
+                    root.Articulation = 42;
+                    if (fail && moduleFailure)
+                    {
+                        throw failure;
+                    }
+                }));
+                if (fail)
+                {
+                    failedPresence = presence;
+                    if (!moduleFailure)
+                    {
+                        throw failure;
+                    }
+                }
+            });
+            Detector detector = new Detector();
+            Anchor anchor = _realm.GetOrCreateAnchor("sdk", detector);
+            Presence previous = detector.Publish("previous", default(Reading), null, null);
+            _realm.Update();
+            Assert.That(previous.IsAvailable, Is.True);
+
+            fail = true;
+            ExpectedErrors.Verify(() =>
+            {
+                Assert.That(Assert.Throws<InvalidOperationException>(() =>
+                    detector.Publish("broken", default(Reading), null, null)), Is.SameAs(failure));
+            }, "operation 'Report'.*kind 'tests.presence.pipeline'.*entity 'broken'.*report failed");
+
+            Assert.That(detector.IsActive, Is.False);
+            Assert.That(detector.IsAttached, Is.True);
+            Assert.That(detector.Stops, Is.EqualTo(1));
+            Assert.That(detector.LastError, Is.SameAs(failure));
+            Assert.That(detector.LastErrorContext, Does.Contain("anchor 'sdk'").And.Contain("operation 'Report'")
+                .And.Contain("kind 'tests.presence.pipeline'").And.Contain("entity 'broken'"));
+            Assert.That(previous.IsRemoved, Is.True);
+            Assert.That(failedPresence.IsRemoved, Is.True);
+            Assert.That(_realm.TryGetPresence(failedPresence.Key, out Presence ignored), Is.False);
+            _realm.Update();
+            Assert.That(_realm.Query().Count, Is.Zero);
+            Assert.That(detector.Stops, Is.EqualTo(1));
+
+            fail = false;
+            anchor.RestartDetector(detector);
+            Presence recovered = detector.Publish("recovered", default(Reading), null, null);
+            _realm.Update();
+            Assert.That(detector.LastError, Is.Null);
+            Assert.That(detector.LastErrorContext, Is.Null);
+            Assert.That(recovered.IsAvailable, Is.True);
+        }
+
+        /// <summary>
+        /// Initializers and modules cannot run a realm update that exposes partially initialized roots.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Report_DirectFailureRejectsReentrantUpdateBeforePublication(bool moduleFailure)
+        {
+            int arrivals = 0;
+            Presence failedPresence = null;
+            InvalidOperationException failure = new InvalidOperationException("reentrant report failed");
+            Action attemptUpdate = () =>
+            {
+                InvalidOperationException reentry = Assert.Throws<InvalidOperationException>(_realm.Update);
+                Assert.That(reentry.Message, Does.Contain("cannot be reentrant"));
+                Assert.That(arrivals, Is.Zero);
+                throw failure;
+            };
+            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            {
+                failedPresence = presence;
+                if (moduleFailure)
+                {
+                    presence.AddModule(new ActionModule(attemptUpdate));
+                }
+                else
+                {
+                    attemptUpdate();
+                }
+            });
+            Detector detector = new Detector();
+            _realm.GetOrCreateAnchor("sdk", detector);
+            using (_realm.Query().OnAvailable(ghost => arrivals++))
+            {
+                ExpectedErrors.Verify(() =>
+                {
+                    Assert.That(Assert.Throws<InvalidOperationException>(() =>
+                        detector.Publish("broken", default(Reading), null, null)), Is.SameAs(failure));
+                }, "operation 'Report'.*entity 'broken'.*reentrant report failed");
+
+                Assert.That(detector.IsActive, Is.False);
+                Assert.That(detector.LastError, Is.SameAs(failure));
+                Assert.That(detector.Stops, Is.EqualTo(1));
+                Assert.That(failedPresence.IsRemoved, Is.True);
+                _realm.Update();
+                Assert.That(_realm.Query().Count, Is.Zero);
+                Assert.That(arrivals, Is.Zero);
+            }
+        }
+
+        /// <summary>
+        /// A startup report failure preserves the existing prepared root rollback contract.
+        /// </summary>
+        [Test]
+        public void Report_StartupFailureRestoresPreparedRootWithoutLoggingTwice()
+        {
+            InvalidOperationException failure = new InvalidOperationException("startup report failed");
+            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            {
+                throw failure;
+            });
+            Anchor anchor = _realm.GetOrCreateAnchor("sdk");
+            ProbeGhost prepared = _realm.Prepare<ProbeGhost>("sdk", TrackedKind, "prepared");
+            Detector detector = new Detector();
+            detector.Starting = () => detector.PublishMetadata("prepared", null);
+
+            Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(detector)), Is.SameAs(failure));
+            Assert.That(detector.Stops, Is.EqualTo(1));
+            Assert.That(detector.IsAttached, Is.False);
+            Assert.That(detector.IsActive, Is.False);
+            Assert.That(detector.LastError, Is.SameAs(failure));
+            Assert.That(detector.LastErrorContext, Does.Contain("operation 'Report'").And.Contain("entity 'prepared'"));
+            Assert.That(_realm.Prepare<ProbeGhost>("sdk", TrackedKind, "prepared"), Is.SameAs(prepared));
+            _realm.Update();
+            Assert.That(prepared.IsAvailable, Is.False);
+            Assert.That(_realm.Query().Count, Is.Zero);
+        }
+
+        /// <summary>
+        /// Existing update and dispatch failure boundaries clean up and log each failed report once.
+        /// </summary>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Report_ManagedCallbackFailureUsesExistingBoundary(bool dispatched)
+        {
+            InvalidOperationException failure = new InvalidOperationException("managed report failed");
+            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            {
+                presence.AddModule(new ActionModule(() =>
+                {
+                    throw failure;
+                }));
+            });
+            Detector detector = new Detector();
+            _realm.GetOrCreateAnchor("sdk", detector);
+            Action publish = () => detector.Publish("broken", default(Reading), null, null);
+            if (dispatched)
+            {
+                detector.Queue(publish);
+            }
+            else
+            {
+                detector.Updating = publish;
+            }
+
+            ExpectedErrors.Verify(_realm.Update, "operation 'Report'.*entity 'broken'.*managed report failed");
+            Assert.That(detector.IsActive, Is.False);
+            Assert.That(detector.IsAttached, Is.True);
+            Assert.That(detector.LastError, Is.SameAs(failure));
+            Assert.That(detector.Stops, Is.EqualTo(1));
+            Assert.That(_realm.TryGetPresence(new Key("sdk", TrackedKind, "broken"), out Presence ignored), Is.False);
+            _realm.Update();
+            Assert.That(_realm.Query().Count, Is.Zero);
+        }
+
+        /// <summary>
+        /// One detector's callback cannot defer another detector's direct report cleanup.
+        /// </summary>
+        [Test]
+        public void Report_InsideAnotherDetectorCallbackStopsReportingDetector()
+        {
+            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            {
+                throw new InvalidOperationException("nested report failed");
+            });
+            Detector caller = new Detector();
+            Detector reporter = new Detector();
+            _realm.GetOrCreateAnchor("caller", caller);
+            _realm.GetOrCreateAnchor("reporter", reporter);
+            caller.Updating = () => Assert.Throws<InvalidOperationException>(() => reporter.PublishMetadata("broken", null));
+
+            ExpectedErrors.Verify(_realm.Update, "anchor 'reporter'.*operation 'Report'.*nested report failed");
+            caller.Updating = null;
+            Assert.That(caller.IsActive, Is.True);
+            Assert.That(caller.LastError, Is.Null);
+            Assert.That(reporter.IsActive, Is.False);
+            Assert.That(reporter.Stops, Is.EqualTo(1));
+            _realm.Update();
+            Assert.That(_realm.Query().Count, Is.Zero);
+        }
+
+        /// <summary>
+        /// A newer registration cannot rely on the older callback's failure boundary for cleanup.
+        /// </summary>
+        [Test]
+        public void Report_NewRegistrationInsideOldCallbackUsesOwnFailureBoundary()
+        {
+            InvalidOperationException failure = new InvalidOperationException("replacement report failed");
+            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            {
+                throw failure;
+            });
+            Detector detector = new Detector();
+            Anchor anchor = _realm.GetOrCreateAnchor("sdk", detector);
+            detector.Updating = () =>
+            {
+                detector.Updating = null;
+                anchor.RemoveDetector(detector);
+                anchor.AddDetector(detector);
+                Assert.That(Assert.Throws<InvalidOperationException>(() => detector.PublishMetadata("broken", null)),
+                    Is.SameAs(failure));
+            };
+
+            ExpectedErrors.Verify(_realm.Update, "operation 'Report'.*entity 'broken'.*replacement report failed");
+            Assert.That(detector.IsActive, Is.False);
+            Assert.That(detector.LastError, Is.SameAs(failure));
+            Assert.That(detector.Stops, Is.EqualTo(2));
+            _realm.Update();
+            Assert.That(_realm.Query().Count, Is.Zero);
+        }
+
+        /// <summary>
+        /// An initializer failure from an obsolete registration cannot stop or poison its replacement.
+        /// </summary>
+        [Test]
+        public void Report_InitializerReattachesBeforeThrowingPreservesNewRegistration()
+        {
+            Anchor anchor = _realm.GetOrCreateAnchor("sdk");
+            Detector detector = new Detector();
+            InvalidOperationException failure = new InvalidOperationException("obsolete report failed");
+            Presence replacement = null;
+            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            {
+                if (presence.Key.EntityId == "obsolete")
+                {
+                    anchor.RemoveDetector(detector);
+                    anchor.AddDetector(detector);
+                    replacement = detector.PublishMetadata("replacement", null);
+                    throw failure;
+                }
+            });
+            anchor.AddDetector(detector);
+
+            Assert.That(Assert.Throws<InvalidOperationException>(() => detector.PublishMetadata("obsolete", null)),
+                Is.SameAs(failure));
+            Assert.That(detector.IsAttached && detector.IsActive, Is.True);
+            Assert.That(detector.LastError, Is.Null);
+            Assert.That(detector.LastErrorContext, Is.Null);
+            Assert.That(detector.Stops, Is.EqualTo(1));
+            _realm.Update();
+            Assert.That(replacement.IsAvailable, Is.True);
+            Assert.That(_realm.Query().Single(), Is.SameAs(replacement.Root));
+        }
+
+        /// <summary>
         /// Manifesting a Presence selects the requested view detail while retaining its root.
         /// </summary>
         [Test]
@@ -271,8 +538,51 @@ namespace Emas.Tests
             }
         }
 
+        private sealed class ActionModule : EntityModule<Reading>
+        {
+            private readonly Action _apply;
+
+            internal ActionModule(Action apply)
+            {
+                _apply = apply;
+            }
+
+            /// <inheritdoc />
+            public override void Apply(Reading data)
+            {
+                _apply();
+            }
+        }
+
         private sealed class Detector : PresenceDetector
         {
+            internal Action Starting;
+            internal Action Updating;
+            internal int Stops;
+
+            /// <inheritdoc />
+            protected override void OnStart()
+            {
+                Starting?.Invoke();
+            }
+
+            /// <inheritdoc />
+            protected override void OnUpdate()
+            {
+                Updating?.Invoke();
+            }
+
+            /// <inheritdoc />
+            protected override void OnStop()
+            {
+                Stops++;
+            }
+
+            internal void Queue(Action action)
+            {
+                Dispatch(action);
+            }
+
             internal Presence Publish(string entityId, Reading reading, string name, Variant? variant,
                 params Type[] capabilities)
             {
