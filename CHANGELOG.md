@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Added a short README introduction to the detector, module, Ghost, View and Realm roles before the implementation steps.
 - Split internal entity lifetime into `Population` and moved view-request/detail bookkeeping into `ViewManager`. `Realm` remains the public facade and update coordinator in one non-partial file; removed `Realm.Presences.cs` without changing the public API.
 - Made realm identity and command handling explicit internal components: `IdentityMap` owns keyed records and instance-safe lookup/removal; `Realm` and `SceneChangeQueue` directly share `CommandQueue<T>` for FIFO ordering and reentrancy-safe draining while retaining their detector and Unity scene policies.
 - Removed the generic polling and callback detector adapters from the core package. Applications now subclass `PresenceDetector` directly; the quick-start and relative-world samples demonstrate small SDK-specific detectors with data reporting, callback dispatch and subscription cleanup.

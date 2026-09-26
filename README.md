@@ -6,6 +6,16 @@ A Unity 2022.3+ package that tracks SDK entities as stable Presences, creates in
 
 Add `package.json` through **Package Manager > Add package from disk**. This example uses a generic tracked item. Put each C# class in its own file; an application asmdef must reference `Emas.Runtime`.
 
+The integration uses five roles:
+
+| Role | Responsibility |
+| --- | --- |
+| `PresenceDetector` | Reports SDK entity identities, data updates, and disappearances. |
+| `EntityModule<TData>` | Applies SDK data to the Ghost root, such as updating its position. |
+| `Ghost` | The entity's Unity root, carrying its components and behavior independently of its view. |
+| `View` | An optional visual child of the Ghost, created when manifestation is requested. |
+| `Realm` | Owns tracked entities and coordinates detector updates, data application, and views. |
+
 ### 1. Choose a Kind and its views
 
 `Kind("tracked.item")` identifies the category. A `Variant("standard")` identifies an appearance within that Kind. The detector reports both IDs; asset filenames do not select them.
