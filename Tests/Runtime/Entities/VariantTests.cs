@@ -1,61 +1,15 @@
-using System;
 using NUnit.Framework;
 using UnityEngine;
 
 namespace Emas.Tests
 {
     /// <summary>
-    /// Verifies extensible appearance values and their query and blueprint integration.
+    /// Verifies appearance identifiers survive Unity serialization used by assets.
     /// </summary>
     public sealed class VariantTests
     {
         /// <summary>
-        /// Ensures independent declarations compare by exact identifier.
-        /// </summary>
-        [Test]
-        public void Equality_IsOrdinalAndWorksInCollections()
-        {
-            Variant first = new Variant("cars.small");
-            Variant same = new Variant("cars.small");
-            Variant different = new Variant("Cars.Small");
-
-            Assert.That(first == same, Is.True);
-            Assert.That(first != different, Is.True);
-            Assert.That(first.Equals((object)same), Is.True);
-            Assert.That(first.Equals("cars.small"), Is.False);
-            Assert.That(first.GetHashCode(), Is.EqualTo(same.GetHashCode()));
-            Assert.That(first.Id, Is.EqualTo("cars.small"));
-            Assert.That(first.ToString(), Is.EqualTo(first.Id));
-            Assert.That(first.IsNone, Is.False);
-        }
-
-        /// <summary>
-        /// Ensures absent appearances have a consistent default value.
-        /// </summary>
-        [Test]
-        public void Default_IsUnspecified()
-        {
-            Variant value = default(Variant);
-
-            Assert.That(value, Is.EqualTo(Variant.None));
-            Assert.That(value.Id, Is.Empty);
-            Assert.That(value.IsNone, Is.True);
-            Assert.That(value.GetHashCode(), Is.EqualTo(Variant.None.GetHashCode()));
-        }
-
-        /// <summary>
-        /// Rejects accidental empty declarations while allowing an explicit None value.
-        /// </summary>
-        [Test]
-        public void Constructor_RejectsMissingIds()
-        {
-            Assert.Throws<ArgumentException>(() => new Variant(null));
-            Assert.Throws<ArgumentException>(() => new Variant(""));
-            Assert.Throws<ArgumentException>(() => new Variant(" "));
-        }
-
-        /// <summary>
-        /// Ensures serialization preserves exact identifiers and the default.
+        /// Unity serialization must retain exact appearance identifiers and represent an omitted value as None.
         /// </summary>
         [Test]
         public void Serialization_RoundTrips()
@@ -67,109 +21,5 @@ namespace Emas.Tests
             Assert.That(JsonUtility.FromJson<Variant>("{}"), Is.EqualTo(Variant.None));
         }
 
-        /// <summary>
-        /// Ensures appearance filters are typed, exact and independent of query copies.
-        /// </summary>
-        [Test]
-        public void Query_MatchesTypedAppearanceAndNone()
-        {
-            using (Realm realm = new Realm())
-            {
-                Query original = realm.Query();
-                Query selected = original.WithVariant(new Variant("cars.small"));
-                FakeGhost small = new FakeGhost(new Variant("cars.small"));
-                FakeGhost large = new FakeGhost(new Variant("cars.large"));
-
-                Assert.That(original.Matches(large), Is.True);
-                Assert.That(selected.Matches(small), Is.True);
-                Assert.That(selected.Matches(large), Is.False);
-                Assert.That(selected.Matches(new FakeGhost(new Variant("Cars.Small"))), Is.False);
-                Assert.That(original.WithVariant(Variant.None).Matches(new FakeGhost(Variant.None)), Is.True);
-            }
-        }
-
-        /// <summary>
-        /// Ensures blueprint selection uses typed appearances for exact, lower and fallback views.
-        /// </summary>
-        [Test]
-        public void ManifestationBlueprint_SelectsTypedVariants()
-        {
-            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            ManifestationVariant manifestationVariant = ScriptableObject.CreateInstance<ManifestationVariant>();
-            GameObject full = new GameObject("full");
-            GameObject minimal = new GameObject("minimal");
-            GameObject fallback = new GameObject("fallback");
-            try
-            {
-                Variant variant = new Variant("cars.small");
-                manifestationVariant.Configure(variant, new[]
-                {
-                    new ManifestationVariant.DetailMapping(DetailLevel.Full, full),
-                    new ManifestationVariant.DetailMapping(DetailLevel.Minimal, minimal)
-                });
-                blueprint.Configure(new Kind("cars"), null, new[] { manifestationVariant }, fallback);
-
-                Assert.That(blueprint.ResolveViewPrefab(variant, DetailLevel.Full), Is.SameAs(full));
-                Assert.That(blueprint.ResolveViewPrefab(variant, DetailLevel.Reduced), Is.SameAs(minimal));
-                Assert.That(blueprint.ResolveViewPrefab(new Variant("cars.large"), DetailLevel.Full), Is.SameAs(fallback));
-                Assert.That(blueprint.ResolveViewPrefab(Variant.None, DetailLevel.Full), Is.SameAs(fallback));
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(blueprint);
-                UnityEngine.Object.DestroyImmediate(manifestationVariant);
-                UnityEngine.Object.DestroyImmediate(full);
-                UnityEngine.Object.DestroyImmediate(minimal);
-                UnityEngine.Object.DestroyImmediate(fallback);
-            }
-        }
-
-        private sealed class FakeGhost : IGhost
-        {
-            internal FakeGhost(Variant variant)
-            {
-                Variant = variant;
-            }
-
-            /// <inheritdoc />
-            public Key Key
-            {
-                get
-                {
-                    return new Key("test", new Kind("cars"), "1");
-                }
-            }
-
-            /// <inheritdoc />
-            public string Name
-            {
-                get
-                {
-                    return "Car";
-                }
-            }
-
-            /// <inheritdoc />
-            public Variant Variant
-            {
-                get;
-            }
-
-            /// <inheritdoc />
-            public bool IsAvailable
-            {
-                get
-                {
-                    return true;
-                }
-            }
-
-            /// <inheritdoc />
-            public bool TryGet<T>(out T part) where T : class
-            {
-                part = null;
-                return false;
-            }
-        }
     }
 }

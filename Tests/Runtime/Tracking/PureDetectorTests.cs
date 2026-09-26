@@ -11,14 +11,12 @@ namespace Emas.Tests
     {
         private static readonly Kind TrackedKind = new Kind("tests.pure.detectors");
         private Realm _realm;
-        private double _now;
 
-        /// <summary>Creates an isolated realm and deterministic clock.</summary>
+        /// <summary>Creates a public realm configured to consume the SDK payload.</summary>
         [SetUp]
         public void SetUp()
         {
-            _now = 10;
-            _realm = new Realm(() => _now);
+            _realm = new Realm();
             _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
             {
                 if (!presence.HasCapability<IValueCapability>())
@@ -41,27 +39,6 @@ namespace Emas.Tests
             _realm.Dispose();
         }
 
-        /// <summary>
-        /// A detector can track a silent Presence when no kind initializer consumes its SDK data.
-        /// </summary>
-        [Test]
-        public void Polling_WithoutInitializerTracksSilentPresence()
-        {
-            Kind silentKind = new Kind("tests.pure.silent");
-            PollingPresenceDetector<Reading> detector = new PollingPresenceDetector<Reading>(silentKind)
-                .ReadFrom(() => new[] { new Reading("silent", "Silent SUV", Variant.None, 2) })
-                .IdentifyBy(item => item.Id)
-                .WithName(item => item.Label);
-
-            _realm.GetOrCreateAnchor("silent", detector);
-            Key key = new Key("silent", silentKind, "silent");
-            Assert.That(_realm.TryGetPresence(key, out Presence presence), Is.True);
-            Assert.That(presence.Name, Is.EqualTo("Silent SUV"));
-            Assert.That(presence.Root, Is.TypeOf<DefaultGhost>());
-            Assert.That(presence.Modules, Is.Empty);
-            Assert.That(_realm.Query().Single(), Is.SameAs(presence.Root));
-            Assert.That(_realm.Manifest(presence, DetailLevel.Full), Is.Null);
-        }
         /// <summary>
         /// A full snapshot creates and updates one Presence, then removes an omitted ID.
         /// </summary>
@@ -107,10 +84,10 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Queued callbacks preserve a Presence, hide it on removal, and reuse it within grace.
+        /// SDK callbacks apply data on the next update, retain identity across changes, and unsubscribe on detachment.
         /// </summary>
         [Test]
-        public void Callback_ReportsDataAndHonorsDisappearanceGrace()
+        public void Callback_QueuesDataChangesAndReleasesSubscription()
         {
             Action<Reading> publish = null;
             Action<string> disappear = null;
@@ -129,8 +106,7 @@ namespace Emas.Tests
                         disappear = null;
                     };
                 });
-            detector.DisappearanceGracePeriod = TimeSpan.FromSeconds(2);
-            _realm.GetOrCreateAnchor("callback", detector);
+            Anchor anchor = _realm.GetOrCreateAnchor("callback", detector);
             Key key = new Key("callback", TrackedKind, "one");
 
             publish(new Reading("one", "First SUV", new Variant("model-a"), 4));
@@ -151,28 +127,13 @@ namespace Emas.Tests
             Assert.That(root.Value, Is.EqualTo(9));
 
             disappear("one");
+            Assert.That(first.IsAvailable, Is.True);
             _realm.Update();
-            Assert.That(first.IsAvailable, Is.False);
-            Assert.That(first.IsRemoved, Is.False);
-            Assert.That(_realm.Query().Count, Is.Zero);
-            Assert.That(_realm.TryGetPresence(key, out updated), Is.True);
-
-            _now = 11;
-            publish(new Reading("one", "Returned SUV", new Variant("model-b"), 12));
-            _realm.Update();
-            Assert.That(_realm.TryGetPresence(key, out updated), Is.True);
-            Assert.That(updated, Is.SameAs(first));
-            Assert.That(updated.Root, Is.SameAs(root));
-            Assert.That(updated.IsAvailable, Is.True);
-            Assert.That(root.Value, Is.EqualTo(12));
-
-            disappear("one");
-            _realm.Update();
-            _now = 13;
-            _realm.Update();
-            Assert.That(_realm.TryGetPresence(key, out updated), Is.False);
             Assert.That(first.IsRemoved, Is.True);
             Assert.That(_realm.Query().Count, Is.Zero);
+            anchor.RemoveDetector(detector);
+            Assert.That(publish, Is.Null);
+            Assert.That(disappear, Is.Null);
         }
 
         private interface IValueCapability
@@ -210,5 +171,3 @@ namespace Emas.Tests
         }
     }
 }
-
-

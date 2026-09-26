@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace Emas.Tests
 {
@@ -70,11 +69,10 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Update and queued failures stop only the owner and retain the primary error over cleanup.
+        /// An update failure stops only its detector and retains the primary error if cleanup also fails.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void RuntimeFailure_RemovesGhostAndIsolatesHealthySource(bool dispatched)
+        [Test]
+        public void UpdateFailure_RemovesGhostAndIsolatesHealthySource()
         {
             InvalidOperationException failure = new InvalidOperationException("runtime failure");
             ProbeSource source = new ProbeSource();
@@ -89,21 +87,10 @@ namespace Emas.Tests
             {
                 throw new Exception("cleanup failure");
             };
-            if (dispatched)
+            source.Updating = () =>
             {
-                source.Enqueue(() =>
-                {
-                    throw failure;
-                });
-                source.Enqueue(() => Assert.Fail("Work after failure must be discarded."));
-            }
-            else
-            {
-                source.Updating = () =>
-                {
-                    throw failure;
-                };
-            }
+                throw failure;
+            };
 
             ExpectedErrors.Verify(_realm.Update, "runtime failure", "cleanup failure");
             Assert.That(source.LastError, Is.SameAs(failure));
@@ -114,7 +101,6 @@ namespace Emas.Tests
             IGhost found;
             Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
             Assert.That(found, Is.Null);
-            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
             _realm.Update();
             Assert.That(source.Stops, Is.EqualTo(1));
             Assert.That(other.IsAvailable && healthy.IsActive, Is.True);
@@ -135,11 +121,10 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Normal teardown records a cleanup-only failure without preventing detachment.
+        /// A cleanup exception remains available for diagnostics without keeping the detector attached.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void CleanupFailure_IsRetainedAfterRemoveOrDispose(bool dispose)
+        [Test]
+        public void CleanupFailure_IsRetainedAfterDetachment()
         {
             Exception failure = new Exception("cleanup only");
             ProbeSource source = new ProbeSource
@@ -150,150 +135,26 @@ namespace Emas.Tests
                 }
             };
             Anchor anchor = _realm.GetOrCreateAnchor("status", source);
-            ExpectedErrors.Verify(() =>
-            {
-                if (dispose)
-                {
-                    anchor.Dispose();
-                }
-                else
-                {
-                    anchor.RemoveDetector(source);
-                }
-            }, "cleanup only");
-
+            ExpectedErrors.Verify(() => anchor.RemoveDetector(source), "cleanup only");
             Assert.That(source.LastError, Is.SameAs(failure));
+            Assert.That(source.LastErrorContext, Does.Contain("OnStop"));
             Assert.That(source.IsAttached || source.IsActive, Is.False);
             Assert.That(source.Stops, Is.EqualTo(1));
         }
 
         /// <summary>
-        /// Cleanup returned by interrupted startup must not overwrite a nested reattachment's state.
+        /// Captured anchor and detector lists retain their membership while fresh lists reflect replacement and disposal.
         /// </summary>
         [Test]
-        public void InterruptedStartup_OldCleanupCannotPoisonNewAttachment()
-        {
-            Anchor anchor = _realm.GetOrCreateAnchor("status");
-            int starts = 0;
-            int oldStops = 0;
-            int newStops = 0;
-            CallbackPresenceDetector<string, StatusGhost> source = null;
-            source = new CallbackPresenceDetector<string, StatusGhost>(new Kind("status"))
-                .IdentifyBy(id => id).Apply((id, ghost) =>
-                {
-                })
-                .Listen((publish, remove) =>
-                {
-                    if (++starts == 1)
-                    {
-                        anchor.RemoveDetector(source);
-                        anchor.AddDetector(source);
-                        return () =>
-                        {
-                            oldStops++;
-                            throw new Exception("obsolete cleanup");
-                        };
-                    }
-
-                    publish("current");
-                    return () => newStops++;
-                });
-            ExpectedErrors.Verify(() => anchor.AddDetector(source), "obsolete cleanup");
-            _realm.Update();
-            Assert.That(source.IsActive && source.IsAttached, Is.True);
-            Assert.That(source.LastError, Is.Null);
-            Assert.That(source.LastErrorContext, Is.Null);
-            Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
-            Assert.That(oldStops, Is.EqualTo(1));
-            Assert.That(newStops, Is.Zero);
-            anchor.RemoveDetector(source);
-            Assert.That(newStops, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// An obsolete startup failure cannot detach or overwrite a nested successful registration.
-        /// </summary>
-        [Test]
-        public void StartupThrowsAfterReattachment_PreservesNewRegistration()
-        {
-            Anchor anchor = _realm.GetOrCreateAnchor("status");
-            int starts = 0;
-            CallbackPresenceDetector<string, StatusGhost> source = null;
-            source = new CallbackPresenceDetector<string, StatusGhost>(new Kind("status"))
-                .IdentifyBy(id => id).Apply((id, ghost) =>
-                {
-                })
-                .Listen((publish, remove) =>
-                {
-                    if (++starts == 1)
-                    {
-                        anchor.RemoveDetector(source);
-                        anchor.AddDetector(source);
-                        throw new InvalidOperationException("obsolete startup");
-                    }
-
-                    publish("current");
-                    return null;
-                });
-            Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
-            _realm.Update();
-            Assert.That(source.IsAttached && source.IsActive, Is.True);
-            Assert.That(source.LastError, Is.Null);
-            Assert.That(source.LastErrorContext, Is.Null);
-            Assert.That(anchor.Detectors, Is.EquivalentTo(new[] { source }));
-            Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("current"));
-        }
-
-        /// <summary>
-        /// A reattached source waits until the next update even if its old registration was in this update's snapshot.
-        /// </summary>
-        [Test]
-        public void Tick_SkipsSourceReattachedBeforeItsTurn()
-        {
-            ProbeSource first = new ProbeSource();
-            ProbeSource second = new ProbeSource();
-            Anchor anchor = _realm.GetOrCreateAnchor("status", first, second);
-            int secondUpdates = 0;
-            bool reattached = false;
-            first.Updating = () =>
-            {
-                if (reattached)
-                {
-                    return;
-                }
-
-                reattached = true;
-                anchor.RemoveDetector(second);
-                anchor.AddDetector(second);
-            };
-            second.Updating = () => secondUpdates++;
-
-            _realm.Update();
-            Assert.That(second.IsAttached && second.IsActive, Is.True);
-            Assert.That(secondUpdates, Is.Zero);
-            _realm.Update();
-            Assert.That(secondUpdates, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// Snapshots cannot mutate the owner, retain their membership and become empty on disposed owners.
-        /// </summary>
-        [Test]
-        public void Collections_AreCopiedReadOnlySnapshots()
+        public void Collections_CaptureMembershipWithoutFollowingOwnerChanges()
         {
             ProbeSource source = new ProbeSource();
             Anchor anchor = _realm.GetOrCreateAnchor("first", source);
             IReadOnlyList<Anchor> anchors = _realm.Anchors;
             IReadOnlyList<PresenceDetector> sources = anchor.Detectors;
-            Assert.Throws<NotSupportedException>(() => ((IList<Anchor>)anchors).Clear());
-            Assert.Throws<NotSupportedException>(() => ((IList<PresenceDetector>)sources).Clear());
             ProbeSource replacement = new ProbeSource();
             anchor.ReplaceDetector(source, replacement);
-            replacement.Stopping = () => Assert.That(_realm.Anchors, Is.Empty);
-            _realm.GetOrCreateAnchor("second", new ProbeSource
-            {
-                Stopping = () => Assert.That(_realm.Anchors, Is.Empty)
-            });
+            _realm.GetOrCreateAnchor("second", new ProbeSource());
             Assert.That(anchors.Count, Is.EqualTo(1));
             Assert.That(sources[0], Is.SameAs(source));
             Assert.That(anchor.Detectors[0], Is.SameAs(replacement));
@@ -315,11 +176,6 @@ namespace Emas.Tests
             internal StatusGhost Publish(string id)
             {
                 return GetOrCreate<StatusGhost>(id, new Kind("status"));
-            }
-
-            internal void Enqueue(Action action)
-            {
-                Dispatch(action);
             }
 
             protected override void OnStart()

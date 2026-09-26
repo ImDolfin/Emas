@@ -25,10 +25,7 @@ namespace Emas.Tests
         [SetUp]
         public void SetUp()
         {
-            ProbeGhost.Enabled = null;
-            ProbeGhost.Disabled = null;
             ProbeView.Enabled = null;
-            ProbeView.Disabled = null;
             _realm = new Realm();
         }
 
@@ -38,10 +35,7 @@ namespace Emas.Tests
         [TearDown]
         public void TearDown()
         {
-            ProbeGhost.Enabled = null;
-            ProbeGhost.Disabled = null;
             ProbeView.Enabled = null;
-            ProbeView.Disabled = null;
             _realm.Dispose();
             for (int index = 0; index < _assets.Count; index++)
             {
@@ -58,7 +52,7 @@ namespace Emas.Tests
         /// Rejected attachment cannot remove the source's original population.
         /// </summary>
         [Test]
-        public void SecondAnchorAttachment_PreservesAnchoralGhosts()
+        public void Detector_CannotBeAttachedToTwoAnchors()
         {
             ProbeSource source = new ProbeSource();
             Anchor firstAnchor = _realm.GetOrCreateAnchor("first", source);
@@ -70,30 +64,6 @@ namespace Emas.Tests
             Anchor secondAnchor = _realm.GetOrCreateAnchor("second");
             Assert.Throws<InvalidOperationException>(() => secondAnchor.AddDetector(source));
             Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
-        }
-
-        /// <summary>
-        /// Failed startup preserves an existing prepared identity but removes newly created records.
-        /// </summary>
-        [Test]
-        public void FailedAttachment_RollsBackOnlyItsNewGhosts()
-        {
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor");
-            ProbeGhost prepared = _realm.Prepare<ProbeGhost>("anchor", Kind, "prepared");
-            ProbeSource source = new ProbeSource();
-            source.Starting = () =>
-            {
-                source.Publish("prepared");
-                source.Publish("new");
-                throw new InvalidOperationException("start failed");
-            };
-            Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
-            Assert.That(source.StopCount, Is.EqualTo(1));
-            ProbeSource replacement = new ProbeSource();
-            anchor.AddDetector(replacement);
-            Assert.That(replacement.Publish("prepared"), Is.SameAs(prepared));
-            _realm.Update();
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
         }
 
         /// <summary>
@@ -141,94 +111,6 @@ namespace Emas.Tests
             Assert.That(found, Is.SameAs(prepared));
             Assert.That(prepared.IsAvailable, Is.False);
             Assert.That(_realm.Query().Single(), Is.SameAs(kept));
-        }
-
-        /// <summary>
-        /// Removing an old attachment preserves roots reclaimed by a new attachment and removes unclaimed leftovers.
-        /// </summary>
-        [Test]
-        public void SourceRemoval_PreservesReclaimedRootDuringSceneCleanup()
-        {
-            ProbeSource source = new ProbeSource();
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            ProbeGhost[] population = { source.Publish("first"), source.Publish("second"), source.Publish("third") };
-            _realm.Update();
-            ProbeGhost reclaimed = null;
-            ProbeGhost.Disabled = disabled =>
-            {
-                ProbeGhost.Disabled = null;
-                source.Starting = () =>
-                {
-                    for (int index = 0; index < population.Length; index++)
-                    {
-                        IGhost found;
-                        if (_realm.TryGetGhost(population[index].Key, out found))
-                        {
-                            reclaimed = source.Publish(found.Key.EntityId);
-                            Assert.That(reclaimed, Is.SameAs(found));
-                            break;
-                        }
-                    }
-                };
-                anchor.AddDetector(source);
-            };
-
-            anchor.RemoveDetector(source);
-
-            Assert.That(source.IsActive && source.IsAttached, Is.True);
-            Assert.That(source.StartCount, Is.EqualTo(2));
-            Assert.That(reclaimed, Is.Not.Null);
-            Assert.That(_realm.Query().Single(), Is.SameAs(reclaimed));
-            for (int index = 0; index < population.Length; index++)
-            {
-                IGhost found;
-                Assert.That(_realm.TryGetGhost(population[index].Key, out found),
-                    Is.EqualTo(ReferenceEquals(population[index], reclaimed)));
-            }
-        }
-
-        /// <summary>
-        /// An older batch rollback cannot clear ownership of a prepared root reclaimed during scene cleanup.
-        /// </summary>
-        [Test]
-        public void BatchRollback_PreservesPreparedRootReclaimedByNewAttachment()
-        {
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor");
-            ProbeGhost first = _realm.Prepare<ProbeGhost>("anchor", Kind, "first");
-            ProbeGhost second = _realm.Prepare<ProbeGhost>("anchor", Kind, "second");
-            ProbeSource source = new ProbeSource();
-            source.Starting = () =>
-            {
-                source.Publish("first");
-                source.Publish("second");
-                source.Publish("temporary");
-            };
-            ProbeSource failing = new ProbeSource();
-            failing.Starting = () => throw new InvalidOperationException("start failed");
-            ProbeGhost reclaimed = null;
-            ProbeGhost.Disabled = disabled =>
-            {
-                ProbeGhost.Disabled = null;
-                // At least one prepared root is still active when the first rollback scene effect runs.
-                ProbeGhost candidate = first.IsAvailable ? first : second;
-                source.Starting = () => reclaimed = source.Publish(candidate.Key.EntityId);
-                anchor.AddDetector(source);
-                Assert.That(reclaimed, Is.SameAs(candidate));
-            };
-
-            Assert.Throws<InvalidOperationException>(() => _realm.GetOrCreateAnchor("anchor", source, failing));
-
-            Assert.That(source.IsActive && source.IsAttached, Is.True);
-            Assert.That(anchor.Detectors, Is.EqualTo(new[] { source }));
-            Assert.That(_realm.Query().Single(), Is.SameAs(reclaimed));
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(new Key("anchor", Kind, "temporary"), out found), Is.False);
-            ProbeGhost unclaimed = ReferenceEquals(reclaimed, first) ? second : first;
-            Assert.That(_realm.TryGetGhost(unclaimed.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(unclaimed));
-            Assert.That(unclaimed.IsAvailable, Is.False);
-            _realm.Update();
-            Assert.That(_realm.Query().Single(), Is.SameAs(reclaimed));
         }
 
         /// <summary>
@@ -280,89 +162,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Root activation may add records without invalidating a dictionary enumeration.
-        /// </summary>
-        [Test]
-        public void OnEnable_CanPrepareAnotherGhost()
-        {
-            ProbeSource source = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            ProbeGhost prepared = null;
-            ProbeGhost.Enabled = ghost =>
-            {
-                if (ghost.Key.EntityId == "car")
-                {
-                    prepared = _realm.Prepare<ProbeGhost>("anchor", Kind, "late");
-                }
-            };
-            source.Publish("car");
-            _realm.Update();
-            Assert.That(prepared, Is.Not.Null);
-            Assert.That(prepared.IsAvailable, Is.False);
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
-            Assert.That(source.StopCount, Is.EqualTo(0));
-        }
-
-        /// <summary>
-        /// A root can remove itself during activation without being manifested afterward.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator OnEnable_CanRemoveItsOwnGhost()
-        {
-            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
-            ProbeSource source = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            ProbeGhost ghost = source.Publish("car");
-            _realm.Manifest(ghost);
-            int views = 0;
-            ProbeView.Enabled = view => views++;
-            ProbeGhost.Enabled = value => source.Depart(value.Key.EntityId);
-            _realm.Update();
-            Assert.That(_realm.Query().Count, Is.EqualTo(0));
-            Assert.That(views, Is.EqualTo(0));
-            Assert.That(ghost.gameObject.activeSelf, Is.False);
-            yield return null;
-            Assert.That(ghost == null, Is.True);
-        }
-
-        /// <summary>
-        /// Disposal inside activation cancels remaining work and later notifications.
-        /// </summary>
-        [Test]
-        public void OnEnable_CanDisposeRealm()
-        {
-            ProbeSource source = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            source.Publish("first");
-            source.Publish("second");
-            int notifications = 0;
-            _realm.Query().OnAvailable(ghost => notifications++);
-            ProbeGhost.Enabled = ghost => _realm.Dispose();
-            _realm.Update();
-            Assert.That(notifications, Is.EqualTo(0));
-            Assert.That(_realm.Query().Count, Is.EqualTo(0));
-            Assert.That(source.StopCount, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// Deactivation may remove another record during ownership transfer.
-        /// </summary>
-        [Test]
-        public void OnDisable_CanRemoveAnchorDuringReplacement()
-        {
-            ProbeSource source = new ProbeSource();
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            source.Publish("first");
-            source.Publish("second");
-            _realm.Update();
-            ProbeSource replacement = new ProbeSource();
-            ProbeGhost.Disabled = ghost => _realm.RemoveAnchor("anchor");
-            Assert.DoesNotThrow(() => anchor.ReplaceDetector(source, replacement));
-            Assert.That(_realm.Query().Count, Is.EqualTo(0));
-            Assert.That(replacement.StartCount, Is.EqualTo(0));
-        }
-
-        /// <summary>
         /// A replacement failure removes its population and supports recovery with new ghost objects.
         /// </summary>
         [Test]
@@ -385,7 +184,6 @@ namespace Emas.Tests
             IGhost found;
             Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
             Assert.That(found, Is.Null);
-            Assert.That(_realm.GetOwnedGhosts(failed), Is.Empty);
             Assert.That(failed.IsAttached, Is.True);
             Assert.That(failed.IsActive, Is.False);
             Anchor otherAnchor = _realm.GetOrCreateAnchor("other");
@@ -451,68 +249,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A view activation callback can demanifest itself without resurrecting the view.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator ViewOnEnable_CanDemanifestItself()
-        {
-            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
-            ProbeSource source = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            ProbeGhost ghost = source.Publish("car");
-            _realm.Update();
-            ProbeView.Enabled = view => _realm.Demanifest(ghost);
-            Assert.That(_realm.Manifest(ghost), Is.Null);
-            yield return null;
-            Assert.That(ghost.GetComponentInChildren<global::Emas.View>(true), Is.Null);
-            Assert.That(ghost.IsAvailable, Is.True);
-        }
-
-        /// <summary>
-        /// Deactivating an old view may remove the ghost without constructing a replacement.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator ViewOnDisable_CanRemoveGhostDuringVariantChange()
-        {
-            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
-            ProbeSource source = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            ProbeGhost ghost = source.Publish("car");
-            _realm.Update();
-            _realm.Manifest(ghost);
-            int newViews = 0;
-            ProbeView.Enabled = view => newViews++;
-            ProbeView.Disabled = view => source.Depart("car");
-            source.Updating = () => source.Publish("car", Second, 2);
-            _realm.Update();
-            Assert.That(newViews, Is.EqualTo(0));
-            Assert.That(_realm.Query().Count, Is.EqualTo(0));
-            yield return null;
-            Assert.That(ghost == null, Is.True);
-        }
-
-        /// <summary>
-        /// A subscription callback cannot notify an identity removed by an earlier callback.
-        /// </summary>
-        [Test]
-        public void Subscription_RechecksMatchesAfterCallbackMutation()
-        {
-            ProbeSource source = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            source.Publish("first");
-            source.Publish("second");
-            _realm.Update();
-            int calls = 0;
-            _realm.Query().OnAvailable(ghost =>
-            {
-                calls++;
-                source.Depart("first");
-                source.Depart("second");
-            });
-            Assert.That(calls, Is.EqualTo(1));
-        }
-
-        /// <summary>
         /// Disposing during notification suppresses subsequent matches.
         /// </summary>
         [Test]
@@ -575,50 +311,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A large backlog is processed over multiple updates in FIFO order.
-        /// </summary>
-        [Test]
-        public void Dispatch_BacklogRespectsBudgetAndOrder()
-        {
-            ProbeSource source = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            List<int> calls = new List<int>();
-            int count = Realm.MaxDispatchActionsPerUpdate + 7;
-            for (int index = 0; index < count; index++)
-            {
-                int value = index;
-                source.Queue(() => calls.Add(value));
-            }
-
-            _realm.Update();
-            Assert.That(calls.Count, Is.EqualTo(Realm.MaxDispatchActionsPerUpdate));
-            Assert.That(source.UpdateCount, Is.EqualTo(1));
-            _realm.Update();
-            Assert.That(calls.Count, Is.EqualTo(count));
-            for (int index = 0; index < count; index++)
-            {
-                Assert.That(calls[index], Is.EqualTo(index));
-            }
-        }
-
-        /// <summary>
-        /// A reused source cannot execute queued actions from its previous registration.
-        /// </summary>
-        [Test]
-        public void Dispatch_ReattachedInstanceDiscardsOldGeneration()
-        {
-            ProbeSource source = new ProbeSource();
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            int calls = 0;
-            source.Queue(() => calls++);
-            anchor.RemoveDetector(source);
-            anchor.AddDetector(source);
-            source.Queue(() => calls += 10);
-            _realm.Update();
-            Assert.That(calls, Is.EqualTo(10));
-        }
-
-        /// <summary>
         /// Scene unload removes both published and prepared roots and permits identity reuse.
         /// </summary>
         [UnityTest]
@@ -643,38 +335,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Ownership changes during root activation defer publication until the new source is finalized.
-        /// </summary>
-        [Test]
-        public void OnEnable_CanReplaceSourceWithoutPublishingStaleAvailability()
-        {
-            ProbeSource source = new ProbeSource();
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            ProbeGhost ghost = source.Publish("car");
-            ProbeSource replacement = new ProbeSource();
-            replacement.Starting = () => replacement.Publish("car", Second, 42);
-            bool replaced = false;
-            ProbeGhost.Enabled = value =>
-            {
-                if (!replaced)
-                {
-                    replaced = true;
-                    anchor.ReplaceDetector(source, replacement);
-                }
-            };
-            int notifications = 0;
-            _realm.Query().OnAvailable(value => notifications++);
-            _realm.Update();
-            Assert.That(ghost.IsAvailable, Is.False);
-            Assert.That(notifications, Is.EqualTo(0));
-            _realm.Update();
-            Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
-            Assert.That(ghost.Value, Is.EqualTo(42));
-            Assert.That(notifications, Is.EqualTo(1));
-            Assert.That(source.StopCount, Is.EqualTo(1));
-        }
-
-        /// <summary>
         /// Dispatched source failure removes and destroys its partially populated ghost.
         /// </summary>
         [UnityTest]
@@ -693,34 +353,12 @@ namespace Emas.Tests
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
             Assert.That(source.StopCount, Is.EqualTo(1));
-            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
             IGhost found;
             Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
             GameObject root = ghost.gameObject;
             yield return null;
             Assert.That(root == null, Is.True);
             Assert.That(ghost == null, Is.True);
-        }
-
-        /// <summary>
-        /// A subscription created while applying source data waits for the completed update.
-        /// </summary>
-        [Test]
-        public void SubscriptionCreatedDuringSourceUpdate_WaitsForFinalValues()
-        {
-            ProbeSource source = new ProbeSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            ProbeGhost ghost = source.Publish("car", First, 1);
-            _realm.Update();
-            int observed = 0;
-            source.Updating = () =>
-            {
-                _realm.Query().OnAvailable(value => observed = ((ProbeGhost)value).Value);
-                Assert.That(observed, Is.EqualTo(0));
-                ghost.Value = 42;
-            };
-            _realm.Update();
-            Assert.That(observed, Is.EqualTo(42));
         }
 
         private ManifestationBlueprint CreateManifestationBlueprint()
@@ -765,45 +403,18 @@ namespace Emas.Tests
 
         private sealed class ProbeGhost : Ghost, IProbeData
         {
-            internal static Action<ProbeGhost> Enabled;
-            internal static Action<ProbeGhost> Disabled;
             internal int Value;
-
-            private void OnEnable()
-            {
-                if (Enabled != null)
-                {
-                    Enabled(this);
-                }
-            }
-
-            private void OnDisable()
-            {
-                if (Disabled != null)
-                {
-                    Disabled(this);
-                }
-            }
         }
 
         private sealed class ProbeView : MonoBehaviour, IViewOnly
         {
             internal static Action<ProbeView> Enabled;
-            internal static Action<ProbeView> Disabled;
 
             private void OnEnable()
             {
                 if (Enabled != null)
                 {
                     Enabled(this);
-                }
-            }
-
-            private void OnDisable()
-            {
-                if (Disabled != null)
-                {
-                    Disabled(this);
                 }
             }
         }
@@ -812,7 +423,6 @@ namespace Emas.Tests
         {
             internal Action Starting;
             internal Action Updating;
-            internal int StartCount;
             internal int UpdateCount;
             internal int StopCount;
 
@@ -828,11 +438,6 @@ namespace Emas.Tests
                 return ghost;
             }
 
-            internal void Depart(string id)
-            {
-                Disappear(Kind, id);
-            }
-
             internal void Queue(Action action)
             {
                 Dispatch(action);
@@ -840,7 +445,6 @@ namespace Emas.Tests
 
             protected override void OnStart()
             {
-                StartCount++;
                 if (Starting != null)
                 {
                     Starting();

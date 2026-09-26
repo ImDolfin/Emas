@@ -24,20 +24,30 @@ Importing a UPM sample copies sample assets into that project. It does not impor
 
 Reopen Unity if the tests remain hidden. [Unity requires this opt-in for installed package tests](https://docs.unity3d.com/2022.3/Documentation/Manual/cus-tests.html). Use the included test project above to avoid this manual setup.
 
+## What the tests cover
+
+Each test has a consumer-facing purpose documented in its XML summary. Tests use public Emas APIs, supported protected detector extension points, and Unity's public serialization APIs for Inspector authoring. Runtime and Editor assemblies grant no friend access to test assemblies. Timing tests wait for observable changes using Unity's unscaled clock, including checks while `Time.timeScale` is zero.
+
+| Area | Purpose |
+| --- | --- |
+| Entities | Typed identity and appearance values, root contracts, and double-precision coordinate behavior. |
+| Tracking | Detector ownership and status, SDK data application, identity reuse, cleanup, explicit dispatch, restart, inactivity and disappearance grace. |
+| Queries | Filtering and lookups, paired arrival/departure notifications, and subscriptions across live realms. |
+| Views | Blueprint selection, reference-frame projection, spatial channels, and presentation availability. |
+| Unity setup | Isolated/nested realm ownership, configuration timing, reparenting and automatic lifecycle updates. |
+| Editor authoring | Serialized configuration errors, blueprint overrides, reference selection and visible Ghost fields. |
+| Samples | Four runnable sample scenes and required consistency between package samples and their imported copies. |
+
+Keep a test when it protects a distinct behavior that an application depends on. Failure-path tests must demonstrate a meaningful recovery or cleanup contract; reproducing a past bug alone is not a reason to add or retain a case. Avoid duplicate permutations, assertions about private state, tests of test helpers, and checks of trivial constants. Cover related inputs in one focused scenario where that makes the contract clearer.
+
 ## Results
 
-The full Unity **2022.3.62f3** test project passed **16 EditMode** and **299 PlayMode** tests on **2026-09-26**, package **0.1.0**. This includes imported sample consistency, the serialized `ManifestationVariant` asset in the Callbacks scene, both quick-start scenes, isolated and nested prefab realms, manifestation blueprint defaults and anchor overrides, reference frames, the geodetic Relative world sample, startup cleanup and queries across live realms. The run also covers direct report failure cleanup and reentrant update rejection, late anchor configuration across Unity enable order, reparented anchor cleanup, and cached publication recovery during disappearance grace. The ignored XML and logs are in `Tests/Unity~/TestResults/ReviewFixes/`.
+The reduced suite passed in Unity **2022.3.62f3** on **2026-09-26**, package **0.1.0**. All **142 tests** passed with no failures or skips, down from 315 tests (173 removed, approximately 55%). Both test assemblies compile without access to internal production APIs.
 
 | Editor | Test Framework | EditMode | PlayMode |
 | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 16 passed | 299 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 133 passed |
 
-Focused validation of the updated **Relative world** sample passed 1 PlayMode scene test on the same date; the ignored report is in `Tests/Unity~/TestResults/GeoRelativeWorld/`. Earlier sample-split reports are in `Tests/Unity~/TestResults/RelativeWorldSplit/`.
+The ignored XML reports and logs are in `Tests/Unity~/TestResults/PublicContracts/`. Every retained test has an XML purpose summary; an independent suite review checked for private/internal access, duplicate purposes and unused probes.
 
-The previous **2026-09-22** Windows Mono player runs passed 184 tests on Unity 2022.3.62f3 and Unity 6.3 LTS (6000.3.24f1). Unity 6 also passed 9 EditMode and 184 PlayMode tests then. Those runs preceded the blueprint, subscription performance, realm, Ghost developer-experience, Anchor, PresenceSource, Blueprint snapshot, presentation isolation, ghost lifetime and relative-world improvements; the player and Unity 6 suites have not been rerun for these changes. No failed or skipped tests were reported. Unity 2022 used the prepared repository project; Unity 6 used isolated copies of its Assets, Packages and ProjectSettings. The repository project remains on Unity 2022.3.
-
-Coverage includes detector and Ghost lifetimes, failure cleanup and recovery, stale callbacks, query observations, identity lookup, polling intervals and callback ordering/budgets. New Presence tests cover typed capabilities, stable handles, Realm initializers, EntityModule SDK updates, silent defaults, manifestation by Presence, and disappearance grace. The imported polling and callback quick starts exercise prefab realm configurators. The current suite also verifies presentation failure isolation, bounded source handover, inactivity expiry after partial publications and registration-safe scene cleanup. Spatial coverage includes double-precision projection at large coordinates, independent position and rotation updates, reference following and recovery, transformed parents, range suppression and restoration, activation ordering, and the relative-world sample. Earlier player tests exercise the samples available at the time; EditMode checks cover Inspectors, passive diagnostics and shipped/imported sample consistency. Expected-error capture has dedicated logging regressions.
-
-The earlier fresh Unity 2022.3 consuming project imported the three samples available at the time through Package Manager with its manifest unchanged and no `testables` entry. All **3 sample smoke tests passed**. That check preceded the relative-world example. Package test opt-in remains separate from ordinary installation.
-
-The current Unity 2022 editor reports are in the ignored `Tests/Unity~/TestResults/ReviewFixes/` directory. The earlier full geodetic sample reports are in `TestResults/GeoRelativeWorldFull/`. Earlier Presence pipeline reports are in `TestResults/PresencePipeline/`. The earlier global-query reports are in `TestResults/GlobalQuery/`. Earlier prefab realm reports are in `TestResults/RealmSetup/`. Earlier spatial reports are in `TestResults/SpatialFrames/`. Earlier presentation and lifetime reports are in `TestResults/PresentationAndLifetime/`; focused presentation regressions are in `TestResults/ViewFailureIsolation/`. Earlier Blueprint reports are in `TestResults/BlueprintSnapshots/`, PresenceSource reports are in `TestResults/PresenceSourceImprovements/`, Anchor reports are in `TestResults/AnchorImprovements/`, Ghost reports are in `TestResults/GhostDeveloperExperience/`, realm reports are in `TestResults/RealmImprovements/`, subscription reports in `TestResults/SubscriptionPerformance/`, blueprint reports in `TestResults/BlueprintHandling/`, earlier suites in `TestResults/TestCleanup/`, and fresh-install reports in `TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.
+The previous suite passed **16 EditMode** and **299 PlayMode** tests on **2026-09-26**, before this reduction. Earlier **2026-09-22** checks passed on Unity 6.3 LTS (6000.3.24f1) and Windows Mono players; those runs predate later API changes and do not validate the current suite. Unity 6 and player runs have not been repeated for this revision. IL2CPP, other platforms, performance and rendering quality have not been validated.

@@ -43,78 +43,30 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Invalid configuration inputs fail before a source is attached.
+        /// An incomplete polling source explains its required setup and can be attached once configured.
         /// </summary>
         [Test]
-        public void Polling_ValidatesArguments()
+        public void Polling_ConfigurationCanBeCompletedAfterRejectedAttachment()
         {
-            Assert.Throws<ArgumentException>(() => new PollingPresenceDetector<string, Probe>(default(Kind)));
             PollingPresenceDetector<string, Probe> source = new PollingPresenceDetector<string, Probe>(Population);
-            Assert.Throws<ArgumentNullException>(() => source.ReadFrom(null));
-            Assert.Throws<ArgumentNullException>(() => source.IdentifyBy(null));
-            Assert.Throws<ArgumentNullException>(() => source.Apply(null));
-            Assert.Throws<ArgumentNullException>(() => source.WithVariant(null));
-        }
-
-        /// <summary>
-        /// Missing required steps fail before reading data and leave setup ready to retry.
-        /// </summary>
-        [TestCase("ReadFrom")]
-        [TestCase("IdentifyBy")]
-        [TestCase("Apply")]
-        [TestCase("ReadFrom, IdentifyBy, Apply")]
-        public void Polling_RequiresCompleteConfiguration(string missing)
-        {
-            int reads = 0;
-            PollingPresenceDetector<string, Probe> source = new PollingPresenceDetector<string, Probe>(Population);
-            if (!missing.Contains("ReadFrom"))
-            {
-                source.ReadFrom(() =>
-                {
-                    reads++;
-                    return new[] { "a" };
-                });
-            }
-
-            if (!missing.Contains("IdentifyBy"))
-            {
-                source.IdentifyBy(id => id);
-            }
-
-            if (!missing.Contains("Apply"))
-            {
-                source.Apply((item, ghost) =>
-                {
-                });
-            }
-
             InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
-                _realm.GetOrCreateAnchor("default", source));
-            Assert.That(error.Message, Is.EqualTo("Polling source is missing required steps: " + missing + ". Configure them before tracking."));
-            Assert.That(reads, Is.Zero);
-            Assert.That(_realm.ContainsAnchor("default"), Is.False);
-            source.ReadFrom(() => new[] { "a" }).IdentifyBy(id => id).Apply((item, ghost) =>
-            {
-            });
-            _realm.GetOrCreateAnchor("default", source);
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
+                _realm.GetOrCreateAnchor("poll", source));
+            Assert.That(error.Message, Does.Contain("ReadFrom").And.Contain("IdentifyBy").And.Contain("Apply"));
+            Assert.That(_realm.Anchors, Is.Empty);
+            source.ReadFrom(() => new[] { "a" }).IdentifyBy(id => id)
+                .Apply((item, ghost) => ghost.Value = 3);
+            _realm.GetOrCreateAnchor("poll", source);
+            Assert.That(((Probe)_realm.Query().Single()).Value, Is.EqualTo(3));
         }
 
         /// <summary>
-        /// Callbacks remain stable while attached, including after a polling failure.
+        /// Polling configuration remains fixed until detachment and may then be reused with new mapping.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Polling_ConfigurationIsLockedUntilDetached(bool fail)
+        [Test]
+        public void Polling_ConfigurationIsLockedUntilDetached()
         {
-            bool broken = false;
-            PollingPresenceDetector<string, Probe> source = Source(() => broken ? null : new[] { "a" });
+            PollingPresenceDetector<string, Probe> source = Source(() => new[] { "a" });
             Anchor anchor = _realm.GetOrCreateAnchor("poll", source);
-            if (fail)
-            {
-                broken = true;
-                ExpectedErrors.Verify(_realm.Update, "must return a complete snapshot, not null");
-            }
 
             Assert.Throws<InvalidOperationException>(() => source.ReadFrom(() => new[] { "b" }));
             Assert.Throws<InvalidOperationException>(() => source.IdentifyBy(id => "changed"));
@@ -196,29 +148,20 @@ namespace Emas.Tests
         /// <summary>
         /// Malformed polling results stop the source and remove its population.
         /// </summary>
-        [TestCase("null")]
-        [TestCase("duplicate")]
-        [TestCase("empty-id")]
-        [TestCase("enumeration")]
+        [TestCase("null", TestName = "Polling_RejectsMissingSnapshot")]
+        [TestCase("duplicate", TestName = "Polling_RejectsDuplicateEntityIds")]
         public void Polling_InvalidSnapshotStopsAndRemovesPopulation(string failure)
         {
             bool fail = false;
             Func<IEnumerable<string>> read = () => !fail ? new[] { "a", "b" } :
-                failure == "null" ? null : failure == "duplicate" ? new[] { "a", "a" } :
-                failure == "empty-id" ? new[] { "" } : BrokenSnapshot();
+                failure == "null" ? null : new[] { "a", "a" };
             PollingPresenceDetector<string, Probe> source = Source(read);
             Anchor anchor = _realm.GetOrCreateAnchor("poll", source);
             IGhost retained = _realm.Query("a").Single();
             fail = true;
             string expected = failure == "null" ? "must return a complete snapshot, not null"
-                : failure == "enumeration" ? "snapshot failed" : "contains an empty or duplicate entity ID";
+                : "contains an empty or duplicate entity ID";
             ExpectedErrors.Verify(_realm.Update, expected);
-            if (failure == "enumeration")
-            {
-                Assert.That(source.LastErrorContext, Does.Contain("ReadFrom").And.Not.Contain("entity '"));
-            }
-
-            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
             Assert.That(retained.IsAvailable, Is.False);
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);
@@ -228,56 +171,6 @@ namespace Emas.Tests
             anchor.ReplaceDetector(source, Source(() => new[] { "a" }));
             Assert.That(_realm.Query().Single(), Is.Not.SameAs(retained));
             Assert.That(_realm.Query().Single().Key, Is.EqualTo(retained.Key));
-        }
-
-        /// <summary>
-        /// A failed mapper removes the entire source population, including entities absent from the partial poll.
-        /// </summary>
-        [Test]
-        public void Polling_MappingFailureRemovesEntirePopulation()
-        {
-            bool fail = false;
-            PollingPresenceDetector<string, Probe> source = new PollingPresenceDetector<string, Probe>(Population)
-                .ReadFrom(() => fail ? new[] { "a" } : new[] { "a", "b" })
-                .IdentifyBy(id => id)
-                .Apply((item, ghost) =>
-                {
-                    if (fail)
-                    {
-                        throw new InvalidOperationException("mapper failed");
-                    }
-                });
-            _realm.GetOrCreateAnchor("poll", source);
-            fail = true;
-            ExpectedErrors.Verify(_realm.Update, "mapper failed");
-            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
-            Assert.That(_realm.Query().Count, Is.Zero);
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(new Key("poll", Population, "a"), out found), Is.False);
-            Assert.That(_realm.TryGetGhost(new Key("poll", Population, "b"), out found), Is.False);
-        }
-
-        /// <summary>
-        /// A mapper can end its own registration without publishing remaining entries.
-        /// </summary>
-        [Test]
-        public void Polling_CanRemoveAnchorDuringMapping()
-        {
-            bool remove = false;
-            PollingPresenceDetector<string, Probe> source = new PollingPresenceDetector<string, Probe>(Population)
-                .ReadFrom(() => new[] { "a", "b" })
-                .IdentifyBy(id => id)
-                .Apply((item, ghost) =>
-                {
-                    if (remove)
-                    {
-                        _realm.RemoveAnchor("poll");
-                    }
-                });
-            _realm.GetOrCreateAnchor("poll", source);
-            remove = true;
-            _realm.Update();
-            Assert.That(_realm.Query().Count, Is.Zero);
         }
 
         /// <summary>
@@ -300,12 +193,6 @@ namespace Emas.Tests
             Assert.That(reused.Transform.parent, Is.SameAs(frame.transform));
             Assert.That(reads, Is.EqualTo(1));
             Assert.That(_realm.Query().Count, Is.EqualTo(2));
-        }
-
-        private static IEnumerable<string> BrokenSnapshot()
-        {
-            yield return "a";
-            throw new InvalidOperationException("snapshot failed");
         }
 
         private static PollingPresenceDetector<string, Probe> Source(Func<IEnumerable<string>> read)

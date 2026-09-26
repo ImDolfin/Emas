@@ -43,6 +43,13 @@ In an existing consuming Unity project, install Test Framework and add `"testabl
 
 For repository development, open the optional `Tests/Unity~` project in Unity **2022.3.62f3**. It also tests the imported samples and supports **Run all in player** (Windows Mono build support required). Update `Assets/Samples/` in that project when changing `Samples~/`; EditMode tests detect differences. All required inputs are tracked; only generated output is ignored. See `Documentation~/Validation.md` for results.
 
+## Test Quality
+
+- Test observable behavior through public Emas APIs, supported protected detector extension points, or Unity's public serialized-authoring APIs. Do not expose internals to test assemblies or use reflection to reach private production state.
+- Give each test one clear consumer purpose and an XML summary explaining the contract it protects. Prefer representative scenarios over permutations of the same behavior.
+- Keep coverage for meaningful current behavior, including failure handling. Do not keep cases solely because they once reproduced a regression or exercised a removed/legacy implementation.
+- Avoid testing private test helpers, trivial constants, or implementation details. Keep the required imported-sample consistency checks.
+
 ## File Organization Rules
 
 - New runtime code goes in `Runtime/` and must be in the `Emas` namespace.

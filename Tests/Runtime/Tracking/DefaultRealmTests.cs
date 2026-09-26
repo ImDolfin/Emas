@@ -10,7 +10,7 @@ namespace Emas.Tests
     public sealed class DefaultRealmTests
     {
         /// <summary>
-        /// A disposed shared realm is replaced on next access.
+        /// A disposed shared realm is replaced on next access and accepts active detectors.
         /// </summary>
         [Test]
         public void Default_RecreatesDisposedRealm()
@@ -19,7 +19,13 @@ namespace Emas.Tests
             previous.Dispose();
             Realm current = Realm.Default;
             Assert.That(current, Is.Not.SameAs(previous));
-            Assert.That(current.IsDisposed, Is.False);
+            CountingSource source = new CountingSource();
+            using (Anchor anchor = current.GetOrCreateAnchor("tests.default.recreated", source))
+            {
+                Assert.That(source.IsAttached && source.IsActive, Is.True);
+                current.Update();
+                Assert.That(source.Updates, Is.EqualTo(1));
+            }
         }
 
         /// <summary>

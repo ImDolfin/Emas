@@ -1,5 +1,4 @@
 using NUnit.Framework;
-using UnityEngine;
 
 namespace Emas.Tests
 {
@@ -78,44 +77,18 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Prepared roots are discoverable without activating or publishing them.
+        /// Explicit disappearance removes an identity from public lookup before Unity destroys its object.
         /// </summary>
         [Test]
-        public void PreparedGhost_RemainsUnavailable()
-        {
-            _realm.GetOrCreateAnchor("anchor");
-            TestGhost prepared = _realm.Prepare<TestGhost>("anchor", Kind, "one");
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(prepared.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(prepared));
-            Assert.That(found.IsAvailable, Is.False);
-            Assert.That(prepared.gameObject.activeSelf, Is.False);
-            Assert.That(_realm.Query().Count, Is.Zero);
-        }
-
-        /// <summary>
-        /// Removal stops lookup immediately, before Unity destroys the detached object.
-        /// </summary>
-        [TestCase("entity")]
-        [TestCase("realm")]
-        public void Removal_ReturnsFalseImmediately(string removal)
+        public void Removal_ReturnsFalseImmediately()
         {
             Probe source = new Probe();
             _realm.GetOrCreateAnchor("anchor", source);
             TestGhost ghost = source.Publish("one");
             Key key = ghost.Key;
             _realm.Update();
-            switch (removal)
-            {
-                case "entity":
-                    source.Delete("one");
-                    break;
-                case "realm":
-                    _realm.Dispose();
-                    break;
-            }
-
-            IGhost found = ghost;
+            source.Delete("one");
+            IGhost found;
             Assert.That(_realm.TryGetGhost(key, out found), Is.False);
             Assert.That(found, Is.Null);
         }

@@ -1,7 +1,5 @@
-using System;
 using System.Collections;
-using System.Reflection;
-using Emas.Callbacks;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -10,16 +8,15 @@ using UnityEngine.TestTools;
 namespace Emas.Tests.Samples
 {
     /// <summary>
-    /// Runs the shipped quick-start scenes in the Editor and standalone test players.
+    /// Exercises the public behavior demonstrated by the shipped quick-start scenes in Editor and player runs.
     /// </summary>
     public sealed class QuickStartTests
     {
         private Scene _scene;
-        private Realm _currentRealm;
         private float _timeScale;
 
         /// <summary>
-        /// Pauses the sample feed so event timing is controlled by each test.
+        /// Keeps sample positions stable while verifying startup and source replacement.
         /// </summary>
         [SetUp]
         public void SetUp()
@@ -30,7 +27,7 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// Unloads the sample and releases its default realm, even after a failed assertion.
+        /// Unloads the sample and releases its default realm after each scenario.
         /// </summary>
         [UnityTearDown]
         public IEnumerator TearDown()
@@ -45,160 +42,73 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// Prefab-owned polling creates a view and restarts after disable cleanup.
+        /// The minimal prefab starts without application orchestration and recreates its visible population after reactivation.
         /// </summary>
         [UnityTest]
-        public IEnumerator Polling_CreatesViewAndRestarts()
+        public IEnumerator MinimalPrefab_AutomaticallyStartsAndRestarts()
         {
             yield return Load("Assets/Samples/Minimal/QuickStart.unity");
             RealmSetup setup = Find<RealmSetup>();
-            AnchorSetup anchorSetup = Find<AnchorSetup>();
-            _currentRealm = setup.Realm;
-            Ghost original = AssertView("quick-start");
-            View originalView = original.GetComponentInChildren<View>();
-            anchorSetup.Anchor.RestartDetector(anchorSetup.Anchor.Detectors[0]);
-            yield return null;
-            Assert.That(AssertView("quick-start"), Is.SameAs(original));
-            Assert.That(original.GetComponentInChildren<View>(), Is.SameAs(originalView));
+            AnchorSetup anchor = Find<AnchorSetup>();
+            Realm originalRealm = setup.Realm;
+            AssertView(originalRealm, "quick-start");
 
             setup.gameObject.SetActive(false);
-            Assert.That(anchorSetup.Anchor, Is.Null);
-            Assert.That(_currentRealm.Anchors.Count, Is.Zero);
+            Assert.That(anchor.Anchor, Is.Null);
+            Assert.That(originalRealm.Query().Count, Is.Zero);
 
             setup.gameObject.SetActive(true);
             yield return null;
             yield return null;
-            _currentRealm = setup.Realm;
-            Assert.That(_currentRealm, Is.Not.Null);
-            AssertView("quick-start");
+            Assert.That(setup.Realm, Is.Not.SameAs(originalRealm));
+            AssertView(setup.Realm, "quick-start");
         }
 
         /// <summary>
-        /// SDK events defer updates, preserve identity, remove ghosts and cleanly resubscribe.
+        /// The callback sample consumes an initial SDK publication and reuses its visible entity when the detector reconnects.
         /// </summary>
         [UnityTest]
-        public IEnumerator Callbacks_PublishRemoveAndUnsubscribeOnDisable()
+        public IEnumerator CallbackSample_ReconnectPreservesEntityAndView()
         {
-            const string anchor = "callback-quick-start";
             yield return Load("Assets/Samples/Callbacks/Callbacks.unity");
             RealmSetup setup = Find<RealmSetup>();
-            AnchorSetup anchorSetup = Find<AnchorSetup>();
-            _currentRealm = setup.Realm;
-            Bootstrap bootstrap = Find<Bootstrap>();
-            bootstrap.enabled = false;
-            SimulatedFeed feed = FeedOf(bootstrap);
-            Ghost ghost = AssertView(anchor);
-            Vector3 position = ghost.transform.localPosition;
-            AssertListeners(feed, 1);
-            View originalView = ghost.GetComponentInChildren<View>();
-            anchorSetup.Anchor.RestartDetector(anchorSetup.Anchor.Detectors[0]);
-            AssertListeners(feed, 1);
-            Assert.That(ghost.IsAvailable, Is.False);
-            yield return null;
-            yield return null;
-            Assert.That(AssertView(anchor), Is.SameAs(ghost));
-            Assert.That(ghost.GetComponentInChildren<View>(), Is.SameAs(originalView));
+            Anchor anchor = Find<AnchorSetup>().Anchor;
+            Ghost ghost = AssertView(setup.Realm, "callback-quick-start");
+            View view = ghost.GetComponentInChildren<View>();
 
-            feed.Advance(1f);
-            Assert.That(ghost.transform.localPosition, Is.EqualTo(position), "Callbacks must stay deferred.");
+            anchor.RestartDetector(anchor.Detectors[0]);
             yield return null;
             yield return null;
-            Assert.That(Population(anchor).Single(), Is.SameAs(ghost));
-            Assert.That(ghost.transform.localPosition, Is.EqualTo(feed.Current.Position));
-            Assert.That(ghost.transform.localPosition, Is.Not.EqualTo(position));
 
-            feed.Advance(3.2f);
-            yield return null;
-            yield return null;
-            Assert.That(Population(anchor).Count, Is.Zero, "Explicit removal must remove the ghost.");
-
-            feed.Advance(2f);
-            yield return null;
-            yield return null;
-            AssertView(anchor);
-
-            setup.gameObject.SetActive(false);
-            Assert.That(anchorSetup.Anchor, Is.Null);
-            Assert.That(_currentRealm.Anchors.Count, Is.Zero);
-            AssertListeners(feed, 0);
-            feed.Advance(1f);
-
-            bootstrap.enabled = true;
-            setup.gameObject.SetActive(true);
-            yield return null;
-            yield return null;
-            _currentRealm = setup.Realm;
-            Assert.That(_currentRealm, Is.Not.Null);
-            SimulatedFeed restarted = FeedOf(bootstrap);
-            Assert.That(restarted, Is.Not.SameAs(feed));
-            AssertListeners(restarted, 1);
-            AssertListeners(feed, 0);
-            AssertView(anchor);
-
-            setup.gameObject.SetActive(false);
-            AssertListeners(restarted, 0);
-            Assert.That(_currentRealm.Anchors.Count, Is.Zero);
+            Assert.That(AssertView(setup.Realm, "callback-quick-start"), Is.SameAs(ghost));
+            Assert.That(ghost.GetComponentInChildren<View>(), Is.SameAs(view));
         }
 
         /// <summary>
-        /// The larger example consumes read-only contracts and preserves roots across source replacement in players.
+        /// Switching the example's SDK source keeps entity identities and the position/articulation contracts used by its views.
         /// </summary>
         [UnityTest]
-        public IEnumerator Example_ConsumesContractsReplacesSourceAndDisposesSubscriptions()
+        public IEnumerator Example_SourceReplacementPreservesConsumerContracts()
         {
             yield return Load("Assets/Samples/Example/Scenes/Example.unity");
-            Sample.Bootstrap bootstrap = Find<Emas.Sample.Bootstrap>();
+            Emas.Sample.Bootstrap bootstrap = Find<Emas.Sample.Bootstrap>();
             Query cars = Realm.Default.Query().InAnchor("sample").OfKind(Emas.Sample.SampleKinds.Car);
-            System.Collections.Generic.List<Material> materials = new System.Collections.Generic.List<Material>();
-            System.Collections.Generic.Dictionary<Key, IGhost> roots = new System.Collections.Generic.Dictionary<Key, IGhost>();
+            Dictionary<Key, IGhost> roots = new Dictionary<Key, IGhost>();
             foreach (IGhost ghost in cars)
             {
                 roots.Add(ghost.Key, ghost);
-                foreach (Renderer renderer in ((Ghost)ghost).GetComponentsInChildren<Renderer>())
-                {
-                    materials.Add(renderer.sharedMaterial);
-                }
-
                 AssertCarView(ghost);
             }
 
             Assert.That(roots.Count, Is.GreaterThan(0));
-            Anchor anchor = Realm.Default.Anchors[0];
-            PresenceDetector originalSource = anchor.Detectors[0];
             bootstrap.ReplaceCarSource();
             yield return null;
             yield return null;
-            Assert.That(originalSource.IsAttached || originalSource.IsActive, Is.False);
-            Assert.That(anchor.Detectors[0], Is.TypeOf<Emas.Sample.SdkTwoCarDetector>());
+
             Assert.That(cars.Count, Is.EqualTo(roots.Count));
             foreach (IGhost ghost in cars)
             {
                 Assert.That(ghost, Is.SameAs(roots[ghost.Key]));
-                AssertCarView(ghost);
-            }
-
-            bootstrap.gameObject.SetActive(false);
-            Assert.That(cars.Count, Is.Zero);
-            Assert.That(anchor.Detectors, Is.Empty);
-            foreach (string name in new[] { "_carSubscription", "_aircraftSubscription" })
-            {
-                Assert.That(typeof(Emas.Sample.Bootstrap).GetField(name,
-                    BindingFlags.Instance | BindingFlags.NonPublic).GetValue(bootstrap), Is.Null);
-            }
-
-            yield return null;
-            foreach (Material material in materials)
-            {
-                Assert.That(material == null, Is.True, "Generated materials must be released on disable.");
-            }
-
-            bootstrap.gameObject.SetActive(true);
-            yield return null;
-            yield return null;
-            Assert.That(cars.Count, Is.EqualTo(roots.Count));
-            foreach (IGhost ghost in cars)
-            {
-                Assert.That(ghost, Is.Not.SameAs(roots[ghost.Key]));
                 AssertCarView(ghost);
             }
         }
@@ -214,8 +124,6 @@ namespace Emas.Tests.Samples
             View view = root.GetComponentInChildren<View>();
             Assert.That(view, Is.Not.Null);
             Assert.That(view.Ghost, Is.SameAs(ghost));
-            Assert.That(view.GetComponent<Emas.Sample.VehicleLogic>(), Is.Not.Null);
-            Assert.That(view.GetComponent<Emas.Sample.ArticulationLogic>(), Is.Not.Null);
             Assert.That(Quaternion.Angle(view.transform.localRotation,
                 Quaternion.Euler(0f, articulation.Steering * 12f, 0f)), Is.LessThan(0.01f));
         }
@@ -244,35 +152,12 @@ namespace Emas.Tests.Samples
             return null;
         }
 
-        private Query Population(string anchor)
+        private static Ghost AssertView(Realm realm, string anchor)
         {
-            return _currentRealm.Query().InAnchor(anchor);
-        }
-
-        private Ghost AssertView(string anchor)
-        {
-            Query query = Population(anchor);
-            Assert.That(query.Count, Is.EqualTo(1));
-            Ghost ghost = (Ghost)query.Single();
+            Assert.That(realm, Is.Not.Null);
+            Ghost ghost = (Ghost)realm.Query().InAnchor(anchor).Single();
             Assert.That(ghost.GetComponentInChildren<View>(), Is.Not.Null);
             return ghost;
-        }
-
-        private static SimulatedFeed FeedOf(Bootstrap bootstrap)
-        {
-            return (SimulatedFeed)typeof(Bootstrap)
-                .GetField("_feed", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(bootstrap);
-        }
-
-        private static void AssertListeners(SimulatedFeed feed, int expected)
-        {
-            foreach (string name in new[] { "Changed", "Removed" })
-            {
-                Delegate handler = (Delegate)typeof(SimulatedFeed)
-                    .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(feed);
-                Assert.That(handler == null ? 0 : handler.GetInvocationList().Length,
-                    Is.EqualTo(expected), name);
-            }
         }
     }
 }

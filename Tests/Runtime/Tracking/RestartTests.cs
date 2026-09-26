@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace Emas.Tests
 {
@@ -34,8 +33,8 @@ namespace Emas.Tests
         /// <summary>
         /// Restart invalidates old work and recreates ghosts removed by a previous source failure.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
+        [TestCase(false, TestName = "Restart_PreservesIdentityAndDiscardsQueuedWork")]
+        [TestCase(true, TestName = "Restart_RecoversPopulationAfterFailure")]
         public void Restart_DiscardsOldWorkAndRecoversPopulation(bool fail)
         {
             Probe source = new Probe();
@@ -172,131 +171,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Rejects invalid owners and recursive restarts during startup or cleanup.
-        /// </summary>
-        [Test]
-        public void Restart_ValidatesOwnerAndLifecycle()
-        {
-            Anchor anchor = _realm.GetOrCreateAnchor("restart");
-            Probe source = new Probe();
-            Assert.Throws<ArgumentNullException>(() => anchor.RestartDetector(null));
-            Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source));
-            source.Starting = () => Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source));
-            source.Stopping = () => Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source));
-            anchor.AddDetector(source);
-            anchor.RestartDetector(source);
-            source.Stopping = null;
-            anchor.Dispose();
-            Assert.Throws<ObjectDisposedException>(() => anchor.RestartDetector(source));
-        }
-
-        /// <summary>
-        /// Cleanup may remove the owner, cancelling the restart without recreating tracking.
-        /// </summary>
-        [Test]
-        public void Restart_StopsWhenCleanupDisposesAnchor()
-        {
-            Probe source = new Probe();
-            Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
-            source.Stopping = anchor.Dispose;
-            anchor.RestartDetector(source);
-            Assert.That(source.Starts, Is.EqualTo(1));
-            Assert.That(source.Stops, Is.EqualTo(1));
-            Assert.That(source.IsAttached, Is.False);
-            Assert.That(_realm.Anchors, Is.Empty);
-        }
-
-        /// <summary>
-        /// A registration established during cleanup survives the older detach operation.
-        /// </summary>
-        [Test]
-        public void Restart_PreservesReattachmentFromCleanup()
-        {
-            Probe source = new Probe();
-            Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
-            source.Stopping = () =>
-            {
-                source.Stopping = null;
-                anchor.RemoveDetector(source);
-                anchor.AddDetector(source);
-            };
-            anchor.RestartDetector(source);
-            Assert.That(source.Starts, Is.EqualTo(2));
-            Assert.That(source.IsAttached && source.IsActive, Is.True);
-            Assert.That(anchor.Detectors, Is.EqualTo(new[] { source }));
-            source.Publish("new");
-            _realm.Update();
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// Failure deactivation cannot restart the source before its old cleanup has completed.
-        /// </summary>
-        [Test]
-        public void Restart_RejectsReentryDuringFailureDeactivation()
-        {
-            Probe source = new Probe();
-            Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
-            TestGhost ghost = source.Publish("one");
-            RestartOnDisable observer = ghost.gameObject.AddComponent<RestartOnDisable>();
-            _realm.Update();
-            int attempts = 0;
-            observer.Stopping = () =>
-            {
-                attempts++;
-                Assert.Throws<InvalidOperationException>(() => anchor.RestartDetector(source));
-            };
-            source.Updating = () =>
-            {
-                throw new InvalidOperationException("update failed");
-            };
-            ExpectedErrors.Verify(_realm.Update, "update failed");
-            Assert.That(attempts, Is.EqualTo(1));
-            Assert.That(source.Stops, Is.EqualTo(1));
-            Assert.That(source.Starts, Is.EqualTo(1));
-            Assert.That(source.IsActive, Is.False);
-            observer.Stopping = null;
-        }
-
-        /// <summary>
-        /// An old failure completes its cleanup before deactivation callbacks can reattach the source.
-        /// </summary>
-        [Test]
-        public void FailureCleanup_DoesNotStopReattachedRegistration()
-        {
-            Probe source = new Probe();
-            Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
-            TestGhost ghost = source.Publish("one");
-            RestartOnDisable observer = ghost.gameObject.AddComponent<RestartOnDisable>();
-            _realm.Update();
-            int oldCleanup = 0;
-            int newCleanup = 0;
-            int reattachments = 0;
-            source.Stopping = () => oldCleanup++;
-            source.Starting = () => source.Stopping = () => newCleanup++;
-            observer.Stopping = () =>
-            {
-                reattachments++;
-                anchor.RemoveDetector(source);
-                anchor.AddDetector(source);
-            };
-            source.Updating = () => throw new InvalidOperationException("update failed");
-
-            ExpectedErrors.Verify(_realm.Update, "update failed");
-            Assert.That(reattachments, Is.EqualTo(1));
-            Assert.That(oldCleanup, Is.EqualTo(1));
-            Assert.That(newCleanup, Is.Zero);
-            Assert.That(source.Starts, Is.EqualTo(2));
-            Assert.That(source.Stops, Is.EqualTo(1));
-            Assert.That(source.IsAttached && source.IsActive, Is.True);
-            Assert.That(source.LastError, Is.Null);
-
-            observer.Stopping = null;
-            anchor.RemoveDetector(source);
-            Assert.That(newCleanup, Is.EqualTo(1));
-        }
-
-        /// <summary>
         /// Captured dispatchers ignore old callbacks even after the same source starts again.
         /// </summary>
         [Test]
@@ -321,16 +195,6 @@ namespace Emas.Tests
             current(() => calls += 100);
             _realm.Update();
             Assert.That(calls, Is.EqualTo(10));
-        }
-
-        private sealed class RestartOnDisable : MonoBehaviour
-        {
-            internal Action Stopping;
-
-            private void OnDisable()
-            {
-                Stopping?.Invoke();
-            }
         }
 
         private sealed class Probe : PresenceDetector

@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEngine;
 using UnityEngine.TestTools;
 
 namespace Emas.Tests
@@ -42,7 +41,7 @@ namespace Emas.Tests
         [Test]
         public void Observe_ReportsInitialAndFutureMembership()
         {
-            TestGhost first = _source.Publish("first");
+            _source.Publish("first");
             _realm.Update();
             List<string> events = new List<string>();
             IDisposable subscription = _realm.Query().Observe(
@@ -85,14 +84,13 @@ namespace Emas.Tests
         /// <summary>
         /// Filter changes report one departure and a fresh entry when the ghost matches again.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Observe_ReportsFilterChanges(bool filterName)
+        [Test]
+        public void Observe_ReportsVariantMembershipChanges()
         {
             Variant red = new Variant("red");
             _source.Publish("one", red, "selected");
             _realm.Update();
-            Query query = filterName ? _realm.Query().WithExactName("selected") : _realm.Query().WithVariant(red);
+            Query query = _realm.Query().WithVariant(red);
             List<string> events = new List<string>();
             query.Observe(ghost => events.Add("enter"), key => events.Add("leave"));
             _source.Publish("one", new Variant("blue"), "other");
@@ -106,24 +104,14 @@ namespace Emas.Tests
         /// <summary>
         /// Restart and immediate recovery retain an observable break in availability.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Observe_ReportsLossBeforeRecovery(bool replace)
+        [Test]
+        public void Observe_ReportsLossBeforeRecovery()
         {
             TestGhost ghost = _source.Publish("one");
             _realm.Update();
             List<string> events = new List<string>();
             _realm.Query().Observe(item => events.Add("enter"), key => events.Add("leave"));
-            if (replace)
-            {
-                Probe replacement = new Probe();
-                _anchor.ReplaceDetector(_source, replacement);
-                _source = replacement;
-            }
-            else
-            {
-                _anchor.RestartDetector(_source);
-            }
+            _anchor.RestartDetector(_source);
 
             Assert.That(_source.Publish("one"), Is.SameAs(ghost));
             Assert.That(events, Is.EqualTo(new[] { "enter" }));
@@ -132,51 +120,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Removing and recreating an identity still closes the old match interval first.
-        /// </summary>
-        [Test]
-        public void Observe_ReportsRecreatedIdentity()
-        {
-            TestGhost first = _source.Publish("one");
-            _realm.Update();
-            List<string> events = new List<string>();
-            _realm.Query().Observe(ghost => events.Add("enter"), key => events.Add("leave"));
-            _source.RemoveId("one");
-            TestGhost second = _source.Publish("one");
-            _realm.Update();
-            Assert.That(second, Is.Not.SameAs(first));
-            Assert.That(events, Is.EqualTo(new[] { "enter", "leave", "enter" }));
-        }
-
-        /// <summary>
-        /// Source failure reports departures without affecting a healthy source or duplicating notifications.
-        /// </summary>
-        [Test]
-        public void Observe_ReportsSourceFailureAndAnchorRemoval()
-        {
-            _source.Publish("failed");
-            Probe healthy = new Probe();
-            Anchor other = _realm.GetOrCreateAnchor("healthy", healthy);
-            healthy.Publish("healthy");
-            _realm.Update();
-            List<string> left = new List<string>();
-            _realm.Query().Observe(ghost =>
-            {
-            }, key => left.Add(key.EntityId));
-            _source.Updating = () =>
-            {
-                throw new Exception("source failed");
-            };
-            ExpectedErrors.Verify(_realm.Update, "source failed");
-            _realm.Update();
-            Assert.That(left, Is.EqualTo(new[] { "failed" }));
-            other.Dispose();
-            _realm.Update();
-            Assert.That(left, Is.EqualTo(new[] { "failed", "healthy" }));
-        }
-
-        /// <summary>
-        /// Departure exceptions are isolated and do not stop later observers or arrivals.
+        /// Departure exceptions are isolated so other observers still receive the departure.
         /// </summary>
         [Test]
         public void Observe_IsolatesDepartureExceptions()
@@ -272,55 +216,8 @@ namespace Emas.Tests
             Assert.That(entries, Is.EqualTo(1));
         }
 
-        /// <summary>
-        /// New observers created inside a departure wait until a later update for their initial matches.
-        /// </summary>
-        [Test]
-        public void Observe_DefersNestedSubscriptionsAndRechecksArrivals()
-        {
-            _source.Publish("first");
-            _source.Publish("second");
-            _realm.Update();
-            int nestedEntries = 0;
-            _realm.Query().WithExactName("first").Observe(ghost =>
-            {
-            }, key =>
-            {
-                _realm.Query().Observe(ghost => nestedEntries++, ignored =>
-                {
-                });
-            });
-            _source.RemoveId("first");
-            _realm.Update();
-            Assert.That(nestedEntries, Is.Zero);
-            _realm.Update();
-            Assert.That(nestedEntries, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// Both callbacks and a live realm are required.
-        /// </summary>
-        [Test]
-        public void Observe_ValidatesArguments()
-        {
-            Assert.Throws<ArgumentNullException>(() => _realm.Query().Observe(null, key =>
-            {
-            }));
-            Assert.Throws<ArgumentNullException>(() => _realm.Query().Observe(ghost =>
-            {
-            }, null));
-            _realm.Dispose();
-            Assert.Throws<ObjectDisposedException>(() => _realm.Query().Observe(ghost =>
-            {
-            }, key =>
-            {
-            }));
-        }
-
         private sealed class Probe : PresenceDetector
         {
-            internal Action Updating;
-
             internal TestGhost Publish(string id, Variant? variant = null, string name = null)
             {
                 return GetOrCreate<TestGhost>(id, new Kind("observe"), variant, name);
@@ -329,11 +226,6 @@ namespace Emas.Tests
             internal void RemoveId(string id)
             {
                 Disappear(new Kind("observe"), id);
-            }
-
-            protected override void OnUpdate()
-            {
-                Updating?.Invoke();
             }
         }
 

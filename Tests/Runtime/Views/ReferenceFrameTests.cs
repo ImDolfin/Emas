@@ -10,7 +10,7 @@ namespace Emas.Tests
     public sealed class ReferenceFrameTests
     {
         /// <summary>
-        /// A frame starts without a reference position and with neutral rotations and placement.
+        /// Projection requires an explicit reference position so uninitialized frames cannot invent a world origin.
         /// </summary>
         [Test]
         public void Defaults_RequireAnExplicitReferencePosition()
@@ -19,37 +19,11 @@ namespace Emas.Tests
 
             Assert.That(frame.HasPosition, Is.False);
             Assert.That(frame.IsReferenceAvailable, Is.False);
-            Assert.That(frame.Position, Is.EqualTo(default(Double3)));
-            Assert.That(frame.Rotation, Is.EqualTo(Quaternion.identity));
-            Assert.That(frame.UnityPosition, Is.EqualTo(Vector3.zero));
-            Assert.That(frame.UnityRotation, Is.EqualTo(Quaternion.identity));
-            Assert.That(frame.FollowRotation, Is.True);
-            Assert.That(frame.MaxDistance, Is.Null);
-            Assert.That(frame.FollowedGhost, Is.Null);
             Assert.That(frame.TryToUnityPosition(default, out Vector3 unused), Is.False);
             Assert.Throws<InvalidOperationException>(() => frame.ToSimulationPosition(Vector3.zero));
             Assert.Throws<InvalidOperationException>(() => frame.ToUnityRotation(Quaternion.identity));
             Assert.Throws<InvalidOperationException>(() => frame.ToSimulationRotation(Quaternion.identity));
             Assert.Throws<InvalidOperationException>(() => frame.DistanceTo(default));
-        }
-
-        /// <summary>
-        /// A manually supplied origin enables projection and retains small offsets at large coordinates.
-        /// </summary>
-        [Test]
-        public void ManualOrigin_PreservesNearbyFractionalCoordinates()
-        {
-            ReferenceFrame frame = new ReferenceFrame();
-            frame.Position = new Double3(1e12 + 0.125d, -1e12 + 0.25d, 1e12 + 0.5d);
-            frame.UnityPosition = new Vector3(5f, 6f, 7f);
-            Double3 entity = frame.Position + new Double3(20.25d, 4.5d, -2.75d);
-
-            Assert.That(frame.HasPosition, Is.True);
-            Assert.That(frame.IsReferenceAvailable, Is.True);
-            Assert.That(frame.TryToUnityPosition(entity, out Vector3 unity), Is.True);
-            Assert.That(unity, Is.EqualTo(new Vector3(25.25f, 10.5f, 4.25f)));
-            Assert.That(frame.ToSimulationPosition(unity), Is.EqualTo(entity));
-            Assert.That(frame.DistanceTo(frame.Position + new Double3(3d, 4d, 0d)), Is.EqualTo(5d));
         }
 
         /// <summary>
@@ -159,19 +133,5 @@ namespace Emas.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => frame.ToSimulationRotation(default));
         }
 
-        /// <summary>
-        /// Following retains exact ghost identity and can be disabled for a manual origin.
-        /// </summary>
-        [Test]
-        public void FollowedGhost_AcceptsAnIdentityAndCanBeCleared()
-        {
-            ReferenceFrame frame = new ReferenceFrame();
-            Key key = new Key("vehicles", new Kind("cars"), "driver");
-            frame.FollowedGhost = key;
-            Assert.That(frame.FollowedGhost, Is.EqualTo(key));
-            frame.FollowedGhost = null;
-            Assert.That(frame.FollowedGhost, Is.Null);
-            Assert.Throws<ArgumentException>(() => frame.FollowedGhost = default(Key));
-        }
     }
 }

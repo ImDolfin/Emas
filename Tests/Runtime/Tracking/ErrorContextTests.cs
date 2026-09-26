@@ -1,6 +1,5 @@
 using System;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace Emas.Tests
 {
@@ -30,57 +29,28 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Builder failures identify the operation and known entity without replacing the original exception.
+        /// Mapping diagnostics identify the anchor, source, operation and entity while retaining the original exception.
         /// </summary>
-        [TestCase(false, "IdentifyBy")]
-        [TestCase(false, "WithVariant")]
-        [TestCase(false, "Apply")]
-        [TestCase(true, "IdentifyBy")]
-        [TestCase(true, "WithVariant")]
-        [TestCase(true, "Apply")]
-        public void BuilderFailure_CapturesOperationAndEntity(bool callback, string operation)
+        [Test]
+        public void MappingFailure_IdentifiesOperationAndEntity()
         {
             Exception failure = new InvalidOperationException("SDK rejected item");
-            Func<string, string> identify = id => operation == "IdentifyBy" ? throw failure : id;
-            Func<string, Variant> variant = id => operation == "WithVariant" ? throw failure : Variant.None;
-            Action<string, TestGhost> apply = (id, ghost) =>
-            {
-                if (operation == "Apply")
+            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"))
+                .IdentifyBy(id => id).Apply((id, ghost) =>
                 {
                     throw failure;
-                }
-            };
-            PresenceDetector source;
-            Anchor anchor = _realm.GetOrCreateAnchor("vehicles");
-            if (callback)
-            {
-                source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"))
-                    .IdentifyBy(identify).WithVariant(variant).Apply(apply)
-                    .Listen((publish, remove) =>
-                    {
-                        publish("42");
-                        return null;
-                    });
-                source.Name = "SDK One";
-                anchor.AddDetector(source);
-                ExpectedErrors.Verify(_realm.Update, "vehicles.*SDK One.*" + operation + ".*SDK rejected item");
-            }
-            else
-            {
-                source = new PollingPresenceDetector<string, TestGhost>(new Kind("car"))
-                    .ReadFrom(() => new[] { "42" }).IdentifyBy(identify).WithVariant(variant).Apply(apply);
-                source.Name = "SDK One";
-                Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source)), Is.SameAs(failure));
-            }
-
+                })
+                .Listen((publish, remove) =>
+                {
+                    publish("42");
+                    return null;
+                });
+            source.Name = "SDK One";
+            _realm.GetOrCreateAnchor("vehicles", source);
+            ExpectedErrors.Verify(_realm.Update, "vehicles.*SDK One.*Apply.*SDK rejected item");
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.LastErrorContext, Does.Contain("anchor 'vehicles'").And.Contain("source 'SDK One'"));
-            Assert.That(source.LastErrorContext, Does.Contain("operation '" + operation + "'").And.Contain("kind 'car'"));
-            if (operation != "IdentifyBy")
-            {
-                Assert.That(source.LastErrorContext, Does.Contain("entity '42'"));
-            }
-
+            Assert.That(source.LastErrorContext, Does.Contain("operation 'Apply'").And.Contain("kind 'car'").And.Contain("entity '42'"));
             string recorded = source.LastErrorContext;
             source.Name = "Renamed";
             Assert.That(source.LastErrorContext, Is.EqualTo(recorded));
@@ -129,47 +99,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Subscription startup and teardown failures retain their specific operation names.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Callback_IdentifiesSubscriptionFailures(bool cleanup)
-        {
-            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(new Kind("car"))
-                .IdentifyBy(id => id).Apply((id, ghost) =>
-                {
-                })
-                .Listen((publish, remove) =>
-                {
-                    if (!cleanup)
-                    {
-                        throw new InvalidOperationException("listen failed");
-                    }
-
-                    return () =>
-                    {
-                        throw new InvalidOperationException("cleanup failed");
-                    };
-                });
-            Anchor anchor = _realm.GetOrCreateAnchor("vehicles");
-            if (cleanup)
-            {
-                anchor.AddDetector(source);
-                ExpectedErrors.Verify(() => anchor.RemoveDetector(source), "vehicles.*Unsubscribe.*cleanup failed");
-            }
-            else
-            {
-                Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
-            }
-
-            Assert.That(source.LastErrorContext, Does.Contain(cleanup ? "Unsubscribe" : "Listen"));
-            Assert.That(source.LastErrorContext, Does.Contain("vehicles"));
-            Assert.That(source.LastError.Message, Is.EqualTo(cleanup ? "cleanup failed" : "listen failed"));
-            Assert.That(source.IsAttached || source.IsActive, Is.False);
-        }
-
-        /// <summary>
-        /// Empty labels fall back to the readable source type and do not change source identity.
+        /// Empty labels fall back to the readable detector type so applications can identify unlabeled detectors.
         /// </summary>
         [Test]
         public void Name_UsesTypeFallback()

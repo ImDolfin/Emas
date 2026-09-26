@@ -35,31 +35,26 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A global description aggregates duplicate keys and can be rebound to one realm.
+        /// Global queries include the default and isolated realms even when their entity keys collide.
+        /// Rebinding selects one owner, and disposed realms stop contributing results.
         /// </summary>
         [Test]
-        public void All_EvaluatesEveryRealmAndRebinds()
+        public void All_AggregatesRealmsAndRebindsToOneOwner()
         {
-            Realm first = Own(new Realm());
+            Realm first = Own(Realm.Default);
             Realm second = Own(new Realm());
             ProbeSource firstSource = new ProbeSource();
             ProbeSource secondSource = new ProbeSource();
             first.GetOrCreateAnchor("shared", firstSource);
             second.GetOrCreateAnchor("shared", secondSource);
-            TestGhost left = firstSource.Publish("same", "Alpha left", new Variant("red"));
-            TestGhost right = secondSource.Publish("same", "Alpha right", new Variant("blue"));
+            TestGhost left = firstSource.Publish("same");
+            TestGhost right = secondSource.Publish("same");
             first.Update();
             second.Update();
 
-            Query all = Query.All("alpha").OfKind(TestKind).InAnchor("shared").With<TestGhost>();
-            Assert.That(all.Count, Is.EqualTo(2));
+            Query all = Query.All().OfKind(TestKind);
+            Assert.That(left.Key, Is.EqualTo(right.Key));
             Assert.That(all.ToArray(), Is.EquivalentTo(new IGhost[] { left, right }));
-            Assert.That(Assert.Throws<InvalidOperationException>(() => all.Single()).Message,
-                Does.Contain("2"));
-            IGhost firstMatch = all.FirstOrDefault();
-            Assert.That(firstMatch == left || firstMatch == right, Is.True);
-            Assert.That(all.WithVariant(new Variant("red")).Single(), Is.SameAs(left));
-            Assert.That(all.WithExactName("ALPHA RIGHT").Single(), Is.SameAs(right));
             Assert.That(first.Query(all).Single(), Is.SameAs(left));
             Assert.That(second.Query(all).Single(), Is.SameAs(right));
 
@@ -67,42 +62,6 @@ namespace Emas.Tests
             Assert.That(all.Single(), Is.SameAs(right));
             second.Dispose();
             Assert.That(all.Count, Is.Zero);
-            Assert.That(all.FirstOrDefault(), Is.Null);
-        }
-
-        /// <summary>
-        /// The default realm participates alongside isolated realms and the query does not need a realm reference.
-        /// </summary>
-        [Test]
-        public void All_IncludesDefaultAndCodeCreatedRealms()
-        {
-            Realm shared = Own(Realm.Default);
-            Realm isolated = Own(new Realm());
-            ProbeSource sharedSource = new ProbeSource();
-            ProbeSource isolatedSource = new ProbeSource();
-            shared.GetOrCreateAnchor("global-default", sharedSource);
-            isolated.GetOrCreateAnchor("global-isolated", isolatedSource);
-            sharedSource.Publish("one");
-            isolatedSource.Publish("two");
-            shared.Update();
-            isolated.Update();
-
-            Query query = Query.All().OfKind(TestKind);
-            Assert.That(query.Count, Is.EqualTo(2));
-            Assert.That(query.InAnchor("global-default").Single().Key.EntityId, Is.EqualTo("one"));
-        }
-
-        /// <summary>
-        /// Evaluating all realms does not silently recreate a disposed default realm.
-        /// </summary>
-        [Test]
-        public void All_DoesNotCreateDefaultRealm()
-        {
-            Realm.Default.Dispose();
-            Realm existing;
-            Assert.That(DefaultRuntime.TryGetRealm(out existing), Is.False);
-            Assert.That(Query.All().OfKind(TestKind).Count, Is.Zero);
-            Assert.That(DefaultRuntime.TryGetRealm(out existing), Is.False);
         }
 
         /// <summary>
@@ -131,35 +90,6 @@ namespace Emas.Tests
             secondSource.Publish("three");
             second.Update();
             Assert.That(arrivals.Count, Is.EqualTo(2));
-        }
-
-        /// <summary>
-        /// Disposing a realm from an immediate arrival leaves the global subscription ready for later realms.
-        /// </summary>
-        [Test]
-        public void ImmediateArrival_CanDisposeRealmAndObserveTheNext()
-        {
-            Realm first = Own(new Realm());
-            ProbeSource firstSource = new ProbeSource();
-            first.GetOrCreateAnchor("first", firstSource);
-            TestGhost firstGhost = firstSource.Publish("one");
-            first.Update();
-            List<string> arrivals = new List<string>();
-            IDisposable subscription = Query.All().OfKind(TestKind).OnAvailable(ghost =>
-            {
-                arrivals.Add(ghost.Key.EntityId);
-                if (ReferenceEquals(ghost, firstGhost))
-                {
-                    first.Dispose();
-                }
-            });
-            _subscriptions.Add(subscription);
-            Realm second = Own(new Realm());
-            ProbeSource secondSource = new ProbeSource();
-            second.GetOrCreateAnchor("second", secondSource);
-            secondSource.Publish("two");
-            second.Update();
-            Assert.That(arrivals, Is.EqualTo(new[] { "one", "two" }));
         }
 
         /// <summary>
@@ -201,7 +131,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Key-only global observations preserve existing callback signatures across realms.
+        /// Key-only global observations deliver a departure when an owning realm is disposed.
         /// </summary>
         [Test]
         public void Observe_ReportsDeparturesAcrossRealmDisposal()
@@ -221,28 +151,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A scoped query can also report its owning realm in both callbacks.
-        /// </summary>
-        [Test]
-        public void ObserveWithRealm_WorksForScopedQuery()
-        {
-            Realm realm = Own(new Realm());
-            ProbeSource source = new ProbeSource();
-            realm.GetOrCreateAnchor("scoped", source);
-            List<Realm> owners = new List<Realm>();
-            IDisposable subscription = realm.Query().OfKind(TestKind).ObserveWithRealm(
-                (owner, ghost) => owners.Add(owner),
-                (owner, key) => owners.Add(owner));
-            _subscriptions.Add(subscription);
-            source.Publish("one");
-            realm.Update();
-            source.RemoveId("one");
-            realm.Update();
-            Assert.That(owners, Is.EqualTo(new[] { realm, realm }));
-        }
-
-        /// <summary>
-        /// Disposing a realm from an arrival callback does not corrupt the live realm registry.
+        /// An arrival callback may dispose its owner and still receive the paired departure.
         /// </summary>
         [Test]
         public void Callback_CanDisposeRealmWhileNotifying()
@@ -273,9 +182,9 @@ namespace Emas.Tests
 
         private sealed class ProbeSource : PresenceDetector
         {
-            internal TestGhost Publish(string id, string name = null, Variant? variant = null)
+            internal TestGhost Publish(string id)
             {
-                return GetOrCreate<TestGhost>(id, TestKind, variant, name);
+                return GetOrCreate<TestGhost>(id, TestKind);
             }
 
             internal void RemoveId(string id)

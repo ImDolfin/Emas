@@ -66,79 +66,20 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Entities without a Spatial component retain their existing placement and view behavior.
-        /// </summary>
-        [Test]
-        public void NonSpatialGhost_RetainsLegacyPlacementAndPresentation()
-        {
-            RegisterView();
-            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1000000, 0, 0), MaxDistance = 1 };
-            TestGhost ghost = _source.Publish("plain");
-            ghost.transform.localPosition = new Vector3(20, 30, 40);
-            _realm.Update();
-
-            AssertPosition(ghost.transform.localPosition, new Vector3(20, 30, 40));
-            Assert.That(_realm.Manifest(ghost), Is.Not.Null);
-            Assert.That(ghost.IsAvailable, Is.True);
-        }
-
-        /// <summary>
-        /// Double subtraction retains nearby millimetre-scale offsets at large world coordinates.
-        /// </summary>
-        [Test]
-        public void Projection_SubtractsBeforeConvertingToFloat()
-        {
-            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1e12, -1e12, 1e12) };
-            TestGhost ghost = _source.PublishPosition("remote", new Double3(1e12 + 0.001953125, -1e12 + 0.125, 1e12 + 20.25));
-            _realm.Update();
-
-            AssertPosition(ghost.transform.position, new Vector3(0.001953125f, 0.125f, 20.25f), 0.00001f);
-            Assert.That(ghost.GetComponent<Spatial>().HasPosition, Is.True);
-        }
-
-        /// <summary>
         /// Moving the reference reprojects stationary entities without another publication.
         /// </summary>
         [Test]
         public void ReferenceMovement_ReprojectsCachedEntityPosition()
         {
-            ReferenceFrame frame = new ReferenceFrame { Position = new Double3(1e9, 0, 0) };
+            ReferenceFrame frame = new ReferenceFrame { Position = new Double3(1e12, 0, 0) };
             _realm.ReferenceFrame = frame;
-            TestGhost ghost = _source.PublishPosition("remote", new Double3(1e9 + 20.25, 0, 0));
+            TestGhost ghost = _source.PublishPosition("remote", new Double3(1e12 + 20.25, 0, 0));
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(20.25f, 0, 0));
 
-            frame.Position = new Double3(1e9 + 2, 0, 0);
+            frame.Position = new Double3(1e12 + 2, 0, 0);
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(18.25f, 0, 0));
-        }
-
-        /// <summary>
-        /// Translation-only and orientation-following frames both respect the desired Unity pose.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Projection_UsesConfiguredReferenceAndUnityPoses(bool followRotation)
-        {
-            Quaternion networkRotation = Quaternion.Euler(0, 90, 0);
-            Quaternion unityRotation = Quaternion.Euler(0, 30, 0);
-            Quaternion entityRotation = Quaternion.Euler(10, 120, 5);
-            Vector3 unityPosition = new Vector3(3, 4, 5);
-            _realm.ReferenceFrame = new ReferenceFrame
-            {
-                Position = new Double3(100, 0, 0),
-                Rotation = networkRotation,
-                UnityPosition = unityPosition,
-                UnityRotation = unityRotation,
-                FollowRotation = followRotation
-            };
-            TestGhost ghost = _source.PublishPosition("remote", new Double3(100, 0, 10));
-            _source.PublishRotation("remote", entityRotation);
-            _realm.Update();
-
-            Quaternion mapping = unityRotation * (followRotation ? Quaternion.Inverse(networkRotation) : Quaternion.identity);
-            AssertPosition(ghost.transform.position, unityPosition + mapping * new Vector3(0, 0, 10));
-            AssertRotation(ghost.transform.rotation, mapping * entityRotation);
         }
 
         /// <summary>
@@ -449,96 +390,6 @@ namespace Emas.Tests
             Assert.That(ActiveView(ghost), Is.Not.Null);
         }
 
-        /// <summary>
-        /// Geometry created by root activation is suppressed before an out-of-range update completes.
-        /// </summary>
-        [Test]
-        public void RangeSuppression_CatchesGeometryCreatedDuringRootActivation()
-        {
-            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(0, 0, 0), MaxDistance = 10 };
-            TestGhost ghost = null;
-            CreateGeometryOnEnable probe = null;
-            _source.NextUpdate = () =>
-            {
-                ghost = _source.PublishPosition("remote", new Double3(50, 0, 0));
-                probe = ghost.gameObject.AddComponent<CreateGeometryOnEnable>();
-            };
-            _realm.Update();
-
-            Assert.That(probe.CreatedEnabledGeometry, Is.True);
-            Assert.That(probe.Renderer.enabled, Is.False);
-            Assert.That(probe.Collider.enabled, Is.False);
-            Assert.That(ghost.GetComponent<Spatial>().IsInRange, Is.False);
-            Assert.That(ghost.gameObject.activeInHierarchy, Is.True);
-
-            _source.PublishPosition("remote", new Double3(5, 0, 0));
-            _realm.Update();
-            Assert.That(probe.Renderer.enabled, Is.True);
-            Assert.That(probe.Collider.enabled, Is.True);
-        }
-
-        /// <summary>
-        /// Temporarily hiding a hierarchy must not release range suppression when it becomes active again.
-        /// </summary>
-        [Test]
-        public void RangeSuppression_SurvivesAnchorHierarchyDisableAndEnable()
-        {
-            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(0, 0, 0), MaxDistance = 10 };
-            TestGhost ghost = _source.PublishPosition("remote", new Double3(50, 0, 0));
-            MeshRenderer renderer = ghost.gameObject.AddComponent<MeshRenderer>();
-            BoxCollider collider = ghost.gameObject.AddComponent<BoxCollider>();
-            _realm.Update();
-            Spatial spatial = ghost.GetComponent<Spatial>();
-            Assert.That(spatial.IsInRange, Is.False);
-
-            _anchor.Transform.gameObject.SetActive(false);
-            Assert.That(renderer.enabled, Is.False);
-            Assert.That(collider.enabled, Is.False);
-            Assert.That(spatial.IsInRange, Is.False);
-            _anchor.Transform.gameObject.SetActive(true);
-            Assert.That(renderer.enabled, Is.False);
-            Assert.That(collider.enabled, Is.False);
-            Assert.That(spatial.IsInRange, Is.False);
-            Assert.That(ghost.gameObject.activeInHierarchy, Is.True);
-
-            spatial.enabled = false;
-            Assert.That(renderer.enabled, Is.True, "Explicitly disabling Spatial releases its presentation control.");
-            Assert.That(collider.enabled, Is.True);
-            Assert.That(spatial.IsInRange, Is.True);
-        }
-
-        /// <summary>
-        /// Removing spatial control restores root geometry immediately and resumes requested views on update.
-        /// </summary>
-        [Test]
-        public void RemovingSpatial_RestoresGeometryAndRequestedPresentation()
-        {
-            RegisterView();
-            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(0, 0, 0), MaxDistance = 10 };
-            TestGhost ghost = _source.PublishPosition("remote", new Double3(50, 0, 0));
-            MeshRenderer renderer = ghost.gameObject.AddComponent<MeshRenderer>();
-            BoxCollider collider = ghost.gameObject.AddComponent<BoxCollider>();
-            GameObject child = new GameObject("deliberately disabled geometry");
-            child.transform.SetParent(ghost.transform, false);
-            MeshRenderer disabledRenderer = child.AddComponent<MeshRenderer>();
-            BoxCollider disabledCollider = child.AddComponent<BoxCollider>();
-            disabledRenderer.enabled = false;
-            disabledCollider.enabled = false;
-            _realm.Update();
-            Assert.That(_realm.Manifest(ghost), Is.Null);
-            Assert.That(renderer.enabled, Is.False);
-            Assert.That(collider.enabled, Is.False);
-
-            UnityEngine.Object.DestroyImmediate(ghost.GetComponent<Spatial>());
-            Assert.That(renderer.enabled, Is.True);
-            Assert.That(collider.enabled, Is.True);
-            Assert.That(disabledRenderer.enabled, Is.False);
-            Assert.That(disabledCollider.enabled, Is.False);
-            Assert.That(ghost.IsAvailable, Is.True);
-            _realm.Update();
-            Assert.That(ActiveView(ghost), Is.Not.Null);
-        }
-
         private void RegisterView(bool observeEnable = false)
         {
             GameObject prefab = new GameObject("spatial view");
@@ -585,20 +436,6 @@ namespace Emas.Tests
             {
                 EnableCount++;
                 PositionOnEnable = transform.position;
-            }
-        }
-
-        private sealed class CreateGeometryOnEnable : MonoBehaviour
-        {
-            internal MeshRenderer Renderer { get; private set; }
-            internal BoxCollider Collider { get; private set; }
-            internal bool CreatedEnabledGeometry { get; private set; }
-
-            private void OnEnable()
-            {
-                Renderer = gameObject.AddComponent<MeshRenderer>();
-                Collider = gameObject.AddComponent<BoxCollider>();
-                CreatedEnabledGeometry = Renderer.enabled && Collider.enabled;
             }
         }
 

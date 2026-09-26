@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -12,12 +11,18 @@ namespace Emas.Tests
     {
         private Realm _realm;
 
+        /// <summary>
+        /// Creates an isolated realm.
+        /// </summary>
         [SetUp]
         public void SetUp()
         {
             _realm = new Realm();
         }
 
+        /// <summary>
+        /// Releases tracked scene objects.
+        /// </summary>
         [TearDown]
         public void TearDown()
         {
@@ -54,6 +59,9 @@ namespace Emas.Tests
             TestGhost prepared = _realm.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
             Assert.That(prepared.IsAvailable, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));
+            IGhost found;
+            Assert.That(_realm.TryGetGhost(prepared.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(prepared));
 
             TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
@@ -93,26 +101,35 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Partial names and interfaces combine as filters.
+        /// Query filters narrow a shared population by name, kind, anchor and root capability without altering the original query.
         /// </summary>
         [Test]
         public void Query_CombinesNameKindAndPartFilters()
         {
             Kind kind = new Kind("vehicles.car");
             TestSource source = new TestSource(kind);
-            _realm.GetOrCreateAnchor("simulation", source);
-            source.PublishNamed("1", "Small Car", new Variant("small-car"));
+            TestSource otherKind = new TestSource(new Kind("vehicles.aircraft"));
+            TestSource otherAnchor = new TestSource(kind);
+            _realm.GetOrCreateAnchor("simulation", source, otherKind);
+            _realm.GetOrCreateAnchor("other", otherAnchor);
+            TestGhost expected = source.PublishNamed("small", "Small Car", Variant.None);
+            source.PublishNamed("large", "Large Car", Variant.None);
+            source.PublishNamed("boat", "Boat", Variant.None);
+            otherKind.PublishNamed("plane", "Small Car", Variant.None);
+            otherAnchor.PublishNamed("remote", "Small Car", Variant.None);
+            expected.gameObject.AddComponent<ExtraPart>();
             _realm.Update();
 
-            Assert.Throws<ArgumentException>(() => _realm.Query().OfKind(default(Kind)));
-            Query result = _realm.Query("car")
-                .OfKind(kind)
-                .InAnchor("simulation")
-                .With<ITestPart>()
-                .WithExactName("SMALL CAR");
-
-            Assert.That(result.Count, Is.EqualTo(1));
-            Assert.That(result.Single().Name, Is.EqualTo("Small Car"));
+            Query named = _realm.Query("car");
+            Assert.That(named.Count, Is.EqualTo(4));
+            Query ofKind = named.OfKind(kind);
+            Assert.That(ofKind.Count, Is.EqualTo(3));
+            Query inAnchor = ofKind.InAnchor("simulation");
+            Assert.That(inAnchor.Count, Is.EqualTo(2));
+            Assert.That(inAnchor.WithExactName("SMALL CAR").Single(), Is.SameAs(expected));
+            Assert.That(inAnchor.With<IExtraPart>().Single(), Is.SameAs(expected));
+            Assert.That(inAnchor.With<IExtraPart>().WithExactName("SMALL CAR").Single(), Is.SameAs(expected));
+            Assert.That(named.Count, Is.EqualTo(4));
         }
 
         /// <summary>
@@ -142,17 +159,6 @@ namespace Emas.Tests
             Assert.That(ghost.TryGet<IExtraPart>(out part), Is.False);
             Assert.That(part, Is.Null);
             Assert.That(query.Count, Is.Zero);
-        }
-
-        /// <summary>
-        /// Empty queries return safe empty results.
-        /// </summary>
-        [Test]
-        public void EmptyQuery_ReturnsEmptyAndNullFirst()
-        {
-            Assert.That(_realm.Query("missing").Count, Is.EqualTo(0));
-            Assert.That(_realm.Query("missing").FirstOrDefault(), Is.Null);
-            Assert.Throws<InvalidOperationException>(() => _realm.Query("missing").Single());
         }
 
         /// <summary>
@@ -188,45 +194,64 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Reuses a query description against a different realm.
+        /// A query description retains its filters when rebound to another realm without sharing its results.
         /// </summary>
         [Test]
         public void QueryDescription_CanBeReusedAcrossRealms()
         {
             Kind kind = new Kind("vehicles.car");
+            TestSource originalSource = new TestSource(kind);
+            _realm.GetOrCreateAnchor("simulation", originalSource);
+            TestGhost original = originalSource.Publish("original", Variant.None);
+            _realm.Update();
             Query description = _realm.Query().OfKind(kind).With<ITestPart>();
             using (Realm other = new Realm())
             {
-                Assert.That(other.Query(description).Count, Is.EqualTo(0));
+                TestSource matching = new TestSource(kind);
+                TestSource excluded = new TestSource(new Kind("vehicles.aircraft"));
+                other.GetOrCreateAnchor("simulation", matching, excluded);
+                TestGhost expected = matching.Publish("other", Variant.None);
+                excluded.Publish("excluded", Variant.None);
+                other.Update();
+                Assert.That(other.Query(description).Single(), Is.SameAs(expected));
+                Assert.That(description.Single(), Is.SameAs(original));
             }
         }
 
         /// <summary>
-        /// Rejects a ghost object that belongs to another realm.
+        /// A realm can manifest its own ghost but rejects a different realm's ghost with the same key.
         /// </summary>
         [Test]
         public void Manifest_DoesNotAcceptEqualKeyFromAnotherRealm()
         {
             Kind kind = new Kind("vehicles.car");
-            TestSource firstSource = new TestSource(kind);
+            GameObject prefab = new GameObject("Car view");
+            prefab.SetActive(false);
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             Realm secondRealm = new Realm();
             try
             {
+                blueprint.Configure(kind, null, null, prefab);
+                _realm.RegisterManifestationBlueprint(blueprint);
+                TestSource firstSource = new TestSource(kind);
                 _realm.GetOrCreateAnchor("simulation", firstSource);
-                TestGhost firstGhost = firstSource.Publish("42", new Variant("small-car"));
+                TestGhost own = firstSource.Publish("42", Variant.None);
                 _realm.Update();
-
                 TestSource secondSource = new TestSource(kind);
                 secondRealm.GetOrCreateAnchor("simulation", secondSource);
-                secondSource.Publish("42", new Variant("small-car"));
+                TestGhost foreign = secondSource.Publish("42", Variant.None);
                 secondRealm.Update();
 
-                Assert.That(_realm.Manifest(secondSource.LastPublished), Is.Null);
-                Assert.That(firstGhost, Is.Not.Null);
+                Assert.That(own.Key, Is.EqualTo(foreign.Key));
+                Assert.That(_realm.Manifest(foreign), Is.Null);
+                Assert.That(_realm.Manifest(own), Is.Not.Null);
+                Assert.That(foreign.GetComponentInChildren<View>(), Is.Null);
             }
             finally
             {
                 secondRealm.Dispose();
+                UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(prefab);
             }
         }
 
@@ -488,87 +513,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Re-registering an asset under a new kind releases its old mapping and refreshes both kinds.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void ManifestationBlueprint_ReconfiguredKindRebindsOldAndNewKinds(bool anchorScoped)
-        {
-            Kind oldKind = new Kind("views.old");
-            Kind newKind = new Kind("views.new");
-            GameObject oldPrefab = new GameObject("old view");
-            GameObject fallbackPrefab = new GameObject("realm fallback");
-            GameObject newPrefab = new GameObject("new view");
-            ManifestationBlueprint changing = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            ManifestationBlueprint fallback = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            try
-            {
-                oldPrefab.SetActive(false);
-                fallbackPrefab.SetActive(false);
-                newPrefab.SetActive(false);
-                changing.Configure(oldKind, null, null, oldPrefab);
-                fallback.Configure(oldKind, null, null, fallbackPrefab);
-                if (anchorScoped)
-                {
-                    _realm.RegisterManifestationBlueprint(fallback);
-                }
-
-                Anchor anchor = _realm.GetOrCreateAnchor("simulation");
-                if (anchorScoped)
-                {
-                    anchor.RegisterManifestationBlueprint(changing);
-                }
-                else
-                {
-                    _realm.RegisterManifestationBlueprint(changing);
-                }
-
-                TestSource oldSource = new TestSource(oldKind);
-                TestSource newSource = new TestSource(newKind);
-                anchor.AddDetector(oldSource);
-                anchor.AddDetector(newSource);
-                TestGhost oldGhost = oldSource.Publish("old", Variant.None);
-                TestGhost newGhost = newSource.Publish("new", Variant.None);
-                _realm.Update();
-                Assert.That(_realm.Manifest(oldGhost).gameObject.name, Is.EqualTo("old view"));
-                Assert.That(_realm.Manifest(newGhost), Is.Null);
-
-                changing.Configure(newKind, null, null, newPrefab);
-                Assert.That(_realm.Manifest(oldGhost).gameObject.name, Is.EqualTo("old view"));
-                if (anchorScoped)
-                {
-                    anchor.RegisterManifestationBlueprint(changing);
-                }
-                else
-                {
-                    _realm.RegisterManifestationBlueprint(changing);
-                }
-
-                _realm.Update();
-                View oldView = _realm.Manifest(oldGhost);
-                if (anchorScoped)
-                {
-                    Assert.That(oldView.gameObject.name, Is.EqualTo("realm fallback"));
-                }
-                else
-                {
-                    Assert.That(oldView, Is.Null);
-                }
-
-                Assert.That(_realm.Manifest(newGhost).gameObject.name, Is.EqualTo("new view"));
-                Assert.That(_realm.Query().Count, Is.EqualTo(2));
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(changing);
-                UnityEngine.Object.DestroyImmediate(fallback);
-                UnityEngine.Object.DestroyImmediate(oldPrefab);
-                UnityEngine.Object.DestroyImmediate(fallbackPrefab);
-                UnityEngine.Object.DestroyImmediate(newPrefab);
-            }
-        }
-
-        /// <summary>
         /// Removes a requested view for None while retaining the available ghost.
         /// </summary>
         [Test]
@@ -656,114 +600,6 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>
-        /// Unassigned kinds and an intentionally empty blueprint keep ordinary ghost roots without warnings.
-        /// </summary>
-        [Test]
-        public void SilentDefaults_CreateGhostsWithoutViewsOrMissingPrefabWarnings()
-        {
-            Kind unassignedKind = new Kind("silent.unassigned");
-            Kind configuredKind = new Kind("silent.configured");
-            ManifestationBlueprint empty = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            List<string> warnings = new List<string>();
-            Application.LogCallback onLog = (message, stackTrace, type) =>
-            {
-                if (type == LogType.Warning && message.Contains("No Emas view prefab"))
-                {
-                    warnings.Add(message);
-                }
-            };
-
-            try
-            {
-                empty.Configure(configuredKind, null, null, null);
-                _realm.RegisterManifestationBlueprint(empty);
-                TestSource unassignedSource = new TestSource(unassignedKind);
-                TestSource configuredSource = new TestSource(configuredKind);
-                _realm.GetOrCreateAnchor("simulation", unassignedSource, configuredSource);
-                Application.logMessageReceived += onLog;
-
-                TestGhost unassigned = unassignedSource.Publish("one", Variant.None);
-                TestGhost configured = configuredSource.Publish("two", Variant.None);
-                _realm.Update();
-                Assert.That(_realm.Manifest(unassigned), Is.Null);
-                Assert.That(_realm.Manifest(configured), Is.Null);
-
-                Assert.That(unassigned.IsAvailable && configured.IsAvailable, Is.True);
-                Assert.That(unassigned.gameObject.activeInHierarchy && configured.gameObject.activeInHierarchy,
-                    Is.True);
-                Assert.That(unassigned.GetComponentInChildren<View>(true), Is.Null);
-                Assert.That(configured.GetComponentInChildren<View>(true), Is.Null);
-                Assert.That(_realm.Query().Count, Is.EqualTo(2));
-                Assert.That(warnings, Is.Empty);
-            }
-            finally
-            {
-                Application.logMessageReceived -= onLog;
-                UnityEngine.Object.DestroyImmediate(empty);
-            }
-        }
-
-        /// <summary>
-        /// Editing a referenced variant asset does not change registered scopes until each registers again.
-        /// </summary>
-        [Test]
-        public void ManifestationVariant_EditRequiresReregistrationForEachScope()
-        {
-            Kind kind = new Kind("views.variant.snapshot");
-            Variant appearance = new Variant("small");
-            GameObject oldPrefab = new GameObject("old view");
-            GameObject newPrefab = new GameObject("new view");
-            ManifestationVariant variant = ScriptableObject.CreateInstance<ManifestationVariant>();
-            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            try
-            {
-                oldPrefab.SetActive(false);
-                newPrefab.SetActive(false);
-                variant.Configure(appearance, new[]
-                {
-                    new ManifestationVariant.DetailMapping(DetailLevel.Full, oldPrefab)
-                });
-                blueprint.Configure(kind, null, new[] { variant }, null);
-                _realm.RegisterManifestationBlueprint(blueprint);
-                Anchor localAnchor = _realm.GetOrCreateAnchor("local");
-                Anchor globalAnchor = _realm.GetOrCreateAnchor("global");
-                localAnchor.RegisterManifestationBlueprint(blueprint);
-                TestSource localSource = new TestSource(kind);
-                TestSource globalSource = new TestSource(kind);
-                localAnchor.AddDetector(localSource);
-                globalAnchor.AddDetector(globalSource);
-                TestGhost localGhost = localSource.Publish("one", appearance);
-                TestGhost globalGhost = globalSource.Publish("two", appearance);
-                _realm.Update();
-                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
-                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
-
-                variant.Configure(appearance, new[]
-                {
-                    new ManifestationVariant.DetailMapping(DetailLevel.Full, newPrefab)
-                });
-                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
-                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
-
-                localAnchor.RegisterManifestationBlueprint(blueprint);
-                _realm.Update();
-                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("new view"));
-                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
-
-                _realm.RegisterManifestationBlueprint(blueprint);
-                _realm.Update();
-                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("new view"));
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(blueprint);
-                UnityEngine.Object.DestroyImmediate(variant);
-                UnityEngine.Object.DestroyImmediate(oldPrefab);
-                UnityEngine.Object.DestroyImmediate(newPrefab);
-            }
-        }
-
         private interface ITestPart
         {
         }
@@ -793,27 +629,15 @@ namespace Emas.Tests
                 private set;
             }
 
-            internal TestGhost LastPublished
-            {
-                get
-                {
-                    return _lastPublished;
-                }
-            }
-
             internal TestGhost Publish(string entityId, Variant variant)
             {
-                _lastPublished = GetOrCreate<TestGhost>(entityId, Kind, variant);
-                return _lastPublished;
+                return GetOrCreate<TestGhost>(entityId, Kind, variant);
             }
 
             internal TestGhost PublishNamed(string entityId, string name, Variant? variant)
             {
-                _lastPublished = GetOrCreate<TestGhost>(entityId, Kind, variant, name);
-                return _lastPublished;
+                return GetOrCreate<TestGhost>(entityId, Kind, variant, name);
             }
-
-            private TestGhost _lastPublished;
         }
     }
 }

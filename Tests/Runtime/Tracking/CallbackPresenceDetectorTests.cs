@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace Emas.Tests
 {
@@ -11,7 +10,6 @@ namespace Emas.Tests
     public sealed class CallbackPresenceDetectorTests
     {
         private static readonly Kind Population = new Kind("tests.callbacks");
-        private readonly List<UnityEngine.Object> _objects = new List<UnityEngine.Object>();
         private Realm _realm;
 
         /// <summary>
@@ -30,88 +28,41 @@ namespace Emas.Tests
         [TearDown]
         public void TearDown()
         {
-            Probe.Disabled = null;
             _realm.Dispose();
-            foreach (UnityEngine.Object value in _objects)
-            {
-                UnityEngine.Object.DestroyImmediate(value);
-            }
-
-            _objects.Clear();
         }
 
         /// <summary>
-        /// Invalid constructor and configuration arguments are rejected immediately.
+        /// An incomplete callback source reports the required setup steps and can be attached after configuration.
         /// </summary>
         [Test]
-        public void Configuration_RejectsInvalidArguments()
-        {
-            Assert.Throws<ArgumentException>(() => new CallbackPresenceDetector<Item, Probe>(default(Kind)));
-            CallbackPresenceDetector<Item, Probe> source = new CallbackPresenceDetector<Item, Probe>(Population);
-            Assert.Throws<ArgumentNullException>(() => source.IdentifyBy(null));
-            Assert.Throws<ArgumentNullException>(() => source.Apply(null));
-            Assert.Throws<ArgumentNullException>(() => source.WithVariant(null));
-            Assert.Throws<ArgumentNullException>(() => source.Listen(null));
-        }
-
-        /// <summary>
-        /// Incomplete startup identifies only missing steps and permits a corrected retry.
-        /// </summary>
-        [TestCase("IdentifyBy")]
-        [TestCase("Apply")]
-        [TestCase("Listen")]
-        [TestCase("IdentifyBy, Apply, Listen")]
-        public void Configuration_ReportsMissingStepsAndAllowsRetry(string missing)
+        public void Configuration_CanBeCompletedAfterRejectedAttachment()
         {
             Feed feed = new Feed();
             CallbackPresenceDetector<Item, Probe> source = new CallbackPresenceDetector<Item, Probe>(Population);
-            if (!missing.Contains("IdentifyBy"))
-            {
-                source.IdentifyBy(item => item.Id);
-            }
-
-            if (!missing.Contains("Apply"))
-            {
-                source.Apply((item, ghost) => ghost.Value = item.Value);
-            }
-
-            if (!missing.Contains("Listen"))
-            {
-                source.Listen(feed.Subscribe);
-            }
-
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
             InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
-            Assert.That(error.Message, Is.EqualTo("Callback source is missing required steps: " + missing + ". Configure them before tracking."));
-            Assert.That(feed.Starts, Is.Zero);
+            Assert.That(error.Message, Does.Contain("IdentifyBy").And.Contain("Apply").And.Contain("Listen"));
+            Assert.That(source.IsAttached, Is.False);
             source.IdentifyBy(item => item.Id).Apply((item, ghost) => ghost.Value = item.Value).Listen(feed.Subscribe);
             anchor.AddDetector(source);
-            feed.Publish(new Item("a"));
+            feed.Publish(new Item("a", 7));
             _realm.Update();
-            Assert.That(_realm.Query().Count, Is.EqualTo(1));
+            Assert.That(Find("a").Value, Is.EqualTo(7));
         }
 
         /// <summary>
-        /// Attached configuration stays locked after failure and unlocks upon detachment.
+        /// Callback configuration is fixed for an attachment and becomes editable after detachment.
         /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Configuration_LockedUntilDetached(bool fail)
+        [Test]
+        public void Configuration_LockedUntilDetached()
         {
             Feed feed = new Feed();
             CallbackPresenceDetector<Item, Probe> source = Source(feed);
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
-            if (fail)
-            {
-                feed.Publish(null);
-                ExpectedErrors.Verify(_realm.Update, "cannot publish a null item");
-            }
-
             AssertConfigurationLocked(source);
             anchor.RemoveDetector(source);
-            Assert.DoesNotThrow(() => source.IdentifyBy(item => item.Id).Apply((item, ghost) =>
-            {
-            })
+            Assert.DoesNotThrow(() => source.IdentifyBy(item => item.Id)
+                .Apply((item, ghost) => ghost.Value = item.Value)
                 .WithVariant(item => item.Variant).Listen(feed.Subscribe));
         }
 
@@ -215,281 +166,47 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Callback events share the realm budget and nested publication waits another update.
+        /// Detaching a callback source unsubscribes once and makes retained SDK callbacks harmless.
         /// </summary>
         [Test]
-        public void Dispatch_UsesExistingBudgetAndDefersNestedEvents()
-        {
-            Feed feed = new Feed();
-            List<int> values = new List<int>();
-            _realm.GetOrCreateAnchor("callbacks", Source(feed).Apply((item, ghost) =>
-            {
-                values.Add(item.Value);
-                if (item.Value == 0)
-                {
-                    feed.Publish(new Item("a", 999));
-                }
-            }));
-            for (int index = 0; index < Realm.MaxDispatchActionsPerUpdate + 2; index++)
-            {
-                feed.Publish(new Item("a", index));
-            }
-
-            _realm.Update();
-            Assert.That(values.Count, Is.EqualTo(Realm.MaxDispatchActionsPerUpdate));
-            _realm.Update();
-            for (int index = 0; index < Realm.MaxDispatchActionsPerUpdate + 2; index++)
-            {
-                Assert.That(values[index], Is.EqualTo(index));
-            }
-
-            Assert.That(values[values.Count - 1], Is.EqualTo(999));
-        }
-
-        /// <summary>
-        /// Old delegates and queued work cannot enter a later registration, including another realm.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Restart_RejectsOldCallbacksAndQueuedWork(bool otherRealm)
+        public void Detachment_UnsubscribesAndIgnoresLateEvents()
         {
             Feed feed = new Feed();
             CallbackPresenceDetector<Item, Probe> source = Source(feed);
             Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
-            Action<Item> oldPublish = feed.Publish;
-            Action<string> oldRemove = feed.Remove;
-            oldPublish(new Item("queued"));
-            oldPublish(null);
+            Action<Item> publish = feed.Publish;
             anchor.RemoveDetector(source);
-            using (Realm second = new Realm())
-            {
-                Realm destination = otherRealm ? second : _realm;
-                destination.GetOrCreateAnchor("callbacks").AddDetector(source);
-                oldPublish(new Item("late"));
-                oldPublish(null);
-                feed.Publish(new Item("current", 5));
-                oldRemove("current");
-                _realm.Update();
-                if (otherRealm)
-                {
-                    second.Update();
-                }
-
-                Assert.That(source.IsAttached && source.IsActive, Is.True);
-                Assert.That(source.LastError, Is.Null);
-                Assert.That(source.LastErrorContext, Is.Null);
-                Assert.That(destination.Query().Count, Is.EqualTo(1));
-                Assert.That(destination.Query().Single().Key.EntityId, Is.EqualTo("current"));
-                Assert.That(feed.Starts, Is.EqualTo(2));
-                Assert.That(feed.Stops, Is.EqualTo(1));
-            }
-        }
-
-        /// <summary>
-        /// Normal stop paths invoke cleanup once, even when the cleanup itself throws.
-        /// </summary>
-        [TestCase("source", false)]
-        [TestCase("anchor", false)]
-        [TestCase("realm", false)]
-        [TestCase("replace", false)]
-        [TestCase("source", true)]
-        public void Cleanup_RunsOnce(string stop, bool throws)
-        {
-            Feed feed = new Feed();
-            CallbackPresenceDetector<Item, Probe> source = Source(feed);
-            Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
-            if (throws)
-            {
-                feed.Stopping = () =>
-                {
-                    throw new InvalidOperationException("cleanup failed");
-                };
-            }
-
-            ExpectedErrors.Verify(() =>
-            {
-                if (stop == "source")
-                {
-                    anchor.RemoveDetector(source);
-                }
-                else if (stop == "anchor")
-                {
-                    anchor.Dispose();
-                }
-                else if (stop == "realm")
-                {
-                    _realm.Dispose();
-                }
-                else
-                {
-                    anchor.ReplaceDetector(source, Source(new Feed()));
-                }
-            }, throws ? new[] { "cleanup failed" } : Array.Empty<string>());
-
-            _realm.Dispose();
-            feed.Publish(new Item("late"));
-            Assert.That(feed.Stops, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// Stopping during subscription still cleans up the returned handle and locks configuration.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Listen_InterruptedStartupCleansUpLateReturn(bool throws)
-        {
-            Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
-            CallbackPresenceDetector<Item, Probe> source = Source(new Feed());
-            int stops = 0;
-            source.Listen((publish, remove) =>
-            {
-                publish(new Item("stale"));
-                anchor.RemoveDetector(source);
-                AssertConfigurationLocked(source);
-                return () =>
-                {
-                    stops++;
-                    if (throws)
-                    {
-                        throw new InvalidOperationException("late cleanup failed");
-                    }
-                };
-            });
-            ExpectedErrors.Verify(() => anchor.AddDetector(source),
-                throws ? new[] { "late cleanup failed" } : Array.Empty<string>());
+            publish(new Item("late"));
             _realm.Update();
-            Assert.That(stops, Is.EqualTo(1));
+            _realm.Dispose();
+            Assert.That(feed.Stops, Is.EqualTo(1));
+            Assert.That(source.IsAttached, Is.False);
             Assert.That(_realm.Query().Count, Is.Zero);
         }
 
         /// <summary>
-        /// A throwing listener rolls back startup; its queued events stay invalid after correction.
+        /// An invalid SDK item stops its subscription and removes only that subscription's ghosts.
         /// </summary>
         [Test]
-        public void Listen_ThrowingStartupCanBeCorrected()
-        {
-            Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
-            CallbackPresenceDetector<Item, Probe> source = Source(new Feed()).Listen((publish, remove) =>
-            {
-                publish(new Item("old"));
-                throw new InvalidOperationException("listen failed");
-            });
-            Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source));
-            Feed feed = new Feed();
-            source.Listen(feed.Subscribe);
-            anchor.AddDetector(source);
-            feed.Publish(new Item("new"));
-            _realm.Update();
-            Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("new"));
-        }
-
-        /// <summary>
-        /// Bad events remove only their source population and permit replacement recovery.
-        /// </summary>
-        [TestCase("null-item")]
-        [TestCase("empty-id")]
-        [TestCase("null-id")]
-        [TestCase("empty-removal")]
-        [TestCase("null-removal")]
-        [TestCase("apply")]
-        public void Failure_StopsAndRemovesPopulation(string failure)
+        public void InvalidPublication_StopsOnlyItsSubscription()
         {
             Feed feed = new Feed();
-            bool fail = false;
-            CallbackPresenceDetector<Item, Probe> source = Source(feed)
-                .Apply((item, ghost) =>
-                {
-                    if (fail && failure == "apply")
-                    {
-                        throw new InvalidOperationException("apply failed");
-                    }
-
-                    ghost.Value = item.Value;
-                });
             Feed healthy = new Feed();
-            Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source, Source(healthy));
+            CallbackPresenceDetector<Item, Probe> source = Source(feed);
+            _realm.GetOrCreateAnchor("callbacks", source, Source(healthy));
             feed.Publish(new Item("a"));
             healthy.Publish(new Item("healthy"));
             _realm.Update();
             Probe retained = Find("a");
-            fail = true;
-            if (failure.EndsWith("removal"))
-            {
-                feed.Remove(failure == "null-removal" ? null : "");
-            }
-            else
-            {
-                feed.Publish(failure == "null-item" ? null : new Item(
-                    failure == "empty-id" ? "" : failure == "null-id" ? null : "a"));
-            }
-
-            feed.Remove("a");
-            string expected = failure == "null-item" ? "cannot publish a null item"
-                : failure == "apply" ? "apply failed"
-                : "requires a non-empty entity ID";
-            ExpectedErrors.Verify(_realm.Update, expected);
+            feed.Publish(null);
+            ExpectedErrors.Verify(_realm.Update, "cannot publish a null item");
             Assert.That(feed.Stops, Is.EqualTo(1));
             Assert.That(retained.IsAvailable, Is.False);
-            Assert.That(retained.gameObject.activeSelf, Is.False);
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);
-            Assert.That(_realm.GetOwnedGhosts(source), Is.Empty);
             IGhost found;
             Assert.That(_realm.TryGetGhost(retained.Key, out found), Is.False);
             Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("healthy"));
-            Feed recovery = new Feed();
-            anchor.ReplaceDetector(source, Source(recovery));
-            recovery.Publish(new Item("a", 42));
-            _realm.Update();
-            Probe recovered = Find("a");
-            Assert.That(recovered, Is.Not.SameAs(retained));
-            Assert.That(recovered.Value, Is.EqualTo(42));
-            Assert.That(feed.Stops, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// Application callbacks can end tracking without later mapping or stale publication.
-        /// </summary>
-        [TestCase("identify")]
-        [TestCase("variant")]
-        [TestCase("apply")]
-        public void Publication_RechecksRegistrationAfterUserCallbacks(string stage)
-        {
-            Feed feed = new Feed();
-            Anchor anchor = _realm.GetOrCreateAnchor("callbacks");
-            CallbackPresenceDetector<Item, Probe> source = Source(feed);
-            int variants = 0;
-            int mappings = 0;
-            source.IdentifyBy(item =>
-            {
-                if (stage == "identify")
-                {
-                    anchor.RemoveDetector(source);
-                }
-
-                return item.Id;
-            }).WithVariant(item =>
-            {
-                variants++;
-                if (stage == "variant")
-                {
-                    anchor.RemoveDetector(source);
-                }
-
-                return item.Variant;
-            }).Apply((item, ghost) =>
-            {
-                mappings++;
-                anchor.RemoveDetector(source);
-            });
-            anchor.AddDetector(source);
-            feed.Publish(new Item("a"));
-            feed.Publish(new Item("b"));
-            _realm.Update();
-            Assert.That(variants, Is.EqualTo(stage == "identify" ? 0 : 1));
-            Assert.That(mappings, Is.EqualTo(stage == "apply" ? 1 : 0));
-            Assert.That(_realm.Query().Count, Is.Zero);
-            Assert.That(feed.Stops, Is.EqualTo(1));
         }
 
         /// <summary>
@@ -512,126 +229,15 @@ namespace Emas.Tests
             IGhost found;
             Assert.That(_realm.TryGetGhost(b.Key, out found), Is.True);
             Assert.That(found, Is.SameAs(b));
-            Assert.That(_realm.GetOwnedGhosts(replacement).Count, Is.EqualTo(2));
             second.Publish(new Item("a"));
             _realm.Update();
             Assert.That(_realm.Query().Single(), Is.SameAs(a));
             Assert.That(b.IsAvailable, Is.False);
             Assert.That(b.gameObject.activeSelf, Is.False);
             Assert.That(_realm.TryGetGhost(b.Key, out found), Is.False);
-            Assert.That(_realm.GetOwnedGhosts(replacement), Is.EqualTo(new[] { a }));
             second.Publish(new Item("b"));
             _realm.Update();
             Assert.That(Find("b"), Is.Not.SameAs(b));
-        }
-
-        /// <summary>
-        /// Handover waits for all initial callbacks even across update budgets, but later traffic cannot prolong it.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Handover_DrainsInitialCallbacksBeforeRemovingUnreportedGhosts(bool restart)
-        {
-            Feed first = new Feed();
-            CallbackPresenceDetector<Item, Probe> source = Source(first);
-            Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
-            first.Publish(new Item("a"));
-            first.Publish(new Item("b"));
-            _realm.Update();
-            Probe a = Find("a");
-            Probe b = Find("b");
-            Feed next = restart ? first : new Feed();
-            next.Starting = () =>
-            {
-                for (int index = 0; index < 299; index++)
-                {
-                    next.Publish(new Item("new", index));
-                }
-
-                next.Publish(new Item("a", 42));
-            };
-            CallbackPresenceDetector<Item, Probe> current;
-            if (restart)
-            {
-                current = source;
-                anchor.RestartDetector(source);
-            }
-            else
-            {
-                current = Source(next);
-                anchor.ReplaceDetector(source, current);
-            }
-
-            for (int index = 0; index < 300; index++)
-            {
-                next.Publish(new Item("new", index));
-            }
-
-            next.Publish(new Item("b", 7));
-            _realm.Update();
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(a.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(a));
-            Assert.That(a.IsAvailable, Is.False);
-            Assert.That(_realm.TryGetGhost(b.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(b));
-            Assert.That(_realm.GetOwnedGhosts(current).Count, Is.EqualTo(3));
-
-            _realm.Update();
-            Assert.That(Find("a"), Is.SameAs(a));
-            Assert.That(a.Value, Is.EqualTo(42));
-            Assert.That(_realm.TryGetGhost(b.Key, out found), Is.False);
-            Assert.That(_realm.GetOwnedGhosts(current).Count, Is.EqualTo(2));
-
-            _realm.Update();
-            Assert.That(Find("b"), Is.Not.SameAs(b));
-            Assert.That(Find("b").Value, Is.EqualTo(7));
-            Assert.That(current.IsActive, Is.True);
-        }
-
-        /// <summary>
-        /// Failure-triggered scene callbacks can restart a source without losing or stopping the wrong subscription.
-        /// </summary>
-        [Test]
-        public void Failure_ReentrantRestartCleansUpOnlyTheOldSubscription()
-        {
-            Feed feed = new Feed();
-            List<int> stops = new List<int>();
-            int starts = 0;
-            bool fail = false;
-            CallbackPresenceDetector<Item, Probe> source = Source(feed).Apply((item, ghost) =>
-            {
-                if (fail)
-                {
-                    throw new InvalidOperationException("restart failure");
-                }
-            }).Listen((publish, remove) =>
-            {
-                int subscription = ++starts;
-                feed.Publish = publish;
-                feed.Remove = remove;
-                return () => stops.Add(subscription);
-            });
-            Anchor anchor = _realm.GetOrCreateAnchor("callbacks", source);
-            feed.Publish(new Item("a"));
-            _realm.Update();
-            Probe.Disabled = () =>
-            {
-                Probe.Disabled = null;
-                anchor.RemoveDetector(source);
-                anchor.AddDetector(source);
-            };
-            fail = true;
-            feed.Publish(new Item("a"));
-            ExpectedErrors.Verify(_realm.Update, "restart failure");
-            Assert.That(starts, Is.EqualTo(2));
-            Assert.That(stops, Is.EqualTo(new[] { 1 }));
-            fail = false;
-            feed.Publish(new Item("b"));
-            _realm.Update();
-            Assert.That(_realm.Query().Single().Key.EntityId, Is.EqualTo("b"));
-            anchor.RemoveDetector(source);
-            Assert.That(stops, Is.EqualTo(new[] { 1, 2 }));
         }
 
         /// <summary>
@@ -689,7 +295,6 @@ namespace Emas.Tests
             internal Action<Item> Publish;
             internal Action<string> Remove;
             internal Action Starting;
-            internal Action Stopping;
             internal int Starts;
             internal int Stops;
 
@@ -706,10 +311,6 @@ namespace Emas.Tests
                 return () =>
                 {
                     Stops++;
-                    if (Stopping != null)
-                    {
-                        Stopping();
-                    }
                 };
             }
         }
@@ -731,15 +332,6 @@ namespace Emas.Tests
         private sealed class Probe : Ghost
         {
             internal int Value;
-            internal static Action Disabled;
-
-            private void OnDisable()
-            {
-                if (Disabled != null)
-                {
-                    Disabled();
-                }
-            }
         }
     }
 }

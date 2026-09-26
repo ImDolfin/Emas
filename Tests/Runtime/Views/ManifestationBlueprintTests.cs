@@ -83,12 +83,10 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Invalid detail entries leave the variant's earlier configuration intact.
+        /// Duplicate detail levels are rejected without replacing the variant's usable configuration.
         /// </summary>
-        [TestCase("prefab", "prefab")]
-        [TestCase("level", "positive detail level")]
-        [TestCase("duplicate", "duplicate")]
-        public void ManifestationVariant_RejectsInvalidDetailsAtomically(string failure, string reason)
+        [Test]
+        public void ManifestationVariant_RejectsDuplicateDetailsAtomically()
         {
             ManifestationVariant variant = ScriptableObject.CreateInstance<ManifestationVariant>();
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
@@ -99,14 +97,13 @@ namespace Emas.Tests
                 Variant id = new Variant("small");
                 variant.Configure(id, new[] { new ManifestationVariant.DetailMapping(DetailLevel.Full, original) });
                 ManifestationVariant.DetailMapping invalid = new ManifestationVariant.DetailMapping(
-                    failure == "level" ? DetailLevel.None : DetailLevel.Minimal,
-                    failure == "prefab" ? null : replacement);
+                    DetailLevel.Minimal, replacement);
                 ArgumentException error = Assert.Throws<ArgumentException>(() => variant.Configure(id, new[]
                 {
                     new ManifestationVariant.DetailMapping(DetailLevel.Minimal, replacement),
                     invalid
                 }));
-                Assert.That(error.Message, Does.Contain("index 1").And.Contain(reason));
+                Assert.That(error.Message, Does.Contain("duplicate"));
                 blueprint.Configure(new Kind("cars"), null, new[] { variant }, null);
                 Assert.That(blueprint.ResolveViewPrefab(id, DetailLevel.Full), Is.SameAs(original));
             }

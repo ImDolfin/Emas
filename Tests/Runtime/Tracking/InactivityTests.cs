@@ -8,27 +8,23 @@ using UnityEngine.TestTools;
 namespace Emas.Tests
 {
     /// <summary>
-    /// Verifies optional inactivity expiry and publication deadlines for individual ghosts.
+    /// Specifies expiry and recovery visible to applications using detector timeout settings.
+    /// Tests use the public Unity clock and wait for observable state changes rather than exact timestamps.
     /// </summary>
     public sealed class InactivityTests
     {
-        private static readonly Kind Kind = new Kind("inactivity");
+        private static readonly Kind TrackedKind = new Kind("tests.expiry");
         private Realm _realm;
-        private double _now;
 
-        /// <summary>
-        /// Creates a realm with a controllable unscaled clock.
-        /// </summary>
+        /// <summary>Creates a public realm with an application-defined root type.</summary>
         [SetUp]
         public void SetUp()
         {
-            _now = 10;
-            _realm = new Realm(() => _now);
+            _realm = new Realm();
+            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) => { });
         }
 
-        /// <summary>
-        /// Releases tracked objects.
-        /// </summary>
+        /// <summary>Releases the detector population and its scene objects.</summary>
         [TearDown]
         public void TearDown()
         {
@@ -36,370 +32,51 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Sources do not expire their population unless explicitly configured.
+        /// Expiry settings reject invalid durations and cannot change during an active attachment.
+        /// A detached detector can be configured again before reuse.
         /// </summary>
         [Test]
-        public void DefaultAndNullTimeout_DisableExpiry()
+        public void ExpirySettings_RequireValidDurationsAndDetachedDetector()
         {
-            Probe source = new Probe();
-            Assert.That(source.InactivityTimeout, Is.Null);
-            source.InactivityTimeout = TimeSpan.FromSeconds(1);
-            source.InactivityTimeout = null;
-            _realm.GetOrCreateAnchor("anchor", source);
-            TestGhost ghost = source.Publish("one");
-            _realm.Update();
-            _now += 10000;
-            _realm.Update();
-            Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
+            Probe detector = new Probe();
+            Assert.Throws<ArgumentOutOfRangeException>(() => detector.InactivityTimeout = TimeSpan.Zero);
+            Assert.Throws<ArgumentOutOfRangeException>(() => detector.DisappearanceGracePeriod = TimeSpan.FromTicks(-1));
+            detector.InactivityTimeout = TimeSpan.FromSeconds(2);
+            detector.DisappearanceGracePeriod = TimeSpan.FromSeconds(1);
+            Anchor anchor = _realm.GetOrCreateAnchor("sdk", detector);
+            Assert.Throws<InvalidOperationException>(() => detector.InactivityTimeout = null);
+            Assert.Throws<InvalidOperationException>(() => detector.DisappearanceGracePeriod = TimeSpan.Zero);
+            anchor.RemoveDetector(detector);
+            detector.InactivityTimeout = null;
+            detector.DisappearanceGracePeriod = TimeSpan.Zero;
+            Assert.That(detector.InactivityTimeout, Is.Null);
+            Assert.That(detector.DisappearanceGracePeriod, Is.EqualTo(TimeSpan.Zero));
         }
 
         /// <summary>
-        /// Timeout configuration requires a positive duration and a detached source.
-        /// </summary>
-        [Test]
-        public void Timeout_ValidatesConfiguration()
-        {
-            Probe source = ExpiringSource();
-            Assert.Throws<ArgumentOutOfRangeException>(() => source.InactivityTimeout = TimeSpan.Zero);
-            Assert.Throws<ArgumentOutOfRangeException>(() => source.InactivityTimeout = TimeSpan.FromTicks(-1));
-            Assert.That(source.InactivityTimeout, Is.EqualTo(TimeSpan.FromSeconds(2)));
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
-            Assert.Throws<InvalidOperationException>(() => source.InactivityTimeout = null);
-            anchor.RemoveDetector(source);
-            Assert.DoesNotThrow(() => source.InactivityTimeout = null);
-        }
-
-        /// <summary>
-        /// Partial publication refreshes only its entity, while silent entities expire exactly at their deadline.
-        /// </summary>
-        [Test]
-        public void Publication_RefreshesEachGhostIndependently()
-        {
-            Probe source = ExpiringSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            TestGhost updated = source.Publish("updated");
-            TestGhost silent = source.Publish("silent");
-            _realm.Update();
-            _now = 11.5;
-            Assert.That(source.Publish("updated"), Is.SameAs(updated));
-            updated.Position = 1;
-            _now = 11.999;
-            _realm.Update();
-            Assert.That(_realm.Query().Count, Is.EqualTo(2));
-            _now = 12;
-            _realm.Update();
-            AssertMissing(silent.Key);
-            Assert.That(_realm.Query().Single(), Is.SameAs(updated));
-            _now = 13.499;
-            _realm.Update();
-            Assert.That(updated.IsAvailable, Is.True);
-            _now = 13.5;
-            _realm.Update();
-            AssertMissing(updated.Key);
-            Assert.That(source.IsActive, Is.True);
-        }
-
-        /// <summary>
-        /// Each source chooses its timeout independently from neighboring sources on the same anchor.
-        /// </summary>
-        [Test]
-        public void Timeout_IsConfiguredPerSource()
-        {
-            Probe expiring = ExpiringSource();
-            Probe retained = new Probe();
-            _realm.GetOrCreateAnchor("anchor", expiring, retained);
-            TestGhost shortLived = expiring.Publish("short");
-            TestGhost persistent = retained.Publish("persistent");
-            _realm.Update();
-            _now = 12;
-            _realm.Update();
-            AssertMissing(shortLived.Key);
-            Assert.That(_realm.Query().Single(), Is.SameAs(persistent));
-        }
-
-        /// <summary>
-        /// Cached data writes can explicitly report activity without publishing unrelated properties.
-        /// </summary>
-        [Test]
-        public void MarkPublished_RefreshesCachedGhostAndRejectsRemovedInstance()
-        {
-            Probe source = ExpiringSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            TestGhost original = source.Publish("one");
-            _realm.Update();
-            _now = 11;
-            original.Articulation = 3;
-            source.RecordPublication(original);
-            _now = 12;
-            _realm.Update();
-            Assert.That(_realm.Query().Single(), Is.SameAs(original));
-            Assert.That(original.Position, Is.Zero);
-            Assert.That(original.Articulation, Is.EqualTo(3));
-            _now = 13;
-            _realm.Update();
-            AssertMissing(original.Key);
-            TestGhost replacement = source.Publish("one");
-            Assert.That(replacement, Is.Not.SameAs(original));
-            Assert.Throws<ArgumentException>(() => source.RecordPublication(original));
-            Assert.DoesNotThrow(() => source.RecordPublication(replacement));
-        }
-
-        /// <summary>
-        /// Cached publications restore a retained root and renew its inactivity deadline during grace.
-        /// </summary>
-        [TestCase(false)]
-        [TestCase(true)]
-        public void MarkPublished_DuringGraceRestoresRootAndRenewsDeadline(bool dispatch)
-        {
-            Probe source = ExpiringSource();
-            source.DisappearanceGracePeriod = TimeSpan.FromSeconds(2);
-            _realm.GetOrCreateAnchor("anchor", source);
-            TestGhost original = source.Publish("one");
-            Key key = original.Key;
-            _realm.Update();
-            List<string> events = new List<string>();
-            using (_realm.Query().Observe(ghost => events.Add("enter"), departed => events.Add("leave")))
-            {
-                _now = 12;
-                _realm.Update();
-                Assert.That(original.IsAvailable, Is.False);
-                Assert.That(original.gameObject.activeSelf, Is.False);
-
-                _now = 13;
-                original.Articulation = 7;
-                if (dispatch)
-                {
-                    source.EnqueuePublication(original);
-                }
-                else
-                {
-                    source.RecordPublication(original);
-                }
-
-                Assert.That(original.IsAvailable, Is.False);
-                _realm.Update();
-                Assert.That(_realm.Query().Single(), Is.SameAs(original));
-                Assert.That(original.gameObject.activeSelf, Is.True);
-                Assert.That(original.Articulation, Is.EqualTo(7));
-                Assert.That(events, Is.EqualTo(new[] { "enter", "leave", "enter" }));
-
-                _now = 14;
-                _realm.Update();
-                Assert.That(_realm.Query().Single(), Is.SameAs(original));
-                _now = 15;
-                _realm.Update();
-                Assert.That(original.IsAvailable, Is.False);
-                Assert.That(_realm.TryGetGhost(key, out IGhost retained), Is.True);
-                Assert.That(retained, Is.SameAs(original));
-                _now = 17;
-                _realm.Update();
-                AssertMissing(key);
-                Assert.That(events, Is.EqualTo(new[] { "enter", "leave", "enter", "leave" }));
-            }
-        }
-
-        /// <summary>
-        /// Activity cannot be recorded for another source, another realm, or an inactive attachment.
-        /// </summary>
-        [Test]
-        public void MarkPublished_RequiresCurrentOwnership()
-        {
-            Probe source = ExpiringSource();
-            Probe other = new Probe();
-            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source, other);
-            TestGhost ghost = source.Publish("one");
-            TestGhost foreign = other.Publish("other");
-            Assert.Throws<ArgumentNullException>(() => source.RecordPublication(null));
-            Assert.Throws<ArgumentException>(() => source.RecordPublication(foreign));
-            TestGhost prepared = _realm.Prepare<TestGhost>("anchor", Kind, "prepared");
-            Assert.Throws<ArgumentException>(() => source.RecordPublication(prepared));
-            using (Realm otherRealm = new Realm())
-            {
-                Probe otherSource = new Probe();
-                otherRealm.GetOrCreateAnchor("anchor", otherSource);
-                TestGhost sameKey = otherSource.Publish("one");
-                Assert.Throws<ArgumentException>(() => source.RecordPublication(sameKey));
-            }
-
-            anchor.RemoveDetector(source);
-            Assert.Throws<InvalidOperationException>(() => source.RecordPublication(ghost));
-        }
-
-        /// <summary>
-        /// Processing a queued update at the deadline refreshes the ghost before expiry runs.
-        /// </summary>
-        [Test]
-        public void CallbackPublication_AtDeadlinePreservesIdentity()
-        {
-            Action<string> publish = null;
-            CallbackPresenceDetector<string, TestGhost> source = new CallbackPresenceDetector<string, TestGhost>(Kind)
-                .IdentifyBy(id => id)
-                .Apply((id, ghost) => ghost.Position++)
-                .Listen((onPublish, onRemove) =>
-                {
-                    publish = onPublish;
-                    return null;
-                });
-            source.InactivityTimeout = TimeSpan.FromSeconds(2);
-            _realm.GetOrCreateAnchor("anchor", source);
-            publish("one");
-            _realm.Update();
-            IGhost original = _realm.Query().Single();
-            _now = 12;
-            publish("one");
-            _realm.Update();
-            Assert.That(_realm.Query().Single(), Is.SameAs(original));
-            Assert.That(((TestGhost)original).Position, Is.EqualTo(2));
-            _now = 14;
-            _realm.Update();
-            AssertMissing(original.Key);
-        }
-
-        /// <summary>
-        /// Scheduled polling refreshes deadlines before expiry, including polls due exactly at the deadline.
-        /// </summary>
-        [Test]
-        public void PollingPublication_AtDeadlinePreservesIdentity()
-        {
-            PollingPresenceDetector<string, TestGhost> source = new PollingPresenceDetector<string, TestGhost>(Kind, () => _now)
-                .ReadFrom(() => new[] { "one" })
-                .IdentifyBy(id => id)
-                .Apply((id, ghost) => ghost.Position++)
-                .PollEvery(TimeSpan.FromSeconds(2));
-            source.InactivityTimeout = TimeSpan.FromSeconds(2);
-            _realm.GetOrCreateAnchor("anchor", source);
-            IGhost original = _realm.Query().Single();
-            _now = 12;
-            _realm.Update();
-            Assert.That(_realm.Query().Single(), Is.SameAs(original));
-            Assert.That(((TestGhost)original).Position, Is.EqualTo(2));
-        }
-
-        /// <summary>
-        /// Read access, preparation of an existing entity, and presentation do not count as source activity.
-        /// </summary>
-        [Test]
-        public void ConsumerOperations_DoNotExtendLifetime()
-        {
-            Probe source = ExpiringSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            TestGhost ghost = source.Publish("one");
-            TestGhost prepared = _realm.Prepare<TestGhost>("anchor", Kind, "prepared");
-            _realm.Update();
-            _now = 11;
-            Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
-            Assert.That(_realm.Prepare<TestGhost>("anchor", Kind, "one"), Is.SameAs(ghost));
-            _realm.Manifest(ghost);
-            _realm.SetDetailLevel(ghost, DetailLevel.Minimal);
-            _now = 12;
-            _realm.Update();
-            AssertMissing(ghost.Key);
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(prepared.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(prepared));
-            Assert.That(prepared.IsAvailable, Is.False);
-        }
-
-        /// <summary>
-        /// Expiry notifies departures once and destroys the root together with its instantiated view.
+        /// Pausing Unity game time does not retain stale SDK data. A detector without an inactivity timeout
+        /// keeps its population while a timed detector's silent entity is removed.
         /// </summary>
         [UnityTest]
-        public IEnumerator Expiry_RemovesViewRootAndObservationMembership()
+        public IEnumerator Inactivity_UsesUnscaledTimeAndLeavesUntimedEntitiesAvailable()
         {
-            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            GameObject prefab = new GameObject("inactivity view");
-            prefab.SetActive(false);
-            try
-            {
-                blueprint.Configure(Kind, null, null, prefab);
-                _realm.RegisterManifestationBlueprint(blueprint);
-                Probe source = ExpiringSource();
-                _realm.GetOrCreateAnchor("anchor", source);
-                TestGhost ghost = source.Publish("one");
-                _realm.Update();
-                View view = _realm.Manifest(ghost);
-                Assert.That(view, Is.Not.Null);
-                List<Key> departures = new List<Key>();
-                using (_realm.Query().Observe(item => { }, departures.Add))
-                {
-                    _now = 12;
-                    _realm.Update();
-                    AssertMissing(ghost.Key);
-                    Assert.That(ghost.IsAvailable, Is.False);
-                    Assert.That(ghost.gameObject.activeSelf, Is.False);
-                    Assert.That(view.gameObject.activeSelf, Is.False);
-                    Assert.That(departures, Is.EqualTo(new[] { ghost.Key }));
-                    _realm.Update();
-                    Assert.That(departures.Count, Is.EqualTo(1));
-                    yield return null;
-                    Assert.That(ghost == null, Is.True);
-                    Assert.That(view == null, Is.True);
-                }
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(prefab);
-                UnityEngine.Object.DestroyImmediate(blueprint);
-            }
-        }
-
-        /// <summary>
-        /// Reentrant scene cleanup can refresh another candidate without losing its newly published data.
-        /// </summary>
-        [Test]
-        public void Expiry_RechecksPublicationsDuringSceneCleanup()
-        {
-            Probe source = ExpiringSource();
-            _realm.GetOrCreateAnchor("anchor", source);
-            TestGhost first = source.Publish("first");
-            TestGhost second = source.Publish("second");
-            _realm.Update();
-            DisableAction firstCleanup = first.gameObject.AddComponent<DisableAction>();
-            DisableAction secondCleanup = second.gameObject.AddComponent<DisableAction>();
-            firstCleanup.Action = () =>
-            {
-                secondCleanup.Action = null;
-                source.Publish("second");
-            };
-            secondCleanup.Action = () =>
-            {
-                firstCleanup.Action = null;
-                source.Publish("first");
-            };
-            _now = 12;
-            _realm.Update();
-            IGhost remaining = _realm.Query().Single();
-            Assert.That(ReferenceEquals(remaining, first) || ReferenceEquals(remaining, second), Is.True);
-            AssertMissing(ReferenceEquals(remaining, first) ? second.Key : first.Key);
-        }
-
-        /// <summary>
-        /// The public realm clock expires inactive ghosts even while scaled Unity time is paused.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator PublicClock_ExpiresWhileTimeScaleIsZero()
-        {
-            _realm.Dispose();
-            _realm = new Realm();
             float previousTimeScale = Time.timeScale;
             try
             {
                 Time.timeScale = 0;
-                Probe source = new Probe { InactivityTimeout = TimeSpan.FromMilliseconds(100) };
-                _realm.GetOrCreateAnchor("anchor", source);
-                TestGhost ghost = source.Publish("one");
-                Key key = ghost.Key;
+                Probe timed = new Probe { InactivityTimeout = TimeSpan.FromMilliseconds(100) };
+                Probe untimed = new Probe();
+                _realm.GetOrCreateAnchor("sdk", timed, untimed);
+                Presence stale = timed.Publish("stale");
+                Presence retained = untimed.Publish("retained");
                 _realm.Update();
-                double deadline = Time.realtimeSinceStartupAsDouble + 3;
-                IGhost found;
-                while (_realm.TryGetGhost(key, out found) && Time.realtimeSinceStartupAsDouble < deadline)
-                {
-                    yield return null;
-                    _realm.Update();
-                }
+                Assert.That(stale.IsAvailable, Is.True);
 
-                AssertMissing(key);
-                Assert.That(source.IsActive, Is.True);
+                yield return AdvanceUntil(() => stale.IsRemoved);
+
+                Assert.That(_realm.TryGetPresence(stale.Key, out Presence ignored), Is.False);
+                Assert.That(_realm.Query().Single(), Is.SameAs(retained.Root));
+                Assert.That(timed.IsActive, Is.True);
             }
             finally
             {
@@ -407,54 +84,104 @@ namespace Emas.Tests
             }
         }
 
-        private static Probe ExpiringSource()
+        /// <summary>
+        /// Applications updating a cached root can resume it during grace without replacing its identity.
+        /// Observers receive a departure followed by a new arrival with the updated application data.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator CachedPublication_RestoresPresenceDuringGrace()
         {
-            return new Probe { InactivityTimeout = TimeSpan.FromSeconds(2) };
+            Probe detector = new Probe
+            {
+                InactivityTimeout = TimeSpan.FromMilliseconds(100),
+                DisappearanceGracePeriod = TimeSpan.FromSeconds(2)
+            };
+            _realm.GetOrCreateAnchor("sdk", detector);
+            Presence presence = detector.Publish("one");
+            ProbeGhost root = (ProbeGhost)presence.Root;
+            _realm.Update();
+            List<string> events = new List<string>();
+            using (_realm.Query().Observe(ghost => events.Add("enter"), key => events.Add("leave")))
+            {
+                yield return AdvanceUntil(() => !presence.IsAvailable);
+                Assert.That(presence.IsRemoved, Is.False);
+                Assert.That(root.gameObject.activeSelf, Is.False);
+
+                root.Value = 7;
+                detector.PublishCached(root);
+                _realm.Update();
+
+                Assert.That(_realm.TryGetPresence(presence.Key, out Presence recovered), Is.True);
+                Assert.That(recovered, Is.SameAs(presence));
+                Assert.That(_realm.Query().Single(), Is.SameAs(root));
+                Assert.That(root.Value, Is.EqualTo(7));
+                Assert.That(events, Is.EqualTo(new[] { "enter", "leave", "enter" }));
+            }
         }
 
-        private void AssertMissing(Key key)
+        /// <summary>
+        /// A disappearing entity remains addressable during grace and can be detected again with the same handle.
+        /// If it stays missing, the public lookup and handle eventually report final removal.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator DisappearanceGrace_AllowsRediscoveryThenRemovesUnreportedEntity()
         {
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(key, out found), Is.False);
+            Probe detector = new Probe { DisappearanceGracePeriod = TimeSpan.FromMilliseconds(250) };
+            _realm.GetOrCreateAnchor("sdk", detector);
+            Presence presence = detector.Publish("one");
+            Ghost root = presence.Root;
+            _realm.Update();
+            detector.Lose("one");
+            Assert.That(presence.IsAvailable, Is.False);
+            Assert.That(presence.IsRemoved, Is.False);
+            Assert.That(_realm.Query().Count, Is.Zero);
+            Assert.That(_realm.TryGetPresence(presence.Key, out Presence missing), Is.True);
+            Assert.That(missing, Is.SameAs(presence));
+
+            Assert.That(detector.Publish("one"), Is.SameAs(presence));
+            _realm.Update();
+            Assert.That(_realm.Query().Single(), Is.SameAs(root));
+            detector.Lose("one");
+            yield return AdvanceUntil(() => presence.IsRemoved);
+
+            Assert.That(presence.Root, Is.Null);
+            Assert.That(_realm.TryGetPresence(presence.Key, out Presence ignored), Is.False);
+            Assert.That(_realm.Query().Count, Is.Zero);
+        }
+
+        private IEnumerator AdvanceUntil(Func<bool> condition)
+        {
+            double deadline = Time.realtimeSinceStartupAsDouble + 5;
+            while (!condition() && Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                yield return null;
+                _realm.Update();
+            }
+
+            Assert.That(condition(), Is.True, "The public expiry transition did not complete within five seconds.");
         }
 
         private sealed class Probe : PresenceDetector
         {
-            internal TestGhost Publish(string id)
+            internal Presence Publish(string id)
             {
-                return GetOrCreate<TestGhost>(id, Kind);
+                return Detect(id, TrackedKind);
             }
 
-            internal void RecordPublication(IGhost ghost)
+            internal void PublishCached(IGhost ghost)
             {
                 MarkPublished(ghost);
             }
 
-            internal void EnqueuePublication(IGhost ghost)
+            internal void Lose(string id)
             {
-                Dispatch(() => MarkPublished(ghost));
+                Disappear(TrackedKind, id);
             }
         }
 
-        private sealed class TestGhost : Ghost
+        private sealed class ProbeGhost : Ghost
         {
-            internal int Position;
-            internal int Articulation;
-        }
-
-        private sealed class DisableAction : MonoBehaviour
-        {
-            internal Action Action;
-
-            private void OnDisable()
-            {
-                Action callback = Action;
-                Action = null;
-                if (callback != null)
-                {
-                    callback();
-                }
-            }
+            internal int Value;
         }
     }
 }
