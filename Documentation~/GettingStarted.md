@@ -88,9 +88,18 @@ namespace Emas.Minimal
 3. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `Bootstrap`. On Realm Setup, assign the blueprint as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled.
 4. Press Play. Realm Setup creates its own realm, attaches the anchor's one source, and updates the realm each frame. Emas creates a `Marker` root beneath the anchor and attaches the cube view. Move Tracking to move its anchor frame.
 
-Each Realm Setup owns one isolated realm. You can put several in a scene or prefab, with any number of Anchor Setup objects beneath each one. Each anchor needs exactly one enabled component implementing `ISourceProvider` on the same object; `CreateSource()` supplies one presence source each time that anchor starts. Assign any number of default blueprints to Realm Setup and optional overrides to each anchor, with at most one per kind in either list. Empty blueprint lists are valid for data-only tracking. A nested Realm Setup owns its own anchors. Use `realmSetup.Realm` for queries and lookups; it is null while stopped. The setup starts on the first update after enable in Play Mode and calls its realm's `Update()` each frame. `StopRealm()` disposes that realm and its anchors; `StartRealm()` can start it again. Disabling the component or its object also stops it.
+Each Realm Setup owns one isolated realm. You can put several in a scene or prefab, with any number of Anchor Setup objects beneath each one. Each anchor needs exactly one enabled component implementing `ISourceProvider` on the same object; `CreateSource()` supplies one presence source each time that anchor starts. Assign any number of default blueprints to Realm Setup and optional overrides to each anchor, with at most one per kind in either list. Empty blueprint lists are valid for data-only tracking. A nested Realm Setup owns its own anchors. Use `realmSetup.Realm` for queries and lookups scoped to that setup; it is null while stopped. The setup starts on the first update after enable in Play Mode and calls its realm's `Update()` each frame. `StopRealm()` disposes that realm and its anchors; `StartRealm()` can start it again. Disabling the component or its object also stops it.
 
 Direct code setup is unchanged: `Realm.Default` is still automatically updated, and a realm created with `new Realm()` is still advanced through explicit `Update()` calls. You can configure its anchors, sources, blueprints and reference frame through the existing APIs.
+
+To find markers without knowing which realm owns them, query all live realms:
+
+```csharp
+Query markers = Query.All().OfKind(Marker.Kind);
+System.IDisposable subscription = markers.OnAvailable(ghost => Debug.Log(ghost.Name));
+```
+
+The query includes the default realm, realms created by code, prefab realms and any realms started later. Its `Count` and enumeration read current available matches. Dispose `subscription` when the consumer stops. Use `realmSetup.Realm.Query(markers)` when you want the same filters scoped to one setup.
 
 Use `anchorSetup.Anchor.RestartSource(source)` to restart an attached source and `ReplaceSource` to change its instance. A successful handover reuses compatible roots republished during startup; unreported roots are removed after the first subsequent update and queued startup publications finish. A source failure removes its population immediately, so restarting a failed source creates new roots.
 

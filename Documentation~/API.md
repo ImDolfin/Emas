@@ -49,7 +49,8 @@ Put one `RealmSetup` on a prefab or scene object and any number of `AnchorSetup`
 | `GetOrCreateAnchor(id, params PresenceSource[] sources)` | Create or reuse an anchor and attach/start supplied sources; overload accepts a `Transform` frame, which must match when reusing. On failure, sources newly attached by this call are removed and prepared identities are restored; existing sources remain |
 | `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable identity before discovery |
 | `TryGetGhost(key, out ghost)` | Look up an exact identity, including prepared ghosts and unavailable ghosts during startup handover; return false/null for missing, invalid or destroyed identities and disposed realms |
-| `Query(partialName = null)` | Describe filters over available ghosts |
+| `Query(partialName = null)` | Describe filters over available ghosts in one realm |
+| `Query.All(partialName = null)` | Describe filters over available ghosts in every live realm, including realms created later |
 | `Query(description)` | Rebind an existing query description to this realm |
 | `RemoveAnchor(id)` | Stop its sources and remove all its records, including prepared ghosts |
 | `Update()` | Advance an explicitly managed realm; the default realm advances automatically |
@@ -122,7 +123,7 @@ Before the first position/reference and outside the presentation range, spatial 
 
 Use `TryGetGhost` when the full `Key` is known. It reads the realm registry without creating, activating or updating anything. Check `ghost.IsAvailable` before consuming its data; a found ghost may be prepared or awaiting publication during startup handover. Keys are case-sensitive and resolved only within the receiving realm. Removal stops lookup immediately, even before Unity finishes destroying the object.
 
-Queries are immutable and combine all filters. They never create ghosts or components.
+Queries are immutable and combine all filters. They never create ghosts or components. `realm.Query()` searches one realm; `Query.All()` searches every live realm, including `Realm.Default`, realms created by code, and prefab-configured realms. An all-realm query also sees realms created after the query or subscription. Disposing a realm removes its matches. `realm.Query(Query.All().OfKind(kind))` applies that description to just `realm`.
 
 | Filter/result | Meaning |
 | --- | --- |
@@ -134,10 +135,11 @@ Queries are immutable and combine all filters. They never create ghosts or compo
 | `Single()` | Exactly one match; otherwise throws |
 | `OnAvailable(callback)` | Notify current and future complete matches; dispose the returned subscription to stop |
 | `Observe(onEnter, onLeave)` | Paired membership callbacks: `IGhost` on entry, `Key` on departure |
+| `ObserveWithRealm(onEnter, onLeave)` | Paired callbacks with the owning `Realm` on entry and departure, so matching keys in separate realms remain distinguishable |
 
-Subscriptions notify once while a ghost remains a match. Availability loss permits a fresh notification on recovery. Outside source/finalization/notification callbacks, current matches notify immediately. Inside those phases, notification is deferred; subscriptions created during notification wait for a later update. Callback exceptions are isolated, and each match is rechecked before invoking the callback.
+Within each realm, subscriptions notify once while a ghost remains a match. Availability loss permits a fresh notification on recovery. Outside that realm's source, finalization and notification callbacks, current matches notify immediately. Inside those phases, notification is deferred; subscriptions created during notification wait for a later update in that realm. Cross-realm result and callback order is unspecified. Callback exceptions are isolated, and each match is rechecked before invoking the callback.
 
-`Observe` reports departure when a previously delivered ghost is removed, becomes unavailable or no longer matches. Departures run at the update notification phase, before that subscription's arrivals. Removal and availability loss remain observable even if the identity returns before the next update; filter changes are evaluated at notification time. A departure receives a `Key` because its Unity object may already be destroyed. Disposing the subscription or realm cancels pending callbacks without synthesizing departures; consumers clear their own retained state.
+`Observe` reports departure when a previously delivered ghost is removed, becomes unavailable or no longer matches. Departures run at the update notification phase, before that subscription's arrivals. Removal and availability loss remain observable even if the identity returns before the next update; filter changes are evaluated at notification time. A departure receives a `Key` because its Unity object may already be destroyed. Keys identify ghosts within a realm, so two realms may have the same key. Use `ObserveWithRealm` when a consumer must tell those departures apart. Disposing a realm reports departures for previously observed matches of an all-realm query; a realm-scoped subscription instead ends without synthetic departures. Disposing either subscription cancels pending callbacks; consumers clear their own retained state.
 
 ## Typed values
 

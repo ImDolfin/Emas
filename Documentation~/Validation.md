@@ -26,11 +26,11 @@ Reopen Unity if the tests remain hidden. [Unity requires this opt-in for install
 
 ## Results
 
-The full Unity **2022.3.62f3** test project passed **15 EditMode** and **255 PlayMode** tests on **2026-09-26**, package **0.1.0**. This includes imported sample consistency, both quick-start scenes, isolated and nested prefab realms, realm blueprint defaults, anchor overrides, reference frames and startup cleanup. The ignored XML and logs are in `Tests/Unity~/TestResults/RealmSetup/`.
+The full Unity **2022.3.62f3** test project passed **15 EditMode** and **264 PlayMode** tests on **2026-09-26**, package **0.1.0**. This includes imported sample consistency, both quick-start scenes, isolated and nested prefab realms, realm blueprint defaults, anchor overrides, reference frames, startup cleanup and queries across live realms. The ignored XML and logs are in `Tests/Unity~/TestResults/GlobalQuery/`.
 
 | Editor | Test Framework | EditMode | PlayMode |
 | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 15 passed | 255 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 15 passed | 264 passed |
 
 Earlier focused **Relative world** sample validation on the same date passed 4 EditMode imported-sample consistency cases and 1 PlayMode scene smoke test; those ignored reports are in `Tests/Unity~/TestResults/RelativeWorldSplit/`.
 
@@ -40,4 +40,4 @@ Coverage includes source and ghost lifetimes, failure cleanup and recovery, stal
 
 The earlier fresh Unity 2022.3 consuming project imported the three samples available at the time through Package Manager with its manifest unchanged and no `testables` entry. All **3 sample smoke tests passed**. That check preceded the relative-world example. Package test opt-in remains separate from ordinary installation.
 
-The current Unity 2022 editor reports are in the ignored `Tests/Unity~/TestResults/RealmSetup/` directory. Earlier spatial reports are in `TestResults/SpatialFrames/`. Earlier presentation and lifetime reports are in `TestResults/PresentationAndLifetime/`; focused presentation regressions are in `TestResults/ViewFailureIsolation/`. Earlier Blueprint reports are in `TestResults/BlueprintSnapshots/`, PresenceSource reports are in `TestResults/PresenceSourceImprovements/`, Anchor reports are in `TestResults/AnchorImprovements/`, Ghost reports are in `TestResults/GhostDeveloperExperience/`, realm reports are in `TestResults/RealmImprovements/`, subscription reports in `TestResults/SubscriptionPerformance/`, blueprint reports in `TestResults/BlueprintHandling/`, earlier suites in `TestResults/TestCleanup/`, and fresh-install reports in `TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.
+The current Unity 2022 editor reports are in the ignored `Tests/Unity~/TestResults/GlobalQuery/` directory. Earlier prefab realm reports are in `TestResults/RealmSetup/`. Earlier spatial reports are in `TestResults/SpatialFrames/`. Earlier presentation and lifetime reports are in `TestResults/PresentationAndLifetime/`; focused presentation regressions are in `TestResults/ViewFailureIsolation/`. Earlier Blueprint reports are in `TestResults/BlueprintSnapshots/`, PresenceSource reports are in `TestResults/PresenceSourceImprovements/`, Anchor reports are in `TestResults/AnchorImprovements/`, Ghost reports are in `TestResults/GhostDeveloperExperience/`, realm reports are in `TestResults/RealmImprovements/`, subscription reports in `TestResults/SubscriptionPerformance/`, blueprint reports in `TestResults/BlueprintHandling/`, earlier suites in `TestResults/TestCleanup/`, and fresh-install reports in `TestResults/Completion/`. Required test inputs are tracked. Player checks verify behavior, not rendering quality; IL2CPP, other platforms and performance were not tested.

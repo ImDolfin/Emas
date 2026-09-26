@@ -25,6 +25,21 @@ namespace Emas
         {
         }
 
+        /// <summary>
+        /// Creates a query across every live realm, including realms created later.
+        /// </summary>
+        /// <param name="partialName">
+        /// The optional case-insensitive partial display name.
+        /// </param>
+        /// <returns>A query that evaluates all live realms.</returns>
+        /// <remarks>
+        /// This does not create Realm.Default. Dispose subscriptions when their consumer stops.
+        /// </remarks>
+        public static Query All(string partialName = null)
+        {
+            return new Query(null, partialName);
+        }
+
         private Query(Realm realm, string partialName, string exactName, string anchorId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
         {
             _realm = realm;
@@ -127,7 +142,21 @@ namespace Emas
             get
             {
                 IGhost ignored;
-                return _realm.CountMatches(this, out ignored);
+                if (_realm != null)
+                {
+                    return _realm.CountMatches(this, out ignored);
+                }
+
+                int total = 0;
+                foreach (Realm realm in RealmRegistry.Snapshot())
+                {
+                    if (!realm.IsDisposed)
+                    {
+                        total += realm.CountMatches(this, out ignored);
+                    }
+                }
+
+                return total;
             }
         }
 
@@ -143,7 +172,30 @@ namespace Emas
         public IGhost Single()
         {
             IGhost first;
-            int count = _realm.CountMatches(this, out first);
+            int count = 0;
+            if (_realm != null)
+            {
+                count = _realm.CountMatches(this, out first);
+            }
+            else
+            {
+                first = null;
+                foreach (Realm realm in RealmRegistry.Snapshot())
+                {
+                    if (realm.IsDisposed)
+                    {
+                        continue;
+                    }
+
+                    IGhost candidate;
+                    count += realm.CountMatches(this, out candidate);
+                    if (first == null)
+                    {
+                        first = candidate;
+                    }
+                }
+            }
+
             if (count != 1)
             {
                 throw new InvalidOperationException("Expected exactly one ghost, but found " + count + ".");
@@ -160,7 +212,26 @@ namespace Emas
         /// </returns>
         public IGhost FirstOrDefault()
         {
-            return _realm.FirstMatch(this);
+            if (_realm != null)
+            {
+                return _realm.FirstMatch(this);
+            }
+
+            foreach (Realm realm in RealmRegistry.Snapshot())
+            {
+                if (realm.IsDisposed)
+                {
+                    continue;
+                }
+
+                IGhost first = realm.FirstMatch(this);
+                if (first != null)
+                {
+                    return first;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -180,7 +251,7 @@ namespace Emas
         /// The callback is null.
         /// </exception>
         /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
+        /// A scoped query's realm was disposed.
         /// </exception>
         public IDisposable OnAvailable(Action<IGhost> callback)
         {
@@ -189,7 +260,12 @@ namespace Emas
                 throw new ArgumentNullException(nameof(callback));
             }
 
-            return _realm.Subscribe(this, callback);
+            if (_realm != null)
+            {
+                return _realm.Subscribe(this, callback);
+            }
+
+            return RealmRegistry.Subscribe(this, (realm, ghost) => callback(ghost), null);
         }
 
         /// <summary>
@@ -208,7 +284,9 @@ namespace Emas
         /// Initial entries follow OnAvailable scheduling. Departures run in the realm update notification phase, before entries
         /// for this subscription. A departure supplies a Key because the Unity object may already be destroyed.
         /// Availability loss and recovery between updates still produce a departure followed by a fresh entry.
-        /// Filter changes are observed at notification time. Disposing the subscription or realm cancels pending
+        /// Filter changes are observed at notification time. For a global query, realm disposal reports departures;
+        /// duplicate Keys from different realms are indistinguishable here, so use ObserveWithRealm when needed.
+        /// Disposing the subscription or a scoped query's realm cancels pending
         /// notifications without synthesizing departures; consumers must release their own retained state.
         /// Callback exceptions are logged and isolated. Subscriptions created inside notifications wait for another update.
         /// </remarks>
@@ -216,7 +294,7 @@ namespace Emas
         /// Either callback is null.
         /// </exception>
         /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
+        /// A scoped query's realm was disposed.
         /// </exception>
         public IDisposable Observe(Action<IGhost> onEnter, Action<Key> onLeave)
         {
@@ -230,7 +308,46 @@ namespace Emas
                 throw new ArgumentNullException(nameof(onLeave));
             }
 
-            return _realm.Subscribe(this, onEnter, onLeave);
+            if (_realm != null)
+            {
+                return _realm.Subscribe(this, onEnter, onLeave);
+            }
+
+            return RealmRegistry.Subscribe(this, (realm, ghost) => onEnter(ghost),
+                (realm, key) => onLeave(key));
+        }
+
+        /// <summary>
+        /// Observes entries and departures with the owning realm supplied to both callbacks.
+        /// </summary>
+        /// <param name="onEnter">Receives the realm and each available matching ghost.</param>
+        /// <param name="onLeave">Receives the realm and identity when a reported ghost leaves.</param>
+        /// <returns>A subscription that cancels both callbacks when disposed.</returns>
+        /// <remarks>
+        /// Use this when different realms may contain the same Key. A global observer also reports
+        /// departures when an owning realm is disposed. Disposing this subscription does not report departures.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Either callback is null.</exception>
+        /// <exception cref="ObjectDisposedException">A scoped query's realm was disposed.</exception>
+        public IDisposable ObserveWithRealm(Action<Realm, IGhost> onEnter, Action<Realm, Key> onLeave)
+        {
+            if (onEnter == null)
+            {
+                throw new ArgumentNullException(nameof(onEnter));
+            }
+
+            if (onLeave == null)
+            {
+                throw new ArgumentNullException(nameof(onLeave));
+            }
+
+            if (_realm != null)
+            {
+                return _realm.Subscribe(this, ghost => onEnter(_realm, ghost),
+                    key => onLeave(_realm, key));
+            }
+
+            return RealmRegistry.Subscribe(this, onEnter, onLeave);
         }
 
         /// <inheritdoc />
@@ -304,7 +421,23 @@ namespace Emas
 
         private List<IGhost> Evaluate()
         {
-            return _realm.Evaluate(this);
+            if (_realm != null)
+            {
+                return _realm.Evaluate(this);
+            }
+
+            List<IGhost> result = new List<IGhost>();
+            List<IGhost> current = new List<IGhost>();
+            foreach (Realm realm in RealmRegistry.Snapshot())
+            {
+                if (!realm.IsDisposed)
+                {
+                    realm.Evaluate(this, current);
+                    result.AddRange(current);
+                }
+            }
+
+            return result;
         }
 
         internal Query Rebind(Realm realm)

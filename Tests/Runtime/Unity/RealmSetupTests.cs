@@ -61,12 +61,14 @@ namespace Emas.Tests
             Assert.That(first.Realm, Is.Not.SameAs(Realm.Default));
             Assert.That(first.Realm.Query().Count, Is.EqualTo(1));
             Assert.That(second.Realm.Query().Count, Is.EqualTo(1));
+            Assert.That(Query.All().OfKind(FirstKind).Count, Is.EqualTo(2));
             Assert.That(ViewName(first, "screen", FirstKind), Is.EqualTo("first view"));
             Assert.That(ViewName(second, "screen", FirstKind), Is.EqualTo("second view"));
 
             first.StopRealm();
             Assert.That(first.Realm, Is.Null);
             Assert.That(second.Realm.Query().Count, Is.EqualTo(1));
+            Assert.That(Query.All().OfKind(FirstKind).Count, Is.EqualTo(1));
         }
 
         /// <summary>

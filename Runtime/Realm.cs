@@ -80,6 +80,7 @@ namespace Emas
             _subscriptions = new Subscriptions(this);
             _views = new ViewManager(_ghosts, _scene);
             _spatial = new SpatialManager(this, _ghosts);
+            RealmRegistry.Register(this);
         }
 
         /// <summary>
@@ -718,6 +719,7 @@ namespace Emas
 
             // Invalidate pending work before source cleanup can call back into the realm.
             _disposed = true;
+            RealmRegistry.Unregister(this);
             _dispatch.Clear();
             _subscriptions.Clear();
             List<Anchor> anchors = new List<Anchor>(_anchors.Values);
@@ -746,6 +748,11 @@ namespace Emas
         internal void Evaluate(Query query, List<IGhost> result)
         {
             result.Clear();
+            if (_disposed)
+            {
+                return;
+            }
+
             foreach (Record record in _ghosts.Values)
             {
                 if (query.Matches(record.Ghost))
@@ -758,6 +765,11 @@ namespace Emas
         internal int CountMatches(Query query, out IGhost first)
         {
             first = null;
+            if (_disposed)
+            {
+                return 0;
+            }
+
             int count = 0;
             foreach (Record record in _ghosts.Values)
             {
@@ -777,6 +789,11 @@ namespace Emas
 
         internal IGhost FirstMatch(Query query)
         {
+            if (_disposed)
+            {
+                return null;
+            }
+
             foreach (Record record in _ghosts.Values)
             {
                 if (query.Matches(record.Ghost))
