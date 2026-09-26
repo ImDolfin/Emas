@@ -2,16 +2,16 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Scene effects are isolated here; every activation/deactivation can reenter application code.
+    // Scene changes are isolated here; every activation/deactivation can reenter application code.
     internal sealed class ViewManager
     {
         private readonly Registry _ghosts;
-        private readonly SceneEffects _scene;
+        private readonly SceneChangeQueue _sceneChanges;
 
-        internal ViewManager(Registry ghosts, SceneEffects scene)
+        internal ViewManager(Registry ghosts, SceneChangeQueue sceneChanges)
         {
             _ghosts = ghosts;
-            _scene = scene;
+            _sceneChanges = sceneChanges;
         }
 
         internal void Refresh(Record record)
@@ -60,7 +60,7 @@ namespace Emas
                     record.View.Bind(record.Ghost, record.RequestedDetailLevel);
                     if (record.Ghost.gameObject.activeInHierarchy)
                     {
-                        _scene.SetActive(record.View.gameObject, true);
+                        _sceneChanges.SetActive(record.View.gameObject, true);
                     }
 
                     return;
@@ -101,13 +101,13 @@ namespace Emas
                     record.View = view;
                     if (record.Ghost.gameObject.activeInHierarchy)
                     {
-                        _scene.SetActive(instance, true);
+                        _sceneChanges.SetActive(instance, true);
                     }
 
                     // OnEnable may remove the record, destroy the view or change the request.
                     if (!_ghosts.Contains(record) && instance != null)
                     {
-                        _scene.Destroy(instance);
+                        _sceneChanges.Destroy(instance);
                     }
                 }
                 catch
@@ -120,7 +120,7 @@ namespace Emas
 
                     if (instance != null)
                     {
-                        _scene.Destroy(instance);
+                        _sceneChanges.Destroy(instance);
                     }
 
                     throw;
@@ -156,7 +156,7 @@ namespace Emas
                 if (view != null)
                 {
                     GameObject instance = view.gameObject;
-                    _scene.Destroy(instance);
+                    _sceneChanges.Destroy(instance);
                 }
             }
             catch (System.Exception exception)

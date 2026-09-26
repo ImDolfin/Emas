@@ -73,7 +73,7 @@ Realm/anchor disposal is idempotent. Further mutations throw `ObjectDisposedExce
 
 ## Callback safety and internal boundaries
 
-Registry traversal uses snapshots and rechecks membership/registration after callbacks. Removal invalidates identity immediately. `Observe` retains departure keys until notification, so removed Unity objects need not stay alive. All-realm observations keep memberships separate per realm so identical keys do not collapse into one match. `ObserveWithRealm` supplies the owning realm on both entry and departure. Subscription disposal cancels pending notifications. Nested scene activation/destruction waits until the outer Emas-triggered Unity scene effect returns, preventing unsafe hierarchy changes during activation callbacks.
+Registry traversal uses snapshots and rechecks membership/registration after callbacks. Removal invalidates identity immediately. `Observe` retains departure keys until notification, so removed Unity objects need not stay alive. All-realm observations keep memberships separate per realm so identical keys do not collapse into one match. `ObserveWithRealm` supplies the owning realm on both entry and departure. Subscription disposal cancels pending notifications. The scene change queue waits for an Emas-triggered Unity activation or destruction call to return before applying scene changes requested by its callbacks, preventing unsafe hierarchy changes during activation callbacks.
 
 | Component | Responsibility |
 | --- | --- |
@@ -81,7 +81,7 @@ Registry traversal uses snapshots and rechecks membership/registration after cal
 | [Registry](../Runtime/Tracking/Registry.cs) | Store identity, ownership and pending state |
 | [ViewManager](../Runtime/Views/ViewManager.cs) | Stage, bind, refresh and destroy views; contain presentation failures per ghost |
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
-| [SceneEffects](../Runtime/Unity/SceneEffects.cs) | Serialize nested scene effects |
+| [SceneChangeQueue](../Runtime/Unity/SceneChangeQueue.cs) | Apply GameObject activation and destruction requested during Unity callbacks after the current scene change returns |
 | [PresenceSource](../Runtime/Tracking/PresenceSource.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | Source lifecycle, registration and scene ownership |
 
 Query interface filters use typed predicates and a reusable root-component list. Subscriptions reuse their match and departure buffers across updates while still scanning current ghosts and rechecking matches after callbacks. Scalar query results scan without building a match list; polling reuses its owned-ghost buffer. These are implementation choices, not measured performance guarantees.
@@ -97,7 +97,7 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Runtime/Tracking/` | Anchors, sources and ownership storage |
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | Blueprint, detail level and view lifecycle |
-| `Runtime/Unity/` | Prefab realm and anchor setup, automatic runner and nested scene effects |
+| `Runtime/Unity/` | Prefab realm and anchor setup, automatic runner and queued scene changes |
 | `Editor/Diagnostics/` | Passive default-realm diagnostics |
 | `Editor/Inspectors/` | Blueprint, RealmSetup and AnchorSetup authoring validation |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |

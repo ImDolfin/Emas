@@ -55,7 +55,7 @@ namespace Emas
         private readonly ViewManager _views;
         private readonly SpatialManager _spatial;
         private ReferenceFrame _referenceFrame;
-        private readonly SceneEffects _scene = new SceneEffects();
+        private readonly SceneChangeQueue _sceneChanges = new SceneChangeQueue();
         private readonly Queue<DispatchItem> _dispatch = new Queue<DispatchItem>();
         // Deterministic action budget: newly queued work waits for the following update.
         internal const int MaxDispatchActionsPerUpdate = 256;
@@ -78,7 +78,7 @@ namespace Emas
         {
             _elapsedSeconds = elapsedSeconds ?? throw new ArgumentNullException(nameof(elapsedSeconds));
             _subscriptions = new Subscriptions(this);
-            _views = new ViewManager(_ghosts, _scene);
+            _views = new ViewManager(_ghosts, _sceneChanges);
             _spatial = new SpatialManager(this, _ghosts);
             RealmRegistry.Register(this);
         }
@@ -1244,7 +1244,7 @@ namespace Emas
             _views.Destroy(record);
             if (record.Ghost != null)
             {
-                _scene.Destroy(record.Ghost.gameObject);
+                _sceneChanges.Destroy(record.Ghost.gameObject);
             }
         }
 
@@ -1282,7 +1282,7 @@ namespace Emas
 
         internal void DestroySceneObject(GameObject target)
         {
-            _scene.Destroy(target);
+            _sceneChanges.Destroy(target);
         }
 
         internal void NotifyAnchorDisposed(Anchor anchor)
@@ -1323,7 +1323,7 @@ namespace Emas
                     InvalidateAvailability(record);
                     if (record.Ghost != null)
                     {
-                        _scene.SetActive(record.Ghost.gameObject, false);
+                        _sceneChanges.SetActive(record.Ghost.gameObject, false);
                     }
                 }
             }
@@ -1351,7 +1351,7 @@ namespace Emas
                 if (_ghosts.Contains(record) && record.Owner == owner && record.Ghost != null
                     && !record.Ghost.IsAvailable)
                 {
-                    _scene.SetActive(record.Ghost.gameObject, false);
+                    _sceneChanges.SetActive(record.Ghost.gameObject, false);
                 }
             }
         }
@@ -1388,7 +1388,7 @@ namespace Emas
                         record.PendingActivation = false;
                         record.ViewDirty = true;
                         record.Ghost.SetAvailable(true);
-                        _scene.SetActive(record.Ghost.gameObject, true);
+                        _sceneChanges.SetActive(record.Ghost.gameObject, true);
                         if (!CanFinalize(record, onlyOwner) || record.OwnershipVersion != ownership)
                         {
                             continue;

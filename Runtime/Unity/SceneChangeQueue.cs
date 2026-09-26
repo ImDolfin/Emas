@@ -4,25 +4,25 @@ using UnityEngine;
 namespace Emas
 {
     // Unity rejects ancestor activation changes while a descendant callback is running.
-    // Registry mutations stay immediate; nested scene effects drain after the current effect returns.
-    internal sealed class SceneEffects
+    // Registry mutations stay immediate; nested scene changes drain after the current change returns.
+    internal sealed class SceneChangeQueue
     {
-        private readonly Queue<Effect> _pending = new Queue<Effect>();
+        private readonly Queue<Change> _pending = new Queue<Change>();
         private bool _applying;
 
         internal void SetActive(GameObject target, bool active)
         {
-            Apply(new Effect(target, active, false));
+            Apply(new Change(target, active, false));
         }
 
         internal void Destroy(GameObject target)
         {
-            Apply(new Effect(target, false, true));
+            Apply(new Change(target, false, true));
         }
 
-        private void Apply(Effect effect)
+        private void Apply(Change change)
         {
-            _pending.Enqueue(effect);
+            _pending.Enqueue(change);
             if (_applying)
             {
                 return;
@@ -33,7 +33,7 @@ namespace Emas
             {
                 while (_pending.Count > 0)
                 {
-                    Effect next = _pending.Dequeue();
+                    Change next = _pending.Dequeue();
                     if (next.Target == null)
                     {
                         continue;
@@ -56,9 +56,9 @@ namespace Emas
             }
         }
 
-        private struct Effect
+        private struct Change
         {
-            internal Effect(GameObject target, bool active, bool destroy)
+            internal Change(GameObject target, bool active, bool destroy)
             {
                 Target = target;
                 Active = active;
