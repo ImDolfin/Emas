@@ -36,7 +36,7 @@ namespace Emas
                 throw new ArgumentNullException(nameof(initialize));
             }
 
-            foreach (Record record in _ghosts.Values)
+            foreach (Record record in _identities.Values)
             {
                 if (record.Key.Kind == kind)
                 {
@@ -62,7 +62,7 @@ namespace Emas
             }
 
             Record record;
-            if (!_ghosts.TryGetValue(key, out record) || record.Ghost == null || record.Presence == null)
+            if (!_identities.TryGetValue(key, out record) || record.Ghost == null || record.Presence == null)
             {
                 return false;
             }
@@ -184,7 +184,7 @@ namespace Emas
             {
                 Record existing;
                 ManifestationBlueprintSnapshot blueprint = ResolveManifestationBlueprint(anchorId, kind);
-                if (_ghosts.TryGetValue(key, out existing) || (blueprint != null && blueprint.GhostPrefab != null))
+                if (_identities.TryGetValue(key, out existing) || (blueprint != null && blueprint.GhostPrefab != null))
                 {
                     root = GetOrCreate<Ghost>(detector, anchorId, entityId, kind, variant, name);
                 }
@@ -194,7 +194,7 @@ namespace Emas
                 }
             }
 
-            Record record = FindRecord(root);
+            Record record = _identities.Find(root);
             Presence presence = EnsurePresence(record);
             bool capabilitiesChanged = presence.SetMetadata(root.Name, root.Variant, capabilitySnapshot);
             if (!record.PresenceInitialized || capabilitiesChanged)
@@ -218,7 +218,7 @@ namespace Emas
         internal IReadOnlyList<Presence> GetOwnedPresences(PresenceDetector detector)
         {
             List<Presence> result = new List<Presence>();
-            foreach (Record record in _ghosts.Values)
+            foreach (Record record in _identities.Values)
             {
                 if (record.Owner == detector && record.Presence != null)
                 {
@@ -251,7 +251,7 @@ namespace Emas
                 return null;
             }
 
-            Record record = FindRecord(presence.Root);
+            Record record = _identities.Find(presence.Root);
             return record != null && ReferenceEquals(record.Presence, presence) ? record.Ghost : null;
         }
 

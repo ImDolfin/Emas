@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
@@ -109,6 +111,46 @@ namespace Emas.Tests
             Assert.That(root.Articulation, Is.EqualTo(15));
             Assert.That(_realm.TryGetPresence(first.Key, out Presence found), Is.True);
             Assert.That(found, Is.SameAs(first));
+        }
+
+        /// <summary>
+        /// Reporting an identity from its old root's removal callback creates a distinct presence.
+        /// Stale publication and delayed Unity destruction cannot replace or remove the new entity.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator RemovalCallback_CanRediscoverIdentityWithoutOldCleanupRemovingIt()
+        {
+            Detector detector = new Detector();
+            _realm.GetOrCreateAnchor("sdk", detector);
+            Presence original = detector.PublishMetadata("one", "Original entity");
+            Ghost originalRoot = original.Root;
+            _realm.Update();
+            Presence replacement = null;
+            RemovalCallback callback = originalRoot.gameObject.AddComponent<RemovalCallback>();
+            callback.Disabled = () => replacement = detector.PublishMetadata("one", "Replacement entity");
+
+            detector.Lose("one");
+
+            Assert.That(original.IsRemoved, Is.True);
+            Assert.That(original.Root, Is.Null);
+            Assert.That(replacement, Is.Not.Null.And.Not.SameAs(original));
+            Assert.That(replacement.Key, Is.EqualTo(original.Key));
+            Ghost replacementRoot = replacement.Root;
+            Assert.That(replacementRoot, Is.Not.SameAs(originalRoot));
+            Assert.Throws<ArgumentException>(() => detector.PublishCached(originalRoot));
+            Assert.That(_realm.TryGetPresence(original.Key, out Presence found), Is.True);
+            Assert.That(found, Is.SameAs(replacement));
+            _realm.Update();
+            Assert.That(_realm.Query().Single(), Is.SameAs(replacementRoot));
+
+            yield return null;
+
+            Assert.That(originalRoot == null, Is.True);
+            Assert.That(_realm.TryGetPresence(original.Key, out found), Is.True);
+            Assert.That(found, Is.SameAs(replacement));
+            Assert.That(_realm.TryGetGhost(original.Key, out IGhost root), Is.True);
+            Assert.That(root, Is.SameAs(replacementRoot));
+            Assert.That(replacement.IsAvailable, Is.True);
         }
 
         /// <summary>
@@ -318,12 +360,34 @@ namespace Emas.Tests
             }
         }
 
+        private sealed class RemovalCallback : MonoBehaviour
+        {
+            internal Action Disabled;
+
+            private void OnDisable()
+            {
+                Action disabled = Disabled;
+                Disabled = null;
+                disabled?.Invoke();
+            }
+        }
+
         private sealed class Detector : PresenceDetector
         {
             internal Presence Publish(string entityId, Reading reading, string name, Variant? variant,
                 params Type[] capabilities)
             {
                 return Report(entityId, TrackedKind, reading, name, variant, capabilities);
+            }
+
+            internal void Lose(string entityId)
+            {
+                Disappear(TrackedKind, entityId);
+            }
+
+            internal void PublishCached(IGhost ghost)
+            {
+                MarkPublished(ghost);
             }
 
             internal Presence PublishMetadata(string entityId, string name)

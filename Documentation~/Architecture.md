@@ -22,6 +22,16 @@ Queries see available Ghost roots only; the corresponding `Presence.IsAvailable`
 
 Manifestation blueprints are resolved by anchor and kind: an anchor registration takes precedence over the realm-wide default. `AnchorSetup` installs its Inspector manifestation blueprints on its own anchor, so anchors sharing a kind can use different views. Each realm or anchor registration holds a snapshot of the blueprint and its referenced variant assets. Asset edits do not alter that scope until re-registration, which refreshes requested views on the next update while keeping existing roots. Re-registering after a kind change releases the old kind in that scope and refreshes both kinds. Removing an anchor override restores the realm default. Root prefab changes affect newly created ghosts. With no blueprint, Emas creates a viewless root of the registered Ghost type, or a built-in default root when no initializer is registered; empty blueprints also remain silent.
 
+## Identity and deferred commands
+
+Each realm owns an internal `IdentityMap` keyed by `(anchor ID, kind, entity ID)`. It retains one current `Record` per key, so repeated reports update the same Ghost and Presence. Records supply their own keys when added; duplicate keys cannot overwrite existing records. Root-based lookup and removal also check the exact object instance, so a retained handle or cleanup from an old lifetime cannot affect a replacement with the same key. Disappearance grace retains the mapping; final removal releases it before Unity callbacks run. Root construction and lifecycle policy remain coordinated by the realm.
+
+`CommandQueue<T>` provides the shared FIFO, sequence tracking and reentrancy guard used by both detector dispatch and scene changes. Each subsystem supplies its command data and execution function. The queue has two drain modes: `ExecutePending(maximum)` processes only commands present at batch entry, while `ExecuteAll()` also drains commands enqueued by callbacks before returning. A nested drain returns immediately; the outer drain applies its own batch boundary to queued work. Clearing pending work during execution is safe.
+
+`Realm` directly owns a `CommandQueue<DispatchCommand>` and calls `ExecutePending(256)` during each update. The realm checks each command's detector attachment generation, applies the action inside the source-change boundary and isolates failures to the current detector. Sequence tracking also determines when startup handover work has finished. Commands enqueued by those actions wait for a later update. Realm disposal clears the queue and stops the batch.
+
+`SceneChangeQueue` uses the same `CommandQueue<T>` implementation with `ExecuteAll()`. Scene operations run immediately when safe; operations requested by nested Unity callbacks wait until the current scene operation returns, then drain before the outer request returns. The two subsystems use separate queue instances so scene cleanup can finish during realm disposal without running detector work. Both operate entirely on Unity's main thread, with no application command types or additional public interfaces.
+
 ## Update order
 
 1. Process up to **256 queued actions** present at update entry, in FIFO order.
@@ -74,15 +84,16 @@ Realm/anchor disposal is idempotent. Further mutations throw `ObjectDisposedExce
 
 ## Callback safety and internal boundaries
 
-Registry traversal uses snapshots and rechecks membership/registration after callbacks. Removal invalidates identity immediately. `Observe` retains departure keys until notification, so removed Unity objects need not stay alive. All-realm observations keep memberships separate per realm so identical keys do not collapse into one match. `ObserveWithRealm` supplies the owning realm on both entry and departure. Subscription disposal cancels pending notifications. The scene change queue waits for an Emas-triggered Unity activation or destruction call to return before applying scene changes requested by its callbacks, preventing unsafe hierarchy changes during activation callbacks.
+Identity map traversal uses snapshots and rechecks membership/registration after callbacks. Removal invalidates identity immediately. `Observe` retains departure keys until notification, so removed Unity objects need not stay alive. All-realm observations keep memberships separate per realm so identical keys do not collapse into one match. `ObserveWithRealm` supplies the owning realm on both entry and departure. Subscription disposal cancels pending notifications. The scene change queue waits for an Emas-triggered Unity activation or destruction call to return before applying scene changes requested by its callbacks, preventing unsafe hierarchy changes during activation callbacks.
 
 | Component | Responsibility |
 | --- | --- |
-| [Realm](../Runtime/Realm.cs) | Orchestrate anchors, configuration and update phases |
-| [Registry](../Runtime/Tracking/Registry.cs) | Store identity, ownership and pending state |
+| [Realm](../Runtime/Realm.cs) | Orchestrate anchors, configuration and update phases; apply detector attachment, failure and dispatch-budget policies |
+| [IdentityMap](../Runtime/Tracking/IdentityMap.cs) | Keep one current record per key and reject stale object references |
+| [CommandQueue&lt;T&gt;](../Runtime/Tracking/CommandQueue.cs) | Share FIFO ordering, sequence tracking and reentrancy-safe bounded or full drains |
 | [ViewManager](../Runtime/Views/ViewManager.cs) | Stage, bind, refresh and destroy views; contain presentation failures per ghost |
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
-| [SceneChangeQueue](../Runtime/Unity/SceneChangeQueue.cs) | Apply GameObject activation and destruction requested during Unity callbacks after the current scene change returns |
+| [SceneChangeQueue](../Runtime/Unity/SceneChangeQueue.cs) | Use the shared queue to apply nested GameObject changes after the current scene operation returns |
 | [PresenceDetector](../Runtime/Tracking/PresenceDetector.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | SDK detection, attachment lifecycle and scene ownership |
 | [Presence](../Runtime/Entities/Presence.cs) / [EntityModule](../Runtime/Entities/EntityModule.cs) | Stable identity and per-presence SDK data application |
 | [Realm.Presences](../Runtime/Entities/Realm.Presences.cs) | Per-Kind initialization, root creation and module dispatch |

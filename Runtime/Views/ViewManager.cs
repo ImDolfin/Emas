@@ -5,18 +5,18 @@ namespace Emas
     // Scene changes are isolated here; every activation/deactivation can reenter application code.
     internal sealed class ViewManager
     {
-        private readonly Registry _ghosts;
+        private readonly IdentityMap _identities;
         private readonly SceneChangeQueue _sceneChanges;
 
-        internal ViewManager(Registry ghosts, SceneChangeQueue sceneChanges)
+        internal ViewManager(IdentityMap identities, SceneChangeQueue sceneChanges)
         {
-            _ghosts = ghosts;
+            _identities = identities;
             _sceneChanges = sceneChanges;
         }
 
         internal void Refresh(Record record)
         {
-            if (record.RefreshingView || !_ghosts.Contains(record) || record.Ghost == null)
+            if (record.RefreshingView || !_identities.Contains(record) || record.Ghost == null)
             {
                 return;
             }
@@ -108,7 +108,7 @@ namespace Emas
                     }
 
                     // OnEnable may remove the record, destroy the view or change the request.
-                    if (!_ghosts.Contains(record) && instance != null)
+                    if (!_identities.Contains(record) && instance != null)
                     {
                         _sceneChanges.Destroy(instance);
                     }
@@ -170,7 +170,7 @@ namespace Emas
 
         private bool CanContinue(Record record, long version)
         {
-            return _ghosts.Contains(record) && record.Ghost != null && record.Ghost.IsAvailable
+            return _identities.Contains(record) && record.Ghost != null && record.Ghost.IsAvailable
                 && record.ViewVersion == version && record.ViewRequested && record.SpatialVisible;
         }
     }

@@ -7,12 +7,12 @@ namespace Emas
     internal sealed class SpatialManager
     {
         private readonly Realm _realm;
-        private readonly Registry _ghosts;
+        private readonly IdentityMap _identities;
 
-        internal SpatialManager(Realm realm, Registry ghosts)
+        internal SpatialManager(Realm realm, IdentityMap identities)
         {
             _realm = realm;
-            _ghosts = ghosts;
+            _identities = identities;
         }
 
         private ReferenceFrame.Projection Capture(ReferenceFrame frame)
@@ -21,7 +21,7 @@ namespace Emas
             {
                 Record reference;
                 Spatial spatial = null;
-                if (_ghosts.TryGetValue(frame.FollowedGhost.Value, out reference) && CanProject(reference))
+                if (_identities.TryGetValue(frame.FollowedGhost.Value, out reference) && CanProject(reference))
                 {
                     spatial = reference.Ghost.GetComponent<Spatial>();
                 }
@@ -87,7 +87,7 @@ namespace Emas
                 PresenceDetector.LogError(exception, "spatial projection for " + record.Key);
             }
 
-            if (_ghosts.Contains(record) && record.SpatialVisible != visible)
+            if (_identities.Contains(record) && record.SpatialVisible != visible)
             {
                 record.SpatialVisible = visible;
                 record.ViewVersion++;
@@ -120,7 +120,7 @@ namespace Emas
 
         private bool CanProject(Record record)
         {
-            return _ghosts.Contains(record) && record.Ghost != null && record.Owner != null
+            return _identities.Contains(record) && record.Ghost != null && record.Owner != null
                 && record.Owner.IsRegistration(_realm, record.RegistrationGeneration)
                 && (record.Ghost.IsAvailable || record.PendingActivation);
         }

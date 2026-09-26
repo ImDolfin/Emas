@@ -42,12 +42,12 @@ Keep a test when it protects a distinct behavior that an application depends on.
 
 ## Results
 
-The simplified package passed in Unity **2022.3.62f3** on **2026-09-26**, package **0.1.0**. All **121 tests** passed with no failures or skips. Removing the generic detector adapters removed 21 adapter-specific cases from the previous 142-test suite; core diagnostic, restart, dispatch and prefab setup coverage remains, with direct `PresenceDetector` subclasses replacing adapter-based fixtures. Both test assemblies compile without access to internal production APIs.
+The package passed in Unity **2022.3.62f3** on **2026-09-26**, package **0.1.0**, with `Realm` and `SceneChangeQueue` using the shared internal `CommandQueue<T>` directly. All **125 tests** passed with no failures or skips. The added public-behavior coverage verifies bounded FIFO batches, identity rediscovery during removal, nested scene changes completing after activation callbacks return, and disposal abandoning the remaining dispatch batch. Both test assemblies compile without access to internal production APIs.
 
 | Editor | Test Framework | EditMode | PlayMode |
 | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 112 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 9 passed | 116 passed |
 
-The ignored XML reports and logs are in `Tests/Unity~/TestResults/DetectorSimplification/`. EditMode verifies the imported samples match the package; PlayMode covers the updated minimal, callback and relative-world scenes, including automatic startup and detector restart.
+The ignored XML reports and logs are in `Tests/Unity~/TestResults/DirectCommandQueue/`. EditMode verifies the imported samples match the package; PlayMode also covers identity retention, stale dispatch, failure cleanup, detector restart, prefab setup and the runnable sample scenes.
 
-The previous public-contract suite passed **9 EditMode** and **133 PlayMode** tests on **2026-09-26**, before the generic detector adapters were removed. Earlier **2026-09-22** checks passed on Unity 6.3 LTS (6000.3.24f1) and Windows Mono players; those runs predate later API changes and do not validate the current suite. Unity 6 and player runs have not been repeated for this revision. IL2CPP, other platforms, performance and rendering quality have not been validated.
+The previous internal identity-map and dispatch extraction passed **9 EditMode** and **114 PlayMode** tests on **2026-09-26**; those reports remain in `Tests/Unity~/TestResults/IdentityAndCommands/`. The earlier adapter removal passed **9 EditMode** and **112 PlayMode** tests in `Tests/Unity~/TestResults/DetectorSimplification/`. Earlier **2026-09-22** checks passed on Unity 6.3 LTS (6000.3.24f1) and Windows Mono players; those runs predate later API changes and do not validate the current suite. Unity 6 and player runs have not been repeated for this revision. IL2CPP, other platforms, performance and rendering quality have not been validated.

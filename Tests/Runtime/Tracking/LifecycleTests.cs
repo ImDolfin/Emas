@@ -232,6 +232,43 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Removing an anchor from a view's activation callback removes its identity immediately.
+        /// Hierarchy deactivation waits for that callback to return and completes before Manifest returns.
+        /// </summary>
+        [Test]
+        public void ViewActivation_RemovesAnchorAfterCallbackBeforeReturning()
+        {
+            _realm.RegisterManifestationBlueprint(CreateManifestationBlueprint());
+            ProbeSource source = new ProbeSource();
+            Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
+            ProbeGhost ghost = source.Publish("car");
+            _realm.Update();
+            GameObject anchorObject = anchor.Transform.gameObject;
+            GameObject rootObject = ghost.gameObject;
+            GameObject viewObject = null;
+            bool removedDuringCallback = false;
+            bool hierarchyActiveDuringCallback = false;
+            ProbeView.Enabled = view =>
+            {
+                viewObject = view.gameObject;
+                _realm.RemoveAnchor("anchor");
+                removedDuringCallback = !_realm.TryGetGhost(ghost.Key, out IGhost ignored);
+                hierarchyActiveDuringCallback = anchorObject.activeSelf && rootObject.activeSelf && viewObject.activeSelf;
+            };
+
+            _realm.Manifest(ghost);
+
+            Assert.That(viewObject, Is.Not.Null);
+            Assert.That(removedDuringCallback, Is.True);
+            Assert.That(hierarchyActiveDuringCallback, Is.True);
+            Assert.That(viewObject.activeSelf, Is.False);
+            Assert.That(rootObject.activeSelf, Is.False);
+            Assert.That(anchorObject.activeSelf, Is.False);
+            Assert.That(_realm.Anchors, Is.Empty);
+            Assert.That(_realm.Query().Count, Is.Zero);
+        }
+
+        /// <summary>
         /// Availability notification occurs after a previously requested view is bound and active.
         /// </summary>
         [Test]
@@ -308,6 +345,65 @@ namespace Emas.Tests
             Assert.That(source.UpdateCount, Is.EqualTo(1));
             _realm.Update();
             Assert.That(calls, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// Bursts from multiple detectors share the documented per-update budget and preserve enqueue order.
+        /// A nested command waits behind the existing tail while ordinary detector updates continue.
+        /// </summary>
+        [Test]
+        public void Dispatch_BoundsSharedBatchAndPreservesOrderAcrossUpdates()
+        {
+            ProbeSource first = new ProbeSource();
+            ProbeSource second = new ProbeSource();
+            _realm.GetOrCreateAnchor("anchor", first, second);
+            List<int> expected = new List<int>();
+            List<int> executed = new List<int>();
+            for (int index = 0; index < 260; index++)
+            {
+                int value = index;
+                expected.Add(value);
+                ProbeSource source = value % 2 == 0 ? first : second;
+                source.Queue(() =>
+                {
+                    executed.Add(value);
+                    if (value == 0)
+                    {
+                        second.Queue(() => executed.Add(260));
+                    }
+                });
+            }
+
+            _realm.Update();
+            Assert.That(executed, Is.EqualTo(expected.GetRange(0, 256)));
+            Assert.That(first.UpdateCount, Is.EqualTo(1));
+            Assert.That(second.UpdateCount, Is.EqualTo(1));
+
+            _realm.Update();
+            expected.Add(260);
+            Assert.That(executed, Is.EqualTo(expected));
+            Assert.That(first.UpdateCount, Is.EqualTo(2));
+            Assert.That(second.UpdateCount, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// Disposing the realm from a dispatched action abandons the rest of that batch before detectors update.
+        /// </summary>
+        [Test]
+        public void Dispatch_DisposalStopsRemainingBatchAndDetectorUpdates()
+        {
+            ProbeSource source = new ProbeSource();
+            _realm.GetOrCreateAnchor("anchor", source);
+            bool ranAfterDisposal = false;
+            source.Queue(_realm.Dispose);
+            source.Queue(() => ranAfterDisposal = true);
+
+            _realm.Update();
+
+            Assert.That(ranAfterDisposal, Is.False);
+            Assert.That(source.IsAttached, Is.False);
+            Assert.That(source.UpdateCount, Is.Zero);
+            Assert.That(source.StopCount, Is.EqualTo(1));
         }
 
         /// <summary>

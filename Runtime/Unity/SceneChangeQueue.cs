@@ -1,14 +1,12 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas
 {
     // Unity rejects ancestor activation changes while a descendant callback is running.
-    // Registry mutations stay immediate; nested scene changes drain after the current change returns.
+    // Identity map mutations stay immediate; nested scene changes drain after the current change returns.
     internal sealed class SceneChangeQueue
     {
-        private readonly Queue<Change> _pending = new Queue<Change>();
-        private bool _applying;
+        private readonly CommandQueue<Change> _pending = new CommandQueue<Change>(Execute);
 
         internal void SetActive(GameObject target, bool active)
         {
@@ -23,40 +21,28 @@ namespace Emas
         private void Apply(Change change)
         {
             _pending.Enqueue(change);
-            if (_applying)
+            _pending.ExecuteAll();
+        }
+
+        private static void Execute(Change change)
+        {
+            if (change.Target == null)
             {
                 return;
             }
 
-            _applying = true;
-            try
+            if (change.Target.activeSelf != change.Active)
             {
-                while (_pending.Count > 0)
-                {
-                    Change next = _pending.Dequeue();
-                    if (next.Target == null)
-                    {
-                        continue;
-                    }
-
-                    if (next.Target.activeSelf != next.Active)
-                    {
-                        next.Target.SetActive(next.Active);
-                    }
-
-                    if (next.Destroy && next.Target != null)
-                    {
-                        Object.Destroy(next.Target);
-                    }
-                }
+                change.Target.SetActive(change.Active);
             }
-            finally
+
+            if (change.Destroy && change.Target != null)
             {
-                _applying = false;
+                Object.Destroy(change.Target);
             }
         }
 
-        private struct Change
+        private readonly struct Change
         {
             internal Change(GameObject target, bool active, bool destroy)
             {
