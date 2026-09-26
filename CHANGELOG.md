@@ -11,7 +11,7 @@
 - Added `Query.All()` to search and subscribe across every live realm, including realms started later; `ObserveWithRealm` distinguishes duplicate keys across realms and reports departures when a realm is disposed.
 - Added optional realm reference frames, double-precision simulation coordinates and independent root spatial channels; moving origins reproject entities without republication, preserve the last reference on loss and suppress distant presentation while retaining tracking.
 - Replaced `SceneSetup` with prefab-configured `RealmSetup` and `AnchorSetup`: each setup owns an isolated, automatically updated realm with any number of one-detector anchors, realm blueprint defaults, anchor overrides and an optional reference frame. Direct realm setup remains unchanged.
-- Split the runnable relative-world example into its own importable sample with a scene and assembly; it shows a fixed ego car, inverse traffic movement and automatic view restoration on range entry.
+- Reworked the importable Relative world sample around complete WGS84 SDK snapshots for a moving origin and target. A one-generic polling detector forwards raw geodetic readings; per-Presence position and orientation modules convert them into a fixed double-precision ENU frame, and a rotating ReferenceFrame keeps the origin fixed in Unity.
 
 - Isolated view creation/refresh failures to the affected view, preserving tracking and view requests for explicit or appearance-driven retry.
 - Removed detector populations on failure and unreported identities after restart/replacement startup handover; compatible republished roots still survive successful handovers.

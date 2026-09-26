@@ -5,20 +5,19 @@ using UnityEngine;
 namespace Emas.RelativeWorld
 {
     /// <summary>
-    /// Keeps the ego car fixed in Unity while traffic is projected relative to its large network coordinates.
+    /// Keeps a moving SDK origin fixed in Unity while another moving entity is projected relative to it.
     /// Add this component to an empty scene object and enter Play Mode.
     /// </summary>
     [AddComponentMenu("Emas/Examples/Relative World")]
     public sealed class RelativeWorld : MonoBehaviour
     {
         private Realm _realm;
-        private RelativeCarDetector _source;
+        private SimulatedGeoSdk _sdk;
         private IDisposable _views;
         private ManifestationBlueprint _manifestationBlueprint;
         private ManifestationVariant[] _manifestationVariants;
         private GameObject _environment;
         private readonly List<Material> _materials = new List<Material>();
-        private double _elapsed;
 
         /// <summary>
         /// Gets the isolated realm owned by this demonstration while it is enabled.
@@ -33,11 +32,11 @@ namespace Emas.RelativeWorld
 
         private void OnEnable()
         {
-            _elapsed = 0.0;
+            _sdk = new SimulatedGeoSdk();
             _realm = new Realm();
             _realm.ReferenceFrame = new ReferenceFrame
             {
-                FollowedGhost = new Key("relative-world", RelativeCar.Kind, "ego"),
+                FollowedGhost = new Key("relative-world", RelativeCar.Kind, "origin"),
                 UnityPosition = Vector3.zero,
                 UnityRotation = Quaternion.identity,
                 FollowRotation = true,
@@ -46,18 +45,37 @@ namespace Emas.RelativeWorld
 
             _environment = new GameObject("Relative World Environment");
             _environment.transform.SetParent(transform, false);
-            GameObject egoView = CreateCar("Ego Car Template", new Color(0.2f, 0.85f, 0.45f));
-            GameObject trafficView = CreateCar("Traffic Template", new Color(1f, 0.55f, 0.15f));
+            GameObject originView = CreateCar("Origin Template", new Color(0.2f, 0.85f, 0.45f));
+            GameObject targetView = CreateCar("Target Template", new Color(1f, 0.55f, 0.15f));
             _manifestationVariants = new[]
             {
-                CreateVariant(RelativeCar.Ego, egoView),
-                CreateVariant(RelativeCar.Traffic, trafficView)
+                CreateVariant(RelativeCar.Origin, originView),
+                CreateVariant(RelativeCar.Target, targetView)
             };
             _manifestationBlueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             _manifestationBlueprint.Configure(RelativeCar.Kind, null, _manifestationVariants, null);
             _realm.RegisterManifestationBlueprint(_manifestationBlueprint);
-            _source = new RelativeCarDetector { Name = "Large-coordinate cars" };
-            _realm.GetOrCreateAnchor("relative-world", _source);
+            _realm.RegisterPresenceInitializer<RelativeCar>(RelativeCar.Kind, (presence, root) =>
+            {
+                GeoPositionModule position;
+                if (!presence.TryGetModule(out position))
+                {
+                    presence.AddModule(new GeoPositionModule());
+                }
+
+                GeoOrientationModule orientation;
+                if (!presence.TryGetModule(out orientation))
+                {
+                    presence.AddModule(new GeoOrientationModule());
+                }
+            });
+            PollingPresenceDetector<GeoPoseReading> detector = new PollingPresenceDetector<GeoPoseReading>(RelativeCar.Kind)
+                .ReadFrom(_sdk.ReadFrame)
+                .IdentifyBy(reading => reading.Id)
+                .WithName(reading => reading.Label)
+                .WithVariant(reading => reading.Variant);
+            detector.Name = "Geodetic SDK entities";
+            _realm.GetOrCreateAnchor("relative-world", detector);
             _views = _realm.Query().OfKind(RelativeCar.Kind).OnAvailable(ghost => _realm.Manifest(ghost));
             CreateEnvironment();
             _realm.Update();
@@ -69,7 +87,7 @@ namespace Emas.RelativeWorld
         }
 
         /// <summary>
-        /// Advances simulated driving and projects the latest independent publications into Unity.
+        /// Advances both SDK entities, then applies one complete snapshot before spatial projection.
         /// </summary>
         /// <param name="seconds">Elapsed simulation time, in seconds.</param>
         public void Advance(double seconds)
@@ -79,11 +97,7 @@ namespace Emas.RelativeWorld
                 return;
             }
 
-            _elapsed += seconds;
-            double travel = Math.Sin(_elapsed * 0.15) * 30.0;
-            _source.PublishEgoPosition(travel);
-            // Orientation can arrive independently from position, as it does in many real SDKs.
-            _source.PublishEgoRotation(Quaternion.Euler(0f, (float)Math.Sin(_elapsed * 0.1) * 12f, 0f));
+            _sdk.Advance(seconds);
             _realm.Update();
         }
 
@@ -93,7 +107,7 @@ namespace Emas.RelativeWorld
             _views = null;
             _realm?.Dispose();
             _realm = null;
-            _source = null;
+            _sdk = null;
             Destroy(_environment);
             Destroy(_manifestationBlueprint);
             if (_manifestationVariants != null)
@@ -166,8 +180,8 @@ namespace Emas.RelativeWorld
 
         private void OnGUI()
         {
-            GUI.Label(new Rect(16f, 16f, 1000f, 26f), "Relative world: green ego stays fixed; orange traffic moves inversely.");
-            GUI.Label(new Rect(16f, 42f, 1000f, 26f), "Network coordinates are around 1,000,000,000 m. Views return within 45 m.");
+            GUI.Label(new Rect(16f, 16f, 1000f, 26f), "Relative world: the green SDK origin stays fixed; the orange target moves relative to it.");
+            GUI.Label(new Rect(16f, 42f, 1000f, 26f), "Both SDK entities update WGS84 position and attitude every frame; the Realm projects them together.");
         }
     }
 }
