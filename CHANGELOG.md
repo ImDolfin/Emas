@@ -2,6 +2,7 @@
 
 ## 0.1.0
 
+- Rebuilt every sample around authored tracking, Ghost and view prefabs, manifestation variants, blueprints, materials and configured scenes. Replaced Bootstrap components and runtime scene construction with focused source providers; the multi-source and relative-world samples now use Inspector-configured isolated Realm Setup lifetimes.
 - Added a short README introduction to the detector, module, Ghost, View and Realm roles before the implementation steps.
 - Split internal entity lifetime into `Population` and moved view-request/detail bookkeeping into `ViewManager`. `Realm` remains the public facade and update coordinator in one non-partial file; removed `Realm.Presences.cs` without changing the public API.
 - Made realm identity and command handling explicit internal components: `IdentityMap` owns keyed records and instance-safe lookup/removal; `Realm` and `SceneChangeQueue` directly share `CommandQueue<T>` for FIFO ordering and reentrancy-safe draining while retaining their detector and Unity scene policies.

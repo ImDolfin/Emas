@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace Emas.RelativeWorld
 {
     /// <summary>
@@ -21,6 +23,7 @@ namespace Emas.RelativeWorld
         /// <inheritdoc />
         protected override void OnUpdate()
         {
+            _sdk.Advance(Time.deltaTime);
             PublishFrame();
         }
 

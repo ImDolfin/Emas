@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7ba9a72f58d0a8d46aebcb22b8a70771, type: 3}
+  m_Name: RelativeCar
+  m_EditorClassIdentifier:
+  _kindId: relative.car
+  _ghostPrefab: {fileID: 6418851634799385831, guid: 1fb701fe6c1a24a44be4a3018779b40f, type: 3}
+  _variants:
+  - {fileID: 11400000, guid: 4bca8f74de544014eade893027703e66, type: 2}
+  - {fileID: 11400000, guid: 716e14bc58e2fa24f89a17aa5e00accf, type: 2}
+  _fallbackViewPrefab: {fileID: 0}

@@ -1,4 +1,3 @@
-using System;
 using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
@@ -49,11 +48,19 @@ namespace Emas.Tests.Samples
             const string path = "Assets/Samples/RelativeWorld/RelativeWorld.unity";
             yield return SceneManager.LoadSceneAsync(path, LoadSceneMode.Additive);
             _scene = SceneManager.GetSceneByPath(path);
-            GameObject host = Array.Find(_scene.GetRootGameObjects(),
-                root => root.GetComponent<Emas.RelativeWorld.RelativeWorld>() != null);
-            Assert.That(host, Is.Not.Null);
-            Emas.RelativeWorld.RelativeWorld demo = host.GetComponent<Emas.RelativeWorld.RelativeWorld>();
-            Realm realm = demo.Realm;
+            yield return null;
+            yield return null;
+            RealmSetup setup = null;
+            Emas.RelativeWorld.GeoSource source = null;
+            foreach (GameObject root in _scene.GetRootGameObjects())
+            {
+                setup = setup ?? root.GetComponentInChildren<RealmSetup>();
+                source = source ?? root.GetComponentInChildren<Emas.RelativeWorld.GeoSource>();
+            }
+
+            Assert.That(setup, Is.Not.Null);
+            Assert.That(source, Is.Not.Null);
+            Realm realm = setup.Realm;
             Assert.That(realm, Is.Not.Null);
 
             IGhost originGhost;
@@ -77,13 +84,23 @@ namespace Emas.Tests.Samples
             Double3 previousOrigin = originSpatial.Position;
             Vector3 previousTarget = target.transform.position;
 
-            demo.Advance(5.0);
+            source.Advance(5.0);
+            realm.Update();
 
             Assert.That(Double3.Distance(originSpatial.Position, previousOrigin), Is.GreaterThan(0.01));
             AssertOriginPose(origin);
             AssertProjectedTarget(realm.ReferenceFrame, target, targetSpatial);
             Assert.That(Vector3.Distance(target.transform.position, previousTarget), Is.GreaterThan(0.01f));
             Assert.That(target.GetComponentInChildren<View>(), Is.SameAs(targetView));
+
+            setup.gameObject.SetActive(false);
+            Assert.That(realm.Query().Count, Is.Zero);
+            setup.gameObject.SetActive(true);
+            yield return null;
+            yield return null;
+            Assert.That(setup.Realm, Is.Not.SameAs(realm));
+            Assert.That(setup.Realm.Query().Count, Is.EqualTo(2));
+
         }
 
         private static void AssertOriginPose(Ghost origin)

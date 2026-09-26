@@ -4,7 +4,7 @@ Emas tracks SDK entities as stable Presences, initializes invisible Ghost roots 
 
 ## Run the sample
 
-Add `package.json` through **Package Manager > Add package from disk**, import **Quick start**, open its `QuickStart.unity` scene and press Play. One cube moves along its anchor's X axis. Disable and re-enable the Tracking object to exercise cleanup and restart.
+Add `package.json` through **Package Manager > Add package from disk**, import **Quick start**, open its `QuickStart.unity` scene and press Play. One cube moves along its anchor's X axis. The scene is already configured with a reusable `Tracking.prefab`, Ghost and view prefabs, a manifestation variant, a blueprint, and its camera and environment. Inspect and edit those assets before changing code. Disable and re-enable the Tracking object to exercise cleanup and restart.
 
 ## Build the same integration
 
@@ -100,14 +100,14 @@ namespace Emas.Minimal
 }
 ```
 
-### Bootstrap.cs
+### MarkerSource.cs
 
 ```csharp
 using UnityEngine;
 
 namespace Emas.Minimal
 {
-    public sealed class Bootstrap : MonoBehaviour, IDetectorProvider, IRealmConfigurator
+    public sealed class MarkerSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
         public void ConfigureRealm(Realm realm)
         {
@@ -133,10 +133,14 @@ namespace Emas.Minimal
 
 ### Configure the scene and view
 
-1. Create a cube prefab for the visual child. Keep its local position and rotation at zero and scale at one.
-2. Create **Assets > Create > Emas > Manifestation Blueprint**. Set **Kind Id** to `minimal.marker` and **Fallback View Prefab** to the cube prefab. Leave **Ghost Prefab** and **Variants** empty.
-3. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `Bootstrap`. On Realm Setup, assign the manifestation blueprint as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled.
-4. Press Play. Realm Setup creates its realm, calls `Bootstrap.ConfigureRealm`, then attaches the anchor's detector. Emas creates a `Presence` and an invisible `Marker` root beneath the anchor, applies each reading through `MarkerPositionModule` and attaches the cube view. Move Tracking to move its anchor frame.
+The imported sample already contains this setup. To create it in another scene:
+
+1. Create an empty GameObject with the `Marker` component and save it as `MarkerRoot.prefab`. Keep its transform at the identity; this is the invisible Ghost root that receives position data.
+2. Create a cube and save it as `MarkerView.prefab`. Keep its local position and rotation at zero and scale at one. Assign a material to its renderer, then remove both temporary objects from the scene.
+3. Create **Assets > Create > Emas > Manifestation Variant**, named `Default Marker Variant`. Leave **Variant** empty (`Variant.None`), and add one detail mapping: **Full (3)** to `MarkerView.prefab`.
+4. Create **Assets > Create > Emas > Manifestation Blueprint**, named `MarkerBlueprint`. Set **Kind Id** to `minimal.marker`, assign `MarkerRoot.prefab` as **Ghost Prefab**, and add the default variant to **Variants**. Leave **Fallback View Prefab** empty.
+5. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `MarkerSource`. On Realm Setup, assign `MarkerBlueprint` as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled. Save the object as `Tracking.prefab` and keep its instance in the scene. Add a camera and light if the scene has none.
+6. Press Play. Realm Setup creates its realm, calls `MarkerSource.ConfigureRealm`, then attaches the anchor's detector. Emas creates a `Presence` and instantiates the authored `Marker` root beneath the anchor, applies each reading through `MarkerPositionModule` and attaches the cube view selected by the variant. Move Tracking to move its anchor frame.
 
 For several appearances of one Kind, create a **Manifestation Variant** asset for each appearance and assign its detail-level view prefabs. Add those assets to the Kind's Manifestation Blueprint. A Kind with no blueprint still gets its Ghost root and remains visually silent until a view is configured.
 
@@ -171,7 +175,7 @@ if (realm != null && realm.TryGetPresence(key, out presence) && presence.IsAvail
 
 Use `anchorSetup.Anchor.RestartDetector(detector)` to restart an attached detector and `ReplaceDetector` to change its instance. A successful handover reuses compatible roots and Presence handles when IDs are reported again. Detector failure removes its population immediately, so recovery creates new handles and roots.
 
-For root interfaces, paired query arrivals and departures, and detector replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Consumers use `IGhost.TryGet<T>` for optional root interfaces or `ghost.GetRequired<T>()` when a missing provider is an error.
+For root interfaces, paired query arrivals and departures, and detector replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Its Tracking prefab owns an isolated Realm Setup with separate `cars` and `aircraft` child anchors; `CarSource` demonstrates replacement while the authored blueprints and variants select each view. Consumers use `IGhost.TryGet<T>` for optional root interfaces or `ghost.GetRequired<T>()` when a missing provider is an error.
 
 ## Implement your SDK detector
 
@@ -199,7 +203,7 @@ Call all Emas APIs, including SDK publish and disappear callbacks, on Unity's ma
 
 For moving-reference worlds or large global coordinates, configure the **Reference Frame** section of Realm Setup or assign `realm.ReferenceFrame` by code, and add `Spatial` to participating Ghost roots. Choose a manual reference position in the shared coordinate system or a ghost key to follow; optionally set a presentation distance. Publish positions in that shared system as `Double3`; the realm calculates the relative displacement before converting to Unity floats. Position and orientation publications can arrive independently. A presentation range hides distant views while keeping their data tracked.
 
-Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and SDK data mapping. Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play to see the demonstration with its own realm and generated visuals.
+Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference loss and SDK data mapping. Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play to see the demonstration with a prefab-configured realm and authored car roots, view prefabs, variants and blueprints. Its `GeoSource` component connects the SDK data; Realm Setup owns the reference frame.
 
 ## Troubleshooting
 

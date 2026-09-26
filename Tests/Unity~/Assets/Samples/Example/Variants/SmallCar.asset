@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 45886391355e44999448ceef9f36e41d, type: 3}
+  m_Name: SmallCar
+  m_EditorClassIdentifier:
+  _variant:
+    _id: small-car
+  _details:
+  - _detailLevel:
+      _level: 3
+    _prefab: {fileID: 4406375652296563570, guid: 9579121046feb5848acf6e7f1a253b80, type: 3}

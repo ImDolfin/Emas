@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7ba9a72f58d0a8d46aebcb22b8a70771, type: 3}
+  m_Name: MarkerBlueprint
+  m_EditorClassIdentifier:
+  _kindId: callbacks.marker
+  _ghostPrefab: {fileID: 4331463966592489174, guid: 507e065d6b1d0b147a070d110ca3ef26, type: 3}
+  _variants:
+  - {fileID: 11400000, guid: 7e1a0a03ab0d4879b892b77846a2ea4b, type: 2}
+  _fallbackViewPrefab: {fileID: 0}

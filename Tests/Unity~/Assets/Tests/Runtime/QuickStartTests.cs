@@ -27,7 +27,7 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// Unloads the sample and releases its default realm after each scenario.
+        /// Unloads the sample and releases its owned scene objects after each scenario.
         /// </summary>
         [UnityTearDown]
         public IEnumerator TearDown()
@@ -91,8 +91,9 @@ namespace Emas.Tests.Samples
         public IEnumerator Example_SourceReplacementPreservesConsumerContracts()
         {
             yield return Load("Assets/Samples/Example/Scenes/Example.unity");
-            Emas.Sample.Bootstrap bootstrap = Find<Emas.Sample.Bootstrap>();
-            Query cars = Realm.Default.Query().InAnchor("sample").OfKind(Emas.Sample.SampleKinds.Car);
+            Emas.Sample.CarSource source = Find<Emas.Sample.CarSource>();
+            Realm realm = Find<RealmSetup>().Realm;
+            Query cars = realm.Query().InAnchor("cars").OfKind(Emas.Sample.SampleKinds.Car);
             Dictionary<Key, IGhost> roots = new Dictionary<Key, IGhost>();
             foreach (IGhost ghost in cars)
             {
@@ -101,7 +102,7 @@ namespace Emas.Tests.Samples
             }
 
             Assert.That(roots.Count, Is.GreaterThan(0));
-            bootstrap.ReplaceCarSource();
+            source.ReplaceCarSource();
             yield return null;
             yield return null;
 
@@ -111,6 +112,16 @@ namespace Emas.Tests.Samples
                 Assert.That(ghost, Is.SameAs(roots[ghost.Key]));
                 AssertCarView(ghost);
             }
+
+            RealmSetup setup = Find<RealmSetup>();
+            setup.gameObject.SetActive(false);
+            Assert.That(realm.Query().Count, Is.Zero);
+            setup.gameObject.SetActive(true);
+            yield return null;
+            yield return null;
+            Assert.That(setup.Realm, Is.Not.SameAs(realm));
+            Assert.That(source.IsUsingSecondSdk, Is.False);
+            Assert.That(setup.Realm.Query().InAnchor("cars").Count, Is.EqualTo(roots.Count));
         }
 
         private static void AssertCarView(IGhost ghost)
