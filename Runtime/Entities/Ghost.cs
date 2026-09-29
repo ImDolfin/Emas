@@ -4,16 +4,18 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Base component for application-defined ghost components.
+    /// Identifies an entity root and exposes contracts provided by its components.
     /// </summary>
 
     /// <remarks>
-    /// Declare reusable EntityModule components on this root with RequireComponent or an authored prefab.
+    /// Use this component directly on an authored prefab with reusable EntityModule components.
+    /// Derive a custom Ghost only when the entity needs additional behavior; subclasses can use RequireComponent.
     /// Modules and other root components can implement read-only application contracts. Emas creates/destroys roots and sets their metadata.
     /// Roots activate after successful publication and deactivate on availability loss; Awake may run before source mapping.
-    /// Keep source mutation methods on the concrete subclass. Views are optional children, independent of root behaviors.
+    /// Initializers map source data to the configured modules. Views are optional children, independent of root behaviors.
     /// </remarks>
-    public abstract class Ghost : MonoBehaviour, IGhost
+    [AddComponentMenu("Emas/Ghost")]
+    public class Ghost : MonoBehaviour, IGhost
     {
         [SerializeField, HideInInspector]
         private string _anchorId;

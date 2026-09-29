@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Made `Ghost` a concrete, directly authorable component and removed `DefaultGhost`; code and prefabs can use `Ghost` with reusable modules without an entity subclass. All four samples now use plain Ghost roots with saved modules. Existing `DefaultGhost` components should be replaced with `Ghost`. Spatial pose application now lives on `Spatial`; the realm still updates all modules before capturing one reference and coordinating projection.
+
 - Enabled `Spatial` components now use identity projection when `Realm.ReferenceFrame` is null: positions and rotations apply directly in Unity world space without a distance limit. Clearing a reference restores this default; disable `Spatial` to release transform control.
 
 - Added optional `Detect(..., source: object)` and weak `Presence.Source` access for a discovered proxy, SDK client or application context. The source is available before initialization, replacement rebinds existing Ghost modules, and disappearance/handover/removal release it. Collected sources and destroyed Unity objects resolve to null; Emas never owns or disposes them. Sample readers resolve the supplied source each update instead of retaining it in closures.

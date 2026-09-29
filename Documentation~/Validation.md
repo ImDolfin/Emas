@@ -42,13 +42,13 @@ Keep a test when it protects a distinct behavior that an application depends on.
 
 ## Results
 
-Identity-frame projection passed in Unity **2022.3.62f3** on **2026-09-29**, package **0.1.0**. All **140 tests** passed with no failures or skips. PlayMode covers direct world placement without a reference, position and rotation under transformed parents, clearing a custom reference, disabling/re-enabling Spatial, missing positions and float overflow, alongside explicit-reference, source and Ghost-module lifecycles. All four authored sample scenes pass their startup, motion, source replacement and restart checks. EditMode verifies authored modules and consistency between package samples and their imported copies.
+Plain Ghost composition and spatial ownership passed in Unity **2022.3.62f3** on **2026-09-29**, package **0.1.0**. All **141 tests** passed with no failures or skips. PlayMode covers prefab and code-created plain Ghosts, viewless detection, module binding and reference updates before projection, as well as identity placement, explicit reference frames, source handover and the existing lifecycle contracts. All four authored sample scenes pass their startup, motion, source replacement and restart checks. EditMode verifies plain Ghost roots with saved modules and consistency between package samples and their imported copies.
 
 | Editor | Test Framework | EditMode | PlayMode |
 | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 13 passed | 127 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 13 passed | 128 passed |
 
-The ignored XML reports and logs are in `Tests/Unity~/TestResults/IdentityFrame/`. The preceding weak-source revision passed **13 EditMode** and **124 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/PresenceSource/`. The preceding Ghost-module migration passed **13 EditMode** and **121 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/GhostModules/`. The shipped Ghost prefabs contain saved module components and require no asset-generation helper.
+The ignored XML reports and logs are in `Tests/Unity~/TestResults/GhostComposition/`. The preceding identity-frame revision passed **13 EditMode** and **127 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/IdentityFrame/`. The preceding weak-source revision passed **13 EditMode** and **124 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/PresenceSource/`. The preceding Ghost-module migration passed **13 EditMode** and **121 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/GhostModules/`. The shipped Ghost prefabs contain saved module components and require no asset-generation helper.
 
 The preceding authored-sample revision passed **13 EditMode** and **117 PlayMode** tests on **2026-09-26**. Those results and its Direct3D 11 camera previews remain in `Tests/Unity~/TestResults/AuthoredSamples/`. This module migration did not change sample geometry or presentation assets beyond adding components to Ghost prefabs; camera previews were not recaptured.
 

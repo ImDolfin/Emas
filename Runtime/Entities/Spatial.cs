@@ -106,6 +106,28 @@ namespace Emas
             _hasRotation = true;
         }
 
+        // Called by the realm after every module has updated and the shared reference is captured.
+        internal bool ApplyProjection(ReferenceFrame.Projection projection)
+        {
+            Vector3 position = default(Vector3);
+            bool visible = HasPosition && projection.TryToUnityPosition(Position, out position);
+            if (visible)
+            {
+                // Assign world pose so anchor transforms do not introduce a second offset.
+                if (HasRotation)
+                {
+                    transform.SetPositionAndRotation(position, projection.ToUnityRotation(Rotation));
+                }
+                else
+                {
+                    transform.position = position;
+                }
+            }
+
+            SetInRange(visible);
+            return visible;
+        }
+
         internal void SetInRange(bool value)
         {
             _isInRange = value;

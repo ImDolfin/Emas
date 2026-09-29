@@ -11,7 +11,7 @@ namespace Emas.Sample
         /// <summary>Binds the position module configured on each aircraft Ghost.</summary>
         public void ConfigureRealm(Realm realm)
         {
-            realm.RegisterPresenceInitializer<AircraftGhost>(SampleKinds.Aircraft, (presence, root) =>
+            realm.RegisterPresenceInitializer<Ghost>(SampleKinds.Aircraft, (presence, root) =>
                 root.GetComponent<PositionModule>().Bind(() => ((SimulatedAircraftFeed)presence.Source).Current[presence.Key.EntityId].Position));
         }
 

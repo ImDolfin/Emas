@@ -254,15 +254,7 @@ namespace Emas
             }
             else
             {
-                Record existing;
-                if (_identities.TryGetValue(key, out existing) || (blueprint != null && blueprint.GhostPrefab != null))
-                {
-                    root = GetOrCreate<Ghost>(detector, anchorId, entityId, kind, variant, name, anchorTransform, blueprint);
-                }
-                else
-                {
-                    root = GetOrCreate<DefaultGhost>(detector, anchorId, entityId, kind, variant, name, anchorTransform, blueprint);
-                }
+                root = GetOrCreate<Ghost>(detector, anchorId, entityId, kind, variant, name, anchorTransform, blueprint);
             }
 
             Record record = _identities.Find(root);

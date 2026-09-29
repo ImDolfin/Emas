@@ -13,7 +13,7 @@ namespace Emas.Minimal
         /// <inheritdoc />
         protected override void OnStart()
         {
-            Detect("one", Marker.Kind, source: _source);
+            Detect("one", MarkerSource.Kind, source: _source);
         }
     }
 }

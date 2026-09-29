@@ -38,7 +38,7 @@ namespace Emas.RelativeWorld
             GeoPoseReading[] readings = new[]
             {
                 new GeoPoseReading(
-                    "origin", "Moving origin", RelativeCar.Origin,
+                    "origin", "Moving origin", new Variant("origin"),
                     latitude + 0.00004 * Math.Sin(time * 0.31),
                     longitude + 0.00006 * Math.Sin(time * 0.23),
                     altitude + 1.5 * Math.Sin(time * 0.19),
@@ -46,7 +46,7 @@ namespace Emas.RelativeWorld
                     3.0 * Math.Sin(time * 0.27),
                     4.0 * Math.Sin(time * 0.29)),
                 new GeoPoseReading(
-                    "target", "Moving target", RelativeCar.Target,
+                    "target", "Moving target", new Variant("target"),
                     latitude + 0.00016 + 0.00003 * Math.Sin(time * 0.24),
                     longitude + 0.00004 + 0.00003 * Math.Cos(time * 0.31),
                     altitude + 1.0 + 0.7 * Math.Sin(time * 0.37 + 0.2),

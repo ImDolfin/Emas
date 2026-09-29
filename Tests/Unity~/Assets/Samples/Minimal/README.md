@@ -15,7 +15,7 @@ The assets form a small, complete presentation setup:
 | Asset | Purpose |
 | --- | --- |
 | `MarkerBlueprint.asset` | Maps `minimal.marker` to its Ghost root and default variant. |
-| `MarkerRoot.prefab` | Contains the `Marker` Ghost and its reusable `MarkerPositionModule`. |
+| `MarkerRoot.prefab` | Contains a plain `Ghost` and its reusable `MarkerPositionModule`. |
 | `Default Marker Variant.asset` | Maps the empty variant ID (`Variant.None`) at Full detail to the view. |
 | `MarkerView.prefab` | Contains the cube mesh and its `Marker.mat` material. |
 | `Tracking.prefab` | Reusable, fully configured realm, anchor and detector provider. |

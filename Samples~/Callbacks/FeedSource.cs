@@ -10,6 +10,9 @@ namespace Emas.Callbacks
     /// </remarks>
     public sealed class FeedSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
+        /// <summary>The entity category configured by this sample.</summary>
+        public static readonly Kind Kind = new Kind("callbacks.marker");
+
         private SimulatedFeed _feed;
 
         /// <summary>
@@ -18,7 +21,7 @@ namespace Emas.Callbacks
         /// <param name="realm">The realm that owns this sample's presences.</param>
         public void ConfigureRealm(Realm realm)
         {
-            realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
+            realm.RegisterPresenceInitializer<Ghost>(Kind, (presence, marker) =>
             {
                 marker.GetComponent<MarkerPositionModule>().Bind(() =>
                     (presence.Source as SimulatedFeed)?.Current?.Position ?? marker.transform.localPosition);

@@ -9,6 +9,9 @@ namespace Emas.RelativeWorld
     [AddComponentMenu("Emas/Examples/Geo Source")]
     public sealed class GeoSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
+        /// <summary>The entity category configured by this sample.</summary>
+        public static readonly Kind Kind = new Kind("relative.car");
+
         private SimulatedGeoSdk _sdk;
 
         /// <summary>
@@ -16,7 +19,7 @@ namespace Emas.RelativeWorld
         /// </summary>
         public void ConfigureRealm(Realm realm)
         {
-            realm.RegisterPresenceInitializer<RelativeCar>(RelativeCar.Kind, (presence, root) =>
+            realm.RegisterPresenceInitializer<Ghost>(Kind, (presence, root) =>
             {
                 string id = presence.Key.EntityId;
                 root.GetComponent<GeoPositionModule>().Bind(() =>

@@ -13,7 +13,7 @@ The scene contains an instance of `Tracking.prefab` plus an authored camera, lig
 | Asset | Purpose |
 | --- | --- |
 | `MarkerBlueprint.asset` | Maps `callbacks.marker` to its Ghost root and default variant. |
-| `MarkerRoot.prefab` | Contains the `Marker` Ghost and its reusable `MarkerPositionModule`. |
+| `MarkerRoot.prefab` | Contains a plain `Ghost` and its reusable `MarkerPositionModule`. |
 | `Default Marker Variant.asset` | Maps the empty variant ID (`Variant.None`) at Full detail to the view. |
 | `MarkerView.prefab` | Contains the cube mesh and its `Marker.mat` material. |
 | `Tracking.prefab` | Reusable realm, anchor and callback-source configuration. |

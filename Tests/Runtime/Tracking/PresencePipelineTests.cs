@@ -474,12 +474,12 @@ namespace Emas.Tests
         /// A metadata-only report needs neither a blueprint nor an initializer.
         /// </summary>
         [Test]
-        public void MetadataOnlyReport_UsesSilentDefaultRoot()
+        public void MetadataOnlyDetection_UsesPlainViewlessGhost()
         {
             Detector detector = new Detector();
             _realm.GetOrCreateAnchor("sdk", detector);
             Presence presence = detector.PublishMetadata("silent", "Silent object");
-            Assert.That(presence.Root, Is.Not.Null);
+            Assert.That(presence.Root, Is.TypeOf<Ghost>());
             Assert.That(presence.Name, Is.EqualTo("Silent object"));
             Assert.That(presence.HasCapability<IPositionCapability>(), Is.False);
             Assert.That(presence.Root.GetComponents<EntityModule>(), Is.Empty);
@@ -488,6 +488,59 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Single(), Is.SameAs(presence.Root));
             Assert.That(_realm.Manifest(presence, DetailLevel.Full), Is.Null);
             Assert.That(presence.Root.GetComponentInChildren<View>(), Is.Null);
+        }
+
+        /// <summary>
+        /// Plain Ghost prefabs bind reusable modules and project after all readers update the followed reference.
+        /// </summary>
+        [Test]
+        public void PlainGhostPrefab_ComposesModulesBeforeRelativePlacement()
+        {
+            GameObject prefab = new GameObject("composed ghost");
+            prefab.SetActive(false);
+            Ghost prefabGhost = prefab.AddComponent<Ghost>();
+            prefab.AddComponent<Spatial>();
+            prefab.AddComponent<PipelinePositionModule>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            try
+            {
+                blueprint.Configure(TrackedKind, prefabGhost, null, null);
+                _realm.RegisterManifestationBlueprint(blueprint);
+                _realm.RegisterPresenceInitializer<Ghost>(TrackedKind, (presence, root) =>
+                {
+                    root.GetComponent<PipelinePositionModule>().Bind(() => ((Reading)presence.Source).Position);
+                });
+                _realm.ReferenceFrame = new ReferenceFrame
+                {
+                    FollowedGhost = new Key("sdk", TrackedKind, "origin")
+                };
+                Detector detector = new Detector();
+                _realm.GetOrCreateAnchor("sdk", detector);
+                Reading targetData = new Reading(new Double3(1010, 0, 0), 0);
+                Reading originData = new Reading(new Double3(1000, 0, 0), 0);
+                Presence target = detector.Arrive("target", targetData);
+                Presence origin = detector.Arrive("origin", originData);
+                _realm.Update();
+
+                Assert.That(target.Root, Is.TypeOf<Ghost>());
+                Assert.That(target.Root, Is.Not.SameAs(prefabGhost));
+                Assert.That(target.Root.GetRequired<Spatial>().Position, Is.EqualTo(targetData.Position));
+                Assert.That(target.Root.transform.position, Is.EqualTo(new Vector3(10, 0, 0)));
+                Assert.That(origin.Root.transform.position, Is.EqualTo(Vector3.zero));
+                Assert.That(target.IsAvailable, Is.True);
+                Assert.That(_realm.Query().Count, Is.EqualTo(2));
+                Assert.That(target.Root.GetComponentInChildren<View>(), Is.Null);
+
+                originData.Position = new Double3(1005, 0, 0);
+                _realm.Update();
+                Assert.That(target.Root.transform.position, Is.EqualTo(new Vector3(5, 0, 0)),
+                    "Projection must use this update's mapped origin, even when the target was detected first.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(prefab);
+            }
         }
 
         private interface IPositionCapability

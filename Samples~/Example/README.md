@@ -12,7 +12,7 @@ The scene is configured before Play. Expand **Tracking** to inspect its `RealmSe
 | `Blueprints/Cars.asset` | Car ghost root, three appearance variants and the unknown-vehicle fallback |
 | `Blueprints/Aircraft.asset` | Aircraft ghost root and trainer appearance |
 | `Variants/SmallCar.asset`, `LargeCar.asset`, `Truck.asset`, `Trainer.asset` | Appearance IDs and their Full-detail view prefabs |
-| `Prefabs/Ghosts/` | `CarGhost` or `AircraftGhost`, configured position/articulation modules and `ApplyPosition` |
+| `Prefabs/Ghosts/` | Plain `Ghost` components, configured position/articulation modules and `ApplyPosition` |
 | `Prefabs/Views/` | A shared `VehicleView` prefab, actual Unity prefab variants for the vehicle appearances, and an aircraft view |
 | `Materials/` | Saved materials assigned to the authored view and environment renderers |
 | `Prefabs/Cockpit.prefab` | A screen and marker wired to the focused `CockpitDemo` behavior |
@@ -24,7 +24,7 @@ To customize an appearance, open its view prefab variant and change the body, ca
 | Responsibility | Read first |
 | --- | --- |
 | Read-only application data | `Contracts/I3DPosition.cs`, `IArticulate.cs` |
-| Ghost module definitions | `Entities/CarGhost.cs`, `PositionModule.cs`, `ArticulationModule.cs` |
+| Ghost module definitions | `Entities/PositionModule.cs`, `ArticulationModule.cs` and the saved Ghost prefabs |
 | SDK-to-module mapping | `Sources/CarSource.cs`, `AircraftSource.cs` |
 | One detector per anchor attachment | `Sources/CarSource.cs`, `AircraftSource.cs` |
 | SDK replacement | `CarSource.ReplaceCarSource()`; its serialized delay is four seconds |

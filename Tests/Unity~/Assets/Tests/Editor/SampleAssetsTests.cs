@@ -79,7 +79,8 @@ namespace Emas.Tests.Samples
                     Assert.That(blueprint, Is.Not.Null);
                     Assert.That(AssetDatabase.GetAssetPath(blueprint), Does.StartWith(directory));
                     Assert.That(blueprint.Kind.IsValid, Is.True);
-                    Assert.That(blueprint.GhostPrefab, Is.Not.Null);
+                    Assert.That(blueprint.GhostPrefab, Is.TypeOf<Ghost>(),
+                        "Sample entities should be composed from a plain Ghost and authored modules.");
                     Assert.That(PrefabUtility.IsPartOfPrefabAsset(blueprint.GhostPrefab), Is.True);
                     Assert.That(AssetDatabase.GetAssetPath(blueprint.GhostPrefab), Does.StartWith(directory));
                     Assert.That(blueprint.GhostPrefab.GetComponents<EntityModule>(), Is.Not.Empty,

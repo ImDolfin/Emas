@@ -7,13 +7,16 @@ namespace Emas.Minimal
     /// </summary>
     public sealed class MarkerSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
+        /// <summary>The entity category configured by this sample.</summary>
+        public static readonly Kind Kind = new Kind("minimal.marker");
+
         /// <summary>
         /// Binds the marker root's configured position module before tracking starts.
         /// </summary>
         /// <param name="realm">The realm owned by this prefab setup.</param>
         public void ConfigureRealm(Realm realm)
         {
-            realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
+            realm.RegisterPresenceInitializer<Ghost>(Kind, (presence, marker) =>
             {
                 marker.GetComponent<MarkerPositionModule>().Bind(() =>
                     (presence.Source as MarkerSource)?.ReadPosition(presence.Key.EntityId) ?? marker.transform.localPosition);

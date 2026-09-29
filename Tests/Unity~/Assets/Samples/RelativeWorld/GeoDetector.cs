@@ -24,7 +24,7 @@ namespace Emas.RelativeWorld
         {
             foreach (GeoPoseReading reading in _sdk.ReadFrame())
             {
-                Detect(reading.Id, RelativeCar.Kind, reading.Label, reading.Variant, source: _sdk);
+                Detect(reading.Id, GeoSource.Kind, reading.Label, reading.Variant, source: _sdk);
             }
         }
     }

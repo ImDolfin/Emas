@@ -6,7 +6,7 @@ Import **Relative world** from the Emas package, open `RelativeWorld.unity`, and
 
 1. Select **Tracking** in the scene. Its **Realm Setup** owns the realm and assigns `Manifestations/RelativeCar.asset`. The reference frame follows anchor `relative-world`, kind `relative.car`, entity `origin`, with **Follow Rotation** enabled and a **Max Distance** of 45 metres.
 2. Expand **Tracking / Geodetic Feed**. **Anchor Setup** has ID `relative-world` and **Automatic Views** enabled. **Geo Source** connects the simulated SDK and binds readers on the two configured modules.
-3. Open `Manifestations/RelativeCar.asset`. Its Ghost Prefab is `Prefabs/RelativeCar.prefab`, containing **Relative Car**, **Spatial**, **Geo Position Module**, and **Geo Orientation Module**. Its two variants point to `Origin.asset` and `Target.asset`.
+3. Open `Manifestations/RelativeCar.asset`. Its Ghost Prefab is `Prefabs/RelativeCar.prefab`, containing **Ghost**, **Spatial**, **Geo Position Module**, and **Geo Orientation Module**. Its two variants point to `Origin.asset` and `Target.asset`.
 4. Open either variant asset to inspect its **Full** detail mapping, then open `Prefabs/OriginView.prefab` or `Prefabs/TargetView.prefab` to edit the car geometry and assigned materials. Appearance is configured in assets, so changing a view requires no source-code changes.
 
 `Prefabs/Tracking.prefab` contains the complete reusable tracking configuration. Place it in another scene with a camera and light to use the same detector, blueprint, and reference frame. Disable **Tracking** to release its realm and generated entity/view instances; the authored environment stays in place. Re-enable it to start a fresh simulation.
@@ -15,7 +15,7 @@ Import **Relative world** from the Emas package, open `RelativeWorld.unity`, and
 
 `SimulatedGeoSdk` supplies a complete snapshot containing `origin` and `target`. Each `GeoPoseReading` carries WGS84 latitude and longitude in degrees, ellipsoidal altitude in metres, and yaw, pitch, and roll. `GeoDetector` detects both permanent entities in `OnStart`. `GeoSource` advances the SDK and refreshes its current snapshots independently; modules read the latest mapped values on each realm update. These two sample entities are always present; an integration with departing entities should call `Disappear` for their IDs.
 
-`GeoSource` implements `IDetectorProvider` and `IRealmConfigurator`. Its only setup code creates the detector and binds the `GeoPositionModule` and `GeoOrientationModule` already configured on the authored `RelativeCar` root. `RealmSetup` owns startup, updates, views, and cleanup. `GeoSource.Advance(seconds)` can advance the simulation explicitly; the next realm update applies the resulting snapshot.
+`GeoSource` implements `IDetectorProvider` and `IRealmConfigurator`. Its only setup code creates the detector and binds the `GeoPositionModule` and `GeoOrientationModule` already configured on the authored plain `Ghost` root in `RelativeCar.prefab`. `RealmSetup` owns startup, updates, views, and cleanup. `GeoSource.Advance(seconds)` can advance the simulation explicitly; the next realm update applies the resulting snapshot.
 
 The initializer uses `GeoProjection` to convert geodetic coordinates relative to the fixed datum **52.520008 degrees N, 13.404954 degrees E, 40 m** into double-precision ENU coordinates: `Double3.X` is east, `Y` is up, and `Z` is north. The orientation reader maps SDK yaw clockwise from true north, pitch nose-up, and roll right-wing-down into the root's local **+Z forward, +X right, +Y up** convention. Both modules update `Spatial`; the detector handles identity and presence.
 
@@ -26,7 +26,7 @@ The reference frame subtracts the moving origin in doubles before converting to 
 | `Prefabs/Tracking.prefab` | Inspector-configured realm, followed origin, anchor, and source. |
 | `Manifestations/RelativeCar.asset` | Connects the car kind, Ghost prefab, and appearance variants. |
 | `Manifestations/Origin.asset`, `Target.asset` | Map each appearance to its car view prefab. |
-| `Prefabs/RelativeCar.prefab` | Ghost root with `RelativeCar`, `Spatial` and both modules. |
+| `Prefabs/RelativeCar.prefab` | Ghost root with `Ghost`, `Spatial` and both modules. |
 | `Prefabs/OriginView.prefab`, `TargetView.prefab` | Editable car visuals with shared material assets. |
 | `GeoSource.cs` | Provides the detector, caches SDK snapshots and binds module readers. |
 | `GeoDetector.cs` | Reports the two SDK entities, names, and visual variants. |

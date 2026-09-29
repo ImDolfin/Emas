@@ -61,22 +61,7 @@ namespace Emas
             {
                 if (spatial != null && spatial.enabled)
                 {
-                    Vector3 position = default(Vector3);
-                    visible = spatial.HasPosition && projection.TryToUnityPosition(spatial.Position, out position);
-                    if (visible)
-                    {
-                        // Assign world pose so existing anchor transforms do not introduce a second offset.
-                        if (spatial.HasRotation)
-                        {
-                            record.Ghost.transform.SetPositionAndRotation(position, projection.ToUnityRotation(spatial.Rotation));
-                        }
-                        else
-                        {
-                            record.Ghost.transform.position = position;
-                        }
-                    }
-
-                    spatial.SetInRange(visible);
+                    visible = spatial.ApplyProjection(projection);
                 }
                 else if (spatial != null)
                 {

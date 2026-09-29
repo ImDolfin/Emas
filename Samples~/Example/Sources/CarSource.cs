@@ -20,7 +20,7 @@ namespace Emas.Sample
         /// <summary>Maps the active SDK to modules already configured on the car Ghost.</summary>
         public void ConfigureRealm(Realm realm)
         {
-            realm.RegisterPresenceInitializer<CarGhost>(SampleKinds.Car, (presence, root) =>
+            realm.RegisterPresenceInitializer<Ghost>(SampleKinds.Car, (presence, root) =>
             {
                 string id = presence.Key.EntityId;
                 PositionModule position = root.GetComponent<PositionModule>();

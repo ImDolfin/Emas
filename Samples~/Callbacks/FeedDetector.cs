@@ -22,8 +22,8 @@ namespace Emas.Callbacks
             // The feed raises events on Unity's main thread. Capture this attachment's
             // dispatcher so callbacks retained after a restart cannot publish stale data.
             Action<Action> dispatch = CaptureDispatcher();
-            _arrived = reading => dispatch(() => Detect(reading.Id, Marker.Kind, source: _feed));
-            _removed = id => dispatch(() => Disappear(Marker.Kind, id));
+            _arrived = reading => dispatch(() => Detect(reading.Id, FeedSource.Kind, source: _feed));
+            _removed = id => dispatch(() => Disappear(FeedSource.Kind, id));
             _feed.Arrived += _arrived;
             _feed.Removed += _removed;
             if (_feed.Current != null)

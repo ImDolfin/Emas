@@ -22,7 +22,7 @@ namespace Emas.Tests
             {
                 Probe source = new Probe();
                 realm.GetOrCreateAnchor("simulation", source);
-                TestGhost ghost = source.Publish("42");
+                Ghost ghost = source.Publish("42");
                 FirstPart first = ghost.gameObject.AddComponent<FirstPart>();
                 SecondPart second = ghost.gameObject.AddComponent<SecondPart>();
                 realm.Update();
@@ -48,7 +48,7 @@ namespace Emas.Tests
             {
                 Probe source = new Probe();
                 realm.GetOrCreateAnchor("simulation", source);
-                TestGhost concrete = source.Publish("43");
+                Ghost concrete = source.Publish("43");
                 realm.Update();
                 IGhost ghost = concrete;
                 InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ghost.GetRequired<IPart>());
@@ -63,10 +63,6 @@ namespace Emas.Tests
         {
         }
 
-        private sealed class TestGhost : Ghost
-        {
-        }
-
         private sealed class FirstPart : MonoBehaviour, IPart
         {
         }
@@ -77,9 +73,9 @@ namespace Emas.Tests
 
         private sealed class Probe : PresenceDetector
         {
-            internal TestGhost Publish(string id)
+            internal Ghost Publish(string id)
             {
-                return GetOrCreate<TestGhost>(id, new Kind("vehicles.car"));
+                return GetOrCreate<Ghost>(id, new Kind("vehicles.car"));
             }
         }
     }

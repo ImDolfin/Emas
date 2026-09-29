@@ -8,17 +8,18 @@ Add `package.json` through **Package Manager > Add package from disk**, import *
 
 ## Build the same integration
 
-The [Quick start](../Samples~/Minimal/) uses four small classes. Put each class in its own file in an application assembly referencing `Emas.Runtime`. Imported sample files are already configured.
+The [Quick start](../Samples~/Minimal/) uses three small classes and a plain `Ghost` prefab. Put each class in its own file in an application assembly referencing `Emas.Runtime`. Imported sample files are already configured.
 
-1. `Marker` declares its `MarkerPositionModule` with `RequireComponent`. The saved Ghost prefab contains that component too.
-2. `MarkerPositionModule : EntityModule<Vector3>` applies a local position. It knows nothing about the SDK or its proxy type.
-3. `MarkerSource.ConfigureRealm` connects the module to a value reader in the registered initializer.
-4. `MarkerDetector` calls `Detect("one", Marker.Kind)` once in `OnStart`. Later position changes do not go through the detector.
+The saved `MarkerRoot.prefab` contains `Ghost` and `MarkerPositionModule`; no entity subclass is required.
 
-For a real SDK, pass the discovered proxy with `Detect(id, Marker.Kind, source: proxy)`. The initializer resolves it directly; `SdkProxy` below stands for your SDK's concrete proxy type:
+1. `MarkerPositionModule : EntityModule<Vector3>` applies a local position. It knows nothing about the SDK or its proxy type.
+2. `MarkerSource.ConfigureRealm` connects the module to a value reader in the registered initializer.
+3. `MarkerDetector` calls `Detect("one", MarkerSource.Kind)` once in `OnStart`. Later position changes do not go through the detector.
+
+For a real SDK, pass the discovered proxy with `Detect(id, MarkerSource.Kind, source: proxy)`. The initializer resolves it directly; `SdkProxy` below stands for your SDK's concrete proxy type:
 
 ```csharp
-realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
+realm.RegisterPresenceInitializer<Ghost>(MarkerSource.Kind, (presence, marker) =>
 {
     marker.GetComponent<MarkerPositionModule>().Bind(() =>
         (presence.Source as SdkProxy)?.Position ?? marker.transform.localPosition);
@@ -43,12 +44,12 @@ The realm reads and applies enabled, bound modules before spatial projection and
 
 The imported sample already contains this setup. To create it in another scene:
 
-1. Create an empty GameObject with the `Marker` component and save it as `MarkerRoot.prefab`. Keep its transform at the identity; this is the invisible Ghost root that receives position data.
+1. Create an empty GameObject with **Emas > Ghost** and `MarkerPositionModule` components and save it as `MarkerRoot.prefab`. Keep its transform at the identity; this is the invisible Ghost root that receives position data.
 2. Create a cube and save it as `MarkerView.prefab`. Keep its local position and rotation at zero and scale at one. Assign a material to its renderer, then remove both temporary objects from the scene.
 3. Create **Assets > Create > Emas > Manifestation Variant**, named `Default Marker Variant`. Leave **Variant** empty (`Variant.None`), and add one detail mapping: **Full (3)** to `MarkerView.prefab`.
 4. Create **Assets > Create > Emas > Manifestation Blueprint**, named `MarkerBlueprint`. Set **Kind Id** to `minimal.marker`, assign `MarkerRoot.prefab` as **Ghost Prefab**, and add the default variant to **Variants**. Leave **Fallback View Prefab** empty.
 5. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `MarkerSource`. On Realm Setup, assign `MarkerBlueprint` as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled. Save the object as `Tracking.prefab` and keep its instance in the scene. Add a camera and light if the scene has none.
-6. Press Play. Realm Setup creates its realm, calls `MarkerSource.ConfigureRealm`, then attaches the anchor's detector. Emas creates a `Presence` and instantiates the authored `Marker` root beneath the anchor, reads the mapped position through `MarkerPositionModule` and attaches the cube view selected by the variant. Move Tracking to move its anchor frame.
+6. Press Play. Realm Setup creates its realm, calls `MarkerSource.ConfigureRealm`, then attaches the anchor's detector. Emas creates a `Presence` and instantiates the authored plain `Ghost` root beneath the anchor, reads the mapped position through `MarkerPositionModule` and attaches the cube view selected by the variant. Move Tracking to move its anchor frame.
 
 For several appearances of one Kind, create a **Manifestation Variant** asset for each appearance and assign its detail-level view prefabs. Add those assets to the Kind's Manifestation Blueprint. A Kind with no blueprint still gets its Ghost root and remains visually silent until a view is configured.
 
@@ -61,7 +62,7 @@ Each Realm Setup owns one isolated realm and can have several Anchor Setup objec
 A query can find available Ghost roots across all live realms, including realms created later:
 
 ```csharp
-Query markers = Query.All().OfKind(Marker.Kind);
+Query markers = Query.All().OfKind(MarkerSource.Kind);
 System.IDisposable subscription = markers.OnAvailable(ghost => Debug.Log(ghost.Name));
 ```
 
@@ -71,7 +72,7 @@ When you know the identity, use the stable `Presence` handle. This example reque
 
 ```csharp
 Realm realm = GetComponent<RealmSetup>().Realm;
-Key key = new Key("quick-start", Marker.Kind, "one");
+Key key = new Key("quick-start", MarkerSource.Kind, "one");
 Presence presence;
 if (realm != null && realm.TryGetPresence(key, out presence) && presence.IsAvailable)
 {

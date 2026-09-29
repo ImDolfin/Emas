@@ -20,7 +20,7 @@ The integration uses five roles:
 
 `Kind("tracked.item")` identifies the category. A `Variant("standard")` identifies an appearance within that Kind. The detector reports both IDs; asset filenames do not select them.
 
-Create **Assets > Create > Emas > Manifestation Blueprint** with **Kind Id** `tracked.item`. It holds an optional **Ghost Prefab**, an optional **Fallback View Prefab**, and a list of **Manifestation Variant** assets. Leave Ghost Prefab empty to let the Realm create the registered `TrackedGhost` root. Create a variant asset with ID `standard` and map **Full (3)** to a detailed view prefab and **Reduced (2)** to a simpler one. A `ManifestationVariant` represents one appearance; `DetailLevel` selects its view. A missing mapping uses the closest lower level, then the blueprint fallback. With no blueprint, tracking still works but has no view.
+Create **Assets > Create > Emas > Manifestation Blueprint** with **Kind Id** `tracked.item`. It holds an optional **Ghost Prefab**, an optional **Fallback View Prefab**, and a list of **Manifestation Variant** assets. Assign a Ghost prefab containing a plain `Ghost` and the modules from section 2. For metadata-only entities, leave Ghost Prefab empty: the Realm creates a plain Ghost without modules. Create a variant asset with ID `standard` and map **Full (3)** to a detailed view prefab and **Reduced (2)** to a simpler one. A `ManifestationVariant` represents one appearance; `DetailLevel` selects its view. A missing mapping uses the closest lower level, then the blueprint fallback. With no blueprint, tracking still works but has no view.
 
 ### 2. Define reusable modules on the Ghost
 
@@ -30,15 +30,8 @@ The SDK reading keeps its raw WGS84 fields. The initializer maps these fields to
 using Emas;
 using UnityEngine;
 
-/// <summary>Defines an identified Ghost with a shared position module.</summary>
-[RequireComponent(typeof(Spatial), typeof(PositionModule))]
-public sealed class TrackedGhost : Ghost
-{
-    /// <summary>The category used by this integration.</summary>
-    public static readonly Kind Kind = new Kind("tracked.item");
-}
-
 /// <summary>Applies source-independent Cartesian positions.</summary>
+[RequireComponent(typeof(Spatial))]
 public sealed class PositionModule : EntityModule<Double3>
 {
     /// <summary>Updates the Ghost's shared position.</summary>
@@ -51,6 +44,8 @@ public sealed class PositionModule : EntityModule<Double3>
 
 `YourGeo.Wgs84ToEnu` is **application code**, not an Emas API. Give it one fixed WGS84 latitude, longitude, and height as the local ENU conversion point. Convert each reading to Earth-centered XYZ, subtract that fixed point's XYZ, then rotate into east/up/north metres. This fixed conversion point is separate from the moving `origin` Ghost chosen below; **both** Ghosts must use the same conversion point and axes. `AltitudeMeters` here means WGS84 ellipsoidal height; convert mean-sea-level SDK altitude before passing it to the converter. The [working WGS84 conversion](Samples~/RelativeWorld/GeoProjection.cs) shows the full calculation. If the SDK also supplies orientation, the initializer converts it to a `Quaternion` for a separate rotation module; see the [orientation example](Samples~/RelativeWorld/GeoOrientationModule.cs).
 
+Save a prefab with **Emas > Ghost**, `PositionModule` and `Spatial`, and assign it to the blueprint. No Ghost subclass is needed. Derive one only when the entity has additional behavior that combines its modules.
+
 ### 3. Connect the detector and realm
 
 Keep your SDK client or a proxy lookup in the application component. The detector only announces arrivals and departures. This example exposes two application-facing methods; call them from your SDK's membership callbacks on Unity's main thread:
@@ -58,26 +53,28 @@ Keep your SDK client or a proxy lookup in the application component. The detecto
 ```csharp
 internal sealed class TrackedDetector : PresenceDetector
 {
+    internal static readonly Kind Kind = new Kind("tracked.item");
+
     internal Presence Arrive(string id, object source, string name = null)
     {
-        return Detect(id, TrackedGhost.Kind, name, source: source);
+        return Detect(id, Kind, name, variant: new Variant("standard"), source: source);
     }
 
     internal void Leave(string id)
     {
-        Disappear(TrackedGhost.Kind, id);
+        Disappear(Kind, id);
     }
 }
 ```
 
 For an SDK that supplies membership events, subscribe in `OnStart`, capture a dispatcher with `CaptureDispatcher()`, and unsubscribe in `OnStop`. Queue detections and explicit disappearances through that captured dispatcher so callbacks retained from an older attachment are ignored. All detector operations and callbacks run on Unity's main thread; the application handles any thread transfer. See the [callback sample](Samples~/Callbacks/FeedDetector.cs).
 
-Here `blueprint` is the optional asset from section 1. `SdkProxy` represents your SDK's proxy class; `originProxy` and `itemProxy` are objects already received during discovery. Supply them when announcing arrival:
+Here `blueprint` is the asset from section 1 with the configured Ghost prefab. `SdkProxy` represents your SDK's proxy class; `originProxy` and `itemProxy` are objects already received during discovery. Supply them when announcing arrival:
 
 ```csharp
 var detector = new TrackedDetector();
 Realm realm = new Realm();
-realm.RegisterPresenceInitializer<TrackedGhost>(TrackedGhost.Kind, (presence, root) =>
+realm.RegisterPresenceInitializer<Ghost>(TrackedDetector.Kind, (presence, root) =>
 {
     Spatial spatial = root.GetComponent<Spatial>();
     root.GetComponent<PositionModule>().Bind(() =>
@@ -91,7 +88,7 @@ realm.RegisterManifestationBlueprint(blueprint);
 
 realm.ReferenceFrame = new ReferenceFrame
 {
-    FollowedGhost = new Key("items", TrackedGhost.Kind, "origin"),
+    FollowedGhost = new Key("items", TrackedDetector.Kind, "origin"),
     UnityPosition = Vector3.zero,
     FollowRotation = false
 };
@@ -100,7 +97,7 @@ detector.Arrive("origin", originProxy);
 detector.Arrive("item-1", itemProxy);
 ```
 
-The Ghost defines its modules through `RequireComponent` or its prefab. The initializer only binds their inputs, and runs again if a retained Ghost is rediscovered or handed to another detector. No data payload travels through the detector. Each realm update reads the enabled modules, applies both converted positions, and then projects them relative to `origin`. Updating a proxy requires no further detection call. `FollowRotation = false` follows position only; use `true` after binding a rotation module.
+The Ghost prefab defines its modules as saved components. The initializer only binds their inputs, and runs again if a retained Ghost is rediscovered or handed to another detector. No data payload travels through the detector. Each realm update reads the enabled modules, applies both converted positions, and then projects them relative to `origin`. Updating a proxy requires no further detection call. `FollowRotation = false` follows position only; use `true` after binding a rotation module.
 
 `Presence.Source` resolves a weak reference. It can hold a proxy, SDK client or another application source object. It returns null if collected or destroyed as a Unity object; the example preserves the last position in that case. Resolve Source inside the reader, as shown, to avoid a closure retaining the proxy strongly. The application owns its lifetime. Disappearance, handover and removal release the reference. Passing a different source for the same identity reruns initialization; omitting it preserves the current source.
 
@@ -109,7 +106,7 @@ For snapshot SDKs, supply the SDK client or a stable proxy that exposes its curr
 Call `realm.Update()` each frame and `realm.Dispose()` when done. `Realm.Default` updates automatically. To request a view for one available Presence:
 
 ```csharp
-if (realm.TryGetPresence(new Key("items", TrackedGhost.Kind, "item-1"), out Presence item)
+if (realm.TryGetPresence(new Key("items", TrackedDetector.Kind, "item-1"), out Presence item)
     && item.IsAvailable)
 {
     realm.Manifest(item, DetailLevel.Full);
@@ -125,7 +122,7 @@ World  (RealmSetup: blueprint; Use Reference Frame; Follow Ghost)
   Items  (AnchorSetup: id "items"; SDK provider)
 ```
 
-Put `RealmSetup` on the root and assign the optional blueprint. On `Items`, put `AnchorSetup` and exactly one enabled component implementing `IDetectorProvider` on the **same** GameObject. Its `CreateDetector()` creates your membership detector. Implement `IRealmConfigurator` on that component to register the initializer and SDK-to-module readers before detectors start. Author the `PositionModule` on the Ghost prefab; `RequireComponent` supplies it when Emas creates a root in code. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup updates and disposes its realm. The [four samples](Samples~) ship with this setup already authored.
+Put `RealmSetup` on the root and assign the optional blueprint. On `Items`, put `AnchorSetup` and exactly one enabled component implementing `IDetectorProvider` on the **same** GameObject. Its `CreateDetector()` creates your membership detector. Implement `IRealmConfigurator` on that component to register the initializer and SDK-to-module readers before detectors start. Author the plain `Ghost` and `PositionModule` on the Ghost prefab; the module requires `Spatial`. Custom Ghost subclasses may use `RequireComponent` when code-created roots need a fixed set of modules. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup updates and disposes its realm. The [four samples](Samples~) ship with this setup already authored.
 
 For the moving origin, set **Follow Ghost** to anchor `items`, Kind `tracked.item`, entity `origin`. There are no latitude/longitude fields on `ReferenceFrame` or Realm Setup: their **Position** field is already-converted Cartesian `Double3`. For a fixed reference, convert its latitude/longitude/altitude with the same `YourGeo.Wgs84ToEnu` function and assign that `Double3` to `ReferenceFrame.Position` instead of following a Ghost. `Unity Position` chooses where the reference appears in the scene. If your module writes ordinary local Unity transforms instead of `Spatial`, omit the reference frame. See [Spatial](Documentation~/Spatial.md) for projection and reference loss.
 
