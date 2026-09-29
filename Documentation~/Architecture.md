@@ -50,7 +50,7 @@ Successful startup outside an update finalizes directly reported roots immediate
 
 ## Optional spatial projection
 
-`Realm.ReferenceFrame` and root `Spatial` components opt into shared Cartesian coordinates. `Double3` preserves global positions until the reference displacement has been calculated in doubles. The spatial phase maps the result to a configured Unity world pose, compensating for Anchor parents; ghosts without enabled spatial components retain application positioning.
+Enabled root `Spatial` components opt into shared Cartesian coordinates. A null `Realm.ReferenceFrame` uses identity projection into Unity world space with no distance limit; an assigned frame configures relative placement. `Double3` preserves global positions until the reference displacement has been calculated in doubles. The spatial phase maps the result to a configured Unity world pose, compensating for Anchor parents; ghosts without enabled spatial components retain application positioning.
 
 A manual reference or a followed spatial ghost provides the origin. Following resolves once per spatial phase, so reference movement reprojects entities whose cached position has not changed. Rotation is an independent optional channel. Losing a followed entity retains its last valid reference pose and exposes that loss without jumping to the global origin.
 

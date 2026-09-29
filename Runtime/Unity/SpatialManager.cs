@@ -29,7 +29,9 @@ namespace Emas
                 frame.UpdateFollowedPose(spatial);
             }
 
-            return frame == null ? default(ReferenceFrame.Projection) : frame.Capture();
+            return frame == null
+                ? new ReferenceFrame.Projection(true, default(Double3), Vector3.zero, Quaternion.identity, null)
+                : frame.Capture();
         }
 
         internal void Project(List<Record> records, ReferenceFrame frame)
@@ -37,16 +39,16 @@ namespace Emas
             ReferenceFrame.Projection projection = Capture(frame);
             for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
             {
-                Project(records[index], frame != null, projection);
+                Project(records[index], projection);
             }
         }
 
         internal void Project(Record record, ReferenceFrame frame)
         {
-            Project(record, frame != null, Capture(frame));
+            Project(record, Capture(frame));
         }
 
-        private void Project(Record record, bool enabled, ReferenceFrame.Projection projection)
+        private void Project(Record record, ReferenceFrame.Projection projection)
         {
             if (!CanProject(record))
             {
@@ -57,7 +59,7 @@ namespace Emas
             bool visible = true;
             try
             {
-                if (enabled && spatial != null && spatial.enabled)
+                if (spatial != null && spatial.enabled)
                 {
                     Vector3 position = default(Vector3);
                     visible = spatial.HasPosition && projection.TryToUnityPosition(spatial.Position, out position);

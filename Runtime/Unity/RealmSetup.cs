@@ -23,7 +23,7 @@ namespace Emas
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
         [Header("Reference Frame")]
-        [Tooltip("Project Spatial Ghosts relative to a manual or followed reference point.")]
+        [Tooltip("Project Spatial Ghosts relative to a manual or followed reference point. When off, spatial poses map directly to Unity world space.")]
         [SerializeField]
         private bool _useReferenceFrame;
         [Tooltip("Use a Ghost in this realm as the moving reference. Identify it with the next three fields.")]

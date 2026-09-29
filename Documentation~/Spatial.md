@@ -1,6 +1,6 @@
 # Relative worlds and large coordinates
 
-Configure a reference frame for a realm when shared Cartesian positions should be projected relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, ordinary application positioning continues to work.
+Configure a reference frame for a realm when shared Cartesian positions should be projected relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, enabled `Spatial` components use an identity frame: stored positions and rotations map directly to Unity world space, with no distance limit. Ghosts without an enabled `Spatial` remain application-positioned.
 
 ## Configure a prefab realm
 
@@ -114,7 +114,9 @@ With position-only following, the inverse reference rotation is omitted. Absolut
 
 Projected roots stay beneath their Anchors. Projection sets world position and compensates for parent placement; do not add an Anchor's offset to spatial coordinates a second time. Ordinary ghosts without an enabled `Spatial` retain their existing positioning behavior. Network scenery that should move with the reference should use spatial projection too; a local cockpit can remain fixed in the Unity scene.
 
-Disabling `Spatial` stops projection and restores renderers and colliders that spatial culling had disabled. Setting `Realm.ReferenceFrame` to null releases projection and restores that presentation on the next realm update; requested views resume through the usual refresh phase. Roots keep their last projected world pose in either case. Emas does not restore a previous transform pose; application positioning can take over from the current pose.
+Setting `Realm.ReferenceFrame` to null returns to identity projection on the next realm update: roots use their stored world coordinates and rotations, and the previous distance limit no longer applies. Valid positions restore suppressed presentation through the usual refresh phase. Missing positions or coordinates that cannot fit in finite Unity floats remain suppressed.
+
+Disabling `Spatial` stops projection and restores renderers and colliders that spatial culling had disabled. The root keeps its last projected world pose; application positioning can take over from that pose.
 
 Only one system should write a participating root's position and published rotation. Remove old root-position behaviors such as the example's `ApplyPosition` from spatial ghost prefabs. Dynamic Rigidbody motion or other transform writers require an application-specific integration; spatial projection directly places the root.
 
@@ -122,7 +124,7 @@ Only one system should write a participating root's position and published rotat
 
 `MaxDistance` is an optional positive distance in the shared coordinate units, measured in doubles from the reference. Null disables the configured range limit. Select a range appropriate for your visual scale; relative coordinates far from the reference still have the precision limits of Unity floats.
 
-A spatial ghost without a position, without an initialized reference, or outside the presentation range keeps its tracking identity and data. Its requested view is suppressed; entering range creates the requested view automatically. `Spatial.IsInRange` describes its latest projection result. Root rendering and colliders are also suppressed outside the range while root scripts remain active. This is a presentation limit, not entity removal or a query-availability filter.
+A spatial ghost without a position, with an explicitly assigned but uninitialized reference, or outside the presentation range keeps its tracking identity and data. Its requested view is suppressed; entering range creates the requested view automatically. `Spatial.IsInRange` describes its latest projection result. Root rendering and colliders are also suppressed outside the range while root scripts remain active. This is a presentation limit, not entity removal or a query-availability filter.
 
 `Demanifest` still cancels the view request. Detector failure removes the population; explicit disappearance and inactivity expiry make a Presence unavailable immediately and remove its root after any configured disappearance grace period.
 

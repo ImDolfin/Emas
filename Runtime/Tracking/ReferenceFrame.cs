@@ -7,7 +7,7 @@ namespace Emas
     /// Maps double-precision shared Cartesian coordinates to a nearby Unity world pose.
     /// </summary>
     /// <remarks>
-    /// Assign to Realm.ReferenceFrame to enable spatial projection. Positions share one Cartesian
+    /// Assign to Realm.ReferenceFrame to customize spatial projection; null uses an identity frame. Positions share one Cartesian
     /// coordinate system and unit. Supply position and rotation independently, or follow a spatial ghost by key.
     /// All configuration and conversion calls require Unity's main thread.
     /// </remarks>

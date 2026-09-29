@@ -43,26 +43,67 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Spatial state does not take over transforms until a reference frame is configured.
+        /// An absent reference maps spatial poses to world space, including after clearing a custom frame.
         /// </summary>
         [Test]
-        public void ReferenceFrame_IsOptionalAndCanBeDisabled()
+        public void MissingReference_UsesIdentityWorldPoseAndClearingRestoresIt()
         {
             Assert.That(_realm.ReferenceFrame, Is.Null);
-            TestGhost ghost = _source.PublishPosition("remote", new Double3(1000, 0, 10));
-            Vector3 original = new Vector3(2, 3, 4);
-            ghost.transform.position = original;
+            _anchor.Transform.position = new Vector3(50, 20, -10);
+            _anchor.Transform.rotation = Quaternion.Euler(0, 30, 0);
+            _anchor.Transform.localScale = new Vector3(2, 3, 4);
+            TestGhost ghost = _source.PublishPosition("remote", new Double3(1000, 2, 10));
+            Quaternion rotation = Quaternion.Euler(10, 45, 20);
+            ghost.transform.rotation = rotation;
             _realm.Update();
-            AssertPosition(ghost.transform.position, original);
+            AssertPosition(ghost.transform.position, new Vector3(1000, 2, 10), 0.001f);
+            AssertRotation(ghost.transform.rotation, rotation);
 
-            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1000, 0, 0) };
+            rotation = Quaternion.Euler(20, 60, 30);
+            _source.PublishRotation("remote", rotation);
             _realm.Update();
-            AssertPosition(ghost.transform.position, new Vector3(0, 0, 10));
+            AssertRotation(ghost.transform.rotation, rotation);
+
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Position = new Double3(1000, 0, 0),
+                Rotation = Quaternion.Euler(0, 90, 0)
+            };
+            _realm.ReferenceFrame = frame;
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(-10, 2, 0), 0.001f);
+            AssertRotation(ghost.transform.rotation, frame.ToUnityRotation(rotation));
 
             _realm.ReferenceFrame = null;
-            _source.PublishPosition("remote", new Double3(1000, 0, 20));
             _realm.Update();
-            AssertPosition(ghost.transform.position, new Vector3(0, 0, 10));
+            AssertPosition(ghost.transform.position, new Vector3(1000, 2, 10), 0.001f);
+            AssertRotation(ghost.transform.rotation, rotation);
+            Assert.That(ghost.GetComponent<Spatial>().IsInRange, Is.True);
+        }
+
+        /// <summary>
+        /// Disabling Spatial lets the application position the root even without a reference frame.
+        /// </summary>
+        [Test]
+        public void DisabledSpatial_ReleasesIdentityPlacementUntilReenabled()
+        {
+            TestGhost ghost = _source.PublishPosition("remote", new Double3(10, 20, 30));
+            _realm.Update();
+            Spatial spatial = ghost.GetComponent<Spatial>();
+            spatial.enabled = false;
+            Vector3 position = new Vector3(1, 2, 3);
+            Quaternion rotation = Quaternion.Euler(10, 20, 30);
+            ghost.transform.SetPositionAndRotation(position, rotation);
+            _source.PublishPosition("remote", new Double3(40, 50, 60));
+            _source.PublishRotation("remote", Quaternion.identity);
+            _realm.Update();
+            AssertPosition(ghost.transform.position, position);
+            AssertRotation(ghost.transform.rotation, rotation);
+
+            spatial.enabled = true;
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(40, 50, 60));
+            AssertRotation(ghost.transform.rotation, Quaternion.identity);
         }
 
         /// <summary>
@@ -149,11 +190,15 @@ namespace Emas.Tests
         /// <summary>
         /// Rotation arriving before position cannot create a visual at an invented location.
         /// </summary>
-        [Test]
-        public void MissingFirstPosition_DefersRequestedViewUntilPositionArrives()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void MissingFirstPosition_DefersRequestedViewUntilPositionArrives(bool useReference)
         {
             RegisterView();
-            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1000, 0, 0) };
+            if (useReference)
+            {
+                _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1000, 0, 0) };
+            }
             TestGhost ghost = _source.PublishRotation("remote", Quaternion.Euler(0, 45, 0));
             _realm.Update();
             Spatial spatial = ghost.GetComponent<Spatial>();
@@ -166,7 +211,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(spatial.IsInRange, Is.True);
             Assert.That(ActiveView(ghost), Is.Not.Null);
-            AssertPosition(ghost.transform.position, new Vector3(10, 0, 0));
+            AssertPosition(ghost.transform.position, new Vector3(useReference ? 10 : 1010, 0, 0));
         }
 
         /// <summary>
@@ -227,12 +272,17 @@ namespace Emas.Tests
         /// <summary>
         /// A distant entity remains tracked without writing enormous coordinates into its Transform.
         /// </summary>
-        [Test]
-        public void FarEntity_RetainsFiniteNearbyTransformUntilInRange()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void FarEntity_RetainsFiniteNearbyTransformUntilInRange(bool useReference)
         {
             RegisterView();
             ReferenceFrame frame = new ReferenceFrame { Position = new Double3(0, 0, 0), MaxDistance = 500 };
-            _realm.ReferenceFrame = frame;
+            if (useReference)
+            {
+                _realm.ReferenceFrame = frame;
+            }
+
             TestGhost ghost = _source.PublishPosition("remote", new Double3(1e100, 0, 0));
             Vector3 retainedPosition = new Vector3(1, 2, 3);
             ghost.transform.position = retainedPosition;
@@ -244,6 +294,7 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Count, Is.EqualTo(1));
 
             frame.Position = new Double3(1e100, 0, 0);
+            _realm.ReferenceFrame = frame;
             _realm.Update();
             AssertPosition(ghost.transform.position, Vector3.zero);
             Assert.That(ActiveView(ghost), Is.Not.Null);
@@ -383,6 +434,7 @@ namespace Emas.Tests
             _realm.Update();
             _realm.ReferenceFrame = null;
             _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(50, 0, 0));
             Assert.That(visibleRenderer.enabled, Is.True);
             Assert.That(activeCollider.enabled, Is.True);
             Assert.That(disabledRenderer.enabled, Is.False);

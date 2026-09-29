@@ -101,7 +101,7 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 
 | Member | Use |
 | --- | --- |
-| `Realm.ReferenceFrame` | Optional spatial projection configuration; null preserves ordinary positioning |
+| `Realm.ReferenceFrame` | Optional reference configuration; null maps spatial poses directly to Unity world space |
 | `Double3(x, y, z)` | Double-precision Cartesian position or displacement; preserve SDK double values |
 | `Double3.Distance(a, b)` | Distance between shared Cartesian positions in double precision |
 | `Spatial.SetPosition(position)` / `Position` / `HasPosition` | Publish and read the root's independent double-precision position channel |
@@ -121,7 +121,7 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 
 Add enabled `Spatial` components to participating Ghost roots. Application entity modules normalize SDK positions into shared Cartesian units/axes for the realm. The realm subtracts the reference in doubles before converting to Unity floats and projects the root in world space, accounting for Anchor parents. Reference movement reprojects all spatial ghosts without requiring another entity publication. Position, rotation and articulation updates remain independent; the spatial API emits no general data-change events.
 
-Before the first position/reference and outside the presentation range, spatial views and root rendering/colliders are suppressed while identity, availability and scripts remain active. Requested views return on range entry. Reference loss freezes its last valid pose and sets `IsReferenceAvailable` false; before any valid reference, presentation stays suppressed. Disabling `Spatial` or clearing `Realm.ReferenceFrame` releases spatial control. See [relative-world integration](Spatial.md) for complete setup, channel mapping and precision guidance.
+Before the first position, while an explicitly assigned reference is uninitialized, or outside the presentation range, spatial views and root rendering/colliders are suppressed while identity, availability and scripts remain active. Requested views return on range entry. Reference loss freezes its last valid pose and sets `IsReferenceAvailable` false; before any valid reference, presentation stays suppressed. With no reference frame, enabled `Spatial` components use identity projection with no distance limit; positions that cannot fit in finite Unity floats remain suppressed. Clearing `Realm.ReferenceFrame` returns to this default. Disable `Spatial` to release transform control. See [relative-world integration](Spatial.md) for complete setup, channel mapping and precision guidance.
 
 ## Queries and subscriptions
 

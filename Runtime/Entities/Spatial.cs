@@ -4,11 +4,12 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Stores independent position and rotation updates for optional realm-relative placement.
+    /// Stores independent position and rotation updates for world or realm-relative placement.
     /// </summary>
     /// <remarks>
     /// Place on the Ghost root. Positions use the realm's shared Cartesian coordinates and retain doubles.
-    /// Realm projection owns this root's world pose when a reference frame is configured; views inherit that pose.
+    /// Realm projection owns this root's world pose while this component is enabled; views inherit that pose.
+    /// With no reference frame, stored coordinates and rotations map directly to Unity world space.
     /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished
     /// when inactivity expiry is enabled. Disable this component to release spatial placement and range suppression.
     /// </remarks>

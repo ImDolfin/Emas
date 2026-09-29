@@ -83,10 +83,11 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets or sets optional projection from shared double-precision Cartesian coordinates into Unity world space.
+        /// Gets or sets the optional reference for projecting shared double-precision Cartesian coordinates into Unity world space.
         /// </summary>
         /// <remarks>
-        /// Null, the default, leaves transforms application-controlled. Spatial components opt individual ghosts in.
+        /// Null, the default, uses an identity frame: spatial positions and rotations map directly to Unity world space.
+        /// Enabled Spatial components opt individual ghosts in; disable Spatial to release transform control.
         /// Changes apply during the next realm update or an explicit Manifest request. Projection runs after source
         /// processing and before root/view activation, and does not change data, source activity or query membership.
         /// Anchor parenting is retained; its transform is compensated when assigning the projected world pose.
