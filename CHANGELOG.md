@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Reorganized Ghost, Realm Setup and Anchor Setup Inspectors into guided sections with units, degree-based rotation editing, conditional settings and read-only runtime identity/health. Running startup configuration is locked until detached/stopped. Diagnostics now inspect every live Realm, with name filtering, grouped detector health and timing, plus an optional Scene view overlay.
+
 - Removed Anchor blueprint registration/unregistration and Anchor Setup blueprint overrides. Each Kind now resolves to one Realm blueprint across all anchors. Move existing Anchor Setup assignments to Realm Setup and code registrations to `Realm.RegisterManifestationBlueprint`; use variants for appearances or separate realms for independent mappings. Automatic view requests remain configurable per anchor.
 
 - Added protected `Ghost.OnUpdate()` for entity-specific behavior after all module readers and before spatial projection. The realm invokes enabled, owned, available or pending roots once per update; startup finalization and view requests do not tick them. Exceptions use detector failure cleanup with entity context.

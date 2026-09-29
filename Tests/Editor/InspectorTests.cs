@@ -135,6 +135,73 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
+        /// Opening diagnostics and the overlay does not advance an explicitly managed Realm or construct scene objects.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator DiagnosticsAndOverlay_ObserveWithoutAdvancingTracking()
+        {
+            yield return new EnterPlayMode();
+            using (Realm realm = new Realm())
+            {
+                DiagnosticsProbe detector = new DiagnosticsProbe();
+                realm.GetOrCreateAnchor("passive", detector);
+                int sceneObjects = Resources.FindObjectsOfTypeAll<GameObject>().Length;
+                Emas.Editor.DiagnosticsWindow window = ScriptableObject.CreateInstance<Emas.Editor.DiagnosticsWindow>();
+                try
+                {
+                    Emas.Editor.RealmOverlay overlay = new Emas.Editor.RealmOverlay();
+                    window.rootVisualElement.Add(overlay.CreatePanelContent());
+                    if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+                    {
+                        window.ShowUtility();
+                        window.Repaint();
+                    }
+                    yield return null;
+                    yield return null;
+                    Assert.That(detector.Updates, Is.Zero);
+                    Assert.That(realm.Anchors.Count, Is.EqualTo(1));
+                    Assert.That(Resources.FindObjectsOfTypeAll<GameObject>().Length, Is.EqualTo(sceneObjects));
+                }
+                finally
+                {
+                    if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+                    {
+                        UnityEngine.Object.DestroyImmediate(window);
+                    }
+                    else
+                    {
+                        window.Close();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Authored visibility radii reject nonpositive or nonfinite values before any Realm starts.
+        /// </summary>
+        [Test]
+        public void SerializedVisibilityRange_RequiresPositiveFiniteSharedUnits()
+        {
+            RealmSetup setup = CreateRealm();
+            SerializedObject settings = new SerializedObject(setup);
+            settings.FindProperty("_useReferenceFrame").boolValue = true;
+            settings.FindProperty("_limitDistance").boolValue = true;
+            settings.FindProperty("_maxDistance").doubleValue = 0;
+            settings.ApplyModifiedPropertiesWithoutUndo();
+            setup.gameObject.SetActive(true);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => setup.StartRealm()).Message,
+                Does.Contain("positive and finite"));
+            Assert.That(setup.Realm, Is.Null);
+
+            settings.Update();
+            settings.FindProperty("_maxDistance").doubleValue = double.PositiveInfinity;
+            settings.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(Assert.Throws<InvalidOperationException>(() => setup.StartRealm()).Message,
+                Does.Contain("positive and finite"));
+            Assert.That(setup.Realm, Is.Null);
+        }
+
+        /// <summary>
         /// Ghost authoring exposes application fields while keeping runtime-owned identity and availability out of the Inspector.
         /// </summary>
         [Test]
@@ -206,6 +273,17 @@ namespace Emas.Editor.Tests
             entries.arraySize = 1;
             entries.GetArrayElementAtIndex(0).objectReferenceValue = blueprint;
             serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private sealed class DiagnosticsProbe : PresenceDetector
+        {
+            internal int Updates;
+
+            /// <inheritdoc />
+            protected override void OnUpdate()
+            {
+                Updates++;
+            }
         }
 
         private sealed class InspectorProvider : MonoBehaviour, IDetectorProvider

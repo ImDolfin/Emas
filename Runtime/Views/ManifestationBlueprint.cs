@@ -10,7 +10,7 @@ namespace Emas
     [CreateAssetMenu(fileName = "New Emas Manifestation Blueprint", menuName = "Emas/Manifestation Blueprint")]
     public sealed class ManifestationBlueprint : ScriptableObject
     {
-        [Tooltip("Entity kind this blueprint configures. Each AnchorSetup can assign one blueprint per kind.")]
+        [Tooltip("Entity Kind this blueprint configures. Assign one blueprint per Kind on Realm Setup, shared by every Anchor.")]
         [SerializeField]
         private string _kindId;
         [Tooltip("Optional root prefab. Leave empty to create a root with the requested Ghost component.")]

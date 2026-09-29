@@ -116,7 +116,7 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | ManifestationBlueprint, ManifestationVariant, detail level and view lifecycle |
 | `Runtime/Unity/` | Prefab realm and anchor setup, automatic runner and queued scene changes |
-| `Editor/Diagnostics/` | Passive default-realm diagnostics |
+| `Editor/Diagnostics/` | Passive multi-Realm diagnostics and optional Scene view overlay |
 | `Editor/Inspectors/` | ManifestationBlueprint, ManifestationVariant, RealmSetup and AnchorSetup authoring validation |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
 | `Samples~/Minimal/` / `Samples~/Callbacks/` | Polling and callback quick starts |

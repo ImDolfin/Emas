@@ -57,6 +57,13 @@ Each Realm Setup owns one isolated realm and can have several Anchor Setup objec
 
 `Realm.Default` is still updated automatically. With `new Realm()`, register initializers and blueprints, attach detectors to anchors, and call `Update()` yourself.
 
+### Read the Inspectors
+
+- **Realm Setup** groups Kind mappings, coordinate reference, Unity placement and visibility range. Shared positions and radii use your SDK mapping's units; Unity placement uses Unity units. Rotation fields display Euler angles in degrees, wrapping every 360?. A range must be finite and greater than zero; there is no arbitrary maximum. Inapplicable fields are disabled. Startup settings become read-only while the Realm runs; stop it before changing those settings.
+- **Anchor Setup** groups identity, automatic view requests and provider connections. It shows the owning Realm Setup and the component implementing `IDetectorProvider`. Disable an attached Anchor Setup to edit its startup settings. Ghost construction and appearance belong in the Realm's blueprint list.
+- **Ghost** shows custom application settings, attached modules and read-only identity/state. The detector supplies IDs, display name and Variant; they are not prefab settings. Disabling the Ghost only skips its `OnUpdate` hook; module and spatial components have their own enable switches.
+- **Window > Emas** groups live data by Realm, Anchor and detector. The Scene view **Overlays** menu also offers an optional **Emas** summary. Both are passive; they never create a Realm or start a detector.
+
 ### Find and manifest a presence
 
 A query can find available Ghost roots across all live realms, including realms created later:
@@ -119,7 +126,7 @@ Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference los
 | Symptom | Check |
 | --- | --- |
 | Nothing appears | Check the Realm Setup, Anchor Setup, Manifestation Blueprint and Manifestation Variant Inspectors for errors. Verify the kind ID and view prefab; an available ghost may intentionally have no view. |
-| A detector stops | Its Presences and Ghosts are removed. While the prefab realm runs, find the detector in `anchorSetup.Anchor.Detectors` and inspect `LastErrorContext` and `LastError`. Fix the cause, then call `anchorSetup.Anchor.RestartDetector(detector)`. If startup stopped the realm, use the Console or an application-held detector reference. **Window > Emas** shows only `Realm.Default`. |
+| A detector stops | Its Presences and Ghosts are removed. While the prefab realm runs, find the detector in `anchorSetup.Anchor.Detectors` and inspect `LastErrorContext` and `LastError`. Fix the cause, then call `anchorSetup.Anchor.RestartDetector(detector)`. If startup stopped the realm, use the Console or an application-held detector reference. **Window > Emas** lets you select any live Realm and inspect its Anchors and detectors. The optional **Emas** overlay in the Scene view shows a compact health summary. |
 | One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its manifestation blueprint, variant or detail to retry. |
 | Polled entities disappear unexpectedly | Check your detector's snapshot comparison and timeout. Compare omissions only for complete reads; use explicit SDK removals for change-only feeds. Exceptions escaping lifecycle methods or dispatched actions stop the detector. |
 | Restart creates duplicates | Unsubscribe in `OnStop`, capture a new dispatcher in each `OnStart`, and dispose consumer query subscriptions when their owner stops. |
