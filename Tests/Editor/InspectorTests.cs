@@ -73,28 +73,34 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// An authored anchor inherits the realm view unless its blueprint replaces it or intentionally supplies no view.
+        /// Authored anchors use the realm blueprint, while automatic view requests remain optional per anchor.
         /// </summary>
         [UnityTest]
-        public IEnumerator SerializedBlueprints_ControlAnchorViewOverrides()
+        public IEnumerator SerializedRealmBlueprint_AppliesAcrossAnchors()
         {
             yield return new EnterPlayMode();
             RealmSetup setup = CreateRealm();
             SetBlueprint(setup, CreateBlueprint("realm view"));
-            CreateAnchor(setup, "inherited");
-            SetBlueprint(CreateAnchor(setup, "custom"), CreateBlueprint("custom view"));
-            SetBlueprint(CreateAnchor(setup, "silent"), CreateBlueprint(null));
+            CreateAnchor(setup, "first");
+            CreateAnchor(setup, "second");
+            AnchorSetup manual = CreateAnchor(setup, "manual");
+            SerializedObject serialized = new SerializedObject(manual);
+            serialized.FindProperty("_automaticViews").boolValue = false;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
             setup.gameObject.SetActive(true);
             setup.StartRealm();
             setup.Realm.Update();
 
-            Ghost inherited = (Ghost)setup.Realm.Query().InAnchor("inherited").Single();
-            Ghost custom = (Ghost)setup.Realm.Query().InAnchor("custom").Single();
-            Ghost silent = (Ghost)setup.Realm.Query().InAnchor("silent").Single();
-            Assert.That(inherited.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("realm view"));
-            Assert.That(custom.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("custom view"));
-            Assert.That(silent.IsAvailable, Is.True);
-            Assert.That(silent.GetComponentInChildren<View>(true), Is.Null);
+            foreach (string id in new[] { "first", "second" })
+            {
+                Ghost ghost = (Ghost)setup.Realm.Query().InAnchor(id).Single();
+                Assert.That(ghost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("realm view"));
+            }
+
+            Ghost manualGhost = (Ghost)setup.Realm.Query().InAnchor("manual").Single();
+            Assert.That(manualGhost.IsAvailable, Is.True);
+            Assert.That(manualGhost.GetComponentInChildren<View>(true), Is.Null);
+            Assert.That(setup.Realm.Manifest(manualGhost).gameObject.name, Is.EqualTo("realm view"));
         }
 
         /// <summary>

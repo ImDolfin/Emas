@@ -35,20 +35,20 @@ Each test has a consumer-facing purpose documented in its XML summary. Tests use
 | Queries | Filtering and lookups, paired arrival/departure notifications, and subscriptions across live realms. |
 | Views | Blueprint selection, reference-frame projection, spatial channels, and presentation availability. |
 | Unity setup | Isolated/nested realm ownership, configuration timing, reparenting and automatic lifecycle updates. |
-| Editor authoring | Serialized configuration errors, blueprint overrides, reference selection and visible Ghost fields. |
+| Editor authoring | Serialized configuration errors, shared realm blueprint mappings, reference selection and visible Ghost fields. |
 | Samples | Four runnable sample scenes and required consistency between package samples and their imported copies. |
 
 Keep a test when it protects a distinct behavior that an application depends on. Failure-path tests must demonstrate a meaningful recovery or cleanup contract; reproducing a past bug alone is not a reason to add or retain a case. Avoid duplicate permutations, assertions about private state, tests of test helpers, and checks of trivial constants. Cover related inputs in one focused scenario where that makes the contract clearer.
 
 ## Results
 
-Realm-driven Ghost updates passed in Unity **2022.3.62f3** on **2026-09-29**, package **0.1.0**. All **146 tests** passed with no failures or skips. PlayMode covers module-to-hook-to-projection ordering, once-per-update callbacks, startup and view-request exclusion, disabled/prepared/disappeared roots, rediscovery, callback failure isolation and disposal during callbacks. Existing composition, spatial, source and sample lifecycle tests also pass. EditMode verifies plain Ghost prefabs with saved modules and consistency between package samples and their imported copies.
+Realm-only blueprint mappings passed in Unity **2022.3.62f3** on **2026-09-29**, package **0.1.0**. All **145 tests** passed with no failures or skips. PlayMode verifies shared mappings across anchors, replacement views without replacing existing roots, mappings surviving anchor disposal, and independent snapshots across realms. Obsolete Anchor override tests were replaced with the current contracts. EditMode verifies that authored anchors share their Realm Setup blueprint while retaining independent automatic-view settings, and checks all imported sample assets against the package. The existing Ghost update, spatial and sample lifecycle tests also pass.
 
 | Editor | Test Framework | EditMode | PlayMode |
 | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 13 passed | 133 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 13 passed | 132 passed |
 
-The ignored XML reports and logs are in `Tests/Unity~/TestResults/GhostUpdates/`. The preceding Ghost-composition revision passed **13 EditMode** and **128 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/GhostComposition/`. The preceding identity-frame revision passed **13 EditMode** and **127 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/IdentityFrame/`. The preceding weak-source revision passed **13 EditMode** and **124 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/PresenceSource/`. The preceding Ghost-module migration passed **13 EditMode** and **121 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/GhostModules/`. The shipped Ghost prefabs contain saved module components and require no asset-generation helper.
+The ignored XML reports and logs are in `Tests/Unity~/TestResults/RealmBlueprints/`. The preceding Ghost-update revision passed **13 EditMode** and **133 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/GhostUpdates/`. The preceding Ghost-composition revision passed **13 EditMode** and **128 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/GhostComposition/`. The preceding identity-frame revision passed **13 EditMode** and **127 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/IdentityFrame/`. The preceding weak-source revision passed **13 EditMode** and **124 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/PresenceSource/`. The preceding Ghost-module migration passed **13 EditMode** and **121 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/GhostModules/`. The shipped Ghost prefabs contain saved module components and require no asset-generation helper.
 
 The preceding authored-sample revision passed **13 EditMode** and **117 PlayMode** tests on **2026-09-26**. Those results and its Direct3D 11 camera previews remain in `Tests/Unity~/TestResults/AuthoredSamples/`. This module migration did not change sample geometry or presentation assets beyond adding components to Ghost prefabs; camera previews were not recaptured.
 

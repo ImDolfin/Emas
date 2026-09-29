@@ -46,7 +46,6 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   _anchorId: aircraft
-  _blueprints: []
   _automaticViews: 1
 --- !u!114 &8747733917664523658
 MonoBehaviour:
@@ -106,7 +105,6 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   _anchorId: cars
-  _blueprints: []
   _automaticViews: 1
 --- !u!114 &3509082610114948003
 MonoBehaviour:

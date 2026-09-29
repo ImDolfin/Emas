@@ -343,127 +343,69 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// An anchor blueprint overrides the realm default and can replace its own requested views.
+        /// All anchors share one Kind mapping; replacement refreshes views everywhere and changes only future roots.
         /// </summary>
         [Test]
-        public void AnchorManifestationBlueprint_OverridesRealmDefault()
+        public void RealmBlueprint_AppliesToEveryAnchorAndSurvivesAnchorDisposal()
         {
-            Kind kind = new Kind("views.scoped");
-            GameObject globalPrefab = new GameObject("global view");
-            GameObject localPrefab = new GameObject("local view");
-            GameObject replacementPrefab = new GameObject("replacement view");
-            GameObject globalRoot = new GameObject("global root");
-            GameObject localRoot = new GameObject("local root");
-            GameObject replacementRoot = new GameObject("replacement root");
-            ManifestationBlueprint global = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            ManifestationBlueprint local = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            ManifestationBlueprint replacement = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            Kind kind = new Kind("views.shared");
+            GameObject firstView = new GameObject("first view");
+            GameObject nextView = new GameObject("next view");
+            GameObject firstRoot = new GameObject("first root");
+            GameObject nextRoot = new GameObject("next root");
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             try
             {
-                globalPrefab.SetActive(false);
-                localPrefab.SetActive(false);
-                replacementPrefab.SetActive(false);
-                globalRoot.SetActive(false);
-                localRoot.SetActive(false);
-                replacementRoot.SetActive(false);
-                global.Configure(kind, globalRoot.AddComponent<TestGhost>(), null, globalPrefab);
-                local.Configure(kind, localRoot.AddComponent<TestGhost>(), null, localPrefab);
-                replacement.Configure(kind, replacementRoot.AddComponent<TestGhost>(), null, replacementPrefab);
-                _realm.RegisterManifestationBlueprint(global);
-
-                Anchor localAnchor = _realm.GetOrCreateAnchor("local");
-                Anchor globalAnchor = _realm.GetOrCreateAnchor("global");
-                Assert.Throws<ArgumentException>(() => localAnchor.RegisterManifestationBlueprint(null));
-                localAnchor.RegisterManifestationBlueprint(local);
-                TestSource localSource = new TestSource(kind);
-                TestSource globalSource = new TestSource(kind);
-                localAnchor.AddDetector(localSource);
-                globalAnchor.AddDetector(globalSource);
-                TestGhost localGhost = localSource.Publish("one", Variant.None);
-                TestGhost globalGhost = globalSource.Publish("two", Variant.None);
+                firstView.SetActive(false);
+                nextView.SetActive(false);
+                firstRoot.SetActive(false);
+                nextRoot.SetActive(false);
+                blueprint.Configure(kind, firstRoot.AddComponent<TestGhost>(), null, firstView);
+                _realm.RegisterManifestationBlueprint(blueprint);
+                TestSource firstSource = new TestSource(kind);
+                TestSource secondSource = new TestSource(kind);
+                Anchor firstAnchor = _realm.GetOrCreateAnchor("first", firstSource);
+                _realm.GetOrCreateAnchor("second", secondSource);
+                TestGhost first = firstSource.Publish("one", Variant.None);
+                TestGhost second = secondSource.Publish("one", Variant.None);
                 _realm.Update();
+                foreach (TestGhost ghost in new[] { first, second })
+                {
+                    Assert.That(ghost.gameObject.name, Does.StartWith("first root"));
+                    Assert.That(_realm.Manifest(ghost).gameObject.name, Is.EqualTo("first view"));
+                }
 
-                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("local view"));
-                Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("global view"));
-                Assert.That(localGhost.gameObject.name, Does.StartWith("local root"));
-                Assert.That(globalGhost.gameObject.name, Does.StartWith("global root"));
-
-                localAnchor.RegisterManifestationBlueprint(replacement);
+                blueprint.Configure(kind, nextRoot.AddComponent<TestGhost>(), null, nextView);
+                _realm.RegisterManifestationBlueprint(blueprint);
                 _realm.Update();
-                Assert.That(localGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("replacement view"));
-                Assert.That(globalGhost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("global view"));
-                Assert.That(localGhost.gameObject.name, Does.StartWith("local root"));
-                TestGhost later = localSource.Publish("three", Variant.None);
-                _realm.Update();
-                Assert.That(later.gameObject.name, Does.StartWith("replacement root"));
-                Assert.That(_realm.Query().Count, Is.EqualTo(3));
+                foreach (TestGhost ghost in new[] { first, second })
+                {
+                    Assert.That(ghost.gameObject.name, Does.StartWith("first root"));
+                    Assert.That(ghost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("next view"));
+                    Assert.That(_realm.Query().InAnchor(ghost.Key.AnchorId).Single(), Is.SameAs(ghost));
+                }
 
-                localAnchor.Dispose();
-                Assert.Throws<ObjectDisposedException>(() => localAnchor.RegisterManifestationBlueprint(local));
+                firstAnchor.Dispose();
+                TestSource laterSource = new TestSource(kind);
+                _realm.GetOrCreateAnchor("later", laterSource);
+                TestGhost later = laterSource.Publish("two", Variant.None);
+                _realm.Update();
+                Assert.That(later.gameObject.name, Does.StartWith("next root"));
+                Assert.That(_realm.Manifest(later).gameObject.name, Is.EqualTo("next view"));
+                Assert.That(_realm.Query().Count, Is.EqualTo(2));
             }
             finally
             {
-                UnityEngine.Object.DestroyImmediate(global);
-                UnityEngine.Object.DestroyImmediate(local);
-                UnityEngine.Object.DestroyImmediate(replacement);
-                UnityEngine.Object.DestroyImmediate(globalPrefab);
-                UnityEngine.Object.DestroyImmediate(localPrefab);
-                UnityEngine.Object.DestroyImmediate(replacementPrefab);
-                UnityEngine.Object.DestroyImmediate(globalRoot);
-                UnityEngine.Object.DestroyImmediate(localRoot);
-                UnityEngine.Object.DestroyImmediate(replacementRoot);
+                UnityEngine.Object.DestroyImmediate(blueprint);
+                UnityEngine.Object.DestroyImmediate(firstView);
+                UnityEngine.Object.DestroyImmediate(nextView);
+                UnityEngine.Object.DestroyImmediate(firstRoot);
+                UnityEngine.Object.DestroyImmediate(nextRoot);
             }
         }
 
         /// <summary>
-        /// Removing an anchor override restores the realm default without replacing the ghost root.
-        /// </summary>
-        [Test]
-        public void AnchorManifestationBlueprint_UnregisterRestoresRealmDefault()
-        {
-            Kind kind = new Kind("views.unregister");
-            GameObject defaultPrefab = new GameObject("default view");
-            GameObject localPrefab = new GameObject("local view");
-            ManifestationBlueprint defaultManifestationBlueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            ManifestationBlueprint localManifestationBlueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            try
-            {
-                defaultPrefab.SetActive(false);
-                localPrefab.SetActive(false);
-                defaultManifestationBlueprint.Configure(kind, null, null, defaultPrefab);
-                localManifestationBlueprint.Configure(kind, null, null, localPrefab);
-                _realm.RegisterManifestationBlueprint(defaultManifestationBlueprint);
-                Anchor anchor = _realm.GetOrCreateAnchor("simulation");
-                anchor.RegisterManifestationBlueprint(localManifestationBlueprint);
-                TestSource source = new TestSource(kind);
-                anchor.AddDetector(source);
-                TestGhost ghost = source.Publish("42", Variant.None);
-                _realm.Update();
-                View localView = _realm.Manifest(ghost);
-                Assert.That(localView.gameObject.name, Is.EqualTo("local view"));
-
-                anchor.UnregisterManifestationBlueprint(kind);
-                _realm.Update();
-                View defaultView = _realm.Manifest(ghost);
-                Assert.That(defaultView.gameObject.name, Is.EqualTo("default view"));
-                Assert.That(defaultView, Is.Not.SameAs(localView));
-                Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
-                Assert.DoesNotThrow(() => anchor.UnregisterManifestationBlueprint(kind));
-                Assert.Throws<ArgumentException>(() => anchor.UnregisterManifestationBlueprint(default(Kind)));
-                anchor.Dispose();
-                Assert.Throws<ObjectDisposedException>(() => anchor.UnregisterManifestationBlueprint(kind));
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(defaultManifestationBlueprint);
-                UnityEngine.Object.DestroyImmediate(localManifestationBlueprint);
-                UnityEngine.Object.DestroyImmediate(defaultPrefab);
-                UnityEngine.Object.DestroyImmediate(localPrefab);
-            }
-        }
-
-        /// <summary>
-        /// Shared assets keep each scope's previous settings until that scope registers again.
+        /// Shared assets keep each realm's previous settings until that realm registers again.
         /// </summary>
         [Test]
         public void ManifestationBlueprint_SharedAssetUsesIndependentRegistrationSnapshots()
@@ -472,40 +414,45 @@ namespace Emas.Tests
             GameObject oldPrefab = new GameObject("old view");
             GameObject newPrefab = new GameObject("new view");
             ManifestationBlueprint shared = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            Realm otherRealm = new Realm();
             try
             {
                 oldPrefab.SetActive(false);
                 newPrefab.SetActive(false);
                 shared.Configure(kind, null, null, oldPrefab);
                 _realm.RegisterManifestationBlueprint(shared);
-                Anchor localAnchor = _realm.GetOrCreateAnchor("local");
-                Anchor globalAnchor = _realm.GetOrCreateAnchor("global");
-                localAnchor.RegisterManifestationBlueprint(shared);
+                Anchor localAnchor = otherRealm.GetOrCreateAnchor("simulation");
+                Anchor globalAnchor = _realm.GetOrCreateAnchor("simulation");
+                otherRealm.RegisterManifestationBlueprint(shared);
                 TestSource localSource = new TestSource(kind);
                 TestSource globalSource = new TestSource(kind);
                 localAnchor.AddDetector(localSource);
                 globalAnchor.AddDetector(globalSource);
                 TestGhost localGhost = localSource.Publish("one", Variant.None);
-                TestGhost globalGhost = globalSource.Publish("two", Variant.None);
+                TestGhost globalGhost = globalSource.Publish("one", Variant.None);
                 _realm.Update();
-                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
+                otherRealm.Update();
+                Assert.That(otherRealm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
                 Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
 
                 shared.Configure(kind, null, null, newPrefab);
-                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
+                Assert.That(otherRealm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
                 Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
 
-                localAnchor.RegisterManifestationBlueprint(shared);
+                otherRealm.RegisterManifestationBlueprint(shared);
                 _realm.Update();
-                Assert.That(_realm.Manifest(localGhost).gameObject.name, Is.EqualTo("new view"));
+                otherRealm.Update();
+                Assert.That(otherRealm.Manifest(localGhost).gameObject.name, Is.EqualTo("new view"));
                 Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
 
                 _realm.RegisterManifestationBlueprint(shared);
                 _realm.Update();
+                otherRealm.Update();
                 Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("new view"));
             }
             finally
             {
+                otherRealm.Dispose();
                 UnityEngine.Object.DestroyImmediate(shared);
                 UnityEngine.Object.DestroyImmediate(oldPrefab);
                 UnityEngine.Object.DestroyImmediate(newPrefab);

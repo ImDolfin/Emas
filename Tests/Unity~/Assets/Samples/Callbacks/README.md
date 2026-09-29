@@ -6,7 +6,7 @@ Open `Callbacks.unity` and press Play. The orange cube moves for four seconds, d
 
 The scene contains an instance of `Tracking.prefab` plus an authored camera, light and environment. Open the prefab to inspect its components:
 
-- **Realm Setup** assigns `MarkerBlueprint.asset` as the default blueprint.
+- **Realm Setup** assigns `MarkerBlueprint.asset` as the realm blueprint for the marker Kind.
 - **Anchor Setup** uses the `callback-quick-start` anchor ID with automatic views enabled.
 - **Feed Source** creates the sample feed and detector, and binds the configured position module before tracking starts.
 

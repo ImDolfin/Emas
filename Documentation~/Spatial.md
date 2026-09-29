@@ -4,7 +4,7 @@ Configure a reference frame for a realm when shared Cartesian positions should b
 
 ## Configure a prefab realm
 
-Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list holds visual defaults for that realm. Add one **Emas > Anchor Setup** for each anchor frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor Id** within this realm and exactly one enabled component implementing `IDetectorProvider` on the same object. That component returns a `PresenceDetector` from `CreateDetector()`. An enabled `IRealmConfigurator` beneath the Realm Setup can register the Ghost root type and spatial modules for each Kind before detectors start. Anchor manifestation blueprints can override the realm defaults. Each blueprint covers one Kind and may reference separate Manifestation Variant assets for different appearances, each with its own detail-level views. For example:
+Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list maps each Kind to its Ghost and views for every anchor in that realm. Add one **Emas > Anchor Setup** for each anchor frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor Id** within this realm and exactly one enabled component implementing `IDetectorProvider` on the same object. That component returns a `PresenceDetector` from `CreateDetector()`. An enabled `IRealmConfigurator` beneath the Realm Setup can register the Ghost root type and spatial modules for each Kind before detectors start. Each blueprint covers one Kind and may reference separate Manifestation Variant assets for different appearances, each with its own detail-level views. For example:
 
 ```text
 Screen (RealmSetup: manifestation blueprints and reference frame)

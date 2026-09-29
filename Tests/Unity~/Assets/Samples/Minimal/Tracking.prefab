@@ -89,5 +89,4 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   _anchorId: quick-start
-  _blueprints: []
   _automaticViews: 1

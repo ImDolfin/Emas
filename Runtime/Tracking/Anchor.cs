@@ -14,7 +14,6 @@ namespace Emas
     {
         private readonly List<PresenceDetector> _sources = new List<PresenceDetector>();
         private readonly HashSet<PresenceDetector> _restarting = new HashSet<PresenceDetector>();
-        private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
         private readonly GameObject _gameObject;
         private bool _disposed;
 
@@ -92,65 +91,6 @@ namespace Emas
             {
                 return new List<PresenceDetector>(_sources).AsReadOnly();
             }
-        }
-
-        /// <summary>
-        /// Registers or replaces a blueprint for this anchor's ghost kind.
-        /// </summary>
-        /// <param name="blueprint">
-        /// The blueprint to use before any realm-wide blueprint for the same kind.
-        /// </param>
-        /// <remarks>
-        /// This registration captures the asset's settings. Re-register after edits to refresh requested views on the next realm update.
-        /// Existing ghost roots remain unchanged. Re-register after changing the kind to release the previous kind registration.
-        /// The registration is released when this anchor is disposed.
-        /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// The blueprint or its configuration is invalid.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The anchor or realm was disposed.
-        /// </exception>
-        public void RegisterManifestationBlueprint(ManifestationBlueprint blueprint)
-        {
-            ThrowIfDisposed();
-            Realm.RegisterManifestationBlueprint(this, blueprint);
-        }
-
-        /// <summary>
-        /// Removes this anchor's blueprint override so the realm default can apply.
-        /// </summary>
-        /// <param name="kind">
-        /// The kind whose override should be removed.
-        /// </param>
-        /// <remarks>
-        /// Missing overrides are ignored. Existing ghost roots remain unchanged; requested views refresh on the next realm update.
-        /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// The kind is invalid.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The anchor or realm was disposed.
-        /// </exception>
-        public void UnregisterManifestationBlueprint(Kind kind)
-        {
-            ThrowIfDisposed();
-            Realm.UnregisterManifestationBlueprint(this, kind);
-        }
-
-        internal List<Kind> SetManifestationBlueprint(ManifestationBlueprint blueprint)
-        {
-            return _blueprints.Register(blueprint);
-        }
-
-        internal bool RemoveManifestationBlueprint(Kind kind)
-        {
-            return _blueprints.Remove(kind);
-        }
-
-        internal bool TryGetManifestationBlueprint(string kindId, out ManifestationBlueprintSnapshot blueprint)
-        {
-            return _blueprints.TryGet(kindId, out blueprint);
         }
 
         internal bool ContainsSource(PresenceDetector source)
@@ -443,7 +383,6 @@ namespace Emas
             }
 
             _disposed = true;
-            _blueprints.Clear();
             List<PresenceDetector> sources = new List<PresenceDetector>(_sources);
             _sources.Clear();
             // Remove registration and records before scene callbacks can reenter the realm.

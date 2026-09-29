@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Removed Anchor blueprint registration/unregistration and Anchor Setup blueprint overrides. Each Kind now resolves to one Realm blueprint across all anchors. Move existing Anchor Setup assignments to Realm Setup and code registrations to `Realm.RegisterManifestationBlueprint`; use variants for appearances or separate realms for independent mappings. Automatic view requests remain configurable per anchor.
+
 - Added protected `Ghost.OnUpdate()` for entity-specific behavior after all module readers and before spatial projection. The realm invokes enabled, owned, available or pending roots once per update; startup finalization and view requests do not tick them. Exceptions use detector failure cleanup with entity context.
 
 - Made `Ghost` a concrete, directly authorable component and removed `DefaultGhost`; code and prefabs can use `Ghost` with reusable modules without an entity subclass. All four samples now use plain Ghost roots with saved modules. Existing `DefaultGhost` components should be replaced with `Ghost`. Spatial pose application now lives on `Spatial`; the realm still updates all modules before capturing one reference and coordinating projection.

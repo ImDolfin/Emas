@@ -133,7 +133,7 @@ namespace Emas
         /// The blueprint to register.
         /// </param>
         /// <remarks>
-        /// Assets remain application-owned. This realm-wide default applies where an anchor has no override.
+        /// Assets remain application-owned. Each kind has one blueprint mapping shared by all anchors in this realm.
         /// Each registration captures the asset's settings. Re-register after edits to refresh requested views on the next update;
         /// existing roots stay intact. Re-register after changing its kind to release the previous kind registration.
         /// </remarks>
@@ -148,44 +148,20 @@ namespace Emas
             ThrowIfDisposed();
             ValidateManifestationBlueprint(blueprint);
             List<Kind> staleKinds = _blueprints.Register(blueprint);
-            RebindManifestationBlueprintRegistration(staleKinds, blueprint.Kind, null);
+            RebindManifestationBlueprintRegistration(staleKinds, blueprint.Kind);
         }
 
-        internal void RegisterManifestationBlueprint(Anchor anchor, ManifestationBlueprint blueprint)
-        {
-            ThrowIfDisposed();
-            anchor.ThrowIfDisposed();
-            ValidateManifestationBlueprint(blueprint);
-            List<Kind> staleKinds = anchor.SetManifestationBlueprint(blueprint);
-            RebindManifestationBlueprintRegistration(staleKinds, blueprint.Kind, anchor.Id);
-        }
-
-        internal void UnregisterManifestationBlueprint(Anchor anchor, Kind kind)
-        {
-            ThrowIfDisposed();
-            anchor.ThrowIfDisposed();
-            if (!kind.IsValid)
-            {
-                throw new ArgumentException("The blueprint kind must be valid.", nameof(kind));
-            }
-
-            if (anchor.RemoveManifestationBlueprint(kind))
-            {
-                RebindManifestationBlueprints(kind, anchor.Id);
-            }
-        }
-
-        private void RebindManifestationBlueprintRegistration(List<Kind> staleKinds, Kind kind, string anchorId)
+        private void RebindManifestationBlueprintRegistration(List<Kind> staleKinds, Kind kind)
         {
             if (staleKinds != null)
             {
                 for (int index = 0; index < staleKinds.Count; index++)
                 {
-                    RebindManifestationBlueprints(staleKinds[index], anchorId);
+                    RebindManifestationBlueprints(staleKinds[index]);
                 }
             }
 
-            RebindManifestationBlueprints(kind, anchorId);
+            RebindManifestationBlueprints(kind);
         }
 
         private static void ValidateManifestationBlueprint(ManifestationBlueprint blueprint)
@@ -932,7 +908,7 @@ namespace Emas
             try
             {
                 return _population.ApplyPresenceDetection(detector, anchorId, entityId, kind, name, variant, capabilitySnapshot, source,
-                    GetAnchorTransform(anchorId), ResolveManifestationBlueprint(anchorId, kind));
+                    GetAnchorTransform(anchorId), ResolveManifestationBlueprint(kind));
             }
             catch (Exception exception)
             {
@@ -978,7 +954,7 @@ namespace Emas
             }
 
             return _population.GetOrCreate<TGhost>(owner, anchorId, entityId, kind, variant, nameValue,
-                GetAnchorTransform(anchorId), ResolveManifestationBlueprint(anchorId, kind));
+                GetAnchorTransform(anchorId), ResolveManifestationBlueprint(kind));
         }
 
         internal void MarkPublished(PresenceDetector owner, IGhost ghost)
@@ -1030,40 +1006,25 @@ namespace Emas
             return _population.GetOwnedGhosts(owner);
         }
 
-        private ManifestationBlueprintSnapshot ResolveManifestationBlueprint(string anchorId, Kind kind)
+        private ManifestationBlueprintSnapshot ResolveManifestationBlueprint(Kind kind)
         {
-            Anchor anchor;
             ManifestationBlueprintSnapshot blueprint;
-            if (_anchors.TryGetValue(anchorId, out anchor) && anchor.TryGetManifestationBlueprint(kind.Id, out blueprint))
-            {
-                return blueprint;
-            }
-
             _blueprints.TryGet(kind.Id, out blueprint);
             return blueprint;
         }
 
-        private void RebindManifestationBlueprints(Kind kind, string anchorId)
+        private void RebindManifestationBlueprints(Kind kind)
         {
             List<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];
-                if (record.Key.Kind != kind || (anchorId != null && record.Key.AnchorId != anchorId))
+                if (record.Key.Kind != kind)
                 {
                     continue;
                 }
 
-                // Realm defaults do not replace a specific anchor's configuration.
-                Anchor anchor;
-                ManifestationBlueprintSnapshot ignored;
-                if (anchorId == null && _anchors.TryGetValue(record.Key.AnchorId, out anchor)
-                    && anchor.TryGetManifestationBlueprint(kind.Id, out ignored))
-                {
-                    continue;
-                }
-
-                record.ManifestationBlueprint = ResolveManifestationBlueprint(record.Key.AnchorId, kind);
+                record.ManifestationBlueprint = ResolveManifestationBlueprint(kind);
                 if (record.ViewRequested)
                 {
                     record.ViewVersion++;

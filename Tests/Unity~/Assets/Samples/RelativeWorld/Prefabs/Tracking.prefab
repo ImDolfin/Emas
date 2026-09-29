@@ -121,5 +121,4 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   _anchorId: relative-world
-  _blueprints: []
   _automaticViews: 1

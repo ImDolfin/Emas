@@ -42,11 +42,6 @@ namespace Emas
             return staleKinds;
         }
 
-        internal bool Remove(Kind kind)
-        {
-            return _byKind.Remove(kind.Id);
-        }
-
         internal bool TryGet(string kindId, out ManifestationBlueprintSnapshot blueprint)
         {
             if (!_byKind.TryGetValue(kindId, out blueprint) || blueprint.Asset == null)

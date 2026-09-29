@@ -1,10 +1,9 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas
 {
     /// <summary>
-    /// Configures one prefab anchor with one detector provider and any number of manifestation blueprints.
+    /// Configures one prefab anchor with one detector provider and automatic view requests.
     /// </summary>
     /// <remarks>
     /// Place on the anchor GameObject under a RealmSetup. Add exactly one enabled MonoBehaviour
@@ -18,9 +17,6 @@ namespace Emas
         [Tooltip("Unique among anchors in the owning realm. Ghost keys use this ID.")]
         [SerializeField]
         private string _anchorId = "default";
-        [Tooltip("One blueprint per Kind overriding realm defaults for this anchor. Empty inherits realm blueprints.")]
-        [SerializeField]
-        private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
         [Tooltip("Automatically manifest available Ghosts with configured view prefabs. Disable to request views through code.")]
         [SerializeField]
         private bool _automaticViews = true;
@@ -62,14 +58,6 @@ namespace Emas
             get
             {
                 return _attachmentOwner;
-            }
-        }
-
-        internal ManifestationBlueprint[] Blueprints
-        {
-            get
-            {
-                return _blueprints ?? new ManifestationBlueprint[0];
             }
         }
 
@@ -120,30 +108,6 @@ namespace Emas
             if (sourceCount != 1)
             {
                 return "AnchorSetup requires exactly one IDetectorProvider component on the same GameObject.";
-            }
-
-            HashSet<Kind> kinds = new HashSet<Kind>();
-            ManifestationBlueprint[] blueprints = Blueprints;
-            for (int index = 0; index < blueprints.Length; index++)
-            {
-                ManifestationBlueprint blueprint = blueprints[index];
-                string entry = "AnchorSetup manifestation blueprint at index " + index;
-                if (blueprint == null)
-                {
-                    return entry + " is null. Assign a manifestation blueprint or remove the entry.";
-                }
-
-                string error = blueprint.GetConfigurationError();
-                if (error != null)
-                {
-                    return entry + " ('" + blueprint.name + "'): " + error;
-                }
-
-                if (!kinds.Add(blueprint.Kind))
-                {
-                    return entry + " ('" + blueprint.name + "') duplicates kind '"
-                        + blueprint.Kind.Id + "'. Assign one manifestation blueprint per kind.";
-                }
             }
 
             return null;

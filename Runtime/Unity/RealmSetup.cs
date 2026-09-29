@@ -9,7 +9,7 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Add AnchorSetup components to this prefab or its children. Each anchor has one detector provider.
-    /// Realm manifestation blueprints supply defaults; an anchor can override them for its own kinds. This component owns its realm; it never changes Realm.Default.
+    /// Realm manifestation blueprints map each Kind for every anchor in this realm. This component owns its realm; it never changes Realm.Default.
     /// Disable it to stop sources and remove all owned ghosts and views. Direct Realm construction
     /// and manual Update calls remain available independently.
     /// </remarks>
@@ -18,7 +18,7 @@ namespace Emas
     [DefaultExecutionOrder(-32000)]
     public sealed class RealmSetup : MonoBehaviour
     {
-        [Tooltip("One blueprint per Kind for this realm. Anchor blueprints override the matching Kind.")]
+        [Tooltip("One blueprint per Kind, shared by all anchors in this realm.")]
         [SerializeField]
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
@@ -386,27 +386,12 @@ namespace Emas
 
                 anchor = realm.GetOrCreateAnchor(setup.Id, setup.transform);
                 setup.Bind(anchor, this);
-                ManifestationBlueprint[] blueprints = setup.Blueprints;
-                HashSet<Kind> kinds = new HashSet<Kind>(_realmViewKinds);
-                foreach (ManifestationBlueprint blueprint in blueprints)
-                {
-                    anchor.RegisterManifestationBlueprint(blueprint);
-                    if (blueprint.HasManifestationPrefab)
-                    {
-                        kinds.Add(blueprint.Kind);
-                    }
-                    else
-                    {
-                        kinds.Remove(blueprint.Kind);
-                    }
-                }
-
                 if (setup.AutomaticViews)
                 {
                     subscription = realm.Query().InAnchor(setup.Id).OnAvailable(ghost =>
                     {
                         if (_lifetime == lifetime && ReferenceEquals(_realm, realm)
-                            && kinds.Contains(ghost.Key.Kind))
+                            && _realmViewKinds.Contains(ghost.Key.Kind))
                         {
                             realm.Manifest(ghost);
                         }
