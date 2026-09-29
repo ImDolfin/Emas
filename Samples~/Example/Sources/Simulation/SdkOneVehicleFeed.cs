@@ -26,7 +26,7 @@ namespace Emas.Sample
         /// </returns>
         public IEnumerable<SdkOneVehicleProxy> ReadVehicles(float elapsedSeconds)
         {
-            for (int index = 0; index < 10; index++)
+            for (int index = 0; index < SampleMotion.CarCount; index++)
             {
                 Vector3 position = SampleMotion.GetCarPosition(index, elapsedSeconds);
                 SdkOneVehicleProxy proxy = new SdkOneVehicleProxy(

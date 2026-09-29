@@ -40,58 +40,52 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// Advancing geodetic poses keeps the followed car at the Unity origin while the target view moves relative to it.
+        /// Stationary roadside cars pass a steadily moving origin on alternating sides, then leave the population.
         /// </summary>
         [UnityTest]
-        public IEnumerator RelativeWorld_ProjectsTargetAroundMovingReference()
+        public IEnumerator RelativeWorld_PassesStationaryCarsOnBothSides()
         {
-            const string path = "Assets/Samples/RelativeWorld/RelativeWorld.unity";
-            yield return SceneManager.LoadSceneAsync(path, LoadSceneMode.Additive);
-            _scene = SceneManager.GetSceneByPath(path);
-            yield return null;
-            yield return null;
-            RealmSetup setup = null;
-            Emas.RelativeWorld.GeoSource source = null;
-            foreach (GameObject root in _scene.GetRootGameObjects())
-            {
-                setup = setup ?? root.GetComponentInChildren<RealmSetup>();
-                source = source ?? root.GetComponentInChildren<Emas.RelativeWorld.GeoSource>();
-            }
-
-            Assert.That(setup, Is.Not.Null);
-            Assert.That(source, Is.Not.Null);
+            yield return Load();
+            RealmSetup setup = Find<RealmSetup>();
+            Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
             Realm realm = setup.Realm;
-            Assert.That(realm, Is.Not.Null);
-
-            IGhost originGhost;
-            IGhost targetGhost;
-            Assert.That(realm.TryGetGhost(new Key("relative-world", CarKind, "origin"), out originGhost), Is.True);
-            Assert.That(realm.TryGetGhost(new Key("relative-world", CarKind, "target"), out targetGhost), Is.True);
-            Ghost origin = (Ghost)originGhost;
-            Ghost target = (Ghost)targetGhost;
+            Ghost origin = Car(realm, "origin");
+            Ghost parked = Car(realm, "parked-0");
             Spatial originSpatial = origin.GetComponent<Spatial>();
-            Spatial targetSpatial = target.GetComponent<Spatial>();
-            Assert.That(originSpatial, Is.Not.Null);
-            Assert.That(targetSpatial, Is.Not.Null);
-            Assert.That(targetSpatial.Position.X, Is.InRange(4.5, 5.2));
-            Assert.That(targetSpatial.Position.Y, Is.InRange(1.0, 1.3));
-            Assert.That(targetSpatial.Position.Z, Is.InRange(17.3, 18.3));
-            Assert.That(realm.ReferenceFrame.FollowedGhost, Is.EqualTo(originGhost.Key));
+            Spatial parkedSpatial = parked.GetComponent<Spatial>();
+            Double3 parkedPosition = parkedSpatial.Position;
+            View parkedView = parked.GetComponentInChildren<View>();
+            Assert.That(parkedView, Is.Not.Null);
+            Assert.That(parked.transform.position.x, Is.EqualTo(-6f).Within(0.001f));
+            Assert.That(parked.transform.position.z, Is.EqualTo(24f).Within(0.001f));
+            Assert.That(parked.transform.position.y, Is.EqualTo(0f).Within(0.001f));
             AssertOriginPose(origin);
-            AssertProjectedTarget(realm.ReferenceFrame, target, targetSpatial);
-            View targetView = target.GetComponentInChildren<View>();
-            Assert.That(targetView, Is.Not.Null);
-            Double3 previousOrigin = originSpatial.Position;
-            Vector3 previousTarget = target.transform.position;
 
             source.Advance(5.0);
             realm.Update();
-
-            Assert.That(Double3.Distance(originSpatial.Position, previousOrigin), Is.GreaterThan(0.01));
             AssertOriginPose(origin);
-            AssertProjectedTarget(realm.ReferenceFrame, target, targetSpatial);
-            Assert.That(Vector3.Distance(target.transform.position, previousTarget), Is.GreaterThan(0.01f));
-            Assert.That(target.GetComponentInChildren<View>(), Is.SameAs(targetView));
+            Assert.That(originSpatial.Position.Z, Is.EqualTo(40.0).Within(0.001));
+            Assert.That(Double3.Distance(parkedSpatial.Position, parkedPosition), Is.LessThan(0.000001));
+            Assert.That(parked.transform.position.z, Is.EqualTo(-16f).Within(0.001f));
+            Assert.That(parked.transform.position.x, Is.EqualTo(-6f).Within(0.001f));
+            AssertProjectedTarget(realm.ReferenceFrame, parked, parkedSpatial);
+            Assert.That(parked.GetComponentInChildren<View>(), Is.SameAs(parkedView));
+
+            source.Advance(1.0);
+            realm.Update();
+            Assert.That(realm.TryGetGhost(new Key("relative-world", CarKind, "parked-0"), out IGhost removed), Is.False);
+            Assert.That(realm.Query().OfKind(CarKind).Count, Is.EqualTo(1));
+            source.Advance(3.0);
+            realm.Update();
+            Ghost right = Car(realm, "parked-1");
+            Assert.That(right.transform.position.x, Is.EqualTo(3f).Within(0.001f));
+            Assert.That(right.transform.position.z, Is.EqualTo(32f).Within(0.001f));
+            Double3 rightPosition = right.GetComponent<Spatial>().Position;
+            source.Advance(5.0);
+            realm.Update();
+            Assert.That(right.transform.position.z, Is.EqualTo(-8f).Within(0.001f));
+            Assert.That(Double3.Distance(right.GetComponent<Spatial>().Position, rightPosition), Is.LessThan(0.000001));
+            AssertOriginPose(origin);
 
             setup.gameObject.SetActive(false);
             Assert.That(realm.Query().Count, Is.Zero);
@@ -99,8 +93,94 @@ namespace Emas.Tests.Samples
             yield return null;
             yield return null;
             Assert.That(setup.Realm, Is.Not.SameAs(realm));
-            Assert.That(setup.Realm.Query().Count, Is.EqualTo(2));
+            Assert.That(setup.Realm.Query().OfKind(CarKind).Count, Is.EqualTo(2));
+            Assert.That(Car(setup.Realm, "parked-0").transform.position.z, Is.EqualTo(24f).Within(0.001f));
+        }
 
+        /// <summary>Road markings follow actual reference travel, and large time jumps keep a bounded, level population.</summary>
+        [UnityTest]
+        public IEnumerator RelativeWorld_RoadTracksTravelWithoutAccumulatingPassedCars()
+        {
+            yield return Load();
+            RealmSetup setup = Find<RealmSetup>();
+            Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+            Emas.RelativeWorld.RoadMotion road = Find<Emas.RelativeWorld.RoadMotion>();
+            Transform marking = road.transform.Find("Distance Marker 0 m");
+            Assert.That(marking, Is.Not.Null);
+            source.Advance(0.25);
+            setup.Realm.Update();
+            yield return null;
+            Assert.That(marking.localPosition.z, Is.EqualTo(-2f).Within(0.001f));
+            source.Advance(3600.0);
+            setup.Realm.Update();
+            Assert.That(setup.Realm.Query().Count, Is.InRange(2, 3));
+            Assert.That(setup.Realm.TryGetGhost(new Key("relative-world", CarKind, "parked-0"), out IGhost removed), Is.False);
+            AssertOriginPose(Car(setup.Realm, "origin"));
+            foreach (IGhost ghost in setup.Realm.Query())
+            {
+                Assert.That(((Ghost)ghost).transform.position.y,
+                    Is.EqualTo(ghost.Key.Kind == CarKind ? 0f : 3.2f).Within(0.001f));
+            }
+        }
+
+        /// <summary>The bird's stable root and view orbit the moving reference while its heading follows the orbit.</summary>
+        [UnityTest]
+        public IEnumerator RelativeWorld_BirdUpdatesPositionAndHeadingAroundOrigin()
+        {
+            yield return Load();
+            Realm realm = Find<RealmSetup>().Realm;
+            Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+            Assert.That(realm.TryGetGhost(new Key("relative-world", Emas.RelativeWorld.GeoSource.BirdKind, "bird"),
+                out IGhost entity), Is.True);
+            Ghost bird = (Ghost)entity;
+            Spatial spatial = bird.GetComponent<Spatial>();
+            View view = bird.GetComponentInChildren<View>();
+            Assert.That(view, Is.Not.Null);
+            Assert.That(Vector3.Distance(bird.transform.position, new Vector3(4f, 3.2f, 0f)), Is.LessThan(0.001f));
+            Quaternion heading = bird.transform.rotation;
+            Double3 worldPosition = spatial.Position;
+            source.Advance(2.0);
+            realm.Update();
+            Assert.That(Vector3.Distance(bird.transform.position, new Vector3(0f, 3.2f, 4f)), Is.LessThan(0.001f));
+            Assert.That(Quaternion.Angle(heading, bird.transform.rotation), Is.EqualTo(90f).Within(0.01f));
+            Assert.That(Vector3.Dot(bird.transform.forward, Vector3.left), Is.GreaterThan(0.999f));
+            AssertProjectedTarget(realm.ReferenceFrame, bird, spatial);
+            AssertOriginPose(Car(realm, "origin"));
+            source.Advance(6.0);
+            realm.Update();
+            Assert.That(Vector3.Distance(bird.transform.position, new Vector3(4f, 3.2f, 0f)), Is.LessThan(0.001f));
+            Assert.That(Quaternion.Angle(heading, bird.transform.rotation), Is.LessThan(0.01f));
+            Assert.That(spatial.Position.Z - worldPosition.Z, Is.EqualTo(64.0).Within(0.001));
+            Assert.That(bird.GetComponentInChildren<View>(), Is.SameAs(view));
+        }
+
+        private IEnumerator Load()
+        {
+            const string path = "Assets/Samples/RelativeWorld/RelativeWorld.unity";
+            yield return SceneManager.LoadSceneAsync(path, LoadSceneMode.Additive);
+            _scene = SceneManager.GetSceneByPath(path);
+            yield return null;
+            yield return null;
+        }
+
+        private T Find<T>() where T : Component
+        {
+            foreach (GameObject root in _scene.GetRootGameObjects())
+            {
+                T component = root.GetComponentInChildren<T>();
+                if (component != null)
+                {
+                    return component;
+                }
+            }
+            Assert.Fail("Missing authored sample component: " + typeof(T).Name);
+            return null;
+        }
+
+        private static Ghost Car(Realm realm, string id)
+        {
+            Assert.That(realm.TryGetGhost(new Key("relative-world", CarKind, id), out IGhost ghost), Is.True, id);
+            return (Ghost)ghost;
         }
 
         private static void AssertOriginPose(Ghost origin)

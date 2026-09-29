@@ -65,26 +65,6 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// The callback sample consumes an initial SDK publication and reuses its visible entity when the detector reconnects.
-        /// </summary>
-        [UnityTest]
-        public IEnumerator CallbackSample_ReconnectPreservesEntityAndView()
-        {
-            yield return Load("Assets/Samples/Callbacks/Callbacks.unity");
-            RealmSetup setup = Find<RealmSetup>();
-            Anchor anchor = Find<AnchorSetup>().Anchor;
-            Ghost ghost = AssertView(setup.Realm, "callback-quick-start");
-            View view = ghost.GetComponentInChildren<View>();
-
-            anchor.RestartDetector(anchor.Detectors[0]);
-            yield return null;
-            yield return null;
-
-            Assert.That(AssertView(setup.Realm, "callback-quick-start"), Is.SameAs(ghost));
-            Assert.That(ghost.GetComponentInChildren<View>(), Is.SameAs(view));
-        }
-
-        /// <summary>
         /// Switching the example's SDK source keeps entity identities and the position/articulation contracts used by its views.
         /// </summary>
         [UnityTest]
@@ -101,7 +81,8 @@ namespace Emas.Tests.Samples
                 AssertCarView(ghost);
             }
 
-            Assert.That(roots.Count, Is.GreaterThan(0));
+            Assert.That(roots.Count, Is.EqualTo(3));
+            Assert.That(realm.Anchors.Count, Is.EqualTo(1));
             source.ReplaceCarSource();
             yield return null;
             yield return null;

@@ -121,8 +121,8 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Editor/Diagnostics/` | Passive multi-Realm diagnostics and optional Scene view overlay |
 | `Editor/Inspectors/` | ManifestationBlueprint, ManifestationVariant, RealmSetup and AnchorSetup authoring validation |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
-| `Samples~/Minimal/` / `Samples~/Callbacks/` | Polling and callback quick starts |
-| `Samples~/Example/` | Contracts, entities, behaviors and detector integrations |
+| `Samples~/Minimal/` | Quick start with one marker and a position module |
+| `Samples~/Example/` | Three cars, reusable modules and SDK replacement |
 | `Samples~/RelativeWorld/` | Double-precision spatial placement and a moving reference |
 
 Each top-level type has its own file. Runtime public types share the `Emas` namespace so application imports remain simple.

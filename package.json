@@ -24,18 +24,13 @@
       "path": "Samples~/Minimal"
     },
     {
-      "displayName": "Callback quick start",
-      "description": "SDK events, explicit removal and unsubscribe cleanup with Inspector-configured views.",
-      "path": "Samples~/Callbacks"
-    },
-    {
       "displayName": "Emas sample",
-      "description": "A source-independent vehicle and aircraft discovery example.",
+      "description": "Three cars, reusable modules and SDK replacement without replacing Ghosts.",
       "path": "Samples~/Example"
     },
     {
       "displayName": "Relative world",
-      "description": "Double-precision spatial positions and a ghost-following reference frame.",
+      "description": "A driving reference, parked cars and a circling bird using double-precision positions and orientations.",
       "path": "Samples~/RelativeWorld"
     }
   ],

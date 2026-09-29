@@ -47,6 +47,7 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   _blueprints:
   - {fileID: 11400000, guid: 83648be90a5608b4f87ea6563d3e5cc8, type: 2}
+  - {fileID: 11400000, guid: 1a9ba993957a03b45841edd0f919856c, type: 2}
   _useReferenceFrame: 1
   _followGhost: 1
   _referenceAnchorId: relative-world

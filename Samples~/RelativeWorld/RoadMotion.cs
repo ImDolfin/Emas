@@ -1,0 +1,34 @@
+using UnityEngine;
+
+namespace Emas.RelativeWorld
+{
+    /// <summary>Scrolls authored road markings by the followed car's actual travel distance.</summary>
+    public sealed class RoadMotion : MonoBehaviour
+    {
+        [SerializeField]
+        private RealmSetup _setup;
+        [Tooltip("Authored road markings, spaced five metres apart along Z.")]
+        [SerializeField]
+        private Transform[] _markings;
+        private Vector3[] _positions;
+
+        private void Awake()
+        {
+            _positions = new Vector3[_markings.Length];
+            for (int index = 0; index < _markings.Length; index++)
+            {
+                _positions[index] = _markings[index].localPosition;
+            }
+        }
+
+        private void LateUpdate()
+        {
+            ReferenceFrame frame = _setup.Realm == null ? null : _setup.Realm.ReferenceFrame;
+            float offset = frame != null && frame.HasPosition ? (float)(frame.Position.Z % 5.0) : 0f;
+            for (int index = 0; index < _markings.Length; index++)
+            {
+                _markings[index].localPosition = _positions[index] - Vector3.forward * offset;
+            }
+        }
+    }
+}

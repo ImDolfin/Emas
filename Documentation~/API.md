@@ -32,7 +32,7 @@ Custom Ghost subclasses can override `protected virtual void OnUpdate()` to comb
 
 For a polled SDK, call your read method from `OnStart` and `OnUpdate`. The detector decides its polling interval. If each read returns the complete current population, collect the current IDs, report its readings, then call `Disappear(kind, id)` for previously owned identities absent from that successful read. `OwnedPresences` supplies a membership snapshot for this comparison. Validate the SDK snapshot before applying it when malformed or duplicate entries should reject the read. A feed that returns only changes needs an explicit disappearance signal or an appropriate `InactivityTimeout`; an omitted ID alone does not remove anything in Emas.
 
-For SDK membership events, capture `Action<Action> dispatch = CaptureDispatcher()` in `OnStart`. Queue arrival callbacks with `dispatch(() => Detect(id, kind))` and departures with `dispatch(() => Disappear(kind, id))`. Retain the delegates for unsubscribe in `OnStop`. SDK data updates belong to the proxy or application lookup used by the module readers. The [callback sample](../Samples~/Callbacks/FeedSource.cs) subscribes only to arrivals and removals.
+For SDK membership events, capture `Action<Action> dispatch = CaptureDispatcher()` in `OnStart`. Queue arrival callbacks with `dispatch(() => Detect(id, kind))` and departures with `dispatch(() => Disappear(kind, id))`. Retain the delegates for unsubscribe in `OnStop`. SDK data updates belong to the proxy or application lookup used by the module readers.
 
 | Detector contract | Behavior |
 | --- | --- |

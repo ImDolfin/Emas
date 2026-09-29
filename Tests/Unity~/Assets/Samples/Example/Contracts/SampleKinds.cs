@@ -15,9 +15,5 @@ namespace Emas.Sample
         /// </summary>
         public static readonly Kind Car = new Kind("sample.vehicle.car");
 
-        /// <summary>
-        /// Identifies sample aircraft.
-        /// </summary>
-        public static readonly Kind Aircraft = new Kind("sample.vehicle.aircraft");
     }
 }

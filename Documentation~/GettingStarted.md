@@ -100,7 +100,7 @@ if (realm != null && realm.TryGetPresence(key, out presence) && presence.IsAvail
 
 For components, use the `Detector` property as the handle. Use `anchorSetup.Anchor.RestartDetector(detector)` to restart an attached detector and `ReplaceDetector` to change its instance. A successful handover reuses compatible roots and Presence handles when IDs are reported again. Detector failure removes its population immediately, so recovery creates new handles and roots.
 
-For root interfaces, paired query arrivals and departures, and detector replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Its Tracking prefab owns an isolated Realm Setup with separate `cars` and `aircraft` child anchors; `CarSource` demonstrates replacement while the authored blueprints and variants select each view. Consumers use `IGhost.TryGet<T>` for optional root interfaces or `ghost.GetRequired<T>()` when a missing provider is an error.
+For root interfaces, paired query arrivals and departures, and detector replacement, import **Emas sample** and follow its [file guide](../Samples~/Example/README.md). Its Tracking prefab owns an isolated Realm Setup and a `cars` anchor; `CarSource` demonstrates replacement while the authored blueprints and variants select each view. Consumers use `IGhost.TryGet<T>` for optional root interfaces or `ghost.GetRequired<T>()` when a missing provider is an error.
 
 ## Implement your SDK detector
 
@@ -116,7 +116,7 @@ Call `Detect(id, kind, name, variant, capabilities, source)` when an entity arri
 
 For a complete-snapshot SDK, compare each successful read's IDs with `OwnedPresences` and explicitly call `Disappear` for missing IDs. A missing item in a change-only feed is not a removal. Your detector owns the SDK's validation, scheduling and omission rules; Emas owns the resulting Presence lifecycle. The [README example](../README.md#3-connect-the-detector-and-realm) demonstrates snapshot comparison.
 
-For SDK membership events, call `CaptureDispatcher()` in `OnStart` and close each event handler over the returned dispatcher. Queue `Detect` or `Disappear` through it, retain the exact delegates, and unsubscribe in `OnStop`. Each captured dispatcher belongs to one attachment, so callbacks retained after a restart cannot change the new attachment. `OnStop` also follows failed startup; make cleanup safe when only some subscriptions were acquired. Import **Callback quick start**, open `Callbacks.unity`, and inspect [FeedSource.cs](../Samples~/Callbacks/FeedSource.cs) for a complete example. SDK clients remain application-owned.
+For SDK membership events, call `CaptureDispatcher()` in `OnStart` and close each event handler over the returned dispatcher. Queue `Detect` or `Disappear` through it, retain the exact delegates, and unsubscribe in `OnStop`. Each captured dispatcher belongs to one attachment, so callbacks retained after a restart cannot change the new attachment. `OnStop` also follows failed startup; make cleanup safe when only some subscriptions were acquired. SDK clients remain application-owned.
 
 Pass SDK capability interface types through the optional `capabilities` argument of Detect. This metadata does not add components. A realm initializer can inspect `presence.HasCapability<T>()` to bind or enable modules already configured on the Ghost. It runs again when capabilities change. Reader or module exceptions stop the owning detector and remove its population; unbound and disabled modules do not read data.
 

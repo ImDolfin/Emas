@@ -3,7 +3,7 @@ using System;
 namespace Emas.RelativeWorld
 {
     /// <summary>
-    /// Represents one SDK car observation in WGS84 geographic coordinates.
+    /// Represents one SDK spatial observation in WGS84 geographic coordinates.
     /// </summary>
     /// <remarks>
     /// Latitude, longitude and attitude are degrees. AltitudeMeters is height above the WGS84
@@ -16,6 +16,7 @@ namespace Emas.RelativeWorld
         /// </summary>
         /// <param name="id">The stable SDK entity ID.</param>
         /// <param name="label">The entity display label.</param>
+        /// <param name="kind">The observed entity category.</param>
         /// <param name="variant">The requested visual variant.</param>
         /// <param name="latitudeDegrees">WGS84 geodetic latitude in degrees north.</param>
         /// <param name="longitudeDegrees">WGS84 longitude in degrees east.</param>
@@ -23,7 +24,7 @@ namespace Emas.RelativeWorld
         /// <param name="yawDegrees">Heading clockwise from true north, in degrees.</param>
         /// <param name="pitchDegrees">Nose-up pitch in degrees.</param>
         /// <param name="rollDegrees">Right-wing-down roll in degrees.</param>
-        public GeoPoseReading(string id, string label, Variant variant, double latitudeDegrees,
+        public GeoPoseReading(string id, string label, Kind kind, Variant variant, double latitudeDegrees,
             double longitudeDegrees, double altitudeMeters, double yawDegrees, double pitchDegrees,
             double rollDegrees)
         {
@@ -41,6 +42,7 @@ namespace Emas.RelativeWorld
 
             Id = id;
             Label = label;
+            Kind = kind;
             Variant = variant;
             LatitudeDegrees = latitudeDegrees;
             LongitudeDegrees = longitudeDegrees;
@@ -55,6 +57,9 @@ namespace Emas.RelativeWorld
 
         /// <summary>Gets the SDK display label.</summary>
         public string Label { get; }
+
+        /// <summary>Gets the observed entity category.</summary>
+        public Kind Kind { get; }
 
         /// <summary>Gets the requested visual variant.</summary>
         public Variant Variant { get; }

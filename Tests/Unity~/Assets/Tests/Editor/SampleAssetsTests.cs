@@ -18,7 +18,6 @@ namespace Emas.Tests.Samples
         /// Every imported sample file matches the package, including scene and prefab metadata.
         /// </summary>
         [TestCase("Minimal")]
-        [TestCase("Callbacks")]
         [TestCase("Example")]
         [TestCase("RelativeWorld")]
         public void ImportedSample_MatchesPackage(string sample)
@@ -43,7 +42,6 @@ namespace Emas.Tests.Samples
         /// Each sample opens with a reusable tracking prefab and persistent blueprint, root and variant view assets.
         /// </summary>
         [TestCase("Minimal", "QuickStart.unity")]
-        [TestCase("Callbacks", "Callbacks.unity")]
         [TestCase("Example", "Scenes/Example.unity")]
         [TestCase("RelativeWorld", "RelativeWorld.unity")]
         public void SampleScene_UsesAuthoredTrackingAssets(string sample, string sceneFile)

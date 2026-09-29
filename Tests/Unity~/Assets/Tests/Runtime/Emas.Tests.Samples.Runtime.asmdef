@@ -3,7 +3,6 @@
   "rootNamespace": "Emas.Tests.Samples",
   "references": [
     "Emas.Runtime",
-    "Emas.Callbacks",
     "Emas.Sample",
     "Emas.RelativeWorld"
   ],

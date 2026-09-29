@@ -67,7 +67,7 @@ internal sealed class TrackedDetector : PresenceDetector
 }
 ```
 
-For an SDK that supplies membership events, subscribe in `OnStart`, capture a dispatcher with `CaptureDispatcher()`, and unsubscribe in `OnStop`. Queue detections and explicit disappearances through that captured dispatcher so callbacks retained from an older attachment are ignored. All detector operations and callbacks run on Unity's main thread; the application handles any thread transfer. See the [callback sample](Samples~/Callbacks/FeedSource.cs).
+For an SDK that supplies membership events, subscribe in `OnStart`, capture a dispatcher with `CaptureDispatcher()`, and unsubscribe in `OnStop`. Queue detections and explicit disappearances through that captured dispatcher so callbacks retained from an older attachment are ignored. All detector operations and callbacks run on Unity's main thread; the application handles any thread transfer.
 
 Here `blueprint` is the asset from section 1 with the configured Ghost prefab. `SdkProxy` represents your SDK's proxy class; `originProxy` and `itemProxy` are objects already received during discovery. Supply them when announcing arrival:
 
@@ -122,7 +122,7 @@ World  (RealmSetup: blueprint; Use Reference Frame; Follow Ghost)
   Items  (AnchorSetup: id "items"; SDK detector; Ghost initializer)
 ```
 
-Put `RealmSetup` on the root and assign the optional blueprint. On `Items`, add `AnchorSetup`, your `PresenceDetectorComponent` subclass and an optional `GhostInitializer` subclass. Override the detector's `OnStart`, `OnUpdate` and `OnStop` to handle SDK membership. Override `GhostInitializer.Initialize(Presence, Ghost)` to bind the modules already authored on the Ghost prefab. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup handles updates and cleanup. The [four samples](Samples~) ship with these components and assets already configured.
+Put `RealmSetup` on the root and assign the optional blueprint. On `Items`, add `AnchorSetup`, your `PresenceDetectorComponent` subclass and an optional `GhostInitializer` subclass. Override the detector's `OnStart`, `OnUpdate` and `OnStop` to handle SDK membership. Override `GhostInitializer.Initialize(Presence, Ghost)` to bind the modules already authored on the Ghost prefab. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup handles updates and cleanup. The [three samples](Samples~) ship with these components and assets already configured.
 
 Code setup stays the same: construct a plain `PresenceDetector` with injected dependencies, register `Realm.RegisterPresenceInitializer<TGhost>`, then call `Anchor.AddDetector`. A scene `GhostInitializer` takes precedence for its own Anchor; without one enabled at attachment, the Realm's Kind registration applies. `IDetectorProvider` and `IRealmConfigurator` remain optional integration hooks when an application needs a factory or Realm-wide setup.
 

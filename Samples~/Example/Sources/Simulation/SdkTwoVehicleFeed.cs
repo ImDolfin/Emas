@@ -26,7 +26,7 @@ namespace Emas.Sample
         /// </returns>
         public IEnumerable<SdkTwoVehicleProxy> ReadVehicles(float elapsedSeconds)
         {
-            for (int index = 0; index < 10; index++)
+            for (int index = 0; index < SampleMotion.CarCount; index++)
             {
                 SdkTwoVehicleProxy proxy = new SdkTwoVehicleProxy(
                     id: index,

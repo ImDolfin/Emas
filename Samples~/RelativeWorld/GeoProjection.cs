@@ -71,6 +71,33 @@ namespace Emas.RelativeWorld
             return new Double3(east, up, north);
         }
 
+        // Inverse used only by the simulated SDK to author a flat road with geographic readings.
+        internal static void ToGeographic(Double3 position, out double latitudeDegrees,
+            out double longitudeDegrees, out double altitudeMeters)
+        {
+            double x = _originX - _sinDatumLongitude * position.X
+                + _cosDatumLatitude * _cosDatumLongitude * position.Y
+                - _sinDatumLatitude * _cosDatumLongitude * position.Z;
+            double y = _originY + _cosDatumLongitude * position.X
+                + _cosDatumLatitude * _sinDatumLongitude * position.Y
+                - _sinDatumLatitude * _sinDatumLongitude * position.Z;
+            double z = _originZ + _sinDatumLatitude * position.Y + _cosDatumLatitude * position.Z;
+            double horizontal = Math.Sqrt(x * x + y * y);
+            double latitude = Math.Atan2(z, horizontal * (1.0 - _eccentricitySquared));
+            for (int iteration = 0; iteration < 8; iteration++)
+            {
+                double sin = Math.Sin(latitude);
+                double radius = Wgs84SemiMajorAxisMeters / Math.Sqrt(1.0 - _eccentricitySquared * sin * sin);
+                latitude = Math.Atan2(z + _eccentricitySquared * radius * sin, horizontal);
+            }
+            double sinLatitude = Math.Sin(latitude);
+            double finalRadius = Wgs84SemiMajorAxisMeters
+                / Math.Sqrt(1.0 - _eccentricitySquared * sinLatitude * sinLatitude);
+            latitudeDegrees = latitude / DegreesToRadians;
+            longitudeDegrees = Math.Atan2(y, x) / DegreesToRadians;
+            altitudeMeters = horizontal / Math.Cos(latitude) - finalRadius;
+        }
+
         internal static Quaternion ToRotation(double yawDegrees, double pitchDegrees, double rollDegrees)
         {
             Quaternion yaw = Quaternion.AngleAxis((float)(yawDegrees % 360.0), Vector3.up);

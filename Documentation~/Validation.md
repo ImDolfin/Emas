@@ -36,11 +36,15 @@ Each test has a consumer-facing purpose documented in its XML summary. Tests use
 | Views | Blueprint selection, reference-frame projection, spatial channels, and presentation availability. |
 | Unity setup | Isolated/nested realm ownership, configuration timing, reparenting and automatic lifecycle updates. |
 | Editor authoring | Serialized configuration errors, shared realm blueprint mappings, reference selection and visible Ghost fields. |
-| Samples | Four runnable sample scenes and required consistency between package samples and their imported copies. |
+| Samples | Three runnable sample scenes and required consistency between package samples and their imported copies. |
 
 Keep a test when it protects a distinct behavior that an application depends on. Failure-path tests must demonstrate a meaningful recovery or cleanup contract; reproducing a past bug alone is not a reason to add or retain a case. Avoid duplicate permutations, assertions about private state, tests of test helpers, and checks of trivial constants. Cover related inputs in one focused scenario where that makes the contract clearer.
 
 ## Results
+
+The reduced sample set and Relative World driving scene passed **140 PlayMode** and **13 EditMode** tests in Unity **2022.3.62f3** on **2026-09-29**, with no failures or skips. Callback-sample cases were removed; the Emas example now validates three cars on one Anchor and SDK replacement. Relative World checks stationary parking encounters on both sides, explicit departure, reference-driven road motion, bounded populations after large time steps, and a bird's complete orbit with position and heading updates while retaining its Ghost and view. All three imported samples match the package assets.
+
+Direct3D-rendered frames at 0, 3, 5, 9 and 14 simulated seconds were inspected, showing the parked cars passing on alternating sides and the bird above the origin. The bird mesh, material, prefab, variant and blueprint are saved assets. The temporary authoring/capture helper was removed. Test reports and preview images are in `Tests/Unity~/TestResults/DrivingSamples/`. These camera previews validate the sample presentation, not the previously reported Inspector GUI shader issue.
 
 Component authoring and inspector simplification passed **139 PlayMode** and **15 EditMode** tests in Unity **2022.3.62f3** on **2026-09-29**, with no failures or skips. The added scenarios cover Anchor-local initialization and Realm fallback, module reads and source rebinding, restart dispatch invalidation, disabled-detector startup, component removal, disappearance grace and failure cleanup. Existing plain C# setup and sample lifecycle tests remain passing. Editor checks confirm all four tracking prefabs contain detector and initializer components and the imported samples match the package. Reports are in `Tests/Unity~/TestResults/ComponentSetup/`.
 

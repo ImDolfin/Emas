@@ -12,16 +12,16 @@ namespace Emas.RelativeWorld
         /// <summary>The entity category configured by this sample.</summary>
         public static readonly Kind Kind = new Kind("relative.car");
 
+        /// <summary>The circling bird's category, with its own blueprint.</summary>
+        public static readonly Kind BirdKind = new Kind("relative.bird");
+
         private SimulatedGeoSdk _sdk;
 
         /// <inheritdoc />
         protected override void OnStart()
         {
             _sdk = new SimulatedGeoSdk();
-            foreach (GeoPoseReading reading in _sdk.ReadFrame())
-            {
-                Detect(reading.Id, Kind, reading.Label, reading.Variant, source: _sdk);
-            }
+            RefreshPresence();
         }
 
         /// <summary>
@@ -33,9 +33,24 @@ namespace Emas.RelativeWorld
             if (_sdk != null)
             {
                 _sdk.Advance(seconds);
-                _sdk.ReadFrame();
+                RefreshPresence();
             }
         }
+        private void RefreshPresence()
+        {
+            foreach (GeoPoseReading reading in _sdk.ReadFrame())
+            {
+                Detect(reading.Id, reading.Kind, reading.Label, reading.Variant, source: _sdk);
+            }
+            foreach (Presence presence in OwnedPresences)
+            {
+                if (!_sdk.Current.ContainsKey(presence.Key.EntityId))
+                {
+                    Disappear(presence.Key.Kind, presence.Key.EntityId);
+                }
+            }
+        }
+
         /// <inheritdoc />
         protected override void OnUpdate()
         {

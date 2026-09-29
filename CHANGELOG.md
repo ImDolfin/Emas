@@ -2,6 +2,9 @@
 
 ## 0.1.0
 
+- Remove the Callback sample and reduce the Emas example to three cars and SDK replacement, without aircraft or cockpit demonstrations.
+- Rework Relative World as steady driving past stationary parked cars on alternating sides, with explicit membership cleanup and road markings driven by reference travel. Add an authored bird view whose SDK position and heading circle the moving reference.
+
 - Add `PresenceDetectorComponent` for direct scene authoring and `GhostInitializer` for Anchor-local SDK mappings. Plain C# detectors, constructor injection and Realm initializer registration remain supported.
 - Configure all sample prefabs with detector and initializer components; retain code-based detector replacement in the larger example.
 - Reduce Ghost, Realm and Anchor inspector text, placing guidance in tooltips and optional help and runtime details in foldouts.
