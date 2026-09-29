@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Added protected `Ghost.OnUpdate()` for entity-specific behavior after all module readers and before spatial projection. The realm invokes enabled, owned, available or pending roots once per update; startup finalization and view requests do not tick them. Exceptions use detector failure cleanup with entity context.
+
 - Made `Ghost` a concrete, directly authorable component and removed `DefaultGhost`; code and prefabs can use `Ghost` with reusable modules without an entity subclass. All four samples now use plain Ghost roots with saved modules. Existing `DefaultGhost` components should be replaced with `Ghost`. Spatial pose application now lives on `Spatial`; the realm still updates all modules before capturing one reference and coordinating projection.
 
 - Enabled `Spatial` components now use identity projection when `Realm.ReferenceFrame` is null: positions and rotations apply directly in Unity world space without a distance limit. Clearing a reference restores this default; disable `Spatial` to release transform control.

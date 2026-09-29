@@ -680,7 +680,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Applies a bounded source batch, cleans up expired ghosts, finalizes availability and views, then notifies subscribers.
+        /// Applies a bounded source batch, refreshes modules and Ghost behavior, projects spatial poses, then finalizes availability, views and queries.
         /// </summary>
         /// <remarks>
         /// Processes at most 256 queued actions present at update entry. Newly queued actions wait for a later update. A disposed realm does nothing.
@@ -732,7 +732,7 @@ namespace Emas
                     _population.RemoveUnpublishedHandoverGhosts(_updateNumber, _dispatch.HasPendingThrough);
                     _population.RemoveExpiredGhosts();
                     // Expose complete data and refresh views before notifying consumers.
-                    FinalizeChanges(null);
+                    FinalizeChanges(null, updateGhosts: true);
                     _subscriptions.NotifyAll();
                 }
             }
@@ -1133,7 +1133,7 @@ namespace Emas
             _population.RollbackSource(owner, previous);
         }
 
-        private void FinalizeChanges(PresenceDetector onlyOwner)
+        private void FinalizeChanges(PresenceDetector onlyOwner, bool updateGhosts = false)
         {
             _finalizing = true;
             try
@@ -1141,7 +1141,12 @@ namespace Emas
                 List<Record> records = _identities.Snapshot();
                 // Ghost modules own data updates; detectors only establish presence.
                 _population.RefreshModules(records, onlyOwner);
-                // Project complete module data before activating any roots or views.
+                if (updateGhosts)
+                {
+                    _population.UpdateGhosts(records);
+                }
+
+                // Project complete module and Ghost data before activating any roots or views.
                 _spatial.Project(records, _referenceFrame);
                 _population.ActivateRoots(records, onlyOwner);
                 for (int index = 0; index < records.Count; index++)

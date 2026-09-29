@@ -44,7 +44,7 @@ public sealed class PositionModule : EntityModule<Double3>
 
 `YourGeo.Wgs84ToEnu` is **application code**, not an Emas API. Give it one fixed WGS84 latitude, longitude, and height as the local ENU conversion point. Convert each reading to Earth-centered XYZ, subtract that fixed point's XYZ, then rotate into east/up/north metres. This fixed conversion point is separate from the moving `origin` Ghost chosen below; **both** Ghosts must use the same conversion point and axes. `AltitudeMeters` here means WGS84 ellipsoidal height; convert mean-sea-level SDK altitude before passing it to the converter. The [working WGS84 conversion](Samples~/RelativeWorld/GeoProjection.cs) shows the full calculation. If the SDK also supplies orientation, the initializer converts it to a `Quaternion` for a separate rotation module; see the [orientation example](Samples~/RelativeWorld/GeoOrientationModule.cs).
 
-Save a prefab with **Emas > Ghost**, `PositionModule` and `Spatial`, and assign it to the blueprint. No Ghost subclass is needed. Derive one only when the entity has additional behavior that combines its modules.
+Save a prefab with **Emas > Ghost**, `PositionModule` and `Spatial`, and assign it to the blueprint. No Ghost subclass is needed. Derive one only when the entity has additional behavior that combines its modules. Override `protected virtual void OnUpdate()` for that behavior: the Realm invokes it once per update after all module readers finish and before spatial projection. It can run before initial activation, so use the initializer for required setup. Disabled or unavailable Ghosts are skipped, except roots awaiting their first activation; view requests do not trigger this hook.
 
 ### 3. Connect the detector and realm
 

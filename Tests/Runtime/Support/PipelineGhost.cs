@@ -9,5 +9,14 @@ namespace Emas.Tests
     public sealed class PipelineGhost : Ghost
     {
         internal int Articulation { get; set; }
+        internal Action Updating;
+        internal int UpdateCount;
+
+        /// <summary>Runs consumer behavior in the realm's Ghost update phase.</summary>
+        protected override void OnUpdate()
+        {
+            UpdateCount++;
+            Updating?.Invoke();
+        }
     }
 }

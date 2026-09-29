@@ -638,6 +638,37 @@ namespace Emas
             }
         }
 
+        internal void UpdateGhosts(List<Record> records)
+        {
+            foreach (Record record in records)
+            {
+                if (!CanFinalize(record, null) || !record.Ghost.enabled
+                    || (!record.PendingActivation && !record.Ghost.IsAvailable))
+                {
+                    continue;
+                }
+
+                PresenceDetector owner = record.Owner;
+                long generation = record.RegistrationGeneration;
+                try
+                {
+                    record.Ghost.Tick();
+                }
+                catch (Exception exception)
+                {
+                    if (owner.IsRegistration(_realm, generation))
+                    {
+                        owner.HandleFailure(exception, PresenceDetector.DescribeError(owner.CaptureErrorContext(),
+                            "Ghost.OnUpdate", record.Key.Kind, record.Key.EntityId));
+                    }
+                    else
+                    {
+                        Debug.LogException(exception);
+                    }
+                }
+            }
+        }
+
         internal void ActivateRoots(List<Record> records, PresenceDetector onlyOwner)
         {
             // Make initialized roots available before Realm refreshes their views.

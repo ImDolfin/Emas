@@ -37,20 +37,22 @@ Each realm owns an internal `IdentityMap` keyed by `(anchor ID, kind, entity ID)
 1. Process up to **256 queued actions** present at update entry, in FIFO order.
 2. Run detector updates to detect arrivals, refresh presence metadata and remove departed identities.
 3. Mark timed-out identities as disappeared, remove identities whose disappearance grace or startup handover has ended, and retain other reported identities.
-4. Read and apply enabled Ghost module bindings, then resolve the optional reference frame and project spatial roots.
-5. Publish initialized roots and Presences as available and activate their roots.
-6. Refresh requested dirty views within presentation range.
-7. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
+4. Read and apply all enabled Ghost module bindings.
+5. Invoke `Ghost.OnUpdate()` once on each enabled, available or pending Ghost.
+6. Capture the optional reference frame and let each `Spatial` apply its pose.
+7. Publish initialized roots and Presences as available and activate their roots.
+8. Refresh requested dirty views within presentation range.
+9. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
 
 Newly queued actions wait for a later update. The budget limits action count, not execution time; application callbacks must remain short. Dispatch records the detector's registration generation, so stale work is discarded even if the same instance is reattached. Detector updates also capture that generation: a detector removed and reattached during an update first ticks in the following update.
 
-Successful startup outside an update finalizes directly reported roots immediately. Reports queued through a captured dispatcher during startup run in a later update. Variant changes and explicit view requests inside detector/finalization callbacks defer refresh until module updates are complete. Explicit requests outside those phases retain immediate behavior.
+Successful startup outside an update finalizes directly reported roots immediately, without invoking Ghost update hooks. Hooks run only in the realm update phase; view requests cannot invoke them again. They may run before initial activation, and their order across Ghosts is unspecified. Reports queued through a captured dispatcher during startup run in a later update. Variant changes and explicit view requests inside detector/finalization callbacks defer refresh until module updates are complete. Explicit requests outside those phases retain immediate behavior.
 
 `Realm.Default` provides an automatically updated default realm. A direct-code isolated realm uses explicit `Update()`; `RealmSetup` updates its own isolated realm each frame. An all-realm query reads current state without advancing any realm. Each realm delivers its own subscription notifications during its update. A global subscription follows new realms and reports departures for its observed matches when a realm is disposed. All Emas calls require Unity's main thread. Applications handle SDK threading before reporting or removing presences. The queue and protected `Dispatch` defer main-thread work to later updates. Custom detectors can capture a dispatcher per attachment so callbacks retained from an old attachment cannot enter a new one. Emas provides no thread synchronization or marshalling.
 
 ## Optional spatial projection
 
-Enabled root `Spatial` components opt into shared Cartesian coordinates. A null `Realm.ReferenceFrame` uses identity projection into Unity world space with no distance limit; an assigned frame configures relative placement. `Double3` preserves global positions until the reference displacement has been calculated in doubles. `SpatialManager` captures one shared projection after all module readers finish, then each `Spatial` applies its own world pose and range suppression. The manager tracks presentation availability for view refresh; no per-Ghost Unity `Update` is needed. World placement compensates for Anchor parents; ghosts without enabled spatial components retain application positioning.
+Enabled root `Spatial` components opt into shared Cartesian coordinates. A null `Realm.ReferenceFrame` uses identity projection into Unity world space with no distance limit; an assigned frame configures relative placement. `Double3` preserves global positions until the reference displacement has been calculated in doubles. `SpatialManager` captures one shared projection after all module readers and Ghost hooks finish, then each `Spatial` applies its own world pose and range suppression. The manager tracks presentation availability for view refresh; no per-Ghost Unity `Update` is needed. World placement compensates for Anchor parents; ghosts without enabled spatial components retain application positioning.
 
 A manual reference or a followed spatial ghost provides the origin. Following resolves once per spatial phase, so reference movement reprojects entities whose cached position has not changed. Rotation is an independent optional channel. Losing a followed entity retains its last valid reference pose and exposes that loss without jumping to the global origin.
 
@@ -60,7 +62,7 @@ Presentation range is measured in shared Cartesian coordinates before float conv
 
 | Event | Result |
 | --- | --- |
-| Detector update, dispatched action, module reader or module Apply throws | Run that attachment's OnStop, then remove its population if it is still current; leave the failed detector attached for explicit recovery; other detectors continue |
+| Detector update, dispatched action, module reader, module Apply or Ghost.OnUpdate throws | Run that attachment's OnStop, then remove its population if it is still current; leave the failed detector attached for explicit recovery; other detectors continue |
 | Restart/replace detector | Reuse compatible roots, Presence handles and view requests reported during startup handover; remove identities still unreported when handover completes |
 | Failed restart/replacement | Remove the population; retain the failed registration for another explicit retry/replacement/removal |
 | Explicit disappearance or inactivity timeout | Mark the Presence unavailable immediately; remove its root and view after `DisappearanceGracePeriod`, which defaults to zero |
