@@ -10,6 +10,11 @@ namespace Emas.Sample
 
     public sealed class SdkTwoVehicleFeed
     {
+        private readonly Dictionary<string, SdkTwoVehicleProxy> _current = new Dictionary<string, SdkTwoVehicleProxy>();
+
+        /// <summary>Gets the latest SDK observations keyed by entity ID.</summary>
+        public IReadOnlyDictionary<string, SdkTwoVehicleProxy> Current => _current;
+
         /// <summary>
         /// Reads the current SDK Two vehicle population.
         /// </summary>
@@ -23,12 +28,14 @@ namespace Emas.Sample
         {
             for (int index = 0; index < 10; index++)
             {
-                yield return new SdkTwoVehicleProxy(
+                SdkTwoVehicleProxy proxy = new SdkTwoVehicleProxy(
                     id: index,
                     modelCode: index % 3,
                     coordinates: SampleMotion.GetCarPosition(index, elapsedSeconds),
                     wheelAngle: SampleMotion.GetCarSteering(index, elapsedSeconds));
+                _current[proxy.Id.ToString()] = proxy;
             }
+            return _current.Values;
         }
     }
 }

@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Added optional `Detect(..., source: object)` and weak `Presence.Source` access for a discovered proxy, SDK client or application context. The source is available before initialization, replacement rebinds existing Ghost modules, and disappearance/handover/removal release it. Collected sources and destroyed Unity objects resolve to null; Emas never owns or disposes them. Sample readers resolve the supplied source each update instead of retaining it in closures.
+
+- Removed `PresenceDetector.Report` and Presence-owned module installation. Ghosts now define `EntityModule<TData>` components in their prefab or with `RequireComponent`; initializers bind source-independent value readers with `Bind(Func<TData>)`. The realm refreshes enabled modules before projection and queries, releases bindings on disappearance/handover/removal, and reconnects retained Ghosts on rediscovery. All four samples now separate arrival/departure detection from SDK data reads and ship with the modules authored on their Ghost prefabs.
+
 - Rebuilt every sample around authored tracking, Ghost and view prefabs, manifestation variants, blueprints, materials and configured scenes. Replaced Bootstrap components and runtime scene construction with focused source providers; the multi-source and relative-world samples now use Inspector-configured isolated Realm Setup lifetimes.
 - Added a short README introduction to the detector, module, Ghost, View and Realm roles before the implementation steps.
 - Split internal entity lifetime into `Population` and moved view-request/detail bookkeeping into `ViewManager`. `Realm` remains the public facade and update coordinator in one non-partial file; removed `Realm.Presences.cs` without changing the public API.

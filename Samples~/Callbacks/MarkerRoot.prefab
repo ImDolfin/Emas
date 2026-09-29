@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7990551801780432199}
   - component: {fileID: 4331463966592489174}
+  - component: {fileID: 8197222483915588045}
   m_Layer: 0
   m_Name: MarkerRoot
   m_TagString: Untagged
@@ -51,3 +52,15 @@ MonoBehaviour:
   _variant:
     _id:
   _isAvailable: 0
+--- !u!114 &8197222483915588045
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7944166838262938152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3089a938e84e4f0ebf398c48450dd8a0, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:

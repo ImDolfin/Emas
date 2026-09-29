@@ -241,8 +241,8 @@ namespace Emas
             return typed;
         }
 
-        internal Presence ApplyPresenceReport(PresenceDetector detector, string anchorId, string entityId,
-            Kind kind, string name, Variant? variant, List<Type> capabilitySnapshot, object data,
+        internal Presence ApplyPresenceDetection(PresenceDetector detector, string anchorId, string entityId,
+            Kind kind, string name, Variant? variant, List<Type> capabilitySnapshot, object source,
             Transform anchorTransform, ManifestationBlueprintSnapshot blueprint)
         {
             Key key = new Key(anchorId, kind, entityId);
@@ -267,8 +267,14 @@ namespace Emas
 
             Record record = _identities.Find(root);
             Presence presence = EnsurePresence(record);
+            bool sourceChanged = source != null && presence.SetSource(source);
+            if (sourceChanged)
+            {
+                ClearModuleBindings(root);
+            }
+
             bool capabilitiesChanged = presence.SetMetadata(root.Name, root.Variant, capabilitySnapshot);
-            if (!record.PresenceInitialized || capabilitiesChanged)
+            if (!record.PresenceInitialized || capabilitiesChanged || sourceChanged)
             {
                 if (initializer != null)
                 {
@@ -276,11 +282,6 @@ namespace Emas
                 }
 
                 record.PresenceInitialized = true;
-            }
-
-            if (data != null)
-            {
-                presence.ApplyData(data);
             }
 
             return presence;
@@ -551,6 +552,12 @@ namespace Emas
         private void InvalidateAvailability(Record record)
         {
             record.PendingActivation = false;
+            record.PresenceInitialized = false;
+            if (record.Ghost != null)
+            {
+                ClearModuleBindings(record.Ghost);
+            }
+
             record.OwnershipVersion++;
             record.ViewVersion++;
             record.ViewDirty = true;
@@ -562,9 +569,18 @@ namespace Emas
             if (record.Presence != null)
             {
                 record.Presence.SetAvailable(false);
+                record.Presence.SetSource(null);
             }
 
             _subscriptions.Forget(record.Key);
+        }
+
+        private static void ClearModuleBindings(Ghost root)
+        {
+            foreach (EntityModule module in root.GetComponents<EntityModule>())
+            {
+                module.ClearBinding();
+            }
         }
 
         private void DeactivateRecords(List<Record> records, PresenceDetector owner)
@@ -585,6 +601,49 @@ namespace Emas
             return !_realm.IsDisposed && _identities.Contains(record) && record.Ghost != null
                 && record.Owner != null && (onlyOwner == null || record.Owner == onlyOwner)
                 && record.Owner.IsRegistration(_realm, record.RegistrationGeneration);
+        }
+
+        internal void RefreshModules(List<Record> records, PresenceDetector onlyOwner)
+        {
+            foreach (Record record in records)
+            {
+                if (!CanFinalize(record, onlyOwner) || (!record.PendingActivation && !record.Ghost.IsAvailable))
+                {
+                    continue;
+                }
+
+                PresenceDetector owner = record.Owner;
+                long generation = record.RegistrationGeneration;
+                long ownership = record.OwnershipVersion;
+                try
+                {
+                    foreach (EntityModule module in record.Ghost.GetComponents<EntityModule>())
+                    {
+                        if (!CanFinalize(record, onlyOwner) || record.Owner != owner
+                            || record.RegistrationGeneration != generation || record.OwnershipVersion != ownership)
+                        {
+                            break;
+                        }
+
+                        if (module != null && module.enabled)
+                        {
+                            module.Refresh();
+                        }
+                    }
+                }
+                catch (Exception exception)
+                {
+                    if (owner.IsRegistration(_realm, generation))
+                    {
+                        owner.HandleFailure(exception, PresenceDetector.DescribeError(owner.CaptureErrorContext(),
+                            "Update modules", record.Key.Kind, record.Key.EntityId));
+                    }
+                    else
+                    {
+                        Debug.LogException(exception);
+                    }
+                }
+            }
         }
 
         internal void ActivateRoots(List<Record> records, PresenceDetector onlyOwner)

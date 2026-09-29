@@ -1,7 +1,7 @@
 namespace Emas
 {
     /// <summary>
-    /// Registers presence root and module initializers before a prefab realm starts its detectors.
+    /// Registers Ghost root types and module input bindings before a prefab realm starts its detectors.
     /// </summary>
     /// <remarks>
     /// Implement on an enabled MonoBehaviour beneath a RealmSetup. A nested RealmSetup uses its own configurators.

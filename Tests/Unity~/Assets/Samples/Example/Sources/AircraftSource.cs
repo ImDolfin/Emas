@@ -2,18 +2,29 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>
-    /// Supplies the simulated aircraft detector to its authored anchor.
-    /// </summary>
+    /// <summary>Connects aircraft discovery and Ghost module inputs to the sample SDK.</summary>
     [RequireComponent(typeof(AnchorSetup))]
-    public sealed class AircraftSource : MonoBehaviour, IDetectorProvider
+    public sealed class AircraftSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
-        /// <summary>
-        /// Creates a fresh detector for each anchor attachment.
-        /// </summary>
+        private readonly SimulatedAircraftFeed _feed = new SimulatedAircraftFeed();
+
+        /// <summary>Binds the position module configured on each aircraft Ghost.</summary>
+        public void ConfigureRealm(Realm realm)
+        {
+            realm.RegisterPresenceInitializer<AircraftGhost>(SampleKinds.Aircraft, (presence, root) =>
+                root.GetComponent<PositionModule>().Bind(() => ((SimulatedAircraftFeed)presence.Source).Current[presence.Key.EntityId].Position));
+        }
+
+        /// <summary>Creates a fresh detector for each anchor attachment.</summary>
         public PresenceDetector CreateDetector()
         {
-            return new SimulatedAircraftDetector { Name = "Sample aircraft" };
+            Update();
+            return new SimulatedAircraftDetector(_feed) { Name = "Sample aircraft" };
+        }
+
+        private void Update()
+        {
+            _feed.ReadAircraft(Time.time);
         }
     }
 }

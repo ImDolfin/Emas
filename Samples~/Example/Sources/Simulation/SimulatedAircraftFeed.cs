@@ -10,6 +10,11 @@ namespace Emas.Sample
 
     public sealed class SimulatedAircraftFeed
     {
+        private readonly Dictionary<string, SimulatedAircraftProxy> _current = new Dictionary<string, SimulatedAircraftProxy>();
+
+        /// <summary>Gets the latest SDK observations keyed by entity ID.</summary>
+        public IReadOnlyDictionary<string, SimulatedAircraftProxy> Current => _current;
+
         /// <summary>
         /// Reads the current aircraft population.
         /// </summary>
@@ -23,10 +28,12 @@ namespace Emas.Sample
         {
             for (int index = 0; index < 3; index++)
             {
-                yield return new SimulatedAircraftProxy(
+                SimulatedAircraftProxy proxy = new SimulatedAircraftProxy(
                     identifier: index.ToString(),
                     position: SampleMotion.GetAircraftPosition(index, elapsedSeconds));
+                _current[proxy.Identifier] = proxy;
             }
+            return _current.Values;
         }
     }
 }

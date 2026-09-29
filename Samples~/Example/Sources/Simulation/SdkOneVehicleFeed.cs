@@ -10,6 +10,11 @@ namespace Emas.Sample
 
     public sealed class SdkOneVehicleFeed
     {
+        private readonly Dictionary<string, SdkOneVehicleProxy> _current = new Dictionary<string, SdkOneVehicleProxy>();
+
+        /// <summary>Gets the latest SDK observations keyed by entity ID.</summary>
+        public IReadOnlyDictionary<string, SdkOneVehicleProxy> Current => _current;
+
         /// <summary>
         /// Reads the current SDK One vehicle population.
         /// </summary>
@@ -24,14 +29,16 @@ namespace Emas.Sample
             for (int index = 0; index < 10; index++)
             {
                 Vector3 position = SampleMotion.GetCarPosition(index, elapsedSeconds);
-                yield return new SdkOneVehicleProxy(
+                SdkOneVehicleProxy proxy = new SdkOneVehicleProxy(
                     identifier: index.ToString(),
                     typeCode: index % 3,
                     positionX: position.x,
                     positionY: position.y,
                     positionZ: position.z,
                     steering: SampleMotion.GetCarSteering(index, elapsedSeconds));
+                _current[proxy.Identifier] = proxy;
             }
+            return _current.Values;
         }
     }
 }

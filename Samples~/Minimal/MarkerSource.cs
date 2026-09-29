@@ -8,18 +8,15 @@ namespace Emas.Minimal
     public sealed class MarkerSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
     {
         /// <summary>
-        /// Registers the marker root and its SDK position module before tracking starts.
+        /// Binds the marker root's configured position module before tracking starts.
         /// </summary>
         /// <param name="realm">The realm owned by this prefab setup.</param>
         public void ConfigureRealm(Realm realm)
         {
             realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
             {
-                MarkerPositionModule module;
-                if (!presence.TryGetModule(out module))
-                {
-                    presence.AddModule(new MarkerPositionModule(marker));
-                }
+                marker.GetComponent<MarkerPositionModule>().Bind(() =>
+                    (presence.Source as MarkerSource)?.ReadPosition(presence.Key.EntityId) ?? marker.transform.localPosition);
             });
         }
 
@@ -28,7 +25,12 @@ namespace Emas.Minimal
         /// </summary>
         public PresenceDetector CreateDetector()
         {
-            return new MarkerDetector();
+            return new MarkerDetector(this);
+        }
+        private Vector3 ReadPosition(string id)
+        {
+            // Replace this simulated SDK lookup with the application's proxy position.
+            return new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f);
         }
     }
 }

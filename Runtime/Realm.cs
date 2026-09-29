@@ -482,15 +482,17 @@ namespace Emas
         }
 
         /// <summary>
-        /// Registers the root type and module setup for one detected kind.
+        /// Registers a Ghost root type and binds its configured modules to application data.
         /// </summary>
         /// <typeparam name="TGhost">The Ghost component used as the invisible root.</typeparam>
         /// <param name="kind">The kind this initializer handles.</param>
-        /// <param name="initialize">Adds modules and configures a new or newly capable presence.</param>
+        /// <param name="initialize">Connects the Ghost's modules to their source-independent value readers.</param>
         /// <remarks>
         /// Register before attaching detectors. The callback runs after root creation and before SDK data is
-        /// applied or the Ghost becomes available. It runs again when reported capabilities change; use
-        /// TryGetModule to avoid installing a duplicate module.
+        /// read or the Ghost becomes available. Presence.Source is already assigned. It runs again when
+        /// the source object or capabilities change, or a retained
+        /// Ghost is rediscovered or handed to a new detector. Define modules on the Ghost or its prefab;
+        /// use GetComponent to bind their readers here.
         /// </remarks>
         public void RegisterPresenceInitializer<TGhost>(Kind kind, Action<Presence, TGhost> initialize)
             where TGhost : Ghost
@@ -890,13 +892,13 @@ namespace Emas
             }
         }
 
-        internal Presence ReportPresence(PresenceDetector detector, string anchorId, string entityId,
-            Kind kind, string name, Variant? variant, IEnumerable<Type> capabilities, object data)
+        internal Presence DetectPresence(PresenceDetector detector, string anchorId, string entityId,
+            Kind kind, string name, Variant? variant, IEnumerable<Type> capabilities, object source)
         {
             ThrowIfDisposed();
             if (detector == null || !detector.IsActive)
             {
-                throw new InvalidOperationException("Only an active detector can report a presence.");
+                throw new InvalidOperationException("Only an active detector can detect a presence.");
             }
 
             if (!kind.IsValid || string.IsNullOrEmpty(anchorId) || string.IsNullOrEmpty(entityId))
@@ -924,19 +926,19 @@ namespace Emas
 
             long generation = detector.RegistrationGeneration;
             string sourceContext = detector.CaptureErrorContext();
-            // Initializers and modules must finish before callbacks can observe or activate their roots.
+            // Initializers must finish binding modules before callbacks can observe or activate their roots.
             _sourceDepth++;
             try
             {
-                return _population.ApplyPresenceReport(detector, anchorId, entityId, kind, name, variant, capabilitySnapshot, data,
+                return _population.ApplyPresenceDetection(detector, anchorId, entityId, kind, name, variant, capabilitySnapshot, source,
                     GetAnchorTransform(anchorId), ResolveManifestationBlueprint(anchorId, kind));
             }
             catch (Exception exception)
             {
-                string context = PresenceDetector.DescribeError(sourceContext, "Report", kind, entityId);
+                string context = PresenceDetector.DescribeError(sourceContext, "Detect", kind, entityId);
                 detector.RecordError(exception, generation, context);
-                // Lifecycle and dispatched reports already have a failure boundary. Preserve startup rollback
-                // and let that boundary log once, while direct reports stop before pending roots can activate.
+                // Lifecycle and dispatched detections already have a failure boundary. Preserve startup rollback
+                // and let that boundary log once, while direct detections stop before pending roots can activate.
                 if (!detector.IsApplyingSourceChanges && detector.IsRegistration(this, generation))
                 {
                     detector.HandleFailure(exception, context);
@@ -1136,7 +1138,9 @@ namespace Emas
             try
             {
                 List<Record> records = _identities.Snapshot();
-                // Project complete source data before activating any roots or views.
+                // Ghost modules own data updates; detectors only establish presence.
+                _population.RefreshModules(records, onlyOwner);
+                // Project complete module data before activating any roots or views.
                 _spatial.Project(records, _referenceFrame);
                 _population.ActivateRoots(records, onlyOwner);
                 for (int index = 0; index < records.Count; index++)

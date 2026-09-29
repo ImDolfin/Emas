@@ -5,7 +5,7 @@ namespace Emas.RelativeWorld
     /// <summary>
     /// A Ghost root whose WGS84 position and attitude are converted into the realm spatial layer.
     /// </summary>
-    [RequireComponent(typeof(Spatial))]
+    [RequireComponent(typeof(Spatial), typeof(GeoPositionModule), typeof(GeoOrientationModule))]
     public sealed class RelativeCar : Ghost
     {
         internal static readonly Kind Kind = new Kind("relative.car");

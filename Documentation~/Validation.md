@@ -42,12 +42,14 @@ Keep a test when it protects a distinct behavior that an application depends on.
 
 ## Results
 
-The package passed in Unity **2022.3.62f3** on **2026-09-26**, package **0.1.0**, with all four samples using authored tracking, Ghost and view prefabs, manifestation variants, blueprints and materials. All **130 tests** passed with no failures or skips. EditMode checks that each scene uses a reusable tracking prefab with persistent root, blueprint and variant-view assets, and that imported samples match the package. PlayMode exercises automatic startup, detector reconnection and replacement, relative-world projection, and disable/re-enable cleanup. Existing package lifecycle and failure-handling coverage also passes. Tests use public APIs and Unity's serialized-authoring APIs without access to internal production state.
+The weak-source workflow passed in Unity **2022.3.62f3** on **2026-09-29**, package **0.1.0**. All **137 tests** passed with no failures or skips. PlayMode covers source assignment before initialization, proxy/SDK replacement on an existing Ghost, weak managed-source collection, destroyed Unity sources, source release without SDK disposal, and the Ghost-module lifecycle. All four authored sample scenes pass their startup, motion, source replacement and restart checks. EditMode verifies authored modules and consistency between package samples and their imported copies.
 
 | Editor | Test Framework | EditMode | PlayMode |
 | --- | --- | --- | --- |
-| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 13 passed | 117 passed |
+| 2022.3.62f3 (`96770f904ca7`) | 1.1.33 | 13 passed | 124 passed |
 
-The ignored XML reports and logs are in `Tests/Unity~/TestResults/AuthoredSamples/`. All four scenes were also run with Direct3D 11 and their camera renders visually inspected for visible entities, materials, framing and the corrected vehicle variants. The PNG previews are in `Tests/Unity~/TestResults/AuthoredSamples/Previews/`. Temporary authoring and capture scripts were removed before the final test runs; the shipped samples use their saved assets.
+The ignored XML reports and logs are in `Tests/Unity~/TestResults/PresenceSource/`. The preceding Ghost-module migration passed **13 EditMode** and **121 PlayMode** tests; those reports remain in `Tests/Unity~/TestResults/GhostModules/`. The shipped Ghost prefabs contain saved module components and require no asset-generation helper.
+
+The preceding authored-sample revision passed **13 EditMode** and **117 PlayMode** tests on **2026-09-26**. Those results and its Direct3D 11 camera previews remain in `Tests/Unity~/TestResults/AuthoredSamples/`. This module migration did not change sample geometry or presentation assets beyond adding components to Ghost prefabs; camera previews were not recaptured.
 
 The previous internal identity-map and dispatch extraction passed **9 EditMode** and **114 PlayMode** tests on **2026-09-26**; those reports remain in `Tests/Unity~/TestResults/IdentityAndCommands/`. The earlier adapter removal passed **9 EditMode** and **112 PlayMode** tests in `Tests/Unity~/TestResults/DetectorSimplification/`. Earlier **2026-09-22** checks passed on Unity 6.3 LTS (6000.3.24f1) and Windows Mono players; those runs predate later API changes and do not validate the current suite. Unity 6 and player runs have not been repeated for this revision. IL2CPP, other platforms, performance and alternative render pipelines have not been validated.

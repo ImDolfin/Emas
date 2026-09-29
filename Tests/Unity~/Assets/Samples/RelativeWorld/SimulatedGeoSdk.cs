@@ -9,6 +9,9 @@ namespace Emas.RelativeWorld
     internal sealed class SimulatedGeoSdk
     {
         private double _elapsed;
+        private readonly Dictionary<string, GeoPoseReading> _current = new Dictionary<string, GeoPoseReading>();
+
+        internal IReadOnlyDictionary<string, GeoPoseReading> Current => _current;
 
         /// <summary>
         /// Advances both example entities before the next complete snapshot is read.
@@ -29,10 +32,10 @@ namespace Emas.RelativeWorld
         internal IEnumerable<GeoPoseReading> ReadFrame()
         {
             double time = _elapsed;
-            double latitude = GeoPositionModule.DatumLatitudeDegrees;
-            double longitude = GeoPositionModule.DatumLongitudeDegrees;
-            double altitude = GeoPositionModule.DatumAltitudeMeters;
-            return new[]
+            double latitude = GeoProjection.DatumLatitudeDegrees;
+            double longitude = GeoProjection.DatumLongitudeDegrees;
+            double altitude = GeoProjection.DatumAltitudeMeters;
+            GeoPoseReading[] readings = new[]
             {
                 new GeoPoseReading(
                     "origin", "Moving origin", RelativeCar.Origin,
@@ -51,6 +54,12 @@ namespace Emas.RelativeWorld
                     4.0 * Math.Sin(time * 0.28 + 0.4),
                     5.0 * Math.Sin(time * 0.34 + 0.7))
             };
+            foreach (GeoPoseReading reading in readings)
+            {
+                _current[reading.Id] = reading;
+            }
+
+            return readings;
         }
     }
 }

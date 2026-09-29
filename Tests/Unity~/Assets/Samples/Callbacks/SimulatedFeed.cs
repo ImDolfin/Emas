@@ -11,9 +11,9 @@ namespace Emas.Callbacks
         private float _elapsed;
 
         /// <summary>
-        /// Reports a new immutable reading when an entity appears or changes.
+        /// Announces an entity when it appears; later data changes are read through Current.
         /// </summary>
-        public event Action<Reading> Changed;
+        public event Action<Reading> Arrived;
 
         /// <summary>
         /// Reports the stable ID of an entity that departed.
@@ -40,10 +40,11 @@ namespace Emas.Callbacks
             _elapsed += deltaTime;
             if (_elapsed % 6f < 4f)
             {
+                bool arrived = Current == null;
                 Current = new Reading("one", new Vector3(Mathf.Sin(_elapsed) * 2f, 0f, 0f));
-                if (Changed != null)
+                if (arrived && Arrived != null)
                 {
-                    Changed(Current);
+                    Arrived(Current);
                 }
             }
             else if (Current != null)

@@ -12,23 +12,23 @@ namespace Emas.RelativeWorld
         private SimulatedGeoSdk _sdk;
 
         /// <summary>
-        /// Adds the modules that map SDK positions and orientations to each authored car root.
+        /// Binds the authored car modules to positions and orientations converted from the SDK.
         /// </summary>
         public void ConfigureRealm(Realm realm)
         {
             realm.RegisterPresenceInitializer<RelativeCar>(RelativeCar.Kind, (presence, root) =>
             {
-                GeoPositionModule position;
-                if (!presence.TryGetModule(out position))
+                string id = presence.Key.EntityId;
+                root.GetComponent<GeoPositionModule>().Bind(() =>
                 {
-                    presence.AddModule(new GeoPositionModule());
-                }
-
-                GeoOrientationModule orientation;
-                if (!presence.TryGetModule(out orientation))
+                    GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
+                    return GeoProjection.ToPosition(reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters);
+                });
+                root.GetComponent<GeoOrientationModule>().Bind(() =>
                 {
-                    presence.AddModule(new GeoOrientationModule());
-                }
+                    GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
+                    return GeoProjection.ToRotation(reading.YawDegrees, reading.PitchDegrees, reading.RollDegrees);
+                });
             });
         }
 
@@ -38,6 +38,7 @@ namespace Emas.RelativeWorld
         public PresenceDetector CreateDetector()
         {
             _sdk = new SimulatedGeoSdk();
+            _sdk.ReadFrame();
             return new GeoDetector(_sdk) { Name = "Geodetic SDK entities" };
         }
 
@@ -50,7 +51,13 @@ namespace Emas.RelativeWorld
             if (_sdk != null)
             {
                 _sdk.Advance(seconds);
+                _sdk.ReadFrame();
             }
         }
+        private void Update()
+        {
+            Advance(Time.deltaTime);
+        }
+
     }
 }

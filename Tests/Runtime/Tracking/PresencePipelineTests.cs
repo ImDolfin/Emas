@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -35,7 +36,7 @@ namespace Emas.Tests
         public void Prepare_DoesNotExposePresenceUntilDetection()
         {
             Anchor anchor = _realm.GetOrCreateAnchor("sdk");
-            ProbeGhost prepared = _realm.Prepare<ProbeGhost>("sdk", TrackedKind, "prepared");
+            PipelineGhost prepared = _realm.Prepare<PipelineGhost>("sdk", TrackedKind, "prepared");
             Key key = new Key("sdk", TrackedKind, "prepared");
             Assert.That(_realm.TryGetPresence(key, out Presence presence), Is.False);
             Assert.That(presence, Is.Null);
@@ -52,65 +53,260 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Capability changes install modules once while updates retain the Presence and root.
+        /// Ghost-defined modules read the latest mapped values without additional detections,
+        /// and all initial values are ready before query consumers see the entity.
         /// </summary>
         [Test]
-        public void Report_InitializesModulesAndPreservesPresence()
+        public void Modules_UpdateFromBoundReadersWithoutDetectorReports()
         {
+            Reading proxy = new Reading(new Double3(1, 2, 3), 7);
             int initializations = 0;
-            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
                 initializations++;
-                PositionModule position;
-                if (presence.HasCapability<IPositionCapability>() && !presence.TryGetModule(out position))
-                {
-                    root.gameObject.AddComponent<Spatial>();
-                    presence.AddModule(new PositionModule());
-                }
-
-                ArticulationModule articulation;
-                if (presence.HasCapability<IArticulationCapability>() && !presence.TryGetModule(out articulation))
-                {
-                    presence.AddModule(new ArticulationModule());
-                }
+                root.GetComponent<PipelinePositionModule>().Bind(() => ((Reading)presence.Source).Position);
+                root.GetComponent<PipelineArticulationModule>().Bind(() => ((Reading)presence.Source).Articulation);
             });
-
             Detector detector = new Detector();
             _realm.GetOrCreateAnchor("sdk", detector);
-            Presence first = detector.Publish("car-1", new Reading(new Double3(1, 2, 3), 7),
-                "SUV one", new Variant("model-a"), typeof(IPositionCapability));
-            ProbeGhost root = (ProbeGhost)first.Root;
-            Assert.That(first.IsAvailable, Is.False);
-            Assert.That(first.HasCapability<IPositionCapability>(), Is.True);
-            Assert.That(first.HasCapability<IArticulationCapability>(), Is.False);
-            Assert.That(first.Modules.Count, Is.EqualTo(1));
-            Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(1, 2, 3)));
-            Assert.That(root.Articulation, Is.Zero);
+            int arrivals = 0;
+            using (_realm.Query().OnAvailable(ghost =>
+            {
+                Assert.That(ghost.GetRequired<Spatial>().Position, Is.EqualTo(proxy.Position));
+                Assert.That(((PipelineGhost)ghost).Articulation, Is.EqualTo(proxy.Articulation));
+                arrivals++;
+            }))
+            {
+                Presence presence = detector.Arrive("one", proxy);
+                Ghost root = presence.Root;
+                Assert.That(root.GetComponents<EntityModule>().Length, Is.EqualTo(3));
+                Assert.That(presence.IsAvailable, Is.False);
+                _realm.Update();
+                Assert.That(arrivals, Is.EqualTo(1));
+
+                proxy.Position = new Double3(4, 5, 6);
+                proxy.Articulation = 12;
+                _realm.Update();
+                Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(proxy.Position));
+                Assert.That(((PipelineGhost)root).Articulation, Is.EqualTo(12));
+                Assert.That(_realm.TryGetPresence(presence.Key, out Presence found), Is.True);
+                Assert.That(found, Is.SameAs(presence));
+                Assert.That(found.Root, Is.SameAs(root));
+                Assert.That(initializations, Is.EqualTo(1));
+                Assert.That(arrivals, Is.EqualTo(1));
+            }
+        }
+
+        /// <summary>
+        /// A presence exposes its supplied proxy or SDK before initialization; changing that
+        /// object reconnects existing modules, while repeated metadata preserves the binding.
+        /// </summary>
+        [Test]
+        public void Detect_SourceReplacementReinitializesTheSameGhost()
+        {
+            int initializations = 0;
+            _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
+            {
+                initializations++;
+                PipelinePositionModule module = root.GetComponent<PipelinePositionModule>();
+                if (presence.Source is Reading)
+                {
+                    module.Bind(() => ((Reading)presence.Source).Position);
+                }
+                else
+                {
+                    module.Bind(() => ((PositionSdk)presence.Source).Position);
+                }
+            });
+            Detector detector = new Detector();
+            _realm.GetOrCreateAnchor("sdk", detector);
+            Reading proxy = new Reading(new Double3(1, 2, 3), 0);
+            Presence presence = detector.Arrive("one", proxy);
+            Ghost root = presence.Root;
+            Assert.That(presence.Source, Is.SameAs(proxy));
             _realm.Update();
-            Assert.That(first.IsAvailable, Is.True);
-            Assert.That(_realm.Query().Single(), Is.SameAs(root));
+            detector.Arrive("one", proxy);
+            detector.PublishMetadata("one", "Renamed");
+            Assert.That(initializations, Is.EqualTo(1));
+            Assert.That(presence.Source, Is.SameAs(proxy));
 
-            Presence updated = detector.Publish("car-1", new Reading(new Double3(4, 5, 6), 12),
-                "SUV renamed", new Variant("model-b"), typeof(IPositionCapability), typeof(IArticulationCapability));
-            Assert.That(updated, Is.SameAs(first));
-            Assert.That(updated.Root, Is.SameAs(root));
-            Assert.That(updated.Name, Is.EqualTo("SUV renamed"));
-            Assert.That(updated.Variant, Is.EqualTo(new Variant("model-b")));
-            Assert.That(updated.HasCapability<IArticulationCapability>(), Is.True);
-            Assert.That(updated.Modules.Count, Is.EqualTo(2));
+            PositionSdk sdk = new PositionSdk { Position = new Double3(4, 5, 6) };
+            Assert.That(detector.Arrive("one", sdk), Is.SameAs(presence));
+            Assert.That(presence.Root, Is.SameAs(root));
+            Assert.That(initializations, Is.EqualTo(2));
+            Assert.That(presence.Source, Is.SameAs(sdk));
+            _realm.Update();
+            Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(sdk.Position));
+            detector.Lose("one");
+            Assert.That(presence.Source, Is.Null);
+            Assert.That(sdk.IsDisposed, Is.False, "SDK ownership remains with the application.");
+            GC.KeepAlive(proxy);
+            GC.KeepAlive(sdk);
+        }
+
+        /// <summary>
+        /// Retaining a Presence does not keep an otherwise unreferenced managed source alive.
+        /// </summary>
+        [Test]
+        public void Source_DoesNotKeepManagedObjectsAlive()
+        {
+            Detector detector = new Detector();
+            _realm.GetOrCreateAnchor("sdk", detector);
+            Presence presence = DetectTemporarySource(detector);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            Assert.That(presence.Source, Is.Null);
+            Assert.That(presence.IsRemoved, Is.False);
+        }
+
+        /// <summary>
+        /// A destroyed Unity object resolves to null even while its managed wrapper remains alive.
+        /// </summary>
+        [Test]
+        public void Source_TreatsDestroyedUnityObjectsAsMissing()
+        {
+            Detector detector = new Detector();
+            _realm.GetOrCreateAnchor("sdk", detector);
+            GameObject source = new GameObject("SDK proxy");
+            try
+            {
+                Presence presence = detector.Arrive("one", source);
+                Assert.That(presence.Source, Is.SameAs(source));
+                UnityEngine.Object.DestroyImmediate(source);
+                Assert.That(presence.Source, Is.Null);
+                Assert.That(presence.IsRemoved, Is.False);
+                GC.KeepAlive(source);
+            }
+            finally
+            {
+                if (source != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(source);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static Presence DetectTemporarySource(Detector detector)
+        {
+            return detector.Arrive("temporary", new object());
+        }
+
+        /// <summary>
+        /// A module can be disabled and rebound; a returning presence reconnects its existing
+        /// components after grace without reading the departed proxy.
+        /// </summary>
+        [Test]
+        public void Modules_StopWhileDisabledOrMissingAndRebindOnReturn()
+        {
+            int reads = 0;
+            int initializations = 0;
+            Reading proxy = new Reading(new Double3(1, 2, 3), 0);
+            _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
+            {
+                initializations++;
+                Reading current = (Reading)presence.Source;
+                root.GetComponent<PipelinePositionModule>().Bind(() =>
+                {
+                    reads++;
+                    return current.Position;
+                });
+            });
+            Detector detector = new Detector { DisappearanceGracePeriod = TimeSpan.FromSeconds(60) };
+            _realm.GetOrCreateAnchor("sdk", detector);
+            Presence presence = detector.Arrive("one", proxy);
+            _realm.Update();
+            PipelinePositionModule module = presence.Root.GetComponent<PipelinePositionModule>();
+            Assert.Throws<ArgumentNullException>(() => module.Bind(null));
+            module.enabled = false;
+            _realm.Update();
+            Assert.That(reads, Is.EqualTo(1));
+            module.enabled = true;
+            module.Bind(() => new Double3(7, 8, 9));
+            _realm.Update();
+            Assert.That(presence.Root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(7, 8, 9)));
+
+            detector.Lose("one");
+            _realm.Update();
+            Assert.That(reads, Is.EqualTo(1));
+            Assert.That(presence.IsAvailable, Is.False);
+            Assert.That(presence.Source, Is.Null);
+            proxy = new Reading(new Double3(10, 11, 12), 0);
+            Assert.That(detector.Arrive("one", proxy), Is.SameAs(presence));
+            _realm.Update();
+            Assert.That(presence.Root.GetComponent<PipelinePositionModule>(), Is.SameAs(module));
+            Assert.That(presence.Root.GetComponent<Spatial>().Position, Is.EqualTo(proxy.Position));
+            Assert.That(initializations, Is.EqualTo(2));
+            Assert.That(reads, Is.EqualTo(2));
+        }
+
+        /// <summary>
+        /// A replacement SDK can bind the same Ghost modules from a different proxy shape,
+        /// preserving roots and reconnecting their inputs before the new attachment activates.
+        /// </summary>
+        [Test]
+        public void SourceReplacement_RebindsExistingModulesToAnotherSdk()
+        {
+            Reading firstProxy = new Reading(new Double3(1, 2, 3), 7);
+            PositionSdk secondSdk = new PositionSdk { Position = new Double3(4, 5, 6) };
+            int initializations = 0;
+            _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
+            {
+                initializations++;
+                PipelinePositionModule module = root.GetComponent<PipelinePositionModule>();
+                if (presence.Source is PositionSdk)
+                {
+                    module.Bind(() => ((PositionSdk)presence.Source).Position);
+                }
+                else
+                {
+                    module.Bind(() => ((Reading)presence.Source).Position);
+                }
+            });
+            Detector first = new Detector { Starting = detector => detector.Arrive("one", firstProxy) };
+            Anchor anchor = _realm.GetOrCreateAnchor("sdk", first);
+            Assert.That(_realm.TryGetPresence(new Key("sdk", TrackedKind, "one"), out Presence presence), Is.True);
+            Ghost root = presence.Root;
+            PipelinePositionModule originalModule = root.GetComponent<PipelinePositionModule>();
+            anchor.ReplaceDetector(first, new Detector { Starting = detector => detector.Arrive("one", secondSdk) });
+            Assert.That(presence.Source, Is.SameAs(secondSdk));
+            Assert.That(presence.Root, Is.SameAs(root));
+            Assert.That(root.GetComponent<PipelinePositionModule>(), Is.SameAs(originalModule));
             Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(4, 5, 6)));
-            Assert.That(root.Articulation, Is.EqualTo(12));
             Assert.That(initializations, Is.EqualTo(2));
-
-            Presence repeated = detector.Publish("car-1", new Reading(new Double3(7, 8, 9), 15),
-                null, null, typeof(IPositionCapability), typeof(IArticulationCapability));
-            Assert.That(repeated, Is.SameAs(first));
-            Assert.That(repeated.Modules.Count, Is.EqualTo(2));
-            Assert.That(initializations, Is.EqualTo(2));
+            firstProxy.Position = new Double3(90, 90, 90);
+            secondSdk.Position = new Double3(7, 8, 9);
+            _realm.Update();
             Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(7, 8, 9)));
-            Assert.That(root.Articulation, Is.EqualTo(15));
-            Assert.That(_realm.TryGetPresence(first.Key, out Presence found), Is.True);
-            Assert.That(found, Is.SameAs(first));
+        }
+
+        /// <summary>
+        /// Changed capability metadata reruns input binding without adding or replacing Ghost modules.
+        /// </summary>
+        [Test]
+        public void Detect_CapabilityChangesRebindConfiguredModules()
+        {
+            int initializations = 0;
+            _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
+            {
+                initializations++;
+                if (presence.HasCapability<IArticulationCapability>())
+                {
+                    root.GetComponent<PipelineArticulationModule>().Bind(() => 12);
+                }
+            });
+            Detector detector = new Detector();
+            _realm.GetOrCreateAnchor("sdk", detector);
+            Presence presence = detector.PublishMetadata("one", "Car");
+            _realm.Update();
+            Assert.That(((PipelineGhost)presence.Root).Articulation, Is.Zero);
+            Assert.That(detector.PublishMetadata("one", "Renamed", typeof(IArticulationCapability)), Is.SameAs(presence));
+            _realm.Update();
+            Assert.That(((PipelineGhost)presence.Root).Articulation, Is.EqualTo(12));
+            Assert.That(presence.Root.GetComponents<EntityModule>().Length, Is.EqualTo(3));
+            Assert.That(presence.Name, Is.EqualTo("Renamed"));
+            Assert.That(initializations, Is.EqualTo(2));
         }
 
         /// <summary>
@@ -154,79 +350,72 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A module failure makes all data from its detector unavailable, including earlier successful reports.
-        /// Consumers can inspect the original error without receiving a partially applied entity.
+        /// A failed reader or module removes its detector's population before query notifications
+        /// and retains the original exception for diagnostics.
         /// </summary>
-        [Test]
-        public void ModuleFailure_RemovesDetectorPopulationAndPreservesError()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ModuleFailure_RemovesDetectorPopulationAndPreservesError(bool failInReader)
         {
             bool rejectData = false;
             InvalidOperationException failure = new InvalidOperationException("module rejected data");
-            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
-                presence.AddModule(new ActionModule(() =>
+                PipelineActionModule module = root.GetComponent<PipelineActionModule>();
+                module.Bind(() =>
                 {
-                    root.Articulation = 42;
-                    if (rejectData)
+                    if (rejectData && failInReader)
                     {
                         throw failure;
                     }
-                }));
+
+                    return 42;
+                });
+                module.Applying = () =>
+                {
+                    if (rejectData && !failInReader)
+                    {
+                        throw failure;
+                    }
+                };
             });
             Detector detector = new Detector();
             _realm.GetOrCreateAnchor("sdk", detector);
-            Presence previous = detector.Publish("previous", default(Reading), null, null);
+            Presence previous = detector.PublishMetadata("previous", null);
             _realm.Update();
             Assert.That(previous.IsAvailable, Is.True);
-
             rejectData = true;
-            ExpectedErrors.Verify(() =>
-            {
-                Assert.That(Assert.Throws<InvalidOperationException>(() =>
-                    detector.Publish("broken", default(Reading), null, null)), Is.SameAs(failure));
-            }, "module rejected data");
-
+            Presence next = detector.PublishMetadata("next", null);
+            ExpectedErrors.Verify(_realm.Update, "module rejected data");
             Assert.That(detector.IsActive, Is.False);
             Assert.That(detector.LastError, Is.SameAs(failure));
             Assert.That(previous.IsRemoved, Is.True);
-            Assert.That(_realm.TryGetPresence(new Key("sdk", TrackedKind, "broken"), out Presence ignored), Is.False);
-            _realm.Update();
+            Assert.That(next.IsRemoved, Is.True);
             Assert.That(_realm.Query().Count, Is.Zero);
         }
 
         /// <summary>
-        /// Modules finish applying a report before queries receive it. Advancing the realm inside a module
-        /// is rejected; the report can still complete and notify consumers on the next update.
+        /// A reader that removes its entity cannot apply a stale value.
         /// </summary>
         [Test]
-        public void Report_CompletesModuleDataBeforeNotifyingConsumers()
+        public void ReaderRemoval_PreventsStaleValueApplication()
         {
-            int arrivals = 0;
-            _realm.RegisterPresenceInitializer<ProbeGhost>(TrackedKind, (presence, root) =>
+            Detector detector = new Detector();
+            _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
-                presence.AddModule(new ActionModule(() =>
+                root.GetComponent<PipelinePositionModule>().Bind(() =>
                 {
                     Assert.Throws<InvalidOperationException>(_realm.Update);
-                    Assert.That(arrivals, Is.Zero);
-                    root.Articulation = 7;
-                }));
+                    detector.Lose(presence.Key.EntityId);
+                    return new Double3(1, 2, 3);
+                });
             });
-            Detector detector = new Detector();
             _realm.GetOrCreateAnchor("sdk", detector);
-            using (_realm.Query().OnAvailable(ghost =>
-            {
-                Assert.That(((ProbeGhost)ghost).Articulation, Is.EqualTo(7));
-                arrivals++;
-            }))
-            {
-                Presence presence = detector.Publish("one", default(Reading), null, null);
-                Assert.That(arrivals, Is.Zero);
-                Assert.That(presence.IsAvailable, Is.False);
-                _realm.Update();
-                Assert.That(arrivals, Is.EqualTo(1));
-                Assert.That(detector.IsActive, Is.True);
-                Assert.That(detector.LastError, Is.Null);
-            }
+            Presence presence = detector.PublishMetadata("one", null);
+            Spatial spatial = presence.Root.GetComponent<Spatial>();
+            _realm.Update();
+            Assert.That(presence.IsRemoved, Is.True);
+            Assert.That(spatial.HasPosition, Is.False);
         }
 
         /// <summary>
@@ -293,7 +482,7 @@ namespace Emas.Tests
             Assert.That(presence.Root, Is.Not.Null);
             Assert.That(presence.Name, Is.EqualTo("Silent object"));
             Assert.That(presence.HasCapability<IPositionCapability>(), Is.False);
-            Assert.That(presence.Modules.Count, Is.Zero);
+            Assert.That(presence.Root.GetComponents<EntityModule>(), Is.Empty);
             _realm.Update();
             Assert.That(presence.IsAvailable, Is.True);
             Assert.That(_realm.Query().Single(), Is.SameAs(presence.Root));
@@ -309,7 +498,19 @@ namespace Emas.Tests
         {
         }
 
-        private struct Reading
+        private sealed class PositionSdk : IDisposable
+        {
+            internal Double3 Position;
+            internal bool IsDisposed;
+
+            /// <summary>Records disposal initiated by the application.</summary>
+            public void Dispose()
+            {
+                IsDisposed = true;
+            }
+        }
+
+        private sealed class Reading
         {
             internal Reading(Double3 position, int articulation)
             {
@@ -317,47 +518,8 @@ namespace Emas.Tests
                 Articulation = articulation;
             }
 
-            internal readonly Double3 Position;
-            internal readonly int Articulation;
-        }
-
-        private sealed class ProbeGhost : Ghost
-        {
-            internal int Articulation { get; set; }
-        }
-
-        private sealed class PositionModule : EntityModule<Reading>
-        {
-            /// <inheritdoc />
-            public override void Apply(Reading data)
-            {
-                Presence.Root.GetComponent<Spatial>().SetPosition(data.Position);
-            }
-        }
-
-        private sealed class ArticulationModule : EntityModule<Reading>
-        {
-            /// <inheritdoc />
-            public override void Apply(Reading data)
-            {
-                ((ProbeGhost)Presence.Root).Articulation = data.Articulation;
-            }
-        }
-
-        private sealed class ActionModule : EntityModule<Reading>
-        {
-            private readonly Action _apply;
-
-            internal ActionModule(Action apply)
-            {
-                _apply = apply;
-            }
-
-            /// <inheritdoc />
-            public override void Apply(Reading data)
-            {
-                _apply();
-            }
+            internal Double3 Position;
+            internal int Articulation;
         }
 
         private sealed class RemovalCallback : MonoBehaviour
@@ -374,10 +536,17 @@ namespace Emas.Tests
 
         private sealed class Detector : PresenceDetector
         {
-            internal Presence Publish(string entityId, Reading reading, string name, Variant? variant,
-                params Type[] capabilities)
+            internal Action<Detector> Starting;
+
+            /// <inheritdoc />
+            protected override void OnStart()
             {
-                return Report(entityId, TrackedKind, reading, name, variant, capabilities);
+                Starting?.Invoke(this);
+            }
+
+            internal Presence Arrive(string entityId, object source)
+            {
+                return Detect(entityId, TrackedKind, source: source);
             }
 
             internal void Lose(string entityId)
@@ -390,9 +559,9 @@ namespace Emas.Tests
                 MarkPublished(ghost);
             }
 
-            internal Presence PublishMetadata(string entityId, string name)
+            internal Presence PublishMetadata(string entityId, string name, params Type[] capabilities)
             {
-                return Detect(entityId, TrackedKind, name);
+                return Detect(entityId, TrackedKind, name, capabilities: capabilities);
             }
         }
     }

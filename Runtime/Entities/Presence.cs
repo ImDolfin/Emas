@@ -8,17 +8,17 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// A realm owns this stable handle from the first detection until removal. Detection metadata and
-    /// capability interfaces originate with the detector; the realm attaches a Ghost root and entity modules.
+    /// capability interfaces originate with the detector; the realm attaches a Ghost root whose components own its data updates.
     /// </remarks>
     public sealed class Presence
     {
         private readonly Realm _realm;
         private readonly Key _key;
         private readonly List<Type> _capabilities = new List<Type>();
-        private readonly List<EntityModule> _modules = new List<EntityModule>();
         private string _name;
         private Variant _variant;
         private Ghost _root;
+        private WeakReference<object> _source;
         private bool _available;
         private bool _removed;
 
@@ -38,6 +38,34 @@ namespace Emas
             get
             {
                 return _key;
+            }
+        }
+
+        /// <summary>
+        /// Gets the application source supplied by Detect, held through a weak reference.
+        /// </summary>
+        /// <remarks>
+        /// May be a proxy, SDK client or another application object. Returns null when unassigned,
+        /// collected, destroyed as a Unity object, or released on disappearance, handover or removal.
+        /// Emas does not own or dispose it. Resolve this property inside module readers rather than
+        /// capturing its target if the binding should also avoid retaining the source.
+        /// </remarks>
+        public object Source
+        {
+            get
+            {
+                object source;
+                if (_source == null || !_source.TryGetTarget(out source))
+                {
+                    return null;
+                }
+
+                if (source is UnityEngine.Object unityObject && unityObject == null)
+                {
+                    return null;
+                }
+
+                return source;
             }
         }
 
@@ -108,17 +136,6 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets a snapshot of the modules installed by the realm initializer.
-        /// </summary>
-        public IReadOnlyList<EntityModule> Modules
-        {
-            get
-            {
-                return new List<EntityModule>(_modules).AsReadOnly();
-            }
-        }
-
-        /// <summary>
         /// Checks whether the detector reported a capability interface.
         /// </summary>
         /// <typeparam name="T">The capability interface.</typeparam>
@@ -128,54 +145,23 @@ namespace Emas
             return _capabilities.Contains(typeof(T));
         }
 
-        /// <summary>
-        /// Adds a module that converts SDK data for this presence.
-        /// </summary>
-        /// <param name="module">A new, unbound module instance.</param>
-        /// <remarks>Call from the registered realm initializer on Unity's main thread.</remarks>
-        public void AddModule(EntityModule module)
-        {
-            if (module == null)
-            {
-                throw new ArgumentNullException(nameof(module));
-            }
-
-            if (_root == null || _removed)
-            {
-                throw new InvalidOperationException("A presence must have an active root before adding modules.");
-            }
-
-            module.Bind(this);
-            _modules.Add(module);
-        }
-
-        /// <summary>
-        /// Finds one installed module by type.
-        /// </summary>
-        /// <typeparam name="T">The module type.</typeparam>
-        /// <param name="module">Receives the first matching module, if any.</param>
-        /// <returns>True when a matching module is installed.</returns>
-        public bool TryGetModule<T>(out T module) where T : EntityModule
-        {
-            foreach (EntityModule current in _modules)
-            {
-                if (current is T)
-                {
-                    module = (T)current;
-                    return true;
-                }
-            }
-
-            module = null;
-            return false;
-        }
-
         internal Realm Realm
         {
             get
             {
                 return _realm;
             }
+        }
+
+        internal bool SetSource(object source)
+        {
+            if (ReferenceEquals(Source, source))
+            {
+                return false;
+            }
+
+            _source = source == null ? null : new WeakReference<object>(source);
+            return true;
         }
 
         internal void BindRoot(Ghost root)
@@ -236,17 +222,6 @@ namespace Emas
             return false;
         }
 
-        internal bool ApplyData(object data)
-        {
-            bool applied = false;
-            foreach (EntityModule module in _modules)
-            {
-                applied |= module.TryApply(data);
-            }
-
-            return applied;
-        }
-
         internal void SetAvailable(bool available)
         {
             _available = available;
@@ -257,7 +232,7 @@ namespace Emas
             _available = false;
             _removed = true;
             _root = null;
-            _modules.Clear();
+            _source = null;
         }
     }
 }

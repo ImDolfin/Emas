@@ -13,18 +13,15 @@ namespace Emas.Callbacks
         private SimulatedFeed _feed;
 
         /// <summary>
-        /// Registers the marker root and its position module before detectors start.
+        /// Binds the marker root's configured position module before detectors start.
         /// </summary>
         /// <param name="realm">The realm that owns this sample's presences.</param>
         public void ConfigureRealm(Realm realm)
         {
             realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
             {
-                MarkerPositionModule module;
-                if (!presence.TryGetModule(out module))
-                {
-                    presence.AddModule(new MarkerPositionModule(marker));
-                }
+                marker.GetComponent<MarkerPositionModule>().Bind(() =>
+                    (presence.Source as SimulatedFeed)?.Current?.Position ?? marker.transform.localPosition);
             });
         }
 

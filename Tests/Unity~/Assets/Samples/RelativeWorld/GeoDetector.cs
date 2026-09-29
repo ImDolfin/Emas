@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Emas.RelativeWorld
 {
     /// <summary>
-    /// Reports the sample SDK's origin and target together on each realm update.
+    /// Detects the sample SDK's two permanent entities at startup.
     /// </summary>
     internal sealed class GeoDetector : PresenceDetector
     {
@@ -17,21 +17,14 @@ namespace Emas.RelativeWorld
         /// <inheritdoc />
         protected override void OnStart()
         {
-            PublishFrame();
+            DetectEntities();
         }
 
-        /// <inheritdoc />
-        protected override void OnUpdate()
-        {
-            _sdk.Advance(Time.deltaTime);
-            PublishFrame();
-        }
-
-        private void PublishFrame()
+        private void DetectEntities()
         {
             foreach (GeoPoseReading reading in _sdk.ReadFrame())
             {
-                Report(reading.Id, RelativeCar.Kind, reading, reading.Label, reading.Variant);
+                Detect(reading.Id, RelativeCar.Kind, reading.Label, reading.Variant, source: _sdk);
             }
         }
     }

@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas.Sample
 {
     /// <summary>
-    /// Publishes an independently moving aircraft population.
+    /// Detects the permanent aircraft population.
     /// </summary>
 
     public sealed class SimulatedAircraftDetector : PresenceDetector
@@ -42,25 +42,14 @@ namespace Emas.Sample
         /// <inheritdoc />
         protected override void OnStart()
         {
-            PublishAll(Time.time);
+            DetectAll(Time.time);
         }
 
-        /// <inheritdoc />
-        protected override void OnUpdate()
-        {
-            PublishAll(Time.time);
-        }
-
-        private void PublishAll(float elapsedSeconds)
+        private void DetectAll(float elapsedSeconds)
         {
             foreach (SimulatedAircraftProxy proxy in _feed.ReadAircraft(elapsedSeconds))
             {
-                AircraftGhost ghost = GetOrCreate<AircraftGhost>(
-                    proxy.Identifier,
-                    SampleKinds.Aircraft,
-                    AircraftVariants.Trainer,
-                    "Aircraft " + proxy.Identifier);
-                ghost.SetPosition(proxy.Position);
+                Detect(proxy.Identifier, SampleKinds.Aircraft, "Aircraft " + proxy.Identifier, AircraftVariants.Trainer, source: _feed);
             }
         }
     }

@@ -8,128 +8,36 @@ Add `package.json` through **Package Manager > Add package from disk**, import *
 
 ## Build the same integration
 
-These five files show the [Quick start](../Samples~/Minimal/) detector and module flow without XML comments. Put each class in its own file in your application assembly, referencing `Emas.Runtime` if you use an assembly definition. If you imported the sample, edit its files instead of creating duplicate types.
+The [Quick start](../Samples~/Minimal/) uses four small classes. Put each class in its own file in an application assembly referencing `Emas.Runtime`. Imported sample files are already configured.
 
-### Reading.cs
+1. `Marker` declares its `MarkerPositionModule` with `RequireComponent`. The saved Ghost prefab contains that component too.
+2. `MarkerPositionModule : EntityModule<Vector3>` applies a local position. It knows nothing about the SDK or its proxy type.
+3. `MarkerSource.ConfigureRealm` connects the module to a value reader in the registered initializer.
+4. `MarkerDetector` calls `Detect("one", Marker.Kind)` once in `OnStart`. Later position changes do not go through the detector.
+
+For a real SDK, pass the discovered proxy with `Detect(id, Marker.Kind, source: proxy)`. The initializer resolves it directly; `SdkProxy` below stands for your SDK's concrete proxy type:
 
 ```csharp
-using UnityEngine;
-
-namespace Emas.Minimal
+realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
 {
-    public sealed class Reading
-    {
-        public Reading(string id, Vector3 position)
-        {
-            Id = id;
-            Position = position;
-        }
+    marker.GetComponent<MarkerPositionModule>().Bind(() =>
+        (presence.Source as SdkProxy)?.Position ?? marker.transform.localPosition);
+});
+```
 
-        public string Id { get; private set; }
-        public Vector3 Position { get; private set; }
+The module only consumes the mapped value:
+
+```csharp
+public sealed class MarkerPositionModule : EntityModule<Vector3>
+{
+    public override void Apply(Vector3 position)
+    {
+        transform.localPosition = position;
     }
 }
 ```
 
-### Marker.cs
-
-```csharp
-using UnityEngine;
-
-namespace Emas.Minimal
-{
-    public sealed class Marker : Ghost
-    {
-        public static readonly Kind Kind = new Kind("minimal.marker");
-
-        public void SetPosition(Vector3 position)
-        {
-            transform.localPosition = position;
-        }
-    }
-}
-```
-
-### MarkerPositionModule.cs
-
-```csharp
-namespace Emas.Minimal
-{
-    public sealed class MarkerPositionModule : EntityModule<Reading>
-    {
-        private readonly Marker _marker;
-
-        public MarkerPositionModule(Marker marker)
-        {
-            _marker = marker;
-        }
-
-        public override void Apply(Reading reading)
-        {
-            _marker.SetPosition(reading.Position);
-        }
-    }
-}
-```
-
-### MarkerDetector.cs
-
-```csharp
-using UnityEngine;
-
-namespace Emas.Minimal
-{
-    internal sealed class MarkerDetector : PresenceDetector
-    {
-        protected override void OnStart()
-        {
-            PublishReading();
-        }
-
-        protected override void OnUpdate()
-        {
-            PublishReading();
-        }
-
-        private void PublishReading()
-        {
-            Reading reading = new Reading("one", new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f));
-            Report(reading.Id, Marker.Kind, reading);
-        }
-    }
-}
-```
-
-### MarkerSource.cs
-
-```csharp
-using UnityEngine;
-
-namespace Emas.Minimal
-{
-    public sealed class MarkerSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
-    {
-        public void ConfigureRealm(Realm realm)
-        {
-            realm.RegisterPresenceInitializer<Marker>(Marker.Kind, (presence, marker) =>
-            {
-                MarkerPositionModule module;
-                if (!presence.TryGetModule(out module))
-                {
-                    presence.AddModule(new MarkerPositionModule(marker));
-                }
-            });
-        }
-
-        public PresenceDetector CreateDetector()
-        {
-            return new MarkerDetector();
-        }
-    }
-}
-```
-
-`Reading` stands in for an SDK observation. The detector identifies its entity and forwards each reading to the realm. `ConfigureRealm` runs before the anchor's detector starts, chooses the `Marker` Ghost root and installs the module that copies position data into it. The detector never creates or updates the Ghost itself. Positions here are **anchor-local** Unity coordinates.
+The realm reads and applies enabled, bound modules before spatial projection and query notifications. Source is weak: resolve it inside the reader and handle null if it is collected or destroyed. For immutable SDK snapshots, supply the SDK client or a stable application cache as the source. Disappearance and source handover release old readers; the initializer reconnects the same module components when a retained Ghost returns. The sample positions are **anchor-local** Unity coordinates. For shared double-precision positions, use `Spatial` and a `Double3` module as shown in [Spatial](Spatial.md).
 
 ### Configure the scene and view
 
@@ -140,7 +48,7 @@ The imported sample already contains this setup. To create it in another scene:
 3. Create **Assets > Create > Emas > Manifestation Variant**, named `Default Marker Variant`. Leave **Variant** empty (`Variant.None`), and add one detail mapping: **Full (3)** to `MarkerView.prefab`.
 4. Create **Assets > Create > Emas > Manifestation Blueprint**, named `MarkerBlueprint`. Set **Kind Id** to `minimal.marker`, assign `MarkerRoot.prefab` as **Ghost Prefab**, and add the default variant to **Variants**. Leave **Fallback View Prefab** empty.
 5. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and `MarkerSource`. On Realm Setup, assign `MarkerBlueprint` as a realm default. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled. Save the object as `Tracking.prefab` and keep its instance in the scene. Add a camera and light if the scene has none.
-6. Press Play. Realm Setup creates its realm, calls `MarkerSource.ConfigureRealm`, then attaches the anchor's detector. Emas creates a `Presence` and instantiates the authored `Marker` root beneath the anchor, applies each reading through `MarkerPositionModule` and attaches the cube view selected by the variant. Move Tracking to move its anchor frame.
+6. Press Play. Realm Setup creates its realm, calls `MarkerSource.ConfigureRealm`, then attaches the anchor's detector. Emas creates a `Presence` and instantiates the authored `Marker` root beneath the anchor, reads the mapped position through `MarkerPositionModule` and attaches the cube view selected by the variant. Move Tracking to move its anchor frame.
 
 For several appearances of one Kind, create a **Manifestation Variant** asset for each appearance and assign its detail-level view prefabs. Add those assets to the Kind's Manifestation Blueprint. A Kind with no blueprint still gets its Ghost root and remains visually silent until a view is configured.
 
@@ -187,13 +95,13 @@ Use an application-specific subclass of `PresenceDetector`. Pass the application
 | `OnUpdate()` | Poll the SDK when needed; choose any polling interval in your detector |
 | `OnStop()` | Unsubscribe and release attachment-owned resources, including after startup failure |
 
-Call `Report(id, kind, reading, name, variant, capabilities)` to send SDK data to the realm, or `Detect(id, kind, name, variant, capabilities)` for metadata alone. The optional name labels the entity; the variant chooses its appearance. Call `Disappear(kind, id)` when the SDK removes an entity. The minimal sample has one permanent entity, so it needs no omission tracking or subscription cleanup.
+Call `Detect(id, kind, name, variant, capabilities, source)` when an entity arrives, and `Disappear(kind, id)` when it leaves. The optional name labels the entity; the variant chooses its appearance. The minimal sample has one permanent entity, so its detector only handles startup. The SDK proxy changes independently; Ghost modules read its mapped fields on each realm update.
 
 For a complete-snapshot SDK, compare each successful read's IDs with `OwnedPresences` and explicitly call `Disappear` for missing IDs. A missing item in a change-only feed is not a removal. Your detector owns the SDK's validation, scheduling and omission rules; Emas owns the resulting Presence lifecycle. The [README example](../README.md#3-connect-the-detector-and-realm) demonstrates snapshot comparison.
 
-For SDK events, call `CaptureDispatcher()` in `OnStart` and close each event handler over the returned dispatcher. Queue `Report` or `Disappear` through it, retain the exact delegates, and unsubscribe in `OnStop`. Each captured dispatcher belongs to one attachment, so callbacks retained after a restart cannot change the new attachment. `OnStop` also follows failed startup; make cleanup safe when only some subscriptions were acquired. Import **Callback quick start**, open `Callbacks.unity`, and inspect [FeedDetector.cs](../Samples~/Callbacks/FeedDetector.cs) for a complete example. SDK clients remain application-owned.
+For SDK membership events, call `CaptureDispatcher()` in `OnStart` and close each event handler over the returned dispatcher. Queue `Detect` or `Disappear` through it, retain the exact delegates, and unsubscribe in `OnStop`. Each captured dispatcher belongs to one attachment, so callbacks retained after a restart cannot change the new attachment. `OnStop` also follows failed startup; make cleanup safe when only some subscriptions were acquired. Import **Callback quick start**, open `Callbacks.unity`, and inspect [FeedDetector.cs](../Samples~/Callbacks/FeedDetector.cs) for a complete example. SDK clients remain application-owned.
 
-Pass SDK-reported interface types through the optional `capabilities` argument. These do not add Unity components automatically. A realm initializer can inspect `presence.HasCapability<T>()` and install a matching module. It runs again when capabilities change, so check `presence.TryGetModule<T>(out module)` before adding another instance. Compatible `EntityModule<TData>` instances apply SDK updates to the Ghost. Unmatched payloads are ignored while the Presence remains tracked; exceptions from a module's `Apply` stop its detector.
+Pass SDK capability interface types through the optional `capabilities` argument of Detect. This metadata does not add components. A realm initializer can inspect `presence.HasCapability<T>()` to bind or enable modules already configured on the Ghost. It runs again when capabilities change. Reader or module exceptions stop the owning detector and remove its population; unbound and disabled modules do not read data.
 
 To detect silence in a feed that should publish regularly, set `detector.InactivityTimeout = System.TimeSpan.FromSeconds(10)` before attachment. Null, the default, disables inactivity expiry. Each detection or data report resets that entity's deadline. Set `detector.DisappearanceGracePeriod` to retain a disappeared Presence and Ghost root for a while; zero, the default, removes them immediately. Disappearance makes it unavailable to queries at once. A new detection or report during grace restores the same handle and root; after grace expires, either creates a new one. Detector failure and anchor removal always remove immediately.
 

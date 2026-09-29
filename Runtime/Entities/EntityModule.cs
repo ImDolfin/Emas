@@ -1,39 +1,17 @@
-using System;
+using UnityEngine;
 
 namespace Emas
 {
     /// <summary>
-    /// Converts detected SDK data into state on an initialized presence.
+    /// Base component for a Ghost module updated by its realm before spatial projection and queries.
     /// </summary>
     /// <remarks>
-    /// Add modules in a realm's per-kind presence initializer. Emas invokes them on Unity's main thread
-    /// after the presence has a root and before it becomes available to queries.
+    /// Configure modules on the Ghost root prefab or declare them with RequireComponent on its Ghost class.
+    /// Initializers connect module inputs to application data. Disabled modules do not update.
     /// </remarks>
-    public abstract class EntityModule
+    public abstract class EntityModule : MonoBehaviour
     {
-        private Presence _presence;
-
-        /// <summary>
-        /// Gets the presence that owns this module.
-        /// </summary>
-        public Presence Presence
-        {
-            get
-            {
-                return _presence;
-            }
-        }
-
-        internal void Bind(Presence presence)
-        {
-            if (_presence != null)
-            {
-                throw new InvalidOperationException("An entity module is already attached to a presence.");
-            }
-
-            _presence = presence;
-        }
-
-        internal abstract bool TryApply(object data);
+        internal abstract void Refresh();
+        internal abstract void ClearBinding();
     }
 }

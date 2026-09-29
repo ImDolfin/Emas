@@ -4,19 +4,19 @@ Emas owns stable `Presence` handles, Ghost roots, availability and optional view
 
 [Architecture diagram](Diagrams/Architecture.html) / [Lifecycle diagram](Diagrams/Lifecycle.html)
 
-`RealmSetup` is an optional Inspector-configured owner of one isolated, automatically updated realm. Enabled `IRealmConfigurator` components beneath it register per-Kind presence initializers before any detector starts. Child `AnchorSetup` components each configure one anchor and create one detector through their colocated `IDetectorProvider`. Applications implement a small `PresenceDetector` subclass for each SDK feed. Its `OnStart`, `OnUpdate` and `OnStop` overrides own reading or subscriptions, while `Report`, `Detect` and `Disappear` send entity changes to the realm. Event handlers capture a dispatcher for their attachment in `OnStart` and unsubscribe in `OnStop`. Entity modules apply SDK payloads to Ghost roots. Direct code setup uses the same contracts.
+`RealmSetup` is an optional Inspector-configured owner of one isolated, automatically updated realm. Enabled `IRealmConfigurator` components beneath it register per-Kind presence initializers before any detector starts. Child `AnchorSetup` components each configure one anchor and create one detector through their colocated `IDetectorProvider`. Applications implement a small `PresenceDetector` subclass for each SDK feed. Its `OnStart`, `OnUpdate` and `OnStop` overrides own reading or subscriptions, while `Detect` and `Disappear` announce membership changes to the realm. Event handlers capture a dispatcher for their attachment in `OnStart` and unsubscribe in `OnStop`. Ghost module components read source-independent values bound by the initializer. Direct code setup uses the same contracts.
 
 ## Ownership
 
 ```text
 Realm (direct code setup or one RealmSetup)
   Anchor (one detector in a prefab setup; code may attach more)
-    Presence (stable identity, label, capabilities, availability, modules)
-      Ghost (invisible root and application behaviors)
+    Presence (stable identity, label, capabilities, availability)
+      Ghost (invisible root, configured modules and application behaviors)
         View (optional visual child)
 ```
 
-Identity is `(anchor ID, kind, entity ID)` within one realm; separate realms may use the same key. A detector reports the entity ID, Kind, optional label, visual variant and capability interfaces. The Realm retains one stable `Presence` handle per identity until removal, initializes its Ghost root and modules through the registered per-Kind initializer, and forwards SDK data to matching `EntityModule<TData>` instances. A report without a matching module still tracks its Presence and ignores that payload. The initializer runs again when reported capabilities change; it should avoid adding duplicate modules. Each identity belongs to one detector attachment; compatible replacement reuses roots reported during startup handover. Prepared ghosts remain unowned and unavailable until claimed.
+Identity is `(anchor ID, kind, entity ID)` within one realm. The detector reports identity, optional label, visual variant, capability metadata and an application source object. Presence stores that source weakly and resolves destroyed Unity objects as null. Each Ghost declares its modules through `RequireComponent` or an authored prefab. The per-kind initializer binds SDK-to-value readers on those components; it does not create modules. Each realm update reads and applies the enabled module inputs before projection and query notifications. A changed source reference, changed capability set or rediscovered/reassigned Ghost reruns the initializer. Disappearance, handover and removal clear old bindings and release the weak source reference. Each identity belongs to one detector attachment; compatible replacement preserves Ghosts and their modules. Prepared Ghosts remain unowned and unavailable until claimed.
 
 Queries see available Ghost roots only; the corresponding `Presence.IsAvailable` follows the same lifecycle. `realm.Query()` is scoped to one realm; `Query.All()` includes every live realm and follows realms created later. Its filters, scalar results, enumeration and subscriptions use the same available-ghost rules. `realm.Query(globalQuery)` reuses the global query's filters within that realm. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors. Developers can call `Realm.Manifest(presence, detailLevel)` to request its optional view.
 
@@ -35,9 +35,9 @@ Each realm owns an internal `IdentityMap` keyed by `(anchor ID, kind, entity ID)
 ## Update order
 
 1. Process up to **256 queued actions** present at update entry, in FIFO order.
-2. Run detector updates. Each report identifies a Presence, ensures its root and modules exist, and applies SDK data through matching modules before availability changes.
+2. Run detector updates to detect arrivals, refresh presence metadata and remove departed identities.
 3. Mark timed-out identities as disappeared, remove identities whose disappearance grace or startup handover has ended, and retain other reported identities.
-4. Resolve the optional realm reference frame and project spatial roots, updating presentation range.
+4. Read and apply enabled Ghost module bindings, then resolve the optional reference frame and project spatial roots.
 5. Publish initialized roots and Presences as available and activate their roots.
 6. Refresh requested dirty views within presentation range.
 7. Notify query subscribers, delivering observed departures before arrivals for each paired subscription.
@@ -60,7 +60,7 @@ Presentation range is measured in shared Cartesian coordinates before float conv
 
 | Event | Result |
 | --- | --- |
-| Detector update/dispatched action throws | Run that attachment's OnStop, then remove its population if it is still current; leave the failed detector attached for explicit recovery; other detectors continue |
+| Detector update, dispatched action, module reader or module Apply throws | Run that attachment's OnStop, then remove its population if it is still current; leave the failed detector attached for explicit recovery; other detectors continue |
 | Restart/replace detector | Reuse compatible roots, Presence handles and view requests reported during startup handover; remove identities still unreported when handover completes |
 | Failed restart/replacement | Remove the population; retain the failed registration for another explicit retry/replacement/removal |
 | Explicit disappearance or inactivity timeout | Mark the Presence unavailable immediately; remove its root and view after `DisappearanceGracePeriod`, which defaults to zero |
@@ -74,7 +74,7 @@ Presentation range is measured in shared Cartesian coordinates before float conv
 
 A successful restart or replacement has a bounded startup handover. Existing roots and their Presences are unavailable until reported again; cleanup waits for the first subsequent realm update and for reports queued during startup to run, including any dispatch backlog. It then removes still-unreported roots. Detector failure removes roots immediately, so later recovery creates new instances. Unowned prepared ghosts remain until claimed or explicitly removed with their anchor.
 
-Detectors can set `DisappearanceGracePeriod` before attachment. A disappearance makes the Presence unavailable, deactivates its root and removes it from available queries immediately. A report during grace reuses the same Presence and Ghost root; after the deadline the realm removes them. The default zero removes immediately. `InactivityTimeout` separately detects silent feeds using unscaled time since each report. A timeout follows the same disappearance path. Direct Ghost integrations that update cached roots can call `MarkPublished`; `Detect` and `Report` record activity themselves.
+Detectors can set `DisappearanceGracePeriod` before attachment. A disappearance makes the Presence unavailable, deactivates its root and removes it from available queries immediately. A report during grace reuses the same Presence and Ghost root; after the deadline the realm removes them. The default zero removes immediately. `InactivityTimeout` separately detects silent feeds using unscaled time since each report. A timeout follows the same disappearance path. Direct Ghost integrations that update cached roots can call `MarkPublished`; `Detect` records presence activity; module value reads do not refresh inactivity deadlines.
 
 Demanifesting removes only the visual child and keeps the Presence and Ghost root. Failed view requests can retry through `Manifest` or a manifestation blueprint, variant or detail change; unchanged detector reports leave them alone.
 
@@ -98,7 +98,7 @@ Identity map traversal uses snapshots and rechecks membership/registration after
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
 | [SceneChangeQueue](../Runtime/Unity/SceneChangeQueue.cs) | Use the shared queue to apply nested GameObject changes after the current scene operation returns |
 | [PresenceDetector](../Runtime/Tracking/PresenceDetector.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | SDK detection, attachment lifecycle and scene ownership |
-| [Presence](../Runtime/Entities/Presence.cs) / [EntityModule](../Runtime/Entities/EntityModule.cs) | Stable identity and per-presence SDK data application |
+| [Presence](../Runtime/Entities/Presence.cs) / [EntityModule](../Runtime/Entities/EntityModule.cs) | Stable identity and Ghost-owned value readers and application |
 
 Query interface filters use typed predicates and a reusable root-component list. Subscriptions reuse their match and departure buffers across updates while still scanning current ghosts and rechecking matches after callbacks. Scalar query results scan without building a match list. These are implementation choices, not measured performance guarantees.
 

@@ -12,7 +12,7 @@ The scene is configured before Play. Expand **Tracking** to inspect its `RealmSe
 | `Blueprints/Cars.asset` | Car ghost root, three appearance variants and the unknown-vehicle fallback |
 | `Blueprints/Aircraft.asset` | Aircraft ghost root and trainer appearance |
 | `Variants/SmallCar.asset`, `LargeCar.asset`, `Truck.asset`, `Trainer.asset` | Appearance IDs and their Full-detail view prefabs |
-| `Prefabs/Ghosts/` | `CarGhost` or `AircraftGhost`, plus `ApplyPosition` on each root |
+| `Prefabs/Ghosts/` | `CarGhost` or `AircraftGhost`, configured position/articulation modules and `ApplyPosition` |
 | `Prefabs/Views/` | A shared `VehicleView` prefab, actual Unity prefab variants for the vehicle appearances, and an aircraft view |
 | `Materials/` | Saved materials assigned to the authored view and environment renderers |
 | `Prefabs/Cockpit.prefab` | A screen and marker wired to the focused `CockpitDemo` behavior |
@@ -24,7 +24,8 @@ To customize an appearance, open its view prefab variant and change the body, ca
 | Responsibility | Read first |
 | --- | --- |
 | Read-only application data | `Contracts/I3DPosition.cs`, `IArticulate.cs` |
-| Source mapping and mutation | `Entities/CarGhost.cs`, `Sources/Presence/SdkOneCarDetector.cs` |
+| Ghost module definitions | `Entities/CarGhost.cs`, `PositionModule.cs`, `ArticulationModule.cs` |
+| SDK-to-module mapping | `Sources/CarSource.cs`, `AircraftSource.cs` |
 | One detector per anchor attachment | `Sources/CarSource.cs`, `AircraftSource.cs` |
 | SDK replacement | `CarSource.ReplaceCarSource()`; its serialized delay is four seconds |
 | Paired query membership and subscription disposal | `Behaviors/SampleStatus.cs` |
@@ -34,4 +35,6 @@ To customize an appearance, open its view prefab variant and change the body, ca
 
 `SampleStatus` uses `Observe`: entry callbacks retain ghost keys and departure callbacks remove them. It disposes both subscriptions and clears the retained sets when disabled or when its realm changes. Automatic views are configured on the anchors, so the observer only displays membership. Source diagnostic labels are visible in **Window > Emas**.
 
-Positions are local to the owning anchor. The simulated feeds already use that frame; real SDK adapters must convert units, axes and coordinates before calling the concrete ghost's setters. Consumers only receive read-only interfaces. The cockpit marker illustrates screen-local data independently of Emas ghosts.
+Positions are local to the owning anchor. The simulated feeds already use that frame; real SDK adapters must convert units, axes and coordinates in the initializer-bound readers. The Ghost modules only consume `Vector3` and `float`; detectors only announce arrivals and departures. Consumers only receive read-only interfaces. The cockpit marker illustrates screen-local data independently of Emas ghosts.
+
+Each detector supplies its SDK feed as the weak `Presence.Source`. The initializer selects the SDK mapping from that object's type and readers access its latest `Current` snapshot, without a second SDK lookup during initialization. Replacement reconnects the retained Ghost modules to the replacement feed.

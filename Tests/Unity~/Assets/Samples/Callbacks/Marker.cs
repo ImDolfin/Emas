@@ -5,6 +5,7 @@ namespace Emas.Callbacks
     /// <summary>
     /// A source-independent marker whose root follows the reported position.
     /// </summary>
+    [RequireComponent(typeof(MarkerPositionModule))]
     public sealed class Marker : Ghost
     {
         /// <summary>

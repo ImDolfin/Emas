@@ -8,7 +8,7 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Use all detector operations on Unity's main thread. The application handles SDK threading before calling Emas.
-    /// Attach through an Anchor. Report detections and SDK updates to the Realm; EntityModules apply updates to Ghost roots. SDK clients remain application-owned.
+    /// Attach through an Anchor. Detect arrivals and disappearances; Ghost modules read their own mapped inputs. SDK clients remain application-owned.
     /// </remarks>
     public abstract class PresenceDetector
     {
@@ -63,7 +63,7 @@ namespace Emas
             }
         }
         /// <summary>
-        /// Starts one attachment; acquire subscriptions and publish initial data here.
+        /// Starts one attachment; acquire presence subscriptions and detect existing entities here.
         /// </summary>
         /// <remarks>
         /// OnStop follows even when startup throws. Undo partial external subscriptions before throwing if cleanup cannot access them.
@@ -100,37 +100,11 @@ namespace Emas
         /// <param name="name">An optional entity label.</param>
         /// <param name="variant">An optional visual variant.</param>
         /// <param name="capabilities">Typed capability interfaces reported by the SDK.</param>
+        /// <param name="source">An optional application proxy or SDK object, retained weakly on Presence.
+        /// Null preserves the existing source. A different source reruns the initializer.</param>
         /// <returns>The stable realm-owned presence handle.</returns>
         protected Presence Detect(string entityId, Kind kind, string name = null, Variant? variant = null,
-            IEnumerable<Type> capabilities = null)
-        {
-            return ReportPresence(entityId, kind, name, variant, capabilities, null);
-        }
-
-        /// <summary>
-        /// Reports an SDK update for the realm to apply through the presence's entity modules.
-        /// </summary>
-        /// <typeparam name="TData">The SDK update type.</typeparam>
-        /// <param name="entityId">The stable SDK entity ID.</param>
-        /// <param name="kind">The detected kind.</param>
-        /// <param name="data">The SDK data forwarded to compatible entity modules.</param>
-        /// <param name="name">An optional entity label.</param>
-        /// <param name="variant">An optional visual variant.</param>
-        /// <param name="capabilities">Typed capability interfaces reported by the SDK.</param>
-        /// <returns>The stable realm-owned presence handle.</returns>
-        protected Presence Report<TData>(string entityId, Kind kind, TData data, string name = null,
-            Variant? variant = null, IEnumerable<Type> capabilities = null)
-        {
-            if ((object)data == null)
-            {
-                throw new ArgumentNullException(nameof(data));
-            }
-
-            return ReportPresence(entityId, kind, name, variant, capabilities, data);
-        }
-
-        private Presence ReportPresence(string entityId, Kind kind, string name, Variant? variant,
-            IEnumerable<Type> capabilities, object data)
+            IEnumerable<Type> capabilities = null, object source = null)
         {
             if (_anchor == null || !_started)
             {
@@ -138,8 +112,9 @@ namespace Emas
             }
 
             _anchor.ThrowIfDisposed();
-            return _anchor.Realm.ReportPresence(this, _anchor.Id, entityId, kind, name, variant, capabilities, data);
+            return _anchor.Realm.DetectPresence(this, _anchor.Id, entityId, kind, name, variant, capabilities, source);
         }
+
         /// <summary>
         /// Obtains or creates a typed ghost owned by this source.
         /// </summary>
@@ -347,9 +322,9 @@ namespace Emas
         /// </value>
         /// <remarks>
         /// Configure while detached. Uses unscaled real time and removes expired ghosts during the next realm update,
-        /// after queued publications and detector updates. Report, GetOrCreate and MarkPublished reset the individual presence's deadline.
-        /// Any partial data update counts as activity. Enable only for feeds that publish often enough to establish continued presence;
-        /// feeds that publish only changed values should normally leave expiry disabled.
+        /// after queued publications and detector updates. Detect, GetOrCreate and MarkPublished reset the individual presence's deadline.
+        /// Module reads do not count as presence activity. Enable only for feeds that confirm continued presence;
+        /// arrival/departure-only feeds should leave expiry disabled.
         /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">
         /// The timeout is zero or negative.

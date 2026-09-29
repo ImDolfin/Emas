@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas.Sample
 {
     /// <summary>
-    /// Publishes the same car ghosts from the second SDK shape.
+    /// Detects the same permanent car population in SDK Two.
     /// </summary>
 
     public sealed class SdkTwoCarDetector : PresenceDetector
@@ -42,32 +42,20 @@ namespace Emas.Sample
         /// <inheritdoc />
         protected override void OnStart()
         {
-            PublishAll(Time.time);
+            DetectAll(Time.time);
         }
 
-        /// <inheritdoc />
-        protected override void OnUpdate()
-        {
-            PublishAll(Time.time);
-        }
-
-        private void PublishAll(float elapsedSeconds)
+        private void DetectAll(float elapsedSeconds)
         {
             foreach (SdkTwoVehicleProxy proxy in _feed.ReadVehicles(elapsedSeconds))
             {
-                Publish(proxy);
+                DetectProxy(proxy);
             }
         }
 
-        private void Publish(SdkTwoVehicleProxy proxy)
+        private void DetectProxy(SdkTwoVehicleProxy proxy)
         {
-            CarGhost car = GetOrCreate<CarGhost>(
-                proxy.Id.ToString(),
-                SampleKinds.Car,
-                MapVariant(proxy.ModelCode),
-                "Car " + proxy.Id);
-            car.SetPosition(proxy.Coordinates);
-            car.SetArticulation(proxy.WheelAngle);
+            Detect(proxy.Id.ToString(), SampleKinds.Car, "Car " + proxy.Id, MapVariant(proxy.ModelCode), source: _feed);
         }
 
         private static Variant MapVariant(int modelCode)

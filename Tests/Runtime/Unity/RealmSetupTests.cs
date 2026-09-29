@@ -207,9 +207,9 @@ namespace Emas.Tests
         {
             Presence presence;
             Assert.That(realm.TryGetPresence(new Key("default", TestKind, "one"), out presence), Is.True);
-            Assert.That(realm.Query().Single(), Is.TypeOf<Probe>());
-            ReadingModule module;
-            Assert.That(presence.TryGetModule(out module), Is.True);
+            Assert.That(realm.Query().Single(), Is.TypeOf<TextGhost>());
+            TextModule module = presence.Root.GetComponent<TextModule>();
+            Assert.That(module, Is.Not.Null);
             Assert.That(module.Value, Is.EqualTo("one"));
         }
 
@@ -236,21 +236,8 @@ namespace Emas.Tests
             public void ConfigureRealm(Realm realm)
             {
                 Calls++;
-                realm.RegisterPresenceInitializer<Probe>(TestKind,
-                    (presence, root) => presence.AddModule(new ReadingModule()));
-            }
-        }
-
-        private sealed class ReadingModule : EntityModule<string>
-        {
-            internal string Value;
-
-            /// <summary>
-            /// Records data received through the configured presence.
-            /// </summary>
-            public override void Apply(string data)
-            {
-                Value = data;
+                realm.RegisterPresenceInitializer<TextGhost>(TestKind,
+                    (presence, root) => root.GetComponent<TextModule>().Bind(() => presence.Key.EntityId));
             }
         }
 
@@ -258,7 +245,7 @@ namespace Emas.Tests
         {
             protected override void OnStart()
             {
-                GetOrCreate<Probe>("one", TestKind);
+                GetOrCreate<TextGhost>("one", TestKind);
             }
         }
 
@@ -266,7 +253,7 @@ namespace Emas.Tests
         {
             protected override void OnStart()
             {
-                Report("one", TestKind, "one");
+                Detect("one", TestKind);
             }
         }
 
@@ -306,8 +293,5 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class Probe : Ghost
-        {
-        }
     }
 }

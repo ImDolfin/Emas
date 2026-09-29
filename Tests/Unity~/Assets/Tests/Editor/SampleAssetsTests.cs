@@ -82,6 +82,8 @@ namespace Emas.Tests.Samples
                     Assert.That(blueprint.GhostPrefab, Is.Not.Null);
                     Assert.That(PrefabUtility.IsPartOfPrefabAsset(blueprint.GhostPrefab), Is.True);
                     Assert.That(AssetDatabase.GetAssetPath(blueprint.GhostPrefab), Does.StartWith(directory));
+                    Assert.That(blueprint.GhostPrefab.GetComponents<EntityModule>(), Is.Not.Empty,
+                        "Reusable data modules must be saved on the Ghost prefab.");
 
                     SerializedProperty variants = new SerializedObject(blueprint).FindProperty("_variants");
                     Assert.That(variants.arraySize, Is.GreaterThan(0));

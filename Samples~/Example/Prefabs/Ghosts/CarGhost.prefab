@@ -11,6 +11,8 @@ GameObject:
   - component: {fileID: 3795054887112948576}
   - component: {fileID: 7944343211524934669}
   - component: {fileID: 4108304806716779535}
+  - component: {fileID: 3932126133622569422}
+  - component: {fileID: 8920833648498768522}
   m_Layer: 0
   m_Name: CarGhost
   m_TagString: Untagged
@@ -62,5 +64,29 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: cc16fa54e808488a21b531587c187f77, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+--- !u!114 &3932126133622569422
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5095596177147158605}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c420639175e141cb814479e2ede6241e, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+--- !u!114 &8920833648498768522
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5095596177147158605}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c6d478ca4eef4c11ad6845d9399843a8, type: 3}
   m_Name:
   m_EditorClassIdentifier:

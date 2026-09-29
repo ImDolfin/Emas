@@ -1,28 +1,19 @@
-using UnityEngine;
-
 namespace Emas.Minimal
 {
-    /// <summary>
-    /// Reports the sample's single marker when attached and on each realm update.
-    /// </summary>
+    /// <summary>Detects the sample's one permanent entity when attached.</summary>
     internal sealed class MarkerDetector : PresenceDetector
     {
+        private readonly MarkerSource _source;
+
+        internal MarkerDetector(MarkerSource source)
+        {
+            _source = source;
+        }
+
         /// <inheritdoc />
         protected override void OnStart()
         {
-            Publish();
-        }
-
-        /// <inheritdoc />
-        protected override void OnUpdate()
-        {
-            Publish();
-        }
-
-        private void Publish()
-        {
-            Reading reading = new Reading("one", new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f));
-            Report(reading.Id, Marker.Kind, reading);
+            Detect("one", Marker.Kind, source: _source);
         }
     }
 }

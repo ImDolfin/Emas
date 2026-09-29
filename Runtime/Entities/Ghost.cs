@@ -8,7 +8,8 @@ namespace Emas
     /// </summary>
 
     /// <remarks>
-    /// Subclass to store application data and implement read-only contracts. Emas creates/destroys roots and sets their metadata.
+    /// Declare reusable EntityModule components on this root with RequireComponent or an authored prefab.
+    /// Modules and other root components can implement read-only application contracts. Emas creates/destroys roots and sets their metadata.
     /// Roots activate after successful publication and deactivate on availability loss; Awake may run before source mapping.
     /// Keep source mutation methods on the concrete subclass. Views are optional children, independent of root behaviors.
     /// </remarks>

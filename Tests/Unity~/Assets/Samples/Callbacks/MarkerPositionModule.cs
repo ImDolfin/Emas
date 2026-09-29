@@ -1,35 +1,15 @@
-using System;
+using UnityEngine;
 
 namespace Emas.Callbacks
 {
-    /// <summary>
-    /// Applies callback readings to an initialized Marker Ghost root.
-    /// </summary>
-    public sealed class MarkerPositionModule : EntityModule<Reading>
+    /// <summary>Applies a source-independent local position to its Ghost root.</summary>
+    public sealed class MarkerPositionModule : EntityModule<Vector3>
     {
-        private readonly Marker _marker;
-
-        /// <summary>
-        /// Creates a position module for one marker root.
-        /// </summary>
-        /// <param name="marker">The initialized root to update.</param>
-        public MarkerPositionModule(Marker marker)
+        /// <summary>Updates the root in its anchor's coordinate frame.</summary>
+        /// <param name="position">The local position supplied by the initializer's reader.</param>
+        public override void Apply(Vector3 position)
         {
-            _marker = marker ?? throw new ArgumentNullException(nameof(marker));
-        }
-
-        /// <summary>
-        /// Applies a reported local position to the marker root.
-        /// </summary>
-        /// <param name="reading">The detector's latest reading.</param>
-        public override void Apply(Reading reading)
-        {
-            if (reading == null)
-            {
-                throw new ArgumentNullException(nameof(reading));
-            }
-
-            _marker.SetPosition(reading.Position);
+            transform.localPosition = position;
         }
     }
 }

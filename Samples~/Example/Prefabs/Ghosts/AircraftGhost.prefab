@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 4820022274793825983}
   - component: {fileID: 2372592704558865770}
   - component: {fileID: 7253122824553524595}
+  - component: {fileID: 274538983754232248}
   m_Layer: 0
   m_Name: AircraftGhost
   m_TagString: Untagged
@@ -62,5 +63,17 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: cc16fa54e808488a21b531587c187f77, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+--- !u!114 &274538983754232248
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7501957590239685892}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c420639175e141cb814479e2ede6241e, type: 3}
   m_Name:
   m_EditorClassIdentifier:

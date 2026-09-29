@@ -51,73 +51,55 @@ frame.Position = new Double3(reference.X, reference.Y, reference.Z);
 
 `Realm.Default` updates automatically. An isolated `new Realm()` needs an application-owned `Update()` call after its incoming data is processed and must be disposed when its owner stops. A `RealmSetup` advances its own isolated realm automatically. Choose a small Unity reference position near the scene origin.
 
-## Apply spatial channels through entity modules
+## Apply spatial channels through Ghost modules
 
-A root that uses shared Cartesian coordinates needs `Spatial`. For example:
+Configure independent position and rotation modules on the Ghost prefab, or require them on its class:
 
 ```csharp
-[RequireComponent(typeof(Spatial))]
+[RequireComponent(typeof(Spatial), typeof(PositionModule), typeof(RotationModule))]
 public sealed class Car : Ghost
 {
 }
-```
 
-Assume `PositionPacket` carries an ID and raw double coordinates, and `RotationPacket` carries the same ID and a `Quaternion`. The detector forwards these SDK packets unchanged. Separate modules convert coordinates into the realm's shared Cartesian frame and update the independent spatial channels. The example's X/Y/Z axes already match that frame; replace the conversion in `Apply` for geodetic or other SDK coordinates:
-
-```csharp
-public sealed class PositionModule : EntityModule<PositionPacket>
+public sealed class PositionModule : EntityModule<Double3>
 {
-    public override void Apply(PositionPacket packet)
+    public override void Apply(Double3 position)
     {
-        Presence.Root.GetComponent<Spatial>().SetPosition(
-            new Double3(packet.X, packet.Y, packet.Z));
+        GetComponent<Spatial>().SetPosition(position);
     }
 }
 
-public sealed class RotationModule : EntityModule<RotationPacket>
+public sealed class RotationModule : EntityModule<Quaternion>
 {
-    public override void Apply(RotationPacket packet)
+    public override void Apply(Quaternion rotation)
     {
-        Presence.Root.GetComponent<Spatial>().SetRotation(packet.Rotation);
+        GetComponent<Spatial>().SetRotation(rotation);
     }
 }
 ```
 
-Register the root type and modules for this Kind before attaching the detector. Use `IRealmConfigurator.ConfigureRealm` for a prefab realm, or call the same registration on a realm built by code:
+The initializer adapts your SDK to those reusable modules. Here the SDK's axes already match the shared frame:
 
 ```csharp
 realm.RegisterPresenceInitializer<Car>(CarKind, (presence, car) =>
 {
-    PositionModule position;
-    if (!presence.TryGetModule(out position))
-    {
-        presence.AddModule(new PositionModule());
-    }
-
-    RotationModule rotation;
-    if (!presence.TryGetModule(out rotation))
-    {
-        presence.AddModule(new RotationModule());
-    }
+    Spatial spatial = car.GetComponent<Spatial>();
+    car.GetComponent<PositionModule>().Bind(() => presence.Source is SdkProxy proxy
+        ? new Double3(proxy.X, proxy.Y, proxy.Z) : spatial.Position);
+    car.GetComponent<RotationModule>().Bind(() =>
+        (presence.Source as SdkProxy)?.Rotation ?? spatial.Rotation);
 });
 ```
 
-Inside a custom `PresenceDetector`, each SDK event reports its data to the Realm:
+`SdkProxy` is your SDK's concrete proxy type, supplied once with `Detect(id, CarKind, source: proxy)`. `Presence.Source` resolves a weak reference; these readers preserve the last spatial state if it is collected or destroyed. Put coordinate, axis or unit conversions in these readers or an application helper. Each module only knows its input type. Bind only channels supplied by the SDK; unbound or disabled modules leave their channel unchanged. `Spatial.HasPosition` and `HasRotation` indicate whether each channel has been supplied. Missing rotation leaves root rotation under application control.
 
-```csharp
-Report(positionPacket.Id, CarKind, positionPacket);
-Report(rotationPacket.Id, CarKind, rotationPacket);
-```
+The detector calls `Detect(id, CarKind, source: proxy)` on arrival and `Disappear(CarKind, id)` on departure. Data updates require neither another detection nor a report. Each realm update reads and applies the enabled modules, resolves the reference once, and projects all roots using the resulting spatial state. Reference movement also repositions entities whose shared positions stayed unchanged. Sample reference and target data at a common presentation time for interpolated feeds.
 
-The detector identifies the Presence and forwards the packet. The Realm creates its root and modules when first reported, then invokes the module matching the packet type. A new position packet leaves cached rotation intact; a rotation packet leaves position intact. `Spatial.HasPosition` and `HasRotation` indicate which channels have arrived. Without rotation data, Emas leaves the Ghost root's rotation under application control.
-
-Every `Report` records activity for `InactivityTimeout`. `Spatial.SetPosition` and `SetRotation` store spatial state; neither reports tracking membership on its own. Direct code integrations using cached Ghost roots can still call `MarkPublished(ghost)` after fresh data.
-
-After detector processing, the Realm resolves the reference once and projects all participating roots using their latest spatial state. A reference movement repositions unchanged entities too. Partial channels do not trigger unrelated application refreshes. For interpolated feeds, evaluate the reference and entity samples at a common presentation time before reporting them.
+Module reads do not refresh `InactivityTimeout`. Leave it disabled for feeds that only announce arrivals and departures. A presence feed using expiry must independently confirm continued presence with Detect.
 
 ## Preserve precision before Unity
 
-Store and transport global positions as `Double3`, which has three `double` components. Convert SDK axes and units into one shared Cartesian coordinate system for the realm. Different detectors must feed the same system; SDK-specific geodetic or geocentric conversion belongs in an `EntityModule<TData>` after the detector forwards raw SDK coordinates.
+Store and transport global positions as `Double3`, which has three `double` components. Convert SDK axes and units into one shared Cartesian coordinate system for the realm. Different detectors must feed the same system; SDK-specific geodetic or geocentric conversion belongs in the initializer-bound readers or an application helper, keeping the modules independent of the SDK.
 
 The relative displacement is calculated in double precision before its final conversion to a Unity position:
 
@@ -161,10 +143,10 @@ Check `HasPosition` before inverse-position, rotation-conversion or reference-di
 
 ## Run the example
 
-Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play. The scene contains an authored tracking prefab, camera, ground and lighting. Realm Setup owns an isolated realm and its reference-frame settings; the assigned blueprint and variant assets select the authored Ghost root and car view prefabs. `GeoSource` supplies the SDK detector and registers the spatial modules before tracking starts. `SimulatedGeoSdk` returns one complete snapshot containing continuously updated `origin` and `target` readings. The application-specific `GeoDetector` subclasses `PresenceDetector`, reads both entities in `OnStart` and `OnUpdate`, and forwards their raw SDK data with `Report`. The simulated population always contains these two entities; a changing SDK population also needs explicit `Disappear` calls for missing identities.
+Import the separate **Relative world** sample, open `RelativeWorld.unity`, and press Play. The scene contains an authored tracking prefab, camera, ground and lighting. Realm Setup owns an isolated realm and its reference-frame settings; the assigned blueprint and variant assets select the authored Ghost root and car view prefabs. `GeoSource` supplies the SDK detector and binds the configured spatial modules before tracking starts. `SimulatedGeoSdk` returns one complete snapshot containing continuously updated `origin` and `target` readings. The application-specific `GeoDetector` subclasses `PresenceDetector`, detects both entities in `OnStart`; the GeoSource component advances and caches SDK snapshots independently. The simulated population always contains these two entities; a changing SDK population also needs explicit `Disappear` calls for missing identities.
 
-`GeoPositionModule` converts WGS84 latitude and longitude in degrees and ellipsoidal altitude in metres relative to the fixed datum **52.520008° N, 13.404954° E, 40 m**. It writes double-precision ENU positions to `Spatial`, with `Double3.X` east, `Y` up and `Z` north. `GeoOrientationModule` converts yaw clockwise from true north, pitch nose-up and roll right-wing-down for a root whose local axes are +Z forward, +X right and +Y up. The Realm installs both modules on each `RelativeCar` Presence before applying readings.
+`GeoProjection` converts WGS84 latitude and longitude in degrees and ellipsoidal altitude in metres relative to the fixed datum **52.520008° N, 13.404954° E, 40 m**. The position reader returns double-precision ENU values to `GeoPositionModule`, which writes them to `Spatial`, with `Double3.X` east, `Y` up and `Z` north. The orientation reader converts yaw clockwise from true north, pitch nose-up and roll right-wing-down for a root whose local axes are +Z forward, +X right and +Y up. The `RelativeCar` Ghost prefab defines both modules. Its initializer binds the converted values before the realm applies them.
 
 The prefab's Realm Setup follows `origin` with **Follow Rotation** enabled, so that car stays at Unity position zero and identity rotation. The target moves and turns relative to it. The fixed datum and double-precision subtraction keep global coordinate magnitudes out of Unity float transforms.
 
-Inspect Realm Setup, Anchor Setup and the assigned blueprint and variant assets to change the scene configuration. Read [GeoSource.cs](../Samples~/RelativeWorld/GeoSource.cs) for provider and module registration, [GeoDetector.cs](../Samples~/RelativeWorld/GeoDetector.cs) for detection, [SimulatedGeoSdk.cs](../Samples~/RelativeWorld/SimulatedGeoSdk.cs) for raw readings, and [GeoPositionModule.cs](../Samples~/RelativeWorld/GeoPositionModule.cs) and [GeoOrientationModule.cs](../Samples~/RelativeWorld/GeoOrientationModule.cs) for coordinate mapping. Disable the tracking prefab to dispose its realm and tracked instances; enable it again to restart.
+Inspect Realm Setup, Anchor Setup and the assigned blueprint and variant assets to change the scene configuration. Read [GeoSource.cs](../Samples~/RelativeWorld/GeoSource.cs) for provider and module registration, [GeoDetector.cs](../Samples~/RelativeWorld/GeoDetector.cs) for detection, [SimulatedGeoSdk.cs](../Samples~/RelativeWorld/SimulatedGeoSdk.cs) for raw readings, and [GeoPositionModule.cs](../Samples~/RelativeWorld/GeoPositionModule.cs) and [GeoOrientationModule.cs](../Samples~/RelativeWorld/GeoOrientationModule.cs) for applying converted values. [GeoProjection.cs](../Samples~/RelativeWorld/GeoProjection.cs) contains the SDK coordinate conversion. Disable the tracking prefab to dispose its realm and tracked instances; enable it again to restart.
