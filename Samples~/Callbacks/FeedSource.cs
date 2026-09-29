@@ -1,49 +1,49 @@
+using System;
 using UnityEngine;
 
 namespace Emas.Callbacks
 {
     /// <summary>
-    /// Configures marker presences, creates the callback detector, and advances its sample feed.
+    /// Detects the sample feed's arrivals and departures and releases its subscriptions when stopped.
     /// </summary>
-    /// <remarks>
-    /// This feed raises events on Unity's main thread. SDK adapters must deliver events there before calling Emas.
-    /// </remarks>
-    public sealed class FeedSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
+    public sealed class FeedSource : PresenceDetectorComponent
     {
         /// <summary>The entity category configured by this sample.</summary>
         public static readonly Kind Kind = new Kind("callbacks.marker");
-
         private SimulatedFeed _feed;
+        private Action<Reading> _arrived;
+        private Action<string> _removed;
 
-        /// <summary>
-        /// Binds the marker root's configured position module before detectors start.
-        /// </summary>
-        /// <param name="realm">The realm that owns this sample's presences.</param>
-        public void ConfigureRealm(Realm realm)
+        /// <inheritdoc />
+        protected override void OnStart()
         {
-            realm.RegisterPresenceInitializer<Ghost>(Kind, (presence, marker) =>
+            _feed = new SimulatedFeed();
+            // The feed raises events on Unity's main thread. Capture this attachment's
+            // dispatcher so callbacks retained after a restart cannot publish stale data.
+            Action<Action> dispatch = CaptureDispatcher();
+            _arrived = reading => dispatch(() => Detect(reading.Id, FeedSource.Kind, source: _feed));
+            _removed = id => dispatch(() => Disappear(FeedSource.Kind, id));
+            _feed.Arrived += _arrived;
+            _feed.Removed += _removed;
+            if (_feed.Current != null)
             {
-                marker.GetComponent<MarkerPositionModule>().Bind(() =>
-                    (presence.Source as SimulatedFeed)?.Current?.Position ?? marker.transform.localPosition);
-            });
-        }
-
-        /// <summary>
-        /// Creates a detector connected to the sample SDK feed.
-        /// </summary>
-        public PresenceDetector CreateDetector()
-        {
-            SimulatedFeed feed = new SimulatedFeed();
-            _feed = feed;
-            return new FeedDetector(feed);
-        }
-
-        private void Update()
-        {
-            if (_feed != null)
-            {
-                _feed.Advance(Time.deltaTime);
+                _arrived(_feed.Current);
             }
+        }
+
+        /// <inheritdoc />
+        protected override void OnUpdate()
+        {
+            _feed.Advance(Time.deltaTime);
+        }
+
+        /// <inheritdoc />
+        protected override void OnStop()
+        {
+            _feed.Arrived -= _arrived;
+            _feed.Removed -= _removed;
+            _arrived = null;
+            _removed = null;
         }
     }
 }

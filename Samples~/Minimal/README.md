@@ -8,7 +8,7 @@ The scene contains an instance of `Tracking.prefab` plus an authored camera, lig
 
 - **Realm Setup** assigns `MarkerBlueprint.asset` as the realm blueprint for the marker Kind.
 - **Anchor Setup** uses the `quick-start` anchor ID with automatic views enabled.
-- **Marker Source** supplies the detector and binds the configured position module before tracking starts.
+- **Marker Source** is the detector component; **Marker Initializer** binds the position module.
 
 The assets form a small, complete presentation setup:
 
@@ -18,7 +18,7 @@ The assets form a small, complete presentation setup:
 | `MarkerRoot.prefab` | Contains a plain `Ghost` and its reusable `MarkerPositionModule`. |
 | `Default Marker Variant.asset` | Maps the empty variant ID (`Variant.None`) at Full detail to the view. |
 | `MarkerView.prefab` | Contains the cube mesh and its `Marker.mat` material. |
-| `Tracking.prefab` | Reusable, fully configured realm, anchor and detector provider. |
+| `Tracking.prefab` | Reusable, fully configured realm, anchor, detector and initializer. |
 
 Change the material or mesh in `MarkerView.prefab` to customize the cube. Swap the blueprint's root or variant assets in the Inspector to change the setup. These assets are saved with the sample; Play Mode only creates the tracked instances.
 
@@ -26,8 +26,8 @@ Change the material or mesh in `MarkerView.prefab` to customize the cube. Swap t
 
 The remaining scripts show only the data integration:
 
-- `MarkerSource` implements `IDetectorProvider` and `IRealmConfigurator`, creating a `MarkerDetector` and binding the Ghost's position module.
-- `MarkerDetector` detects the permanent marker once in `OnStart`.
+- `MarkerSource` derives from `PresenceDetectorComponent` and detects the permanent marker once in `OnStart`.
+- `MarkerInitializer` derives from `GhostInitializer` and binds the Ghost's position module.
 - `MarkerPositionModule` reads a mapped `Vector3` each realm update and applies it to the root.
 
 Replace the simulated position reader in `MarkerSource` with a reader of your SDK proxy. This marker is always present; call `Disappear` with the kind and stable ID when a real entity departs. Call Emas on Unity's main thread.

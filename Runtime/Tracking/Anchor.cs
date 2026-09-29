@@ -17,6 +17,8 @@ namespace Emas
         private readonly GameObject _gameObject;
         private bool _disposed;
 
+        internal Action<Presence, Ghost> InitializeGhost { get; set; }
+
         private struct SourceTick
         {
             internal SourceTick(PresenceDetector source)

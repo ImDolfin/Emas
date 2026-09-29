@@ -66,7 +66,9 @@ namespace Emas.Tests.Samples
                 foreach (AnchorSetup anchor in anchors)
                 {
                     Assert.That(anchor.GetComponents<MonoBehaviour>().Count(component =>
-                        component != null && component.enabled && component is IDetectorProvider), Is.EqualTo(1));
+                        component != null && component.enabled && component is PresenceDetectorComponent), Is.EqualTo(1));
+                    Assert.That(anchor.GetComponents<GhostInitializer>().Count(component => component.enabled), Is.EqualTo(1),
+                        "The SDK mapping must be authored beside the detector.");
                     Assert.That(new SerializedObject(anchor).FindProperty("_automaticViews").boolValue, Is.True);
                 }
 

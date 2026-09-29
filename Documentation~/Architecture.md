@@ -4,7 +4,9 @@ Emas owns stable `Presence` handles, Ghost roots, availability and optional view
 
 [Architecture diagram](Diagrams/Architecture.html) / [Lifecycle diagram](Diagrams/Lifecycle.html)
 
-`RealmSetup` is an optional Inspector-configured owner of one isolated, automatically updated realm. Enabled `IRealmConfigurator` components beneath it register per-Kind presence initializers before any detector starts. Child `AnchorSetup` components each configure one anchor and create one detector through their colocated `IDetectorProvider`. Applications implement a small `PresenceDetector` subclass for each SDK feed. Its `OnStart`, `OnUpdate` and `OnStop` overrides own reading or subscriptions, while `Detect` and `Disappear` announce membership changes to the realm. Event handlers capture a dispatcher for their attachment in `OnStart` and unsubscribe in `OnStop`. Ghost module components read source-independent values bound by the initializer. Direct code setup uses the same contracts.
+`RealmSetup` is an optional Inspector-configured owner of an isolated, automatically updated realm. Each child `AnchorSetup` attaches a colocated `PresenceDetectorComponent`; its private adapter forwards to the same plain `PresenceDetector` used by code and tests. The component implements the provider bridge so application scripts only override `OnStart`, `OnUpdate` and `OnStop`. `Detect` and `Disappear` announce membership; module readers handle data changes.
+
+A colocated `GhostInitializer` maps `Presence.Source` to the modules authored on that Anchor's Ghost prefabs. It takes precedence over the Realm's per-Kind initializer, preventing one SDK's bindings from replacing another Anchor's mapping. Both routes use Population's existing reinitialization and cleanup boundaries. `IDetectorProvider` can still supply constructed detectors, and `IRealmConfigurator` can still register Realm-wide defaults. Code setup keeps constructor injection, `RegisterPresenceInitializer<TGhost>` and `Anchor.AddDetector`.
 
 ## Ownership
 

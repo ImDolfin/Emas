@@ -10,20 +10,14 @@ namespace Emas.Editor
         {
             EditorGUILayout.Space(5f);
             EditorGUILayout.VerticalScope scope = new EditorGUILayout.VerticalScope(EditorStyles.helpBox);
-            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
-            if (!string.IsNullOrEmpty(description))
-            {
-                EditorGUILayout.LabelField(description, EditorStyles.wordWrappedMiniLabel);
-                EditorGUILayout.Space(3f);
-            }
+            EditorGUILayout.LabelField(new GUIContent(title, description), EditorStyles.boldLabel);
             return scope;
         }
 
         internal static void Header(string title, string description)
         {
             EditorGUILayout.Space(4f);
-            EditorGUILayout.LabelField(title, EditorStyles.largeLabel);
-            EditorGUILayout.LabelField(description, EditorStyles.wordWrappedLabel);
+            EditorGUILayout.LabelField(new GUIContent(title, description), EditorStyles.largeLabel);
         }
 
         internal static void Field(SerializedObject owner, string property, string label)
@@ -51,7 +45,7 @@ namespace Emas.Editor
 
         internal static void Rotation(SerializedProperty property, string label)
         {
-            EditorGUILayout.LabelField(new GUIContent(label + " (?)", property.tooltip));
+            EditorGUILayout.LabelField(new GUIContent(label + " (degrees)", property.tooltip));
             Rect rect = EditorGUILayout.GetControlRect();
             using (new EditorGUI.PropertyScope(rect, GUIContent.none, property))
             {
@@ -84,6 +78,15 @@ namespace Emas.Editor
         internal static bool IsOn(SerializedProperty property)
         {
             return !property.hasMultipleDifferentValues && property.boolValue;
+        }
+
+        internal static void Help(ref bool expanded, string text)
+        {
+            expanded = EditorGUILayout.Foldout(expanded, "Setup help", true);
+            if (expanded)
+            {
+                EditorGUILayout.HelpBox(text, MessageType.None);
+            }
         }
 
         internal static void DiagnosticsButton()

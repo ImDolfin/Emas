@@ -67,7 +67,7 @@ internal sealed class TrackedDetector : PresenceDetector
 }
 ```
 
-For an SDK that supplies membership events, subscribe in `OnStart`, capture a dispatcher with `CaptureDispatcher()`, and unsubscribe in `OnStop`. Queue detections and explicit disappearances through that captured dispatcher so callbacks retained from an older attachment are ignored. All detector operations and callbacks run on Unity's main thread; the application handles any thread transfer. See the [callback sample](Samples~/Callbacks/FeedDetector.cs).
+For an SDK that supplies membership events, subscribe in `OnStart`, capture a dispatcher with `CaptureDispatcher()`, and unsubscribe in `OnStop`. Queue detections and explicit disappearances through that captured dispatcher so callbacks retained from an older attachment are ignored. All detector operations and callbacks run on Unity's main thread; the application handles any thread transfer. See the [callback sample](Samples~/Callbacks/FeedSource.cs).
 
 Here `blueprint` is the asset from section 1 with the configured Ghost prefab. `SdkProxy` represents your SDK's proxy class; `originProxy` and `itemProxy` are objects already received during discovery. Supply them when announcing arrival:
 
@@ -119,10 +119,12 @@ if (realm.TryGetPresence(new Key("items", TrackedDetector.Kind, "item-1"), out P
 
 ```text
 World  (RealmSetup: blueprint; Use Reference Frame; Follow Ghost)
-  Items  (AnchorSetup: id "items"; SDK provider)
+  Items  (AnchorSetup: id "items"; SDK detector; Ghost initializer)
 ```
 
-Put `RealmSetup` on the root and assign the optional blueprint. On `Items`, put `AnchorSetup` and exactly one enabled component implementing `IDetectorProvider` on the **same** GameObject. Its `CreateDetector()` creates your membership detector. Implement `IRealmConfigurator` on that component to register the initializer and SDK-to-module readers before detectors start. Author the plain `Ghost` and `PositionModule` on the Ghost prefab; the module requires `Spatial`. Custom Ghost subclasses may use `RequireComponent` when code-created roots need a fixed set of modules. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup updates and disposes its realm. The [four samples](Samples~) ship with this setup already authored.
+Put `RealmSetup` on the root and assign the optional blueprint. On `Items`, add `AnchorSetup`, your `PresenceDetectorComponent` subclass and an optional `GhostInitializer` subclass. Override the detector's `OnStart`, `OnUpdate` and `OnStop` to handle SDK membership. Override `GhostInitializer.Initialize(Presence, Ghost)` to bind the modules already authored on the Ghost prefab. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup handles updates and cleanup. The [four samples](Samples~) ship with these components and assets already configured.
+
+Code setup stays the same: construct a plain `PresenceDetector` with injected dependencies, register `Realm.RegisterPresenceInitializer<TGhost>`, then call `Anchor.AddDetector`. A scene `GhostInitializer` takes precedence for its own Anchor; without one enabled at attachment, the Realm's Kind registration applies. `IDetectorProvider` and `IRealmConfigurator` remain optional integration hooks when an application needs a factory or Realm-wide setup.
 
 For the moving origin, set **Follow Ghost** to anchor `items`, Kind `tracked.item`, entity `origin`. There are no latitude/longitude fields on `ReferenceFrame` or Realm Setup: their **Position** field is already-converted Cartesian `Double3`. For a fixed reference, convert its latitude/longitude/altitude with the same `YourGeo.Wgs84ToEnu` function and assign that `Double3` to `ReferenceFrame.Position` instead of following a Ghost. `Unity Position` chooses where the reference appears in the scene. If your module writes ordinary local Unity transforms instead of `Spatial`, omit the reference frame. See [Spatial](Documentation~/Spatial.md) for projection and reference loss.
 

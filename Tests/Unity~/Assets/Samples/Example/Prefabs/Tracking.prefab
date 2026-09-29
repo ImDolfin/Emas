@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 4748988631540304787}
   - component: {fileID: 9153393947981228734}
   - component: {fileID: 8747733917664523658}
+  - component: {fileID: 800000000000006432}
   m_Layer: 0
   m_Name: Aircraft
   m_TagString: Untagged
@@ -70,6 +71,7 @@ GameObject:
   - component: {fileID: 6875616221116041821}
   - component: {fileID: 1186035578837812567}
   - component: {fileID: 3509082610114948003}
+  - component: {fileID: 800000000000006015}
   m_Layer: 0
   m_Name: Cars
   m_TagString: Untagged
@@ -201,3 +203,27 @@ MonoBehaviour:
   _carAnchor: {fileID: 1186035578837812567}
   _aircraftAnchor: {fileID: 9153393947981228734}
   _carSource: {fileID: 3509082610114948003}
+--- !u!114 &800000000000006015
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 543268915914947312}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4031a7f242e847b89e32d65978ad48b9, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+--- !u!114 &800000000000006432
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 145975980095422859}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e23bbbb3d3304b43b13a1fc4e5bf0c04, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:

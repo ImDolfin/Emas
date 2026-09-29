@@ -8,6 +8,8 @@ namespace Emas.Editor
     [CanEditMultipleObjects]
     public sealed class RealmSetupInspector : UnityEditor.Editor
     {
+        private bool _showHelp;
+
         /// <summary>Draws grouped configuration, units, dependent controls and runtime diagnostics.</summary>
         public override void OnInspectorGUI()
         {
@@ -17,14 +19,10 @@ namespace Emas.Editor
             {
                 running |= ((RealmSetup)value).Realm != null;
             }
-            InspectorLayout.Header("Realm", "One entity world. Configure Kind mappings here; attach detector providers on its Anchors.");
-            if (running)
-            {
-                EditorGUILayout.HelpBox("Running ? startup settings are read-only. Stop the Realm before editing; live values are shown below.", MessageType.Info);
-            }
+            InspectorLayout.Header("Realm", "One entity world. Configure Kind mappings here; attach detectors on its Anchors.");
             using (new EditorGUI.DisabledScope(running))
             {
-                using (InspectorLayout.Section("1  Entity blueprints", "One mapping per Kind, shared by every Anchor. Leave empty for entities without views or a custom prefab."))
+                using (InspectorLayout.Section("Entities", "One mapping per Kind, shared by every Anchor. Leave empty for entities without views or a custom prefab."))
                 {
                     InspectorLayout.Field(serializedObject, "_blueprints", "Kind mappings");
                 }
@@ -47,6 +45,11 @@ namespace Emas.Editor
                     DrawRuntime(setup);
                 }
             }
+            InspectorLayout.Help(ref _showHelp,
+                "Assign one blueprint per Kind. Add Anchor Setup and a detector component on each source object. " +
+                "Without a reference frame, Spatial maps directly to Unity world coordinates. " +
+                "Reference positions and radius use the units supplied by your modules. " +
+                "Startup settings are locked while running; stop the Realm to edit them.");
             InspectorLayout.DiagnosticsButton();
         }
 
@@ -55,12 +58,11 @@ namespace Emas.Editor
             SerializedProperty useFrame = serializedObject.FindProperty("_useReferenceFrame");
             SerializedProperty follow = serializedObject.FindProperty("_followGhost");
             SerializedProperty rotation = serializedObject.FindProperty("_followRotation");
-            using (InspectorLayout.Section("2  Coordinate reference", "Spatial uses shared Cartesian coordinates. Units come from your SDK mapping; they are not necessarily metres."))
+            using (InspectorLayout.Section("Reference", "Spatial uses shared Cartesian coordinates. Units come from your SDK mapping; they are not necessarily metres."))
             {
                 InspectorLayout.Field(serializedObject, "_useReferenceFrame", "Use reference frame");
                 if (!useFrame.hasMultipleDifferentValues && !useFrame.boolValue)
                 {
-                    EditorGUILayout.LabelField("Identity frame: Spatial values map directly to Unity world coordinates, without a distance limit.", EditorStyles.wordWrappedMiniLabel);
                     return;
                 }
                 using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(useFrame)))
@@ -76,7 +78,6 @@ namespace Emas.Editor
                         SerializedProperty kind = serializedObject.FindProperty("_referenceKind._id");
                         EditorGUILayout.PropertyField(kind, new GUIContent("Kind ID", "The Kind passed to Detect, not a prefab name."));
                         InspectorLayout.Field(serializedObject, "_referenceEntityId", "Entity ID");
-                        EditorGUILayout.LabelField("Waits for the first position; retains the last pose when the reference disappears.", EditorStyles.wordWrappedMiniLabel);
                     }
                     else
                     {
@@ -87,17 +88,16 @@ namespace Emas.Editor
                     {
                         InspectorLayout.Rotation(serializedObject.FindProperty("_rotation"), follow.boolValue ? "Initial reference rotation" : "Reference rotation");
                     }
-                    EditorGUILayout.LabelField("Angles wrap every 360?. Initial rotation is replaced when a followed Ghost supplies orientation.", EditorStyles.wordWrappedMiniLabel);
                 }
             }
             using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(useFrame)))
             {
-                using (InspectorLayout.Section("3  Placement in Unity", "Where the reference appears in the scene. Keep this near the origin for float precision."))
+                using (InspectorLayout.Section("Placement", "Where the reference appears in the scene. Keep this near the origin for float precision."))
                 {
                     InspectorLayout.Field(serializedObject, "_unityPosition", "Position (Unity units)");
                     InspectorLayout.Rotation(serializedObject.FindProperty("_unityRotation"), "Scene alignment");
                 }
-                using (InspectorLayout.Section("4  Visibility range", "Suppresses distant views, renderers and colliders; entities stay tracked and their logic keeps running."))
+                using (InspectorLayout.Section("Visibility", "Suppresses distant views, renderers and colliders; entities stay tracked and their logic keeps running."))
                 {
                     SerializedProperty limit = serializedObject.FindProperty("_limitDistance");
                     InspectorLayout.Field(serializedObject, "_limitDistance", "Limit distance");
@@ -105,7 +105,6 @@ namespace Emas.Editor
                     {
                         InspectorLayout.Field(serializedObject, "_maxDistance", "Radius (shared units)");
                     }
-                    EditorGUILayout.LabelField("Must be finite and greater than 0. No upper limit; choose a range suitable for your scene precision.", EditorStyles.wordWrappedMiniLabel);
                 }
             }
         }

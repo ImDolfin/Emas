@@ -7,42 +7,21 @@ namespace Emas.RelativeWorld
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("Emas/Examples/Geo Source")]
-    public sealed class GeoSource : MonoBehaviour, IDetectorProvider, IRealmConfigurator
+    public sealed class GeoSource : PresenceDetectorComponent
     {
         /// <summary>The entity category configured by this sample.</summary>
         public static readonly Kind Kind = new Kind("relative.car");
 
         private SimulatedGeoSdk _sdk;
 
-        /// <summary>
-        /// Binds the authored car modules to positions and orientations converted from the SDK.
-        /// </summary>
-        public void ConfigureRealm(Realm realm)
-        {
-            realm.RegisterPresenceInitializer<Ghost>(Kind, (presence, root) =>
-            {
-                string id = presence.Key.EntityId;
-                root.GetComponent<GeoPositionModule>().Bind(() =>
-                {
-                    GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
-                    return GeoProjection.ToPosition(reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters);
-                });
-                root.GetComponent<GeoOrientationModule>().Bind(() =>
-                {
-                    GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
-                    return GeoProjection.ToRotation(reading.YawDegrees, reading.PitchDegrees, reading.RollDegrees);
-                });
-            });
-        }
-
-        /// <summary>
-        /// Creates a fresh simulated SDK and detector for this anchor attachment.
-        /// </summary>
-        public PresenceDetector CreateDetector()
+        /// <inheritdoc />
+        protected override void OnStart()
         {
             _sdk = new SimulatedGeoSdk();
-            _sdk.ReadFrame();
-            return new GeoDetector(_sdk) { Name = "Geodetic SDK entities" };
+            foreach (GeoPoseReading reading in _sdk.ReadFrame())
+            {
+                Detect(reading.Id, Kind, reading.Label, reading.Variant, source: _sdk);
+            }
         }
 
         /// <summary>
@@ -57,7 +36,8 @@ namespace Emas.RelativeWorld
                 _sdk.ReadFrame();
             }
         }
-        private void Update()
+        /// <inheritdoc />
+        protected override void OnUpdate()
         {
             Advance(Time.deltaTime);
         }

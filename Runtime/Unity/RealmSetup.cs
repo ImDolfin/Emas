@@ -256,7 +256,7 @@ namespace Emas
         {
             Realm realm = _realm;
             if (realm == null || _starting || !isActiveAndEnabled || !setup.isActiveAndEnabled
-                || setup.Owner() != this || setup.AttachmentOwner != null || _subscriptions.ContainsKey(setup))
+                || !setup.WantsAttachment || setup.Owner() != this || setup.AttachmentOwner != null || _subscriptions.ContainsKey(setup))
             {
                 return;
             }
@@ -309,7 +309,7 @@ namespace Emas
                 attached = false;
                 foreach (AnchorSetup candidate in ActiveAnchors())
                 {
-                    if (candidate != null && candidate.isActiveAndEnabled && candidate.Owner() == this
+                    if (candidate != null && candidate.isActiveAndEnabled && candidate.WantsAttachment && candidate.Owner() == this
                         && candidate.AttachmentOwner == null && !_subscriptions.ContainsKey(candidate))
                     {
                         AttachAnchor(candidate, realm, lifetime, validate);
@@ -385,6 +385,11 @@ namespace Emas
 
                 anchor = realm.GetOrCreateAnchor(setup.Id, setup.transform);
                 setup.Bind(anchor, this);
+                GhostInitializer initializer = setup.GetComponent<GhostInitializer>();
+                if (initializer != null && initializer.enabled)
+                {
+                    anchor.InitializeGhost = initializer.Apply;
+                }
                 if (setup.AutomaticViews)
                 {
                     subscription = realm.Query().InAnchor(setup.Id).OnAvailable(ghost =>
@@ -438,7 +443,7 @@ namespace Emas
             List<AnchorSetup> anchors = new List<AnchorSetup>(candidates.Length);
             foreach (AnchorSetup candidate in candidates)
             {
-                if (candidate != null && candidate.isActiveAndEnabled && candidate.Owner() == this
+                if (candidate != null && candidate.isActiveAndEnabled && candidate.WantsAttachment && candidate.Owner() == this
                     && (candidate.AttachmentOwner == null || candidate.AttachmentOwner == this))
                 {
                     anchors.Add(candidate);

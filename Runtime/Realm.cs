@@ -908,7 +908,7 @@ namespace Emas
             try
             {
                 return _population.ApplyPresenceDetection(detector, anchorId, entityId, kind, name, variant, capabilitySnapshot, source,
-                    GetAnchorTransform(anchorId), ResolveManifestationBlueprint(kind));
+                    GetAnchorTransform(anchorId), ResolveManifestationBlueprint(kind), _anchors[anchorId].InitializeGhost);
             }
             catch (Exception exception)
             {

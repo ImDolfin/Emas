@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Add `PresenceDetectorComponent` for direct scene authoring and `GhostInitializer` for Anchor-local SDK mappings. Plain C# detectors, constructor injection and Realm initializer registration remain supported.
+- Configure all sample prefabs with detector and initializer components; retain code-based detector replacement in the larger example.
+- Reduce Ghost, Realm and Anchor inspector text, placing guidance in tooltips and optional help and runtime details in foldouts.
+
 - Reorganized Ghost, Realm Setup and Anchor Setup Inspectors into guided sections with units, degree-based rotation editing, conditional settings and read-only runtime identity/health. Running startup configuration is locked until detached/stopped. Diagnostics now inspect every live Realm, with name filtering, grouped detector health and timing, plus an optional Scene view overlay.
 
 - Removed Anchor blueprint registration/unregistration and Anchor Setup blueprint overrides. Each Kind now resolves to one Realm blueprint across all anchors. Move existing Anchor Setup assignments to Realm Setup and code registrations to `Realm.RegisterManifestationBlueprint`; use variants for appearances or separate realms for independent mappings. Automatic view requests remain configurable per anchor.

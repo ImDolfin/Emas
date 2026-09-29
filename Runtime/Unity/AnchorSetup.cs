@@ -3,11 +3,12 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Configures one prefab anchor with one detector provider and automatic view requests.
+    /// Configures one prefab anchor with a detector component and automatic view requests.
     /// </summary>
     /// <remarks>
     /// Place on the anchor GameObject under a RealmSetup. Add exactly one enabled MonoBehaviour
-    /// implementing IDetectorProvider to the same GameObject. Disabling this component removes its anchor;
+    /// deriving from PresenceDetectorComponent (or implementing IDetectorProvider) to the same GameObject.
+    /// Add an optional GhostInitializer beside it to map sources to modules. Disabling this component removes its anchor;
     /// enabling it again starts a fresh source attachment while its realm is running.
     /// </remarks>
     [DisallowMultipleComponent]
@@ -42,6 +43,15 @@ namespace Emas
             get
             {
                 return _anchor;
+            }
+        }
+
+        internal bool WantsAttachment
+        {
+            get
+            {
+                PresenceDetectorComponent detector = GetComponent<PresenceDetectorComponent>();
+                return detector == null || detector.isActiveAndEnabled;
             }
         }
 
@@ -100,14 +110,19 @@ namespace Emas
                     sourceCount++;
                     if (!behaviour.enabled || !behaviour.gameObject.activeInHierarchy)
                     {
-                        return "AnchorSetup requires its detector provider to be enabled.";
+                        return "Enable the Anchor's detector component before starting it.";
                     }
                 }
             }
 
             if (sourceCount != 1)
             {
-                return "AnchorSetup requires exactly one IDetectorProvider component on the same GameObject.";
+                return "Add exactly one PresenceDetectorComponent (or IDetectorProvider) beside Anchor Setup.";
+            }
+
+            if (GetComponents<GhostInitializer>().Length > 1)
+            {
+                return "Add at most one GhostInitializer beside Anchor Setup.";
             }
 
             return null;

@@ -243,12 +243,12 @@ namespace Emas
 
         internal Presence ApplyPresenceDetection(PresenceDetector detector, string anchorId, string entityId,
             Kind kind, string name, Variant? variant, List<Type> capabilitySnapshot, object source,
-            Transform anchorTransform, ManifestationBlueprintSnapshot blueprint)
+            Transform anchorTransform, ManifestationBlueprintSnapshot blueprint, Action<Presence, Ghost> localInitializer)
         {
             Key key = new Key(anchorId, kind, entityId);
-            IPresenceInitializer initializer;
+            IPresenceInitializer initializer = null;
             Ghost root;
-            if (_presenceInitializers.TryGetValue(kind.Id, out initializer))
+            if (localInitializer == null && _presenceInitializers.TryGetValue(kind.Id, out initializer))
             {
                 root = initializer.GetOrCreate(this, detector, key, variant, name, anchorTransform, blueprint);
             }
@@ -268,7 +268,11 @@ namespace Emas
             bool capabilitiesChanged = presence.SetMetadata(root.Name, root.Variant, capabilitySnapshot);
             if (!record.PresenceInitialized || capabilitiesChanged || sourceChanged)
             {
-                if (initializer != null)
+                if (localInitializer != null)
+                {
+                    localInitializer(presence, root);
+                }
+                else if (initializer != null)
                 {
                     initializer.Initialize(presence);
                 }

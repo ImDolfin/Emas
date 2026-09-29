@@ -2,13 +2,13 @@
 
 Open `Scenes/Example.unity` and press Play. Ten cars drive around the road and three aircraft move overhead. After four seconds, `CarSource` switches from SDK One to SDK Two while retaining compatible ghost roots and views. Disable and re-enable **Tracking** to restart with SDK One.
 
-The scene is configured before Play. Expand **Tracking** to inspect its `RealmSetup`, **Cars** anchor (`cars`) and **Aircraft** anchor (`aircraft`). Both anchors enable **Automatic Views**. Each has one small detector provider; the realm owns startup, updates and cleanup. The scene's environment, camera, light, and cockpit are prefab instances too.
+The scene is configured before Play. Expand **Tracking** to inspect its `RealmSetup`, **Cars** anchor (`cars`) and **Aircraft** anchor (`aircraft`). Both anchors enable **Automatic Views**. Each has a detector component and a Ghost initializer; the realm owns startup, updates and cleanup. The scene's environment, camera, light, and cockpit are prefab instances too.
 
 ## Follow the asset references
 
 | Asset | What to inspect |
 | --- | --- |
-| `Prefabs/Tracking.prefab` | Realm blueprint assignments, anchor IDs, automatic views and detector providers |
+| `Prefabs/Tracking.prefab` | Realm blueprint assignments, anchor IDs, automatic views, detector components and initializers |
 | `Blueprints/Cars.asset` | Car ghost root, three appearance variants and the unknown-vehicle fallback |
 | `Blueprints/Aircraft.asset` | Aircraft ghost root and trainer appearance |
 | `Variants/SmallCar.asset`, `LargeCar.asset`, `Truck.asset`, `Trainer.asset` | Appearance IDs and their Full-detail view prefabs |
@@ -21,11 +21,13 @@ To customize an appearance, open its view prefab variant and change the body, ca
 
 ## Read the integration code
 
+`CarSource` and `AircraftSource` derive from `PresenceDetectorComponent`. Their sibling `GhostInitializer` components map SDK fields to the modules. `CarSource.ReplaceCarSource()` passes its underlying `Detector` to `Anchor.ReplaceDetector`, switching to the plain C# `SdkTwoCarDetector`. Both forms share the same lifecycle and retain compatible Ghost roots.
+
 | Responsibility | Read first |
 | --- | --- |
 | Read-only application data | `Contracts/I3DPosition.cs`, `IArticulate.cs` |
 | Ghost module definitions | `Entities/PositionModule.cs`, `ArticulationModule.cs` and the saved Ghost prefabs |
-| SDK-to-module mapping | `Sources/CarSource.cs`, `AircraftSource.cs` |
+| SDK-to-module mapping | `Sources/CarInitializer.cs`, `AircraftInitializer.cs` |
 | One detector per anchor attachment | `Sources/CarSource.cs`, `AircraftSource.cs` |
 | SDK replacement | `CarSource.ReplaceCarSource()`; its serialized delay is four seconds |
 | Paired query membership and subscription disposal | `Behaviors/SampleStatus.cs` |

@@ -8,7 +8,7 @@ The scene contains an instance of `Tracking.prefab` plus an authored camera, lig
 
 - **Realm Setup** assigns `MarkerBlueprint.asset` as the realm blueprint for the marker Kind.
 - **Anchor Setup** uses the `callback-quick-start` anchor ID with automatic views enabled.
-- **Feed Source** creates the sample feed and detector, and binds the configured position module before tracking starts.
+- **Feed Source** is the detector component; **Marker Initializer** binds the configured position module.
 
 | Asset | Purpose |
 | --- | --- |
@@ -22,9 +22,9 @@ Change `MarkerView.prefab` to customize the visible object. Add another manifest
 
 ## Connect an event feed
 
-`FeedSource` implements `IDetectorProvider` and `IRealmConfigurator`. It creates a `FeedDetector`, advances the application-owned `SimulatedFeed`, and binds the `MarkerPositionModule` configured on the Ghost prefab. The reader accesses the feed's current position, so the module only consumes `Vector3`.
+`FeedSource` derives from `PresenceDetectorComponent`, subscribes to the `SimulatedFeed` and advances it in `OnUpdate`. `MarkerInitializer` binds the `MarkerPositionModule` configured on the Ghost prefab. The reader accesses the feed's current position, so the module only consumes `Vector3`.
 
-`FeedDetector.OnStart` captures an attachment-bound dispatcher with `CaptureDispatcher`, subscribes to `Arrived` and `Removed`, and detects the initially present entity. Position changes emit no detector event; the bound module reads the current value each realm update. `OnStop` unsubscribes both handlers. Capturing the dispatcher keeps callbacks retained from an old attachment from publishing after a restart.
+`FeedSource.OnStart` captures an attachment-bound dispatcher with `CaptureDispatcher`, subscribes to `Arrived` and `Removed`, and detects the initially present entity. Position changes emit no detector event; the bound module reads the current value each realm update. `OnStop` unsubscribes both handlers. Capturing the dispatcher keeps callbacks retained from an old attachment from publishing after a restart.
 
 Events are applied on a later realm update; `Disappear` removes only the specified entity ID. All sample callbacks run on Unity's main thread. The dispatcher defers work and does not transfer it between threads. Keep proxy reads on the main thread, or maintain an application-owned snapshot there. A real SDK integration must order initial data with live events and make partial subscriptions available to `OnStop` for cleanup when startup throws.
 

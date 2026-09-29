@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 1192774151211239116}
   - component: {fileID: 3554192924429602073}
   - component: {fileID: 4542684084607937168}
+  - component: {fileID: 800000000000002638}
   m_Layer: 0
   m_Name: Tracking
   m_TagString: Untagged
@@ -90,3 +91,15 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   _anchorId: callback-quick-start
   _automaticViews: 1
+--- !u!114 &800000000000002638
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 119771493801805358}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee956e2b318c4edaaf70c39394d2fb6b, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
