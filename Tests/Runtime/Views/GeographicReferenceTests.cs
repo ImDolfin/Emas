@@ -85,6 +85,17 @@ namespace Emas.Tests
             Assert.That(Quaternion.Angle(frame.ToSimulationRotation(projected, east), attitude), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToUnityRotation(attitude), frame.UnityRotation), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToSimulationRotation(frame.UnityRotation), attitude), Is.LessThan(0.05f));
+
+            frame.UnityRotation = Quaternion.identity;
+            frame.SetGeographicRotation(90, 30, 90);
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.Geographic));
+            Assert.That(frame.TryToUnityPosition(new GeoPosition(0, 0, 10), out Vector3 banked), Is.True);
+            Assert.That(Vector3.Distance(banked, new Vector3(-8.660254f, 0, 5)), Is.LessThan(0.0001f));
+            Quaternion retained = frame.Rotation;
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.SetGeographicRotation(double.PositiveInfinity, 0, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.SetGeographicRotation(0, 0, double.NegativeInfinity));
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.Geographic));
+            Assert.That(Quaternion.Angle(frame.Rotation, retained), Is.LessThan(0.05f));
         }
 
         /// <summary>ECEF attitudes honor source body axes and round-trip through scene alignment and reference following.</summary>
@@ -115,14 +126,14 @@ namespace Emas.Tests
             Assert.That(Quaternion.Angle(frame.ToEarthCenteredRotation(expected), banked), Is.LessThan(0.05f));
             frame.SetEarthCenteredRotation(banked);
             frame.FollowRotation = true;
-            Assert.That(frame.UsesEarthCenteredRotation, Is.True);
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.EarthCentered));
             Assert.That(Quaternion.Angle(frame.Rotation, banked), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToUnityEarthCenteredRotation(banked), frame.UnityRotation), Is.LessThan(0.05f));
             frame.GeographicPosition = new GeoPosition(0, 90, 0);
             Assert.That(Quaternion.Angle(frame.ToUnityEarthCenteredRotation(banked), frame.UnityRotation), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToEarthCenteredRotation(frame.UnityRotation), banked), Is.LessThan(0.05f));
             frame.Rotation = Quaternion.identity;
-            Assert.That(frame.UsesEarthCenteredRotation, Is.False);
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.Source));
         }
 
         /// <summary>Invalid ECEF body conventions fail without replacing a usable reference attitude.</summary>
@@ -130,6 +141,7 @@ namespace Emas.Tests
         public void EarthCenteredAttitudes_RejectInvalidBodyAxesAndRequireGeographicSpace()
         {
             ReferenceFrame frame = new ReferenceFrame();
+            Assert.Throws<InvalidOperationException>(() => frame.SetGeographicRotation(0, 0, 0));
             Assert.Throws<InvalidOperationException>(() => frame.SetEarthCenteredRotation(Quaternion.identity));
             frame.Space = ReferenceSpace.Geographic;
             frame.GeographicPosition = new GeoPosition(0, 0, 0);
@@ -139,7 +151,7 @@ namespace Emas.Tests
             Assert.Throws<ArgumentException>(() => frame.ToUnityEarthCenteredRotation(north, default(CoordinateSystem)));
             Assert.Throws<ArgumentException>(() => frame.ToEarthCenteredRotation(Quaternion.identity, CoordinateSystem.Unity));
             Assert.Throws<ArgumentOutOfRangeException>(() => frame.SetEarthCenteredRotation(new Quaternion(0, 0, float.NaN, 1)));
-            Assert.That(frame.UsesEarthCenteredRotation, Is.True);
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.EarthCentered));
             Assert.That(Quaternion.Angle(frame.ToUnityEarthCenteredRotation(north), Quaternion.identity), Is.LessThan(0.05f));
         }
 

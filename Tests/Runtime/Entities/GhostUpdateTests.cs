@@ -40,7 +40,7 @@ namespace Emas.Tests
                 {
                     Assert.That(reads, Is.EqualTo(2), "Every module reader must finish before any Ghost hook.");
                     Spatial spatial = root.GetComponent<Spatial>();
-                    spatial.SetPosition(spatial.Position + new Double3(presence.Key.EntityId == "origin" ? 2 : 5, 0, 0));
+                    spatial.SetCartesianPosition(spatial.Position + new Double3(presence.Key.EntityId == "origin" ? 2 : 5, 0, 0));
                 };
             });
             Detector detector = new Detector();

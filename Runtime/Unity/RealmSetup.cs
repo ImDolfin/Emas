@@ -31,7 +31,7 @@ namespace Emas
         [Tooltip("Manual WGS84 reference: latitude/longitude in degrees and ellipsoidal height in metres.")]
         [SerializeField]
         private GeoPosition _geographicPosition;
-        [Tooltip("Cartesian source axes, or local attitude axes in Geographic space. Geographic Unity axes mean east/up/north; WGS84 positions always use latitude/longitude/height.")]
+        [Tooltip("Cartesian pose axes, or SetSourceRotation quaternion axes in Geographic space. Geographic Unity means east/up/north. Named geographic yaw/pitch/roll and ECEF inputs use their explicit conventions.")]
         [SerializeField]
         private CoordinateSystem _coordinates = CoordinateSystem.Unity;
         [Tooltip("Use a Ghost in this realm as the moving reference. Leave Entity ID empty to assign ReferenceFrame.FollowedGhost at runtime.")]
@@ -58,7 +58,7 @@ namespace Emas
         [Tooltip("Unity world orientation of the reference; aligns shared Cartesian axes with the scene.")]
         [SerializeField]
         private Quaternion _unityRotation = Quaternion.identity;
-        [Tooltip("Cancel the reference rotation, fixing its Unity heading at Unity Rotation. Disable to follow position only.")]
+        [Tooltip("Cancel the reference's full heading, pitch and roll for positions and attitudes, fixing its Unity pose at Unity Rotation. Disable to follow position only.")]
         [SerializeField]
         private bool _followRotation = true;
         [Tooltip("Hide distant spatial presentation without removing tracked Presences.")]

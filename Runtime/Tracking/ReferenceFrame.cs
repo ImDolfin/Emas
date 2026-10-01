@@ -18,6 +18,7 @@ namespace Emas
         private ReferenceSpace _space;
         private CoordinateSystem _coordinates = CoordinateSystem.Unity;
         private Quaternion _rotation = Quaternion.identity;
+        private RotationSpace _rotationSpace;
         private CoordinateSystem? _earthCenteredBodyAxes;
         private Vector3 _unityPosition;
         private Quaternion _unityRotation = Quaternion.identity;
@@ -29,7 +30,7 @@ namespace Emas
         /// <summary>Gets or sets Cartesian or WGS84 geographic projection; defaults to Cartesian.</summary>
         /// <remarks>
         /// Geographic positions are stored as ECEF metres. Geographic rotations accept local tangent or body-to-ECEF input.
-        /// Changing space reinterprets stored positions without converting them. Assign Rotation to clear ECEF attitude mode
+        /// Changing space reinterprets stored positions without converting them. Assign Rotation to clear geographic/ECEF attitude mode
         /// before projecting in Cartesian space.
         /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">The space is unknown, or a stored position cannot define a geographic frame.</exception>
@@ -76,9 +77,9 @@ namespace Emas
         /// </summary>
         /// <remarks>
         /// Cartesian poses use this convention. In Geographic space it describes local attitude axes:
-        /// Unity means east/up/north; ENU and NED have their geographic meanings. ECEF positions and explicit
-        /// body-to-ECEF rotation inputs are unaffected; ECEF attitude supplies its own body-axis mapping.
-        /// Changing it reinterprets stored poses
+        /// Unity means east/up/north; ENU and NED have their geographic meanings. ECEF positions,
+        /// named geographic yaw/pitch/roll and body-to-ECEF inputs are unaffected; ECEF attitude supplies its own body-axis mapping.
+        /// Changing it reinterprets stored source poses
         /// on the next realm update; conversion methods use it immediately. UnityPosition and UnityRotation stay in Unity space.
         /// </remarks>
         /// <exception cref="ArgumentException">The mapping contains undefined or repeated source axes.</exception>
@@ -128,8 +129,8 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets the cached reference quaternion, or sets local/source attitude and clears ECEF attitude mode.
-        /// Use UsesEarthCenteredRotation to identify the cached representation.
+        /// Gets the cached reference quaternion, or sets local/source attitude with RotationSpace.Source.
+        /// Use RotationSpace to identify the cached representation.
         /// </summary>
         /// <remarks>Local geographic attitude uses Coordinates at the reference location. Finite nonzero quaternions are normalized.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">A component is not finite or the quaternion has zero length.</exception>
@@ -142,12 +143,32 @@ namespace Emas
             set
             {
                 _rotation = SpatialMath.NormalizeRotation(value, nameof(value));
+                _rotationSpace = Emas.RotationSpace.Source;
                 _earthCenteredBodyAxes = null;
             }
         }
 
-        /// <summary>Gets whether the cached reference Rotation is expressed as a body-to-ECEF quaternion.</summary>
-        public bool UsesEarthCenteredRotation => _earthCenteredBodyAxes.HasValue;
+        /// <summary>Gets the source, local east/up/north, or body-to-ECEF basis of the cached Rotation.</summary>
+        public RotationSpace RotationSpace => _rotationSpace;
+
+        /// <summary>Sets manual geographic reference attitude from yaw, pitch and roll in degrees.</summary>
+        /// <param name="yawDegrees">Heading clockwise from true north.</param>
+        /// <param name="pitchDegrees">Nose-up pitch after heading.</param>
+        /// <param name="rollDegrees">Right-wing-down bank after pitch.</param>
+        /// <remarks>
+        /// Uses the same intrinsic angle convention as Spatial.SetGeographicRotation, independently of Coordinates.
+        /// Stores Rotation in local east/up/north with RotationSpace.Geographic. A followed Ghost can replace it on projection.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">The reference space is not Geographic.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An angle is not finite.</exception>
+        public void SetGeographicRotation(double yawDegrees, double pitchDegrees, double rollDegrees)
+        {
+            RequireGeographic();
+            Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
+            _rotation = rotation;
+            _rotationSpace = Emas.RotationSpace.Geographic;
+            _earthCenteredBodyAxes = null;
+        }
 
         /// <summary>Sets manual reference attitude from a body-to-ECEF quaternion in Geographic space.</summary>
         /// <param name="rotation">Active rotation mapping source body XYZ vectors into ECEF XYZ.</param>
@@ -162,6 +183,7 @@ namespace Emas
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
             _rotation = normalized;
+            _rotationSpace = Emas.RotationSpace.EarthCentered;
             _earthCenteredBodyAxes = axes;
         }
 
@@ -475,13 +497,19 @@ namespace Emas
             if (spatial.HasRotation)
             {
                 _rotation = spatial.Rotation;
+                _rotationSpace = spatial.RotationSpace;
                 _earthCenteredBodyAxes = spatial.EarthCenteredBodyAxes;
             }
         }
 
         internal Projection Capture()
         {
-            Quaternion referenceRotation = _coordinates.ToUnityRotation(_rotation);
+            Quaternion referenceRotation = _rotationSpace == Emas.RotationSpace.Geographic
+                ? _rotation : _coordinates.ToUnityRotation(_rotation);
+            if (_rotationSpace == Emas.RotationSpace.Geographic)
+            {
+                RequireGeographic();
+            }
             if (_earthCenteredBodyAxes.HasValue)
             {
                 RequireGeographic();
@@ -592,6 +620,17 @@ namespace Emas
                 // Convert the entity's local axes, rotate its tangent frame into the reference tangent frame, then align the scene.
                 return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(position)
                     * _coordinates.ToUnityRotation(rotation), nameof(rotation));
+            }
+
+            internal Quaternion ToUnityGeographicRotation(Quaternion rotation, Double3 position)
+            {
+                if (_space != ReferenceSpace.Geographic)
+                {
+                    throw new InvalidOperationException("Geographic yaw/pitch/roll requires a Geographic reference frame.");
+                }
+                // Named angles are already in east/up/north; only tangent orientation and scene alignment remain.
+                return SpatialMath.NormalizeRotation(Alignment
+                    * _geographicBasis.RotationFrom(GeoPosition.FromEarthCentered(position)) * rotation, nameof(rotation));
             }
 
             internal Quaternion ToUnityEarthCenteredRotation(Quaternion rotation, CoordinateSystem bodyAxes)

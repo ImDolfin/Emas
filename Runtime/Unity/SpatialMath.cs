@@ -5,6 +5,26 @@ namespace Emas
 {
     internal static class SpatialMath
     {
+        internal static Quaternion GeographicRotation(double yawDegrees, double pitchDegrees, double rollDegrees)
+        {
+            RequireFiniteAngle(yawDegrees, nameof(yawDegrees));
+            RequireFiniteAngle(pitchDegrees, nameof(pitchDegrees));
+            RequireFiniteAngle(rollDegrees, nameof(rollDegrees));
+            // Named aircraft angles use physical directions, independent of a source quaternion's basis.
+            Quaternion yaw = Quaternion.AngleAxis((float)(yawDegrees % 360d), Vector3.up);
+            Quaternion pitch = Quaternion.AngleAxis(-(float)(pitchDegrees % 360d), Vector3.right);
+            Quaternion roll = Quaternion.AngleAxis(-(float)(rollDegrees % 360d), Vector3.forward);
+            return NormalizeRotation(yaw * pitch * roll, "rotation");
+        }
+
+        private static void RequireFiniteAngle(double value, string parameter)
+        {
+            if (!IsFinite(value))
+            {
+                throw new ArgumentOutOfRangeException(parameter, "An angle must be finite and expressed in degrees.");
+            }
+        }
+
         internal static bool IsFinite(double value)
         {
             return !double.IsNaN(value) && !double.IsInfinity(value);

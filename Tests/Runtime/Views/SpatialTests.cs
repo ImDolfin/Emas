@@ -79,6 +79,18 @@ namespace Emas.Tests
             AssertPosition(ghost.transform.position, new Vector3(1000, 2, 10), 0.001f);
             AssertRotation(ghost.transform.rotation, rotation);
             Assert.That(ghost.GetComponent<Spatial>().IsInRange, Is.True);
+
+            // Named geographic angles require Geographic projection; incompatible input suppresses presentation and can recover.
+            Spatial spatial = ghost.GetComponent<Spatial>();
+            spatial.SetGeographicRotation(0, 0, 0);
+            ExpectedErrors.Verify(() => _realm.Update(), "InvalidOperationException: Geographic yaw/pitch/roll requires a Geographic reference frame");
+            Assert.That(spatial.IsInRange, Is.False);
+            AssertPosition(ghost.transform.position, new Vector3(1000, 2, 10), 0.001f);
+            spatial.SetSourceRotation(rotation);
+            _realm.Update();
+            Assert.That(spatial.RotationSpace, Is.EqualTo(RotationSpace.Source));
+            Assert.That(spatial.IsInRange, Is.True);
+            AssertRotation(ghost.transform.rotation, rotation);
         }
 
         /// <summary>
@@ -197,8 +209,8 @@ namespace Emas.Tests
             RegisterView();
             ReferenceFrame frame = new ReferenceFrame { Space = ReferenceSpace.Geographic, FollowRotation = false };
             _realm.ReferenceFrame = frame;
-            TestGhost ego = _source.PublishPosition("ego", new GeoPosition(0, 0, 0).ToEarthCentered());
-            TestGhost target = _source.PublishPosition("target", new GeoPosition(0, 0, 10).ToEarthCentered());
+            TestGhost ego = _source.PublishEarthCenteredPosition("ego", new GeoPosition(0, 0, 0).ToEarthCentered());
+            TestGhost target = _source.PublishEarthCenteredPosition("target", new GeoPosition(0, 0, 10).ToEarthCentered());
             _source.PublishRotation("target", Quaternion.identity);
             frame.FollowedGhost = ego.Key;
             _realm.Update();
@@ -214,7 +226,7 @@ namespace Emas.Tests
             Assert.That(target.GetComponent<Spatial>().Position, Is.EqualTo(stored));
             Assert.That(ActiveView(target), Is.SameAs(view));
             Vector3 projected = target.transform.position;
-            ego.GetComponent<Spatial>().SetPosition(new Double3(double.MaxValue, double.MaxValue, double.MaxValue));
+            ego.GetComponent<Spatial>().SetEarthCenteredPosition(new Double3(double.MaxValue, double.MaxValue, double.MaxValue));
             _realm.Update();
             Assert.That(frame.IsReferenceAvailable, Is.False);
             AssertPosition(target.transform.position, projected, 1);
@@ -223,7 +235,7 @@ namespace Emas.Tests
             Assert.That(frame.IsReferenceAvailable, Is.False);
             AssertPosition(target.transform.position, projected, 1);
 
-            TestGhost replacement = _source.PublishPosition("ego", new GeoPosition(0, 0, 0).ToEarthCentered());
+            TestGhost replacement = _source.PublishEarthCenteredPosition("ego", new GeoPosition(0, 0, 0).ToEarthCentered());
             _realm.Update();
             Assert.That(frame.IsReferenceAvailable, Is.True);
             AssertPosition(target.transform.position, new Vector3(0, 10, 0));
@@ -232,7 +244,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Bound WGS84 readers on separate anchors project a target against the latest reference without repeated detection.
+        /// Bound WGS84 readers follow another anchor's position and full attitude without shrinking separation or rediscovery.
         /// </summary>
         [Test]
         public void GeographicReaders_FollowAnotherAnchorAndRefreshWithoutRediscovery()
@@ -294,11 +306,41 @@ namespace Emas.Tests
             Assert.That(target.Root.GetComponent<Spatial>().Position, Is.EqualTo(storedTarget));
             Assert.That(_realm.Manifest(target), Is.SameAs(view));
 
-            reference.Root.GetComponent<Spatial>().SetRotation(Quaternion.AngleAxis(90, Vector3.up));
+            reference.Root.GetComponent<Spatial>().SetSourceRotation(Quaternion.AngleAxis(90, Vector3.up));
             frame.FollowRotation = true;
             _realm.Update();
             AssertPosition(target.Root.transform.position, new Vector3(-5.563909085825f, 4.999993968840f, 6.787977894133f));
             AssertPosition(reference.Root.transform.position, Vector3.zero);
+
+            Spatial referenceSpatial = reference.Root.GetComponent<Spatial>();
+            // Intrinsic heading 90, nose-up pitch 30, right-wing-down roll 90; expected offsets are analytic.
+            referenceSpatial.SetGeographicRotation(450, 30, 90);
+            frame.Coordinates = CoordinateSystem.NorthEastDown;
+            _realm.Update();
+            Vector3 bankedOffset = new Vector3(-0.936132848718f, -5.563909085825f, 8.378558281066f);
+            AssertPosition(target.Root.transform.position, bankedOffset);
+            AssertRotation(reference.Root.transform.rotation, Quaternion.identity);
+            Assert.That(referenceSpatial.RotationSpace, Is.EqualTo(RotationSpace.Geographic));
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.Geographic));
+            Quaternion retainedAttitude = referenceSpatial.Rotation;
+            Assert.Throws<ArgumentOutOfRangeException>(() => referenceSpatial.SetGeographicRotation(0, double.NaN, 0));
+            Assert.That(referenceSpatial.RotationSpace, Is.EqualTo(RotationSpace.Geographic));
+            AssertRotation(referenceSpatial.Rotation, retainedAttitude);
+            Assert.That(Vector3.Distance(target.Root.transform.position, reference.Root.transform.position),
+                Is.EqualTo(Double3.Distance(storedTarget, referenceSpatial.Position)).Within(0.0001));
+            Assert.That(_realm.Manifest(target), Is.SameAs(view));
+
+            // Source quaternion axes can change without reinterpreting named geographic angles.
+            frame.Coordinates = CoordinateSystem.EastNorthUp;
+            _realm.Update();
+            AssertPosition(target.Root.transform.position, bankedOffset);
+            Assert.That(target.Root.GetComponent<Spatial>().Position, Is.EqualTo(storedTarget));
+
+            frame.Coordinates = CoordinateSystem.Unity;
+            referenceSpatial.SetSourceRotation(Quaternion.identity);
+            _realm.Update();
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.Source));
+            AssertPosition(target.Root.transform.position, new Vector3(6.787977894133f, 4.999993968840f, 5.563909085825f));
             // The application owns these sources; Presence deliberately retains only weak references.
             GC.KeepAlive(targetReading);
             GC.KeepAlive(referenceReading);
@@ -325,15 +367,15 @@ namespace Emas.Tests
             spatial.SetEarthCenteredRotation(north);
             _realm.Update();
             Assert.That(_realm.Manifest(target), Is.Null);
-            spatial.SetPosition(new Double3(6378137, 0, 0));
+            spatial.SetEarthCenteredPosition(new Double3(6378137, 0, 0));
             _realm.Update();
             View view = ActiveView(target);
             Assert.That(view, Is.Not.Null);
             AssertRotation(target.transform.rotation, Quaternion.identity);
-            Assert.That(spatial.UsesEarthCenteredRotation, Is.True);
+            Assert.That(spatial.RotationSpace, Is.EqualTo(RotationSpace.EarthCentered));
             Assert.Throws<ArgumentException>(() => spatial.SetEarthCenteredRotation(Quaternion.identity, CoordinateSystem.Unity));
 
-            spatial.SetPosition(new GeoPosition(0, 90, 0).ToEarthCentered());
+            spatial.SetEarthCenteredPosition(new GeoPosition(0, 90, 0).ToEarthCentered());
             _realm.Update();
             AssertRotation(spatial.Rotation, north);
             AssertRotation(target.transform.rotation, Quaternion.identity);
@@ -342,20 +384,20 @@ namespace Emas.Tests
             AssertRotation(target.transform.rotation, Quaternion.AngleAxis(90, Vector3.forward));
             Assert.That(ActiveView(target), Is.SameAs(view));
 
-            TestGhost local = _source.PublishPosition("local", spatial.Position);
+            TestGhost local = _source.PublishEarthCenteredPosition("local", spatial.Position);
             _source.PublishRotation("local", Quaternion.identity);
             frame.FollowedGhost = target.Key;
             frame.FollowRotation = true;
             _realm.Update();
-            Assert.That(frame.UsesEarthCenteredRotation, Is.True);
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.EarthCentered));
             AssertRotation(target.transform.rotation, Quaternion.identity);
             AssertRotation(local.transform.rotation, Quaternion.AngleAxis(-90, Vector3.forward));
             Assert.That(ActiveView(target), Is.SameAs(view));
 
-            spatial.SetRotation(Quaternion.identity);
+            spatial.SetSourceRotation(Quaternion.identity);
             _realm.Update();
-            Assert.That(spatial.UsesEarthCenteredRotation, Is.False);
-            Assert.That(frame.UsesEarthCenteredRotation, Is.False);
+            Assert.That(spatial.RotationSpace, Is.EqualTo(RotationSpace.Source));
+            Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.Source));
             AssertRotation(target.transform.rotation, Quaternion.identity);
             AssertRotation(local.transform.rotation, Quaternion.identity);
         }
@@ -763,14 +805,21 @@ namespace Emas.Tests
             internal TestGhost PublishPosition(string entityId, Double3 position)
             {
                 TestGhost ghost = Publish(entityId);
-                GetSpatial(ghost).SetPosition(position);
+                GetSpatial(ghost).SetCartesianPosition(position);
+                return ghost;
+            }
+
+            internal TestGhost PublishEarthCenteredPosition(string entityId, Double3 position)
+            {
+                TestGhost ghost = Publish(entityId);
+                GetSpatial(ghost).SetEarthCenteredPosition(position);
                 return ghost;
             }
 
             internal TestGhost PublishRotation(string entityId, Quaternion rotation)
             {
                 TestGhost ghost = Publish(entityId);
-                GetSpatial(ghost).SetRotation(rotation);
+                GetSpatial(ghost).SetSourceRotation(rotation);
                 return ghost;
             }
 

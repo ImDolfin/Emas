@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Make Spatial inputs explicit: replace `SetPosition` with `SetCartesianPosition` / `SetEarthCenteredPosition`, and `SetRotation` with `SetSourceRotation`. Add direct geographic yaw/pitch/roll degrees on Spatial and ReferenceFrame; heading is clockwise from true north, pitch nose-up and roll right-wing-down. Named angles keep their physical meaning across source-axis presets. Replace `UsesEarthCenteredRotation` with `RotationSpace`, and update Relative World to ingest SDK angles directly. Clarify full reference-attitude cancellation and fixed-camera use.
+
 - Refresh architecture and lifecycle diagrams for authored module readers, shared geographic/ECEF references and persistent view requests. Keep validation documentation focused on test setup and API contracts.
 
 - Document publishing absolute WGS84 positions relative to another tracked entity, with verified geographic examples and coverage for bound readers on separate anchors.

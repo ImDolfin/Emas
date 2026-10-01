@@ -62,7 +62,7 @@ namespace Emas.Editor
                 {
                     InspectorLayout.Field(serializedObject, "_referenceSpace", "Reference space");
                     bool geographic = !space.hasMultipleDifferentValues && space.intValue == (int)ReferenceSpace.Geographic;
-                    InspectorLayout.Field(serializedObject, "_coordinates", geographic ? "Attitude axes" : "Coordinate system");
+                    InspectorLayout.Field(serializedObject, "_coordinates", geographic ? "Source quaternion axes" : "Coordinate system");
                     InspectorLayout.Field(serializedObject, "_followGhost", "Follow a Ghost");
                     if (follow.hasMultipleDifferentValues)
                     {

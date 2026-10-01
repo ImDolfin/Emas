@@ -528,9 +528,9 @@ namespace Emas.Editor.Tests
             protected override void OnStart()
             {
                 SpatialGhost ego = GetOrCreate<SpatialGhost>("ego", TestKind);
-                ego.GetComponent<Spatial>().SetPosition(new Double3(1000000000.125, 0.0, 1000000000.375));
+                ego.GetComponent<Spatial>().SetCartesianPosition(new Double3(1000000000.125, 0.0, 1000000000.375));
                 SpatialGhost traffic = GetOrCreate<SpatialGhost>("traffic", TestKind);
-                traffic.GetComponent<Spatial>().SetPosition(new Double3(1000000020.375, 0.0, 1000000000.375));
+                traffic.GetComponent<Spatial>().SetCartesianPosition(new Double3(1000000020.375, 0.0, 1000000000.375));
             }
         }
 

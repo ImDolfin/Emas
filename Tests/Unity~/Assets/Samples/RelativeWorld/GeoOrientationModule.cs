@@ -2,15 +2,15 @@ using UnityEngine;
 
 namespace Emas.RelativeWorld
 {
-    /// <summary>Supplies attitude in local east/up/north axes; the geographic frame accounts for tangent orientation.</summary>
+    /// <summary>Supplies SDK yaw/pitch/roll degrees; Spatial converts them and accounts for the entity's tangent plane.</summary>
     [RequireComponent(typeof(Spatial))]
-    public sealed class GeoOrientationModule : EntityModule<Quaternion>
+    public sealed class GeoOrientationModule : EntityModule<GeoPoseReading>
     {
         /// <summary>Updates the Ghost's local geographic attitude.</summary>
-        /// <param name="value">The mapped value supplied by the initializer's reader.</param>
-        public override void Apply(Quaternion value)
+        /// <param name="value">Latest SDK snapshot with heading clockwise from north, nose-up pitch and right-wing-down roll.</param>
+        public override void Apply(GeoPoseReading value)
         {
-            GetComponent<Spatial>().SetRotation(value);
+            GetComponent<Spatial>().SetGeographicRotation(value.YawDegrees, value.PitchDegrees, value.RollDegrees);
         }
     }
 }

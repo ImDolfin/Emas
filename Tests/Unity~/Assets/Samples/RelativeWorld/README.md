@@ -18,7 +18,11 @@ The road, markings, camera, light, tracking prefab and vehicle prefabs are saved
 
 The bird is always present as `relative.bird / bird`. Its four-metre-radius orbit moves with the driving origin and takes eight seconds per lap. Its heading follows the relative orbit, with a constant 20-degree bank. Both position and orientation arrive as SDK readings and pass through the initializer and modules; the bird view contains only authored geometry.
 
-`GeoSource` refreshes membership from each snapshot and calls `Disappear` for missing IDs. Its `Advance(seconds)` method also supports deterministic stepping. The initializer binds readers through weak `Presence.Source`; modules consume `GeoPosition` readings and `Quaternion` local attitudes. Position is stored as double-precision ECEF metres.
+`GeoSource` refreshes membership from each snapshot and calls `Disappear` for missing IDs. Its `Advance(seconds)` method also supports deterministic stepping. The initializer binds readers through weak `Presence.Source`; the position module consumes `GeoPosition`, while the orientation module passes the SDK's yaw/pitch/roll degrees directly to `Spatial.SetGeographicRotation`. Position is stored as double-precision ECEF metres.
+
+The attitude API accepts heading clockwise from true north, nose-up pitch, then right-wing-down roll. It performs the conversion into local east/up/north and sets `RotationSpace.Geographic`; no quaternion construction is needed in the initializer. **Source quaternion axes** only applies when using `SetSourceRotation`, so changing that setting does not reinterpret these named angles.
+
+The sample's camera is fixed in the scene. With **Follow Rotation** enabled, the reference frame cancels the origin's full heading, pitch and roll for the surrounding positions and attitudes. For an aircraft cockpit using this setup, keep the camera fixed relative to the reference's desired Unity pose. Applying the SDK attitude to the camera as well adds another rotation. Following changes viewing direction while preserving the entities' 3D separation.
 
 The followed car defines the local tangent frame directly. Emas subtracts Earth-centered positions in doubles and maps the displacement into the reference's current east/up/north axes. Each entity's local attitude is oriented using its own tangent frame. Parked cars retain fixed geographic positions while the reference moves.
 

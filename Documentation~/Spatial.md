@@ -1,6 +1,19 @@
 # Relative worlds and large coordinates
 
-Configure a reference frame for a realm to project shared Cartesian or geographic positions relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, enabled `Spatial` components use an identity frame: Cartesian poses map directly to Unity world space, with no distance limit. Explicit ECEF attitudes require a Geographic reference. Ghosts without an enabled `Spatial` remain application-positioned.
+Configure a reference frame for a realm to project shared Cartesian or geographic positions relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, enabled `Spatial` components use an identity frame: Cartesian poses map directly to Unity world space, with no distance limit. Geographic and ECEF attitudes require a Geographic reference. Ghosts without an enabled `Spatial` remain application-positioned.
+
+## Choose the input contract
+
+| Spatial input | Meaning | Reference space |
+| --- | --- | --- |
+| `SetCartesianPosition(Double3)` | Shared source XYZ in the world's units and `Coordinates` axes | Cartesian or no reference |
+| `SetGeographicPosition(GeoPosition)` | Absolute WGS84 latitude/longitude degrees and ellipsoidal height metres | Geographic |
+| `SetEarthCenteredPosition(Double3)` | Absolute ECEF XYZ metres | Geographic |
+| `SetSourceRotation(Quaternion)` | Quaternion in the frame's selected source axes; local tangent attitude in Geographic space | Either |
+| `SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)` | Heading clockwise from true north, nose-up pitch, right-wing-down roll | Geographic |
+| `SetEarthCenteredRotation(Quaternion, bodyAxes)` | Active body-to-ECEF quaternion and right-handed source body axes | Geographic |
+
+Position and attitude arrive independently. Setters store data; the Realm applies it after all readers run. `Position` contains source Cartesian coordinates or ECEF metres, never latitude/longitude. `Rotation` contains a normalized quaternion; `RotationSpace` identifies `Source`, `Geographic` (east/up/north), or `EarthCentered`. Read them after `HasPosition` or `HasRotation` becomes true. Each rotation setter replaces the previous representation.
 
 ## Configure a prefab realm
 
@@ -54,7 +67,7 @@ realm.ReferenceFrame = new ReferenceFrame
 };
 ```
 
-`GeoPosition` uses ellipsoidal height in metres. Convert mean-sea-level height with your application's geoid model when needed. Latitude must be within [-90, 90] degrees and longitude within [-180, 180]. `SetGeographicPosition` converts to Earth-centered, Earth-fixed (ECEF) metres, retained in `Spatial.Position`. Sources already providing ECEF can use `SetPosition` directly. All spatial positions in a Geographic realm must use ECEF metres.
+`GeoPosition` uses ellipsoidal height in metres. Convert mean-sea-level height with your application's geoid model when needed. Latitude must be within [-90, 90] degrees and longitude within [-180, 180]. `SetGeographicPosition` converts to Earth-centered, Earth-fixed (ECEF) metres, retained in `Spatial.Position`. Sources already providing ECEF use `SetEarthCenteredPosition`. All spatial positions in a Geographic realm are stored as ECEF metres.
 
 To present one entity relative to another, detect both in the same Realm and give both Ghost roots an enabled `Spatial`. Their anchors and detectors can differ. The reference frame belongs to the Realm; `FollowedGhost` selects the entity supplying its origin, and every participating entity projects through that frame. Each entity still supplies its absolute WGS84 reading. Do not subtract latitude, longitude or altitude in the SDK reader.
 
@@ -64,7 +77,19 @@ For example, with reference `(52.520008, 13.404954, 40.125)` and target `(52.520
 
 On each update, the reference position defines the local east/north/up tangent axes. The projection subtracts ECEF positions in doubles, then rotates that displacement into the reference's tangent frame and applies Unity placement. Stationary entities retain their global positions while their projected positions change with the reference. No static ENU origin is configured. This uses the WGS84 [geodetic conversion](https://gssc.esa.int/navipedia/index.php/Ellipsoidal_and_Cartesian_Coordinates_Conversion) and [local tangent transformation](https://gssc.esa.int/navipedia/index.php/Transformations_between_ECEF_and_ENU_coordinates).
 
-`Coordinates`, shown as **Attitude axes** in Geographic mode, describes the quaternion supplied to `Spatial.SetRotation`: Unity means local east/up/north, ENU means east/north/up, and NED means north/east/down. Emas accounts for each entity's own tangent plane before applying the reference alignment. It does not treat an entity's local attitude as if it originated at the reference. `FollowRotation = false` keeps local north/up aligned to the scene; true also cancels the reference's local heading, pitch and roll. SDK angle order and quaternion representation remain application responsibilities.
+For SDK angles matching the sample, feed attitude directly:
+
+```csharp
+spatial.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
+```
+
+All three angles use degrees. Zero faces true north with the model's +Z forward and +Y up. The intrinsic sequence is heading about local up, nose-up pitch about the resulting body right, then right-wing-down bank about the resulting body forward. Angles wrap modulo 360 before float conversion; nonfinite input throws without replacing the last attitude. This is equivalent to `yaw * pitch * roll` in Unity east/up/north axes, with positive yaw and negative pitch/roll `AngleAxis` angles. It follows the entity's own tangent plane as its position changes.
+
+These named angles have the same physical meaning with Unity, ENU, NED or Custom selected. Emas stores their converted quaternion as `RotationSpace.Geographic`; changing `Coordinates` does not reinterpret it. For a manual geographic reference, use `frame.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)` with the same convention. Convert SDK radians or different angle signs/order into this documented convention before calling it.
+
+`Coordinates`, shown as **Source quaternion axes** in Geographic mode, describes raw quaternions supplied to `Spatial.SetSourceRotation`: Unity means local east/up/north, ENU means east/north/up, and NED means north/east/down. Emas accounts for each entity's own tangent plane before applying the reference alignment. SDK quaternion ordering, active/passive representation and body-axis conventions remain application responsibilities. An already converted Unity quaternion uses Unity source axes.
+
+`FollowRotation = false` keeps local north/up aligned to the scene. True cancels the reference's full heading, pitch and roll for both positions and attitudes, preserving 3D separation while changing the arrangement relative to the viewer. For a cockpit view using this cancellation, keep the camera fixed relative to the reference's desired Unity pose; assigning the SDK attitude to that camera applies another rotation. Alternatively, follow position only and orient the camera yourself.
 
 For a fixed geographic reference, assign `frame.GeographicPosition = new GeoPosition(...)` after selecting Geographic space. `frame.Position` exposes the same point in ECEF metres. A followed reference can also be assigned later, using the runtime-selection workflow above. Loss freezes both the last reference position and its tangent axes.
 
@@ -77,7 +102,7 @@ Use `TryToUnityPosition(GeoPosition, out Vector3)` and `ToGeographicPosition(Vec
 Use the same **Geographic** reference space for an SDK that already supplies Earth-centered, Earth-fixed coordinates. Positions bypass WGS84 conversion, and ECEF attitudes have an explicit input method:
 
 ```csharp
-spatial.SetPosition(new Double3(ecefX, ecefY, ecefZ)); // ECEF metres
+spatial.SetEarthCenteredPosition(new Double3(ecefX, ecefY, ecefZ));
 spatial.SetEarthCenteredRotation(bodyToEcefRotation);
 ```
 
@@ -92,7 +117,7 @@ spatial.SetEarthCenteredRotation(bodyToEcefRotation, bodyAxes);
 
 `CoordinateSystem.NorthEastDown` describes the default body mapping; `EastNorthUp` describes X right, Y forward, Z up. This parameter concerns the body's axes, not geographic directions at its current location. Decode SDK quaternion ordering and invert passive ECEF-to-body attitudes in the application as needed. ECEF attitudes require right-handed body axes; a mapping that cannot represent a proper body-to-ECEF rotation is rejected.
 
-Position and attitude can arrive independently, in either order. Emas retains the global quaternion, so moving an entity without another attitude update does not silently change its global orientation. Local geographic attitudes from `SetRotation` and ECEF attitudes can coexist in the same Realm. `UsesEarthCenteredRotation` identifies the stored rotation representation. Calling `SetRotation` switches that Ghost back to the local/source convention selected by the frame's **Attitude axes** setting.
+Position and attitude can arrive independently, in either order. Emas retains the global quaternion, so moving an entity without another attitude update does not silently change its global orientation. Source, named geographic and ECEF attitudes can coexist in the same Realm. `RotationSpace` identifies the stored quaternion's basis. Calling `SetSourceRotation` switches that Ghost back to the local/source convention selected by the frame's **Source quaternion axes** setting.
 
 Follow the Ghost's key normally: the frame inherits its attitude representation. For a manual reference, assign its ECEF `Position` and call `frame.SetEarthCenteredRotation(...)`. `ToUnityEarthCenteredRotation(...)` and `ToEarthCenteredRotation(...)` convert attitudes in both directions and take the same optional body-axis mapping. These inputs still display around the reference's moving tangent frame.
 
@@ -116,11 +141,11 @@ frame.Coordinates = new CoordinateSystem(
     right: Axis.NegativeX, up: Axis.PositiveZ, forward: Axis.PositiveY);
 ```
 
-In Cartesian space, the setting applies to `Spatial` positions and quaternion rotations, the reference pose, and both directions of the conversion helpers. In Geographic space it applies to local attitudes; WGS84/ECEF positions have fixed geographic meanings. All Cartesian poses and local geographic attitudes in a realm must use the selected convention. Explicit ECEF attitudes use their own body-axis mapping. `UnityPosition` and `UnityRotation` remain in Unity coordinates. Reference following and the desired Unity pose are configured independently of the source axes.
+In Cartesian space, the setting applies to `Spatial` positions and source quaternion rotations, the reference pose, and both directions of the conversion helpers. In Geographic space it applies to source quaternions; WGS84/ECEF positions and named yaw/pitch/roll have fixed geographic meanings. Source quaternion inputs in a realm must use the selected convention. Explicit ECEF attitudes use their own body-axis mapping. Rotation conversion helpers take source quaternions unless explicitly named EarthCentered. `UnityPosition` and `UnityRotation` remain in Unity coordinates. Reference following and the desired Unity pose are configured independently of the source axes.
 
 Rotations are converted by changing both the world and local basis of their rotation matrix, including handedness. Feed quaternions expressed in that source basis; decoding an SDK's angle order, angular units or quaternion representation belongs in the application. Prefab geometry uses Unity local axes.
 
-Changing `Coordinates` at runtime reinterprets stored source poses on the next realm update, retaining Ghosts and views. Conversion helpers use the new setting immediately. It does not rewrite the stored source data.
+Changing `Coordinates` at runtime reinterprets stored source poses on the next realm update, retaining Ghosts and views. Named geographic angles and native ECEF attitudes retain their physical meaning. Conversion helpers use the new setting immediately. It does not rewrite the stored source data.
 
 ## Keep your car fixed by code
 
@@ -170,7 +195,7 @@ public sealed class PositionModule : EntityModule<Double3>
 {
     public override void Apply(Double3 position)
     {
-        GetComponent<Spatial>().SetPosition(position);
+        GetComponent<Spatial>().SetCartesianPosition(position);
     }
 }
 
@@ -178,7 +203,7 @@ public sealed class RotationModule : EntityModule<Quaternion>
 {
     public override void Apply(Quaternion rotation)
     {
-        GetComponent<Spatial>().SetRotation(rotation);
+        GetComponent<Spatial>().SetSourceRotation(rotation);
     }
 }
 ```

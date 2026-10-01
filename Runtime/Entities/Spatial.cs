@@ -8,10 +8,10 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Place on the Ghost root. Positions retain doubles; Cartesian poses use ReferenceFrame.Coordinates.
-    /// In Geographic space, positions are ECEF metres; rotations can use local tangent axes or explicit body-to-ECEF input.
+    /// In Geographic space, positions are ECEF metres; rotations accept named geographic angles, source quaternions or body-to-ECEF input.
     /// In Cartesian space, all participating poses share the source coordinate convention and unit.
     /// Realm projection owns this root's world pose while this component is enabled; views inherit that pose.
-    /// With no reference frame, Cartesian poses map directly to Unity world space. Explicit ECEF attitudes require a Geographic frame.
+    /// With no reference frame, Cartesian poses map directly to Unity world space. Geographic and ECEF attitudes require a Geographic frame.
     /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished
     /// when inactivity expiry is enabled. Disable this component to release spatial placement and range suppression.
     /// Supply channels on Unity's main thread; setters store input for the next realm projection.
@@ -22,6 +22,7 @@ namespace Emas
     {
         private Double3 _position;
         private Quaternion _rotation = Quaternion.identity;
+        private RotationSpace _rotationSpace;
         private CoordinateSystem? _earthCenteredBodyAxes;
         private bool _hasPosition;
         private bool _hasRotation;
@@ -32,7 +33,7 @@ namespace Emas
         private readonly HashSet<Collider> _hiddenColliders = new HashSet<Collider>();
 
         /// <summary>
-        /// Gets the last Cartesian position, or ECEF metres after geographic input; meaningful after HasPosition becomes true.
+        /// Gets the last Cartesian source position or absolute ECEF metres after geographic/ECEF input; valid after HasPosition is true.
         /// </summary>
         public Double3 Position
         {
@@ -43,7 +44,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets the last source quaternion: Cartesian/local attitude or body-to-ECEF when UsesEarthCenteredRotation is true.
+        /// Gets the last normalized quaternion in RotationSpace; meaningful after HasRotation becomes true.
         /// </summary>
         public Quaternion Rotation
         {
@@ -53,8 +54,8 @@ namespace Emas
             }
         }
 
-        /// <summary>Gets whether Rotation is a body-to-ECEF quaternion, rather than a local/source attitude.</summary>
-        public bool UsesEarthCenteredRotation => _earthCenteredBodyAxes.HasValue;
+        /// <summary>Gets the basis of Rotation: configured source axes, local east/up/north, or body-to-ECEF.</summary>
+        public RotationSpace RotationSpace => _rotationSpace;
 
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
@@ -97,24 +98,31 @@ namespace Emas
         }
 
         /// <summary>
-        /// Supplies a shared Cartesian position, or ECEF metres for a Geographic frame, without changing rotation.
+        /// Supplies a shared Cartesian position in ReferenceFrame.Coordinates without changing rotation.
         /// </summary>
-        /// <param name="position">The finite position in the realm's source space.</param>
-        /// <remarks>Stores input only. The next realm projection applies it to the root's world transform.</remarks>
+        /// <param name="position">Finite source XYZ coordinates in the Cartesian world's shared units.</param>
+        /// <remarks>Use with Cartesian space, or without a reference. Stores input for the next realm projection.</remarks>
         /// <exception cref="System.ArgumentOutOfRangeException">An input coordinate is not finite.</exception>
-        public void SetPosition(Double3 position)
+        public void SetCartesianPosition(Double3 position)
         {
-            ReferenceFrame.ValidatePosition(position, nameof(position));
-            _position = position;
-            _hasPosition = true;
+            StorePosition(position);
+        }
+
+        /// <summary>Supplies absolute ECEF XYZ metres for a Geographic reference, independently of attitude.</summary>
+        /// <param name="position">Finite Earth-centered, Earth-fixed coordinates in metres, not latitude/longitude/height.</param>
+        /// <remarks>Stores input for the next projection. No conversion through ReferenceFrame.Coordinates is applied.</remarks>
+        /// <exception cref="System.ArgumentOutOfRangeException">An input coordinate is not finite.</exception>
+        public void SetEarthCenteredPosition(Double3 position)
+        {
+            StorePosition(position);
         }
 
         /// <summary>Supplies a WGS84 position, storing ECEF metres for use with a Geographic reference.</summary>
         /// <param name="position">The WGS84 position with ellipsoidal height in metres.</param>
-        /// <remarks>Retains the current attitude; local attitude is reinterpreted at this new position during projection.</remarks>
+        /// <remarks>Requires Geographic projection. Retains attitude; local geographic attitude follows the new tangent plane.</remarks>
         public void SetGeographicPosition(GeoPosition position)
         {
-            SetPosition(position.ToEarthCentered());
+            StorePosition(position.ToEarthCentered());
         }
 
         /// <summary>
@@ -122,11 +130,31 @@ namespace Emas
         /// in ReferenceFrame.Coordinates; otherwise use the shared Cartesian frame.
         /// </summary>
         /// <param name="rotation">The finite nonzero source quaternion; normalized before storage.</param>
-        /// <remarks>Clears ECEF attitude mode. Position remains unchanged until separately supplied.</remarks>
+        /// <remarks>Sets RotationSpace to Source. Position remains unchanged; use SetGeographicRotation for named angles.</remarks>
         /// <exception cref="System.ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
-        public void SetRotation(Quaternion rotation)
+        public void SetSourceRotation(Quaternion rotation)
         {
             _rotation = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
+            _rotationSpace = Emas.RotationSpace.Source;
+            _earthCenteredBodyAxes = null;
+            _hasRotation = true;
+        }
+
+        /// <summary>Supplies local geographic yaw, pitch and roll in degrees for a Geographic reference.</summary>
+        /// <param name="yawDegrees">Heading clockwise from true north about local up.</param>
+        /// <param name="pitchDegrees">Nose-up pitch about the heading's body-right axis.</param>
+        /// <param name="rollDegrees">Right-wing-down bank about the pitched body's forward axis.</param>
+        /// <remarks>
+        /// Intrinsic yaw, then pitch, then roll; zero faces north with model +Z forward and +Y up.
+        /// Stores a normalized east/up/north quaternion with RotationSpace.Geographic, independently of Coordinates.
+        /// Angles wrap modulo 360 before float conversion. Position can arrive later; moving it preserves this local attitude.
+        /// </remarks>
+        /// <exception cref="System.ArgumentOutOfRangeException">An angle is not finite.</exception>
+        public void SetGeographicRotation(double yawDegrees, double pitchDegrees, double rollDegrees)
+        {
+            Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
+            _rotation = rotation;
+            _rotationSpace = Emas.RotationSpace.Geographic;
             _earthCenteredBodyAxes = null;
             _hasRotation = true;
         }
@@ -134,7 +162,7 @@ namespace Emas
         /// <summary>Supplies a body-to-ECEF quaternion for a Geographic reference, independently of position.</summary>
         /// <param name="rotation">Active rotation mapping source body XYZ vectors into ECEF XYZ.</param>
         /// <param name="bodyAxes">Signed body axes mapped to Unity right/up/forward. Null uses X forward, Y right, Z down (NED mapping).</param>
-        /// <remarks>Body axes must be right-handed. The global attitude remains unchanged when only position updates.</remarks>
+        /// <remarks>Sets RotationSpace to EarthCentered. Body axes must be right-handed; position updates retain this global attitude.</remarks>
         /// <exception cref="System.ArgumentException">The body axes are invalid or not right-handed.</exception>
         /// <exception cref="System.ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public void SetEarthCenteredRotation(Quaternion rotation, CoordinateSystem? bodyAxes = null)
@@ -142,8 +170,16 @@ namespace Emas
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
             _rotation = normalized;
+            _rotationSpace = Emas.RotationSpace.EarthCentered;
             _earthCenteredBodyAxes = axes;
             _hasRotation = true;
+        }
+
+        private void StorePosition(Double3 position)
+        {
+            ReferenceFrame.ValidatePosition(position, nameof(position));
+            _position = position;
+            _hasPosition = true;
         }
 
         // Called by the realm after every module has updated and the shared reference is captured.
@@ -158,7 +194,9 @@ namespace Emas
                 {
                     Quaternion rotation = _earthCenteredBodyAxes.HasValue
                         ? projection.ToUnityEarthCenteredRotation(Rotation, _earthCenteredBodyAxes.Value)
-                        : projection.ToUnityRotation(Rotation, Position);
+                        : _rotationSpace == Emas.RotationSpace.Geographic
+                            ? projection.ToUnityGeographicRotation(Rotation, Position)
+                            : projection.ToUnityRotation(Rotation, Position);
                     transform.SetPositionAndRotation(position, rotation);
                 }
                 else

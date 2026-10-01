@@ -116,19 +116,22 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `GeoPosition(latitudeDegrees, longitudeDegrees, heightMeters)` | WGS84 coordinates with ellipsoidal height; properties expose the same units |
 | `GeoPosition.ToEarthCentered()` / `FromEarthCentered(position)` | Convert between WGS84 and double-precision ECEF metres |
 | `Spatial.SetEarthCenteredRotation(rotation, bodyAxes)` | Publish active body-to-ECEF attitude for Geographic space; body axes default to forward/right/down |
-| `Spatial.UsesEarthCenteredRotation` / `ReferenceFrame.UsesEarthCenteredRotation` | Identify whether the cached Rotation is body-to-ECEF rather than local/source attitude |
+| `Spatial.RotationSpace` / `ReferenceFrame.RotationSpace` | Identify the cached quaternion basis: Source, Geographic (east/up/north), or EarthCentered (body-to-ECEF) |
+| `Spatial.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)` | Publish intrinsic heading clockwise from north, nose-up pitch, then right-wing-down bank; independent of Coordinates |
+| `ReferenceFrame.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)` | Set manual geographic reference attitude with the same degree convention |
 | `ReferenceFrame.SetEarthCenteredRotation(rotation, bodyAxes)` | Set manual body-to-ECEF reference attitude; assigning Rotation switches back to local/source attitude |
 | `ToUnityEarthCenteredRotation(rotation, bodyAxes)` / `ToEarthCenteredRotation(rotation, bodyAxes)` | Convert ECEF attitudes to/from Unity using a Geographic reference |
 | `Spatial.SetGeographicPosition(position)` | Publish WGS84 coordinates; `Spatial.Position` retains the ECEF value |
+| `Spatial.SetEarthCenteredPosition(position)` | Publish absolute ECEF XYZ metres for Geographic space |
 | `ReferenceFrame.GeographicPosition` | Manual or last followed WGS84 reference position, available in Geographic space |
 | `TryToUnityPosition(GeoPosition, out result)` / `ToGeographicPosition(Vector3)` | Geographic point projection and its inverse |
 | `ToUnityRotation(rotation, GeoPosition)` / `ToSimulationRotation(rotation, GeoPosition)` | Convert local attitude at the entity's own geographic location |
 | `Double3(x, y, z)` | Double-precision Cartesian position or displacement; preserve SDK double values |
 | `Double3.Distance(a, b)` | Distance between shared Cartesian positions in double precision |
-| `Spatial.SetPosition(position)` / `Position` / `HasPosition` | Publish and read the root's independent double-precision position channel |
-| `Spatial.SetRotation(rotation)` / `Rotation` / `HasRotation` | Publish and read the optional orientation channel; without it Emas leaves root rotation untouched |
+| `Spatial.SetCartesianPosition(position)` / `Position` / `HasPosition` | Publish shared Cartesian XYZ in Coordinates axes; Position exposes Cartesian input or ECEF storage after geographic input |
+| `Spatial.SetSourceRotation(rotation)` / `Rotation` / `HasRotation` | Publish a source quaternion in Coordinates axes; Rotation and RotationSpace identify stored attitude; without it root rotation is left alone |
 | `Spatial.IsInRange` | Whether the latest spatial projection can be presented |
-| `ReferenceFrame.Coordinates` | Cartesian pose axes, or local attitude axes in Geographic space; defaults to Unity (east/up/north geographically) |
+| `ReferenceFrame.Coordinates` | Cartesian pose axes or geographic source quaternion axes; named geographic angles and ECEF inputs have explicit conventions |
 | `CoordinateSystem.Unity` / `EastNorthUp` / `NorthEastDown` | Presets for Unity, ENU and NED source coordinates |
 | `new CoordinateSystem(right, up, forward)` | Custom signed source axes mapping to Unity directions; use each of X, Y and Z once via `Axis.PositiveX`, `Axis.NegativeX`, etc. |
 | `CoordinateSystem.Right` / `Up` / `Forward` | Read the source axis mapped to each Unity direction |

@@ -33,7 +33,7 @@ Each test has a consumer-facing purpose documented in its XML summary. Tests use
 | Entities | Typed identity and appearance values, root contracts, and double-precision coordinate behavior. |
 | Tracking | Detector ownership and status, SDK data application, identity reuse, cleanup, explicit dispatch, restart, inactivity and disappearance grace. |
 | Queries | Filtering and lookups, paired arrival/departure notifications, and subscriptions across live realms. |
-| Views | Blueprint selection, reference-frame projection, spatial channels, and presentation availability. |
+| Views | Blueprint selection, reference-frame projection, independent spatial channels, geographic yaw/pitch/roll with preserved separation, input failures and presentation availability. |
 | Unity setup | Isolated/nested realm ownership, configuration timing, reparenting and automatic lifecycle updates. |
 | Editor authoring | Serialized configuration errors, shared realm blueprint mappings, reference selection and visible Ghost fields. |
 | Samples | Three runnable sample scenes and required consistency between package samples and their imported copies. |
