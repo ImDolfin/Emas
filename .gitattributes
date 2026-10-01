@@ -1,0 +1,2 @@
+# Preserve exact Archify HTML bytes; trailing template whitespace is generated.
+Documentation~/Diagrams/*.html text eol=lf whitespace=-blank-at-eol

@@ -12,6 +12,7 @@ A colocated `GhostInitializer` maps `Presence.Source` to the modules authored on
 
 ```text
 Realm (direct code setup or one RealmSetup)
+  ReferenceFrame (optional; shared projection for the whole realm)
   Anchor (one detector in a prefab setup; code may attach more)
     Presence (stable identity, label, capabilities, availability)
       Ghost (invisible root, configured modules and application behaviors)
@@ -20,7 +21,7 @@ Realm (direct code setup or one RealmSetup)
 
 Identity is `(anchor ID, kind, entity ID)` within one realm. The detector reports identity, optional label, visual variant, capability metadata and an application source object. Presence stores that source weakly and resolves destroyed Unity objects as null. A plain `Ghost` component carries identity and exposes the contracts on its root. Prefabs define their modules as saved components; custom Ghost subclasses are optional for entity-specific behavior and can also use `RequireComponent`. The per-kind initializer binds SDK-to-value readers on those components; it does not create modules. Each realm update reads and applies the enabled module inputs before projection and query notifications. A changed source reference, changed capability set or rediscovered/reassigned Ghost reruns the initializer. Disappearance, handover and removal clear old bindings and release the weak source reference. Each identity belongs to one detector attachment; compatible replacement preserves Ghosts and their modules. Prepared Ghosts remain unowned and unavailable until claimed.
 
-Queries see available Ghost roots only; the corresponding `Presence.IsAvailable` follows the same lifecycle. `realm.Query()` is scoped to one realm; `Query.All()` includes every live realm and follows realms created later. Its filters, scalar results, enumeration and subscriptions use the same available-ghost rules. `realm.Query(globalQuery)` reuses the global query's filters within that realm. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors. Developers can call `Realm.Manifest(presence, detailLevel)` to request its optional view.
+Queries see available Ghost roots only; the corresponding `Presence.IsAvailable` follows the same lifecycle. `realm.Query()` is scoped to one realm; `Query.All()` includes every live realm and follows realms created later. Its filters, scalar results, enumeration and subscriptions use the same available-ghost rules. `realm.Query(globalQuery)` reuses the global query's filters within that realm. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors. Developers call `realm.Manifest(presence)` or `realm.Manifest(ghost)` to request its optional view; the request persists until `Demanifest` or final removal.
 
 Manifestation blueprints are resolved by Kind within a Realm. `RealmSetup` registers the mappings for every anchor in that realm; anchors only group identities, attach detectors and optionally request views automatically. Variants select different appearances within a Kind. Each realm registration holds a snapshot of the blueprint and its inline named variant rows. Asset edits take effect in that realm after re-registration, which refreshes requested views across all anchors on the next update while keeping existing roots. Other realms retain their own mappings. Re-registering after a kind change releases the old kind in the realm and refreshes both kinds. Root prefab changes affect newly created ghosts. With no blueprint, Emas creates a viewless root of the registered Ghost type, or a plain `Ghost` when no initializer is registered; empty blueprints also remain silent.
 
@@ -54,11 +55,15 @@ Successful startup outside an update finalizes directly reported roots immediate
 
 ## Optional spatial projection
 
-Enabled root `Spatial` components opt into shared Cartesian coordinates. A null `Realm.ReferenceFrame` uses identity projection into Unity world space with no distance limit; an assigned frame configures relative placement. `Double3` preserves global positions until the reference displacement has been calculated in doubles. Geographic space stores WGS84 positions as ECEF metres and derives a moving tangent basis at the reference; each entity's local attitude is rotated from its own tangent frame, while explicit body-to-ECEF attitude is transformed directly into the reference frame. Cartesian space uses the configured source axes. `SpatialManager` captures one shared projection after all module readers and Ghost hooks finish, then each `Spatial` applies its own world pose and range suppression. The manager tracks presentation availability for view refresh; no per-Ghost Unity `Update` is needed. World placement compensates for Anchor parents; ghosts without enabled spatial components retain application positioning.
+Enabled root `Spatial` components opt into shared source coordinates. A null `Realm.ReferenceFrame` uses identity projection into Unity world space with no distance limit; an assigned frame configures relative placement. Each realm has one reference frame across all its anchors. An Anchor groups identities and detector attachments; its parent transform is not a geographic origin. `Double3` preserves global positions until the reference displacement has been calculated in doubles. Cartesian space uses the configured source axes. `SpatialManager` captures one shared projection after all module readers and Ghost hooks finish, then each `Spatial` applies its own world pose and range suppression. The manager tracks presentation availability for view refresh; no per-Ghost Unity `Update` is needed. World placement compensates for Anchor parents; ghosts without enabled spatial components retain application positioning.
 
-A manual reference or a followed spatial ghost provides the origin. Following resolves once per spatial phase, so reference movement reprojects entities whose cached position has not changed. Rotation is an independent optional channel. Losing a followed entity retains its last valid reference pose and exposes that loss without jumping to the global origin.
+In Geographic space, `GeoPosition` holds WGS84 latitude/longitude in degrees and ellipsoidal height in metres. `Spatial.SetGeographicPosition` converts that absolute reading to ECEF doubles; `SetPosition` accepts ECEF metres directly. The reference derives a local east/up/north tangent basis at its current position. `SetRotation` supplies attitude in the entity's own tangent frame, using `ReferenceFrame.Coordinates`; `SetEarthCenteredRotation` instead supplies a body-to-ECEF quaternion and its right-handed body-axis convention. Position and attitude update independently. Projection converts both into the reference basis before applying Unity placement.
 
-Presentation range is measured in shared Cartesian coordinates before float conversion. Out-of-range entities keep their identities, query availability and root scripts; their views, root rendering and colliders are suppressed. The view request survives and resumes on range entry. This keeps distant presentation out of Unity's large-coordinate range without requiring entity republication. See [spatial integration](Spatial.md).
+To place one geographic entity relative to another, give both roots enabled `Spatial` components in the same realm and bind each entity's absolute readings through its authored modules. Set `ReferenceFrame.Space` to `Geographic` and `FollowedGhost` to the reference entity's full `Key`; the entities may use different anchors and detectors. All readers run before the reference is captured, so moving the reference reprojects a stationary target without another detection. `FollowRotation = false` preserves local cardinal axes; enabling it also cancels the reference attitude. The Unity position and rotation settings place that resulting frame in the scene.
+
+A manual reference or a followed spatial ghost provides the origin. Following resolves once per spatial phase. Until the first valid reference and entity position exist, spatial presentation waits while the entity remains queryable. Losing a followed entity retains its last valid reference pose and exposes that loss through `IsReferenceAvailable`; presentation continues against the frozen pose. Changing `FollowedGhost` marks the reference unavailable until projection resolves the new target, retaining any last valid pose meanwhile.
+
+Presentation range is measured before float conversion: source-space distance in Cartesian mode, or ECEF chord distance in metres in Geographic mode. Out-of-range entities keep their identities, query availability and root scripts; their views, root rendering and colliders are suppressed. The view request survives and resumes on range entry. This keeps distant presentation out of Unity's large-coordinate range without requiring entity republication. See [spatial integration](Spatial.md).
 
 ## Failure and cleanup
 
@@ -101,6 +106,9 @@ Identity map traversal uses snapshots and rechecks membership/registration after
 | [ViewManager](../Runtime/Views/ViewManager.cs) | Own view requests; stage, bind, refresh and destroy views; contain presentation failures per ghost |
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
 | [SceneChangeQueue](../Runtime/Unity/SceneChangeQueue.cs) | Use the shared queue to apply nested GameObject changes after the current scene operation returns |
+| [SpatialManager](../Runtime/Unity/SpatialManager.cs) / [Spatial](../Runtime/Entities/Spatial.cs) | Capture one reference after all readers and Ghost hooks; apply world poses and coordinate presentation suppression |
+| [ReferenceFrame](../Runtime/Tracking/ReferenceFrame.cs) / [GeographicBasis](../Runtime/Unity/GeographicBasis.cs) | Convert source or ECEF poses into Unity placement; derive geographic tangent axes and retain a lost reference's last valid pose |
+| [GeoPosition](../Runtime/Entities/GeoPosition.cs) | Convert WGS84 latitude, longitude and ellipsoidal height to and from ECEF doubles |
 | [PresenceDetector](../Runtime/Tracking/PresenceDetector.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | SDK detection, attachment lifecycle and scene ownership |
 | [Presence](../Runtime/Entities/Presence.cs) / [EntityModule](../Runtime/Entities/EntityModule.cs) | Stable identity and Ghost-owned value readers and application |
 
@@ -114,15 +122,15 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | --- | --- |
 | `Runtime/` | `Realm` entry point and package metadata |
 | `Runtime/Entities/` | Presence handles, entity modules, Ghost contracts, spatial state and identity/coordinate values |
-| `Runtime/Tracking/` | Anchors, detectors, population lifecycle, identity storage and command execution |
+| `Runtime/Tracking/` | Anchors, detectors, population lifecycle, identity storage, reference-frame configuration and command execution |
 | `Runtime/Queries/` | Filtering and subscriptions |
 | `Runtime/Views/` | ManifestationBlueprint, inline ManifestationVariant rows and view lifecycle |
-| `Runtime/Unity/` | Prefab realm and anchor setup, automatic runner and queued scene changes |
+| `Runtime/Unity/` | Prefab setup, automatic runner, spatial coordination, geographic mathematics and queued scene changes |
 | `Editor/Diagnostics/` | Passive multi-Realm diagnostics and optional Scene view overlay |
 | `Editor/Inspectors/` | ManifestationBlueprint variant table, RealmSetup and AnchorSetup authoring validation |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
 | `Samples~/Minimal/` | Quick start with one marker and a position module |
 | `Samples~/Example/` | Three cars, reusable modules and SDK replacement |
-| `Samples~/RelativeWorld/` | Double-precision spatial placement and a moving reference |
+| `Samples~/RelativeWorld/` | WGS84 module readings, parked cars and a bird projected against a moving reference |
 
 Each top-level type has its own file. Runtime public types share the `Emas` namespace so application imports remain simple.

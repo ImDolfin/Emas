@@ -1,317 +1,535 @@
 {
-    "schema_version":  1,
-    "diagram_type":  "architecture",
-    "meta":  {
-                 "title":  "Emas: Detection to Manifestation",
-                 "locale":  "en",
-                 "quality_profile":  "showcase",
-                 "viewBox":  [
-                                 1390,
-                                 720
-                             ],
-                 "legend":  {
-                                "entries":  {
-                                                "backend":  {
-                                                                "label":  "Tracking and conversion"
-                                                            },
-                                                "frontend":  {
-                                                                 "label":  "Scene and application"
-                                                             },
-                                                "database":  {
-                                                                 "label":  "Manifestation assets"
-                                                             },
-                                                "external":  {
-                                                                 "label":  "External SDK"
-                                                             }
-                                            }
-                            },
-                 "views":  [
-                               {
-                                   "id":  "discovery",
-                                   "label":  "Discovery",
-                                   "focus":  [
-                                                 "sdk",
-                                                 "detector",
-                                                 "realm",
-                                                 "presence",
-                                                 "anchor"
-                                             ],
-                                   "note":  "The detector reads SDK entities and reports kind, ID, label, variant, capabilities, and data. The Realm owns each stable Presence."
-                               },
-                               {
-                                   "id":  "initialization",
-                                   "label":  "Initialization",
-                                   "focus":  [
-                                                 "realm",
-                                                 "presence",
-                                                 "modules",
-                                                 "ghost"
-                                             ],
-                                   "note":  "A per-kind Realm initializer creates the Ghost root and installs EntityModules before SDK data is applied."
-                               },
-                               {
-                                   "id":  "presentation",
-                                   "label":  "Presentation",
-                                   "focus":  [
-                                                 "application",
-                                                 "realm",
-                                                 "presence",
-                                                 "ghost",
-                                                 "blueprint",
-                                                 "view"
-                                             ],
-                                   "note":  "Manifest(Presence) requests an optional View from the kind\u0027s blueprint. Demanifest retains the Presence and Ghost."
-                               },
-                               {
-                                   "id":  "availability",
-                                   "label":  "Availability",
-                                   "focus":  [
-                                                 "detector",
-                                                 "realm",
-                                                 "presence",
-                                                 "ghost",
-                                                 "view"
-                                             ],
-                                   "note":  "Disappear makes the Presence unavailable; configured grace can retain its root for recovery before removal."
-                               }
-                           ]
-             },
-    "components":  [
-                       {
-                           "id":  "sdk",
-                           "type":  "external",
-                           "label":  "External SDK",
-                           "sublabel":  "Detected entities",
-                           "pos":  [
-                                       35,
-                                       310
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "detector",
-                           "type":  "backend",
-                           "label":  "PresenceDetector",
-                           "sublabel":  "ID, caps + SDK data",
-                           "pos":  [
-                                       265,
-                                       310
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "realm",
-                           "type":  "backend",
-                           "label":  "Realm",
-                           "sublabel":  "Owns tracking + setup",
-                           "pos":  [
-                                       495,
-                                       310
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "presence",
-                           "type":  "backend",
-                           "label":  "Presence",
-                           "sublabel":  "Stable detected entity",
-                           "pos":  [
-                                       725,
-                                       310
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "ghost",
-                           "type":  "frontend",
-                           "label":  "Ghost root",
-                           "sublabel":  "Invisible entity root",
-                           "pos":  [
-                                       955,
-                                       310
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "view",
-                           "type":  "frontend",
-                           "label":  "View",
-                           "sublabel":  "Optional manifestation",
-                           "pos":  [
-                                       1185,
-                                       310
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "application",
-                           "type":  "frontend",
-                           "label":  "Application",
-                           "sublabel":  "Queries + Manifest",
-                           "pos":  [
-                                       495,
-                                       60
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "blueprint",
-                           "type":  "database",
-                           "label":  "ManifestationBlueprint",
-                           "sublabel":  "Named variant rows",
-                           "pos":  [
-                                       1185,
-                                       60
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "anchor",
-                           "type":  "frontend",
-                           "label":  "Anchor",
-                           "sublabel":  "Scene reference frame",
-                           "pos":  [
-                                       495,
-                                       560
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       },
-                       {
-                           "id":  "modules",
-                           "type":  "backend",
-                           "label":  "EntityModules",
-                           "sublabel":  "Convert SDK updates",
-                           "pos":  [
-                                       955,
-                                       560
-                                   ],
-                           "size":  [
-                                        170,
-                                        80
-                                    ]
-                       }
-                   ],
-    "connections":  [
-                        {
-                            "id":  "read",
-                            "from":  "sdk",
-                            "to":  "detector",
-                            "label":  "Detect",
-                            "variant":  "emphasis"
-                        },
-                        {
-                            "id":  "report",
-                            "from":  "detector",
-                            "to":  "realm",
-                            "label":  "Report",
-                            "variant":  "emphasis"
-                        },
-                        {
-                            "id":  "create-presence",
-                            "from":  "realm",
-                            "to":  "presence",
-                            "label":  "Create",
-                            "variant":  "emphasis"
-                        },
-                        {
-                            "id":  "initialize-root",
-                            "from":  "presence",
-                            "to":  "ghost",
-                            "label":  "Bind root",
-                            "variant":  "emphasis"
-                        },
-                        {
-                            "id":  "view-child",
-                            "from":  "ghost",
-                            "to":  "view",
-                            "label":  "Child view",
-                            "variant":  "emphasis"
-                        },
-                        {
-                            "id":  "api",
-                            "from":  "application",
-                            "to":  "realm",
-                            "label":  "Query / Manifest",
-                            "labelDy":  24
-                        },
-                        {
-                            "id":  "select",
-                            "from":  "blueprint",
-                            "to":  "view",
-                            "label":  "Variant name",
-                            "labelDy":  24
-                        },
-                        {
-                            "id":  "own-anchor",
-                            "from":  "realm",
-                            "to":  "anchor",
-                            "label":  "Owns frame",
-                            "labelDy":  24
-                        },
-                        {
-                            "id":  "own-modules",
-                            "from":  "presence",
-                            "to":  "modules",
-                            "label":  "Install modules"
-                        },
-                        {
-                            "id":  "apply-data",
-                            "from":  "modules",
-                            "to":  "ghost",
-                            "label":  "Apply SDK data"
-                        }
-                    ],
-    "cards":  [
-                  {
-                      "dot":  "cyan",
-                      "title":  "Detection and identity",
-                      "items":  [
-                                    "Detector reports Kind, ID, label, variant, capability interfaces, and SDK data.",
-                                    "Realm retains one Presence per anchor + Kind + entity ID."
-                                ]
-                  },
-                  {
-                      "dot":  "emerald",
-                      "title":  "Realm initialization",
-                      "items":  [
-                                    "A per-Kind initializer creates the Ghost root and installs EntityModules.",
-                                    "EntityModule\u003cTData\u003e converts SDK updates into Spatial or application state."
-                                ]
-                  },
-                  {
-                      "dot":  "violet",
-                      "title":  "Optional presentation",
-                      "items":  [
-                                    "Manifest(Presence) selects a View by its blueprint variant name.",
-                                    "Demanifest removes the View; disappearance can retain the Presence during grace."
-                                ]
-                  }
-              ]
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Emas: Detection, Spatial Placement and Views",
+    "output": "Documentation~/Diagrams/Architecture.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/ImDolfin/Emas.git",
+      "provider": "github",
+      "revision": "3e37839d358222566858617cb2655651685e0df0"
+    },
+    "views": [
+      {
+        "id": "tracking",
+        "label": "Detection and identity",
+        "focus": [
+          "sdk",
+          "detector",
+          "realm",
+          "presence",
+          "ghost",
+          "anchor"
+        ],
+        "note": "Each Realm owns anchors and stable identities; detector attachments announce membership."
+      },
+      {
+        "id": "bindings",
+        "label": "SDK data application",
+        "focus": [
+          "presence",
+          "ghost",
+          "initializer",
+          "modules",
+          "spatial"
+        ],
+        "note": "Initializers bind readers on authored modules. All readers run before Ghost hooks and projection."
+      },
+      {
+        "id": "projection",
+        "label": "Geographic and Cartesian",
+        "focus": [
+          "realm",
+          "modules",
+          "spatial",
+          "reference",
+          "view"
+        ],
+        "note": "One reference per Realm; WGS84 positions are stored as ECEF and projected at the current reference."
+      },
+      {
+        "id": "presentation",
+        "label": "Queries and optional views",
+        "focus": [
+          "application",
+          "realm",
+          "presence",
+          "ghost",
+          "spatial",
+          "view",
+          "blueprint"
+        ],
+        "note": "Availability precedes notification. View requests survive range suppression until Demanifest."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "sdk",
+      "type": "external",
+      "label": "Application SDK",
+      "sublabel": "Application-owned feed",
+      "pos": [
+        30,
+        245
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Samples~/Example/Sources/CarSource.cs",
+          "line": 15,
+          "end_line": 35,
+          "label": "SDK feed integration"
+        }
+      ]
+    },
+    {
+      "id": "detector",
+      "type": "backend",
+      "label": "PresenceDetector",
+      "sublabel": "Membership + SDK source",
+      "pos": [
+        340,
+        245
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Tracking/PresenceDetector.cs",
+          "line": 91,
+          "end_line": 143,
+          "label": "Detection contract"
+        }
+      ]
+    },
+    {
+      "id": "realm",
+      "type": "backend",
+      "label": "Realm",
+      "sublabel": "Coordinates lifecycle phases",
+      "pos": [
+        650,
+        245
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Realm.cs",
+          "line": 591,
+          "end_line": 642,
+          "label": "Ordered update"
+        },
+        {
+          "path": "Runtime/Realm.cs",
+          "line": 1023,
+          "end_line": 1052,
+          "label": "Finalize data and views"
+        }
+      ]
+    },
+    {
+      "id": "presence",
+      "type": "backend",
+      "label": "Presence",
+      "sublabel": "Stable ID + weak Source",
+      "pos": [
+        960,
+        245
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Entities/Presence.cs",
+          "line": 6,
+          "end_line": 73,
+          "label": "Stable handle and weak source"
+        },
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 240,
+          "end_line": 283,
+          "label": "Detection and binding"
+        }
+      ]
+    },
+    {
+      "id": "ghost",
+      "type": "frontend",
+      "label": "Ghost root",
+      "sublabel": "Authored modules + behavior",
+      "pos": [
+        960,
+        455
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 198,
+          "end_line": 232,
+          "label": "Create or clone root"
+        },
+        {
+          "path": "Runtime/Entities/Ghost.cs",
+          "line": 6,
+          "end_line": 45,
+          "label": "Root contracts"
+        }
+      ]
+    },
+    {
+      "id": "modules",
+      "type": "backend",
+      "label": "EntityModule<TData>",
+      "sublabel": "Read SDK values; Apply state",
+      "pos": [
+        650,
+        455
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Entities/EntityModuleOfT.cs",
+          "line": 6,
+          "end_line": 58,
+          "label": "Bound readers and Apply"
+        },
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 608,
+          "end_line": 646,
+          "label": "Refresh all module inputs"
+        }
+      ]
+    },
+    {
+      "id": "spatial",
+      "type": "backend",
+      "label": "Spatial projection",
+      "sublabel": "Optional pose + range gate",
+      "pos": [
+        340,
+        455
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Entities/Spatial.cs",
+          "line": 101,
+          "end_line": 144,
+          "label": "Geographic and ECEF channels"
+        },
+        {
+          "path": "Runtime/Unity/SpatialManager.cs",
+          "line": 19,
+          "end_line": 83,
+          "label": "Capture and project"
+        }
+      ]
+    },
+    {
+      "id": "view",
+      "type": "frontend",
+      "label": "ViewManager / View",
+      "sublabel": "Requested visual child",
+      "pos": [
+        30,
+        455
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Views/ViewManager.cs",
+          "line": 17,
+          "end_line": 118,
+          "label": "Requests, gating and binding"
+        },
+        {
+          "path": "Runtime/Realm.cs",
+          "line": 539,
+          "end_line": 555,
+          "label": "Manifest request"
+        }
+      ]
+    },
+    {
+      "id": "anchor",
+      "type": "frontend",
+      "label": "Anchor",
+      "sublabel": "Detector + identity scope",
+      "pos": [
+        340,
+        45
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Tracking/Anchor.cs",
+          "line": 6,
+          "end_line": 20,
+          "label": "Grouping and ownership"
+        },
+        {
+          "path": "Runtime/Tracking/Anchor.cs",
+          "line": 114,
+          "end_line": 159,
+          "label": "Attach and start detectors"
+        }
+      ]
+    },
+    {
+      "id": "application",
+      "type": "frontend",
+      "label": "Application API",
+      "sublabel": "Queries + Manifest requests",
+      "pos": [
+        650,
+        45
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Realm.cs",
+          "line": 383,
+          "end_line": 416,
+          "label": "Realm-scoped queries"
+        },
+        {
+          "path": "Runtime/Realm.cs",
+          "line": 498,
+          "end_line": 555,
+          "label": "Optional views"
+        },
+        {
+          "path": "Runtime/Queries/Query.cs",
+          "line": 14,
+          "end_line": 65,
+          "label": "Global queries"
+        }
+      ]
+    },
+    {
+      "id": "blueprint",
+      "type": "database",
+      "label": "Blueprint assets",
+      "sublabel": "Kind, variant + fallback",
+      "pos": [
+        30,
+        655
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Views/ManifestationBlueprint.cs",
+          "line": 157,
+          "end_line": 195,
+          "label": "View selection"
+        },
+        {
+          "path": "Runtime/Views/ViewManager.cs",
+          "line": 57,
+          "end_line": 67,
+          "label": "Resolve a registered prefab"
+        }
+      ]
+    },
+    {
+      "id": "reference",
+      "type": "backend",
+      "label": "ReferenceFrame",
+      "sublabel": "Manual or followed Ghost",
+      "pos": [
+        340,
+        655
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Tracking/ReferenceFrame.cs",
+          "line": 452,
+          "end_line": 509,
+          "label": "Follow and capture"
+        },
+        {
+          "path": "Runtime/Unity/GeographicBasis.cs",
+          "line": 6,
+          "end_line": 73,
+          "label": "ECEF tangent projection"
+        }
+      ]
+    },
+    {
+      "id": "initializer",
+      "type": "backend",
+      "label": "Ghost initializer",
+      "sublabel": "Anchor-local or Realm Kind",
+      "pos": [
+        650,
+        655
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "sources": [
+        {
+          "path": "Runtime/Unity/GhostInitializer.cs",
+          "line": 6,
+          "end_line": 31,
+          "label": "Local reader binding"
+        },
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 252,
+          "end_line": 282,
+          "label": "Local then Realm fallback"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "sdk-membership",
+      "from": "sdk",
+      "to": "detector",
+      "label": "SDK arrivals",
+      "variant": "emphasis"
+    },
+    {
+      "id": "detector-report",
+      "from": "detector",
+      "to": "realm",
+      "label": "Detect / Disappear",
+      "variant": "emphasis"
+    },
+    {
+      "id": "track-identity",
+      "from": "realm",
+      "to": "presence",
+      "label": "Create / refresh",
+      "variant": "emphasis"
+    },
+    {
+      "id": "presence-root",
+      "from": "presence",
+      "to": "ghost",
+      "label": "Stable root",
+      "variant": "emphasis"
+    },
+    {
+      "id": "root-modules",
+      "from": "ghost",
+      "to": "modules",
+      "label": "Owns components",
+      "variant": "emphasis"
+    },
+    {
+      "id": "apply-spatial",
+      "from": "modules",
+      "to": "spatial",
+      "label": "Apply pose readings",
+      "variant": "emphasis"
+    },
+    {
+      "id": "presentation-gate",
+      "from": "spatial",
+      "to": "view",
+      "label": "Gate spatial views",
+      "variant": "emphasis"
+    },
+    {
+      "id": "attach-detector",
+      "from": "anchor",
+      "to": "detector",
+      "label": "Attach / start"
+    },
+    {
+      "id": "consumer-api",
+      "from": "application",
+      "to": "realm",
+      "label": "Query / Manifest"
+    },
+    {
+      "id": "select-view",
+      "from": "blueprint",
+      "to": "view",
+      "label": "Variant / fallback"
+    },
+    {
+      "id": "project-reference",
+      "from": "reference",
+      "to": "spatial",
+      "label": "Capture reference"
+    },
+    {
+      "id": "bind-modules",
+      "from": "initializer",
+      "to": "modules",
+      "label": "Bind readers"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ownership and availability",
+      "items": [
+        "Realm owns anchors and one identity per Anchor + Kind + ID; SDK clients remain application-owned.",
+        "Queries match available root contracts; optional views do not define availability."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "WGS84 to Unity",
+      "items": [
+        "GeoPosition uses degrees and ellipsoidal metres; Spatial stores ECEF doubles.",
+        "After all readers and Ghost hooks, capture one manual/followed reference and project into Unity east/up/north."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Presentation and recovery",
+      "items": [
+        "Manifest requests a view; geographic/reference waiting and range suppression retain that request.",
+        "Reference loss freezes its last valid pose. Demanifest cancels the view request; grace can retain a disappeared root."
+      ]
+    }
+  ]
 }

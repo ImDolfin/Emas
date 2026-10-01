@@ -41,7 +41,9 @@ For the preconfigured test project, add `Tests/Unity~` through Unity Hub and ope
 
 In an existing consuming Unity project, install Test Framework and add `"testables": ["com.emas.core"]` beside `dependencies` in `Packages/manifest.json`. Run EditMode and PlayMode tests through **Window > General > Test Runner**. Reopen Unity if the tests remain hidden.
 
-For repository development, open the optional `Tests/Unity~` project in Unity **2022.3.62f3**. It also tests the imported samples and supports **Run all in player** (Windows Mono build support required). Update `Assets/Samples/` in that project when changing `Samples~/`; EditMode tests detect differences. All required inputs are tracked; only generated output is ignored. See `Documentation~/Validation.md` for results.
+For repository development, open the optional `Tests/Unity~` project in Unity **2022.3.62f3**. It also tests the imported samples and supports **Run all in player** (Windows Mono build support required). Update `Assets/Samples/` in that project when changing `Samples~/`; EditMode tests detect differences. All required inputs are tracked; only generated output is ignored. See `Documentation~/Validation.md` for test setup and coverage.
+
+Keep `Validation.md` focused on test setup and API contract coverage. Store run reports in ignored `TestResults/` output instead of appending execution histories to the documentation.
 
 ## Test Quality
 

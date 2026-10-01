@@ -8,7 +8,13 @@
     "viewBox": [
       1080,
       566
-    ]
+    ],
+    "output": "Documentation~/Diagrams/Lifecycle.html",
+    "repository": {
+      "url": "https://github.com/ImDolfin/Emas.git",
+      "provider": "github",
+      "revision": "3e37839d358222566858617cb2655651685e0df0"
+    }
   },
   "lanes": [
     {
@@ -24,34 +30,66 @@
     {
       "id": "created",
       "type": "start",
-      "label": "Root created",
-      "sublabel": "Inactive; not queryable",
+      "label": "Detected root",
+      "sublabel": "Readers bound; inactive",
       "lane": "main",
-      "col": 0
+      "col": 0,
+      "sources": [
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 198,
+          "end_line": 282,
+          "label": "Create root and bind readers"
+        }
+      ]
     },
     {
       "id": "initializing",
       "type": "active",
-      "label": "Initializing",
-      "sublabel": "Source populates data",
+      "label": "Data applied",
+      "sublabel": "Readers before projection",
       "lane": "main",
-      "col": 1
+      "col": 1,
+      "sources": [
+        {
+          "path": "Runtime/Realm.cs",
+          "line": 1023,
+          "end_line": 1040,
+          "label": "Apply data before activation"
+        }
+      ]
     },
     {
       "id": "available",
       "type": "active",
-      "label": "Available ghost",
+      "label": "Available root",
       "sublabel": "Queryable; root active",
       "lane": "main",
-      "col": 2
+      "col": 2,
+      "sources": [
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 683,
+          "end_line": 724,
+          "label": "Activate complete roots"
+        }
+      ]
     },
     {
       "id": "visible",
       "type": "active",
       "label": "View attached",
-      "sublabel": "Available + visual child",
+      "sublabel": "Requested; ready",
       "lane": "main",
-      "col": 3
+      "col": 3,
+      "sources": [
+        {
+          "path": "Runtime/Views/ViewManager.cs",
+          "line": 17,
+          "end_line": 118,
+          "label": "View requests and gating"
+        }
+      ]
     },
     {
       "id": "removed",
@@ -59,16 +97,38 @@
       "label": "Removed",
       "sublabel": "Root + view destroyed",
       "lane": "main",
-      "col": 4
+      "col": 4,
+      "sources": [
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 533,
+          "end_line": 549,
+          "label": "Remove current identity and root"
+        }
+      ]
     },
     {
       "id": "unavailable",
       "type": "failure",
       "label": "Unavailable",
-      "sublabel": "Root retained; inactive",
+      "sublabel": "Grace or handover; inactive",
       "lane": "recovery",
       "col": 0,
-      "yOffset": 90
+      "yOffset": 90,
+      "sources": [
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 338,
+          "end_line": 398,
+          "label": "Disappearance and grace"
+        },
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 420,
+          "end_line": 484,
+          "label": "Startup handover"
+        }
+      ]
     }
   ],
   "transitions": [
@@ -76,21 +136,21 @@
       "id": "populate",
       "from": "created",
       "to": "initializing",
-      "label": "GetOrCreate<T>",
+      "label": "Read modules",
       "labelDy": 65
     },
     {
       "id": "finalize",
       "from": "initializing",
       "to": "available",
-      "label": "Finalize",
+      "label": "Project / activate",
       "labelDy": -40
     },
     {
       "id": "manifest-view",
       "from": "available",
       "to": "visible",
-      "label": "Manifest",
+      "label": "Manifest (ready)",
       "labelDy": 60
     },
     {
@@ -111,14 +171,14 @@
       "id": "lose-availability",
       "from": "available",
       "to": "unavailable",
-      "label": "Replace / failure",
+      "label": "Grace / handover",
       "labelDy": 110
     },
     {
       "id": "recover",
       "from": "unavailable",
       "to": "available",
-      "label": "Republish + finalize",
+      "label": "Detect + finalize",
       "route": "left-channel",
       "channelX": 325,
       "labelDy": 65
@@ -127,18 +187,18 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "Optional view",
+      "title": "Optional presentation",
       "items": [
-        "Manifest needs an available ghost and a prefab.",
-        "Demanifest removes only the child view."
+        "Manifest retains a request; a View needs an available root, prefab and usable presentation.",
+        "Range suppression retains the request. Demanifest cancels it and removes only the View."
       ]
     },
     {
       "dot": "amber",
-      "title": "Availability and cleanup",
+      "title": "Loss and recovery",
       "items": [
-        "Loss and recovery apply with or without a view.",
-        "Removal destroys root + view from any state."
+        "Grace or startup handover can retain an unavailable root until detection and finalization.",
+        "Detector failure removes its population; recovery creates new roots. Final removal applies from any state."
       ]
     }
   ]

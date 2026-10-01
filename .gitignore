@@ -42,3 +42,9 @@ artifacts/
 TestResults/
 [Ii]nitTestScene*.unity*
 [Pp]lay[Mm]ode[Tt]est[Rr]unner*.unity*
+
+# Generated Archify validation receipts (keep diagram sources and HTML)
+Documentation~/Diagrams/*.delivery.json
+Documentation~/Diagrams/*.browser-check.json
+Documentation~/Diagrams/*.finalize.json
+Documentation~/Diagrams/*.finalize-summary.json

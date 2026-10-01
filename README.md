@@ -147,4 +147,4 @@ This project already includes the samples and test configuration. No manifest ed
 - [Guidelines](Documentation~/Guidelines.md): contracts, ownership and contributions.
 - [API reference](Documentation~/API.md): operations and behavior contracts.
 - [Architecture](Documentation~/Architecture.md): ownership, update phases and lifecycle diagrams.
-- [Validation](Documentation~/Validation.md): Unity Test Runner setup, results and limits.
+- [Validation](Documentation~/Validation.md): Unity Test Runner setup and API contract coverage.

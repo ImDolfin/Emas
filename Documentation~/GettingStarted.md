@@ -1,6 +1,6 @@
 # Getting started
 
-Emas tracks SDK entities as stable Presences, initializes invisible Ghost roots and adds visual manifestations when requested. Use Unity 2022.3 or newer; see [validated versions](Validation.md#results).
+Emas tracks SDK entities as stable Presences, initializes invisible Ghost roots and adds visual manifestations when requested. Use Unity 2022.3 or newer; see [test project setup](Validation.md#open-the-included-test-project).
 
 ## Run the sample
 

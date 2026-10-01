@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Refresh architecture and lifecycle diagrams for authored module readers, shared geographic/ECEF references and persistent view requests. Keep validation documentation focused on test setup and API contracts.
+
 - Document publishing absolute WGS84 positions relative to another tracked entity, with verified geographic examples and coverage for bound readers on separate anchors.
 
 - Clarify XML API documentation for detection, module binding, query filters, view requests and spatial conversions. Add brief code comments explaining lifecycle reentry, handover timing, coordinate mathematics and sample SDK mappings.
