@@ -113,15 +113,38 @@ namespace Emas
             return Rotation(vector, value.w);
         }
 
+        internal static CoordinateSystem RequireRightHandedBodyAxes(CoordinateSystem? bodyAxes)
+        {
+            CoordinateSystem value = bodyAxes ?? NorthEastDown;
+            string error = value.GetConfigurationError();
+            if (error != null)
+            {
+                throw new ArgumentException(error, nameof(bodyAxes));
+            }
+            if (value.Determinant != -1)
+            {
+                throw new ArgumentException("ECEF attitudes require right-handed body axes. Use ENU, NED or a right-handed custom mapping.", nameof(bodyAxes));
+            }
+            return value;
+        }
+
+        private int Determinant
+        {
+            get
+            {
+                int right = Index(_right);
+                int up = Index(_up);
+                int forward = Index(_forward);
+                int inversions = (right > up ? 1 : 0) + (right > forward ? 1 : 0) + (up > forward ? 1 : 0);
+                return (inversions % 2 == 0 ? 1 : -1) * Sign(_right) * Sign(_up) * Sign(_forward);
+            }
+        }
+
         private Quaternion Rotation(Double3 vector, float scalar)
         {
             // For an orthogonal basis B, B R(q) B^-1 has quaternion (det(B) * B * q.xyz, q.w).
             // The determinant factor also handles reflections; treating q.xyz as a position would reverse turns.
-            int right = Index(_right);
-            int up = Index(_up);
-            int forward = Index(_forward);
-            int inversions = (right > up ? 1 : 0) + (right > forward ? 1 : 0) + (up > forward ? 1 : 0);
-            int determinant = (inversions % 2 == 0 ? 1 : -1) * Sign(_right) * Sign(_up) * Sign(_forward);
+            int determinant = Determinant;
             return new Quaternion((float)(determinant * vector.X), (float)(determinant * vector.Y),
                 (float)(determinant * vector.Z), scalar);
         }

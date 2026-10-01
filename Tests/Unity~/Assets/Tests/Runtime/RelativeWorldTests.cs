@@ -54,6 +54,7 @@ namespace Emas.Tests.Samples
             Spatial originSpatial = origin.GetComponent<Spatial>();
             Spatial parkedSpatial = parked.GetComponent<Spatial>();
             Double3 parkedPosition = parkedSpatial.Position;
+            Double3 initialOrigin = originSpatial.Position;
             View parkedView = parked.GetComponentInChildren<View>();
             Assert.That(parkedView, Is.Not.Null);
             Assert.That(parked.transform.position.x, Is.EqualTo(-6f).Within(0.001f));
@@ -64,7 +65,7 @@ namespace Emas.Tests.Samples
             source.Advance(5.0);
             realm.Update();
             AssertOriginPose(origin);
-            Assert.That(originSpatial.Position.Z, Is.EqualTo(40.0).Within(0.001));
+            Assert.That(Double3.Distance(initialOrigin, originSpatial.Position), Is.EqualTo(40.0).Within(0.001));
             Assert.That(Double3.Distance(parkedSpatial.Position, parkedPosition), Is.LessThan(0.000001));
             Assert.That(parked.transform.position.z, Is.EqualTo(-16f).Within(0.001f));
             Assert.That(parked.transform.position.x, Is.EqualTo(-6f).Within(0.001f));
@@ -150,7 +151,7 @@ namespace Emas.Tests.Samples
             realm.Update();
             Assert.That(Vector3.Distance(bird.transform.position, new Vector3(4f, 3.2f, 0f)), Is.LessThan(0.001f));
             Assert.That(Quaternion.Angle(heading, bird.transform.rotation), Is.LessThan(0.01f));
-            Assert.That(spatial.Position.Z - worldPosition.Z, Is.EqualTo(64.0).Within(0.001));
+            Assert.That(Double3.Distance(spatial.Position, worldPosition), Is.EqualTo(64.0).Within(0.001));
             Assert.That(bird.GetComponentInChildren<View>(), Is.SameAs(view));
         }
 
@@ -194,7 +195,7 @@ namespace Emas.Tests.Samples
             Assert.That(frame.IsReferenceAvailable, Is.True);
             Assert.That(frame.TryToUnityPosition(spatial.Position, out Vector3 expectedPosition), Is.True);
             Assert.That(Vector3.Distance(target.transform.position, expectedPosition), Is.LessThan(0.001f));
-            Assert.That(Quaternion.Angle(target.transform.rotation, frame.ToUnityRotation(spatial.Rotation)),
+            Assert.That(Quaternion.Angle(target.transform.rotation, frame.ToUnityRotation(spatial.Rotation, GeoPosition.FromEarthCentered(spatial.Position))),
                 Is.LessThan(0.01f));
         }
     }

@@ -49,8 +49,9 @@ namespace Emas.Editor
         {
             SerializedProperty useFrame = serializedObject.FindProperty("_useReferenceFrame");
             SerializedProperty follow = serializedObject.FindProperty("_followGhost");
+            SerializedProperty space = serializedObject.FindProperty("_referenceSpace");
             SerializedProperty rotation = serializedObject.FindProperty("_followRotation");
-            using (InspectorLayout.Section("Reference", "Spatial uses shared Cartesian coordinates. Units come from your SDK mapping; they are not necessarily metres."))
+            using (InspectorLayout.Section("Reference", "Project shared Cartesian positions or WGS84 positions around a manual or followed reference."))
             {
                 InspectorLayout.Field(serializedObject, "_useReferenceFrame", "Use reference frame");
                 if (!useFrame.hasMultipleDifferentValues && !useFrame.boolValue)
@@ -59,7 +60,9 @@ namespace Emas.Editor
                 }
                 using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(useFrame)))
                 {
-                    InspectorLayout.Field(serializedObject, "_coordinates", "Coordinate system");
+                    InspectorLayout.Field(serializedObject, "_referenceSpace", "Reference space");
+                    bool geographic = !space.hasMultipleDifferentValues && space.intValue == (int)ReferenceSpace.Geographic;
+                    InspectorLayout.Field(serializedObject, "_coordinates", geographic ? "Attitude axes" : "Coordinate system");
                     InspectorLayout.Field(serializedObject, "_followGhost", "Follow a Ghost");
                     if (follow.hasMultipleDifferentValues)
                     {
@@ -76,9 +79,19 @@ namespace Emas.Editor
                             EditorGUILayout.PropertyField(kind, new GUIContent("Kind ID", "The Kind passed to Detect, not a prefab name."));
                         }
                     }
-                    else
+                    else if (!space.hasMultipleDifferentValues)
                     {
-                        InspectorLayout.Position(serializedObject.FindProperty("_position"), "Reference position (shared units)");
+                        if (geographic)
+                        {
+                            SerializedProperty position = serializedObject.FindProperty("_geographicPosition");
+                            EditorGUILayout.PropertyField(position.FindPropertyRelative("_latitudeDegrees"), new GUIContent("Latitude (degrees)", "WGS84 latitude, -90 to 90 degrees north."));
+                            EditorGUILayout.PropertyField(position.FindPropertyRelative("_longitudeDegrees"), new GUIContent("Longitude (degrees)", "WGS84 longitude, -180 to 180 degrees east."));
+                            EditorGUILayout.PropertyField(position.FindPropertyRelative("_heightMeters"), new GUIContent("Ellipsoidal height (m)", "Height above the WGS84 ellipsoid, not mean sea level."));
+                        }
+                        else
+                        {
+                            InspectorLayout.Position(serializedObject.FindProperty("_position"), "Reference position (shared units)");
+                        }
                     }
                     InspectorLayout.Field(serializedObject, "_followRotation", "Follow orientation");
                     using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(rotation) || follow.hasMultipleDifferentValues))
@@ -100,7 +113,8 @@ namespace Emas.Editor
                     InspectorLayout.Field(serializedObject, "_limitDistance", "Limit distance");
                     using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(limit)))
                     {
-                        InspectorLayout.Field(serializedObject, "_maxDistance", "Radius (shared units)");
+                        InspectorLayout.Field(serializedObject, "_maxDistance", !space.hasMultipleDifferentValues
+                            && space.intValue == (int)ReferenceSpace.Geographic ? "Radius (metres)" : "Radius (shared units)");
                     }
                 }
             }
@@ -117,8 +131,10 @@ namespace Emas.Editor
                 InspectorLayout.ReadOnly("Reference", frame == null ? "Identity / world coordinates" : frame.IsReferenceAvailable ? "Available" : frame.HasPosition ? "Last known pose" : frame.FollowedGhost.HasValue ? "Waiting for position" : "Waiting for reference");
                 if (frame != null)
                 {
-                    InspectorLayout.ReadOnly("Shared position", frame.HasPosition ? frame.Position.ToString() : "Not received");
-                    InspectorLayout.ReadOnly("Range (shared units)", frame.MaxDistance.HasValue ? frame.MaxDistance.Value.ToString("G") : "Unlimited");
+                    bool geographic = frame.Space == ReferenceSpace.Geographic;
+                    InspectorLayout.ReadOnly(geographic ? "WGS84 position" : "Shared position", frame.HasPosition
+                        ? (geographic ? frame.GeographicPosition.ToString() : frame.Position.ToString()) : "Not received");
+                    InspectorLayout.ReadOnly(geographic ? "Range (metres)" : "Range (shared units)", frame.MaxDistance.HasValue ? frame.MaxDistance.Value.ToString("G") : "Unlimited");
                 }
             }
         }

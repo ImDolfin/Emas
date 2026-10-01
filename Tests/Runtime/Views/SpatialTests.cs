@@ -189,6 +189,105 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Geographic following reprojects cached entities and their local attitudes, retaining views and freezing on reference loss.
+        /// </summary>
+        [Test]
+        public void GeographicFollowing_UpdatesCachedPosesAndRetainsReferenceOnLoss()
+        {
+            RegisterView();
+            ReferenceFrame frame = new ReferenceFrame { Space = ReferenceSpace.Geographic, FollowRotation = false };
+            _realm.ReferenceFrame = frame;
+            TestGhost ego = _source.PublishPosition("ego", new GeoPosition(0, 0, 0).ToEarthCentered());
+            TestGhost target = _source.PublishPosition("target", new GeoPosition(0, 0, 10).ToEarthCentered());
+            _source.PublishRotation("target", Quaternion.identity);
+            frame.FollowedGhost = ego.Key;
+            _realm.Update();
+            View view = _realm.Manifest(target);
+            Assert.That(view, Is.Not.Null);
+            AssertPosition(target.transform.position, new Vector3(0, 10, 0));
+            Double3 stored = target.GetComponent<Spatial>().Position;
+
+            ego.GetComponent<Spatial>().SetGeographicPosition(new GeoPosition(0, 90, 0));
+            _realm.Update();
+            AssertPosition(target.transform.position, new Vector3(-6378147, -6378137, 0), 1);
+            AssertRotation(target.transform.rotation, Quaternion.AngleAxis(90, Vector3.forward));
+            Assert.That(target.GetComponent<Spatial>().Position, Is.EqualTo(stored));
+            Assert.That(ActiveView(target), Is.SameAs(view));
+            Vector3 projected = target.transform.position;
+            ego.GetComponent<Spatial>().SetPosition(new Double3(double.MaxValue, double.MaxValue, double.MaxValue));
+            _realm.Update();
+            Assert.That(frame.IsReferenceAvailable, Is.False);
+            AssertPosition(target.transform.position, projected, 1);
+            _source.RemoveEntity("ego");
+            _realm.Update();
+            Assert.That(frame.IsReferenceAvailable, Is.False);
+            AssertPosition(target.transform.position, projected, 1);
+
+            TestGhost replacement = _source.PublishPosition("ego", new GeoPosition(0, 0, 0).ToEarthCentered());
+            _realm.Update();
+            Assert.That(frame.IsReferenceAvailable, Is.True);
+            AssertPosition(target.transform.position, new Vector3(0, 10, 0));
+            AssertRotation(target.transform.rotation, Quaternion.identity);
+            Assert.That(ActiveView(target), Is.SameAs(view));
+        }
+
+        /// <summary>
+        /// ECEF channels update independently, can drive the reference, and coexist with local geographic attitudes.
+        /// </summary>
+        [Test]
+        public void EarthCenteredChannels_RetainGlobalAttitudeAndFollowMixedInputs()
+        {
+            RegisterView();
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Space = ReferenceSpace.Geographic,
+                GeographicPosition = new GeoPosition(0, 0, 0),
+                Coordinates = CoordinateSystem.NorthEastDown,
+                FollowRotation = false
+            };
+            _realm.ReferenceFrame = frame;
+            TestGhost target = _source.Publish("earth");
+            Spatial spatial = target.gameObject.AddComponent<Spatial>();
+            Quaternion north = Quaternion.AngleAxis(-90, Vector3.up);
+            spatial.SetEarthCenteredRotation(north);
+            _realm.Update();
+            Assert.That(_realm.Manifest(target), Is.Null);
+            spatial.SetPosition(new Double3(6378137, 0, 0));
+            _realm.Update();
+            View view = ActiveView(target);
+            Assert.That(view, Is.Not.Null);
+            AssertRotation(target.transform.rotation, Quaternion.identity);
+            Assert.That(spatial.UsesEarthCenteredRotation, Is.True);
+            Assert.Throws<ArgumentException>(() => spatial.SetEarthCenteredRotation(Quaternion.identity, CoordinateSystem.Unity));
+
+            spatial.SetPosition(new GeoPosition(0, 90, 0).ToEarthCentered());
+            _realm.Update();
+            AssertRotation(spatial.Rotation, north);
+            AssertRotation(target.transform.rotation, Quaternion.identity);
+            frame.Position = spatial.Position;
+            _realm.Update();
+            AssertRotation(target.transform.rotation, Quaternion.AngleAxis(90, Vector3.forward));
+            Assert.That(ActiveView(target), Is.SameAs(view));
+
+            TestGhost local = _source.PublishPosition("local", spatial.Position);
+            _source.PublishRotation("local", Quaternion.identity);
+            frame.FollowedGhost = target.Key;
+            frame.FollowRotation = true;
+            _realm.Update();
+            Assert.That(frame.UsesEarthCenteredRotation, Is.True);
+            AssertRotation(target.transform.rotation, Quaternion.identity);
+            AssertRotation(local.transform.rotation, Quaternion.AngleAxis(-90, Vector3.forward));
+            Assert.That(ActiveView(target), Is.SameAs(view));
+
+            spatial.SetRotation(Quaternion.identity);
+            _realm.Update();
+            Assert.That(spatial.UsesEarthCenteredRotation, Is.False);
+            Assert.That(frame.UsesEarthCenteredRotation, Is.False);
+            AssertRotation(target.transform.rotation, Quaternion.identity);
+            AssertRotation(local.transform.rotation, Quaternion.identity);
+        }
+
+        /// <summary>
         /// Parent translation, rotation and scale do not get applied twice to projected world poses.
         /// </summary>
         [Test]

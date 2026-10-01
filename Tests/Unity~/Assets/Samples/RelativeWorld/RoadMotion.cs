@@ -11,6 +11,9 @@ namespace Emas.RelativeWorld
         [SerializeField]
         private Transform[] _markings;
         private Vector3[] _positions;
+        private ReferenceFrame _previousFrame;
+        private Double3 _previousPosition;
+        private double _distance;
 
         private void Awake()
         {
@@ -24,7 +27,20 @@ namespace Emas.RelativeWorld
         private void LateUpdate()
         {
             ReferenceFrame frame = _setup.Realm == null ? null : _setup.Realm.ReferenceFrame;
-            float offset = frame != null && frame.HasPosition ? (float)(frame.Position.Z % 5.0) : 0f;
+            if (frame != null && frame.HasPosition)
+            {
+                if (ReferenceEquals(frame, _previousFrame))
+                {
+                    _distance += Double3.Distance(_previousPosition, frame.Position);
+                }
+                else
+                {
+                    _distance = 0;
+                    _previousFrame = frame;
+                }
+                _previousPosition = frame.Position;
+            }
+            float offset = (float)(_distance % 5.0);
             for (int index = 0; index < _markings.Length; index++)
             {
                 _markings[index].localPosition = _positions[index] - Vector3.forward * offset;

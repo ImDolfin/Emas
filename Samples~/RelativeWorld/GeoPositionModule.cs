@@ -2,15 +2,15 @@ using UnityEngine;
 
 namespace Emas.RelativeWorld
 {
-    /// <summary>Applies a source-independent shared Cartesian position to Spatial.</summary>
+    /// <summary>Supplies WGS84 positions to Spatial for the geographic reference frame.</summary>
     [RequireComponent(typeof(Spatial))]
-    public sealed class GeoPositionModule : EntityModule<Double3>
+    public sealed class GeoPositionModule : EntityModule<GeoPosition>
     {
-        /// <summary>Updates the Ghost's shared Cartesian position.</summary>
+        /// <summary>Updates the Ghost's Earth-centered position from WGS84.</summary>
         /// <param name="value">The mapped value supplied by the initializer's reader.</param>
-        public override void Apply(Double3 value)
+        public override void Apply(GeoPosition value)
         {
-            GetComponent<Spatial>().SetPosition(value);
+            GetComponent<Spatial>().SetGeographicPosition(value);
         }
     }
 }

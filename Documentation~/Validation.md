@@ -42,6 +42,10 @@ Keep a test when it protects a distinct behavior that an application depends on.
 
 ## Results
 
+Geographic reference projection and native ECEF attitudes passed **18 EditMode** and **157 PlayMode** tests in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. Coverage includes WGS84/ECEF conversion, moving tangent axes, date-line and polar positions, double-precision displacement, local and ECEF attitude conversion in both directions, configurable right-handed body axes, independently updated position/attitude channels, mixed attitude inputs, manual and followed references, range limits, reference loss and recovery, and invalid authored coordinates. The Relative World sample now uses direct geographic readings; package and imported sample assets match.
+
+The suites used `-batchmode -nographics`. Separate Direct3D 11 captures of the actual Realm Setup Inspector were visually reviewed: manual Geographic mode shows latitude, longitude and ellipsoidal height; followed mode hides the manual coordinates and supports an empty runtime-assigned Entity ID. The temporary preview helper was removed. Reports, logs, `ManualGeographic.png` and `FollowedGeographic.png` are in `Tests/Unity~/TestResults/GeographicReference/`. Sample camera previews and player/platform runs were not repeated for this change.
+
 Runtime reference selection passed **17 EditMode** and **146 PlayMode** tests in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. A blank authored Entity ID now allows Realm startup while spatial presentation waits. Tests cover runtime target assignment and switching, retained coordinate/placement/range settings and views, fresh waiting state after restart, and validation of incomplete nonempty identities. Imported samples remain consistent.
 
 The suites used `-batchmode -nographics`. Direct3D 11 captures of Realm Setup were visually reviewed: the Entity ID is marked optional, Anchor and Kind are disabled while it is empty, and the live frame reports **Waiting for reference**. The temporary preview helper was removed. Reports, logs and captures are in `Tests/Unity~/TestResults/RuntimeReference/`.

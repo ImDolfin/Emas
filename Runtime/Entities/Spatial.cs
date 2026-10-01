@@ -7,10 +7,11 @@ namespace Emas
     /// Stores independent position and rotation updates for world or realm-relative placement.
     /// </summary>
     /// <remarks>
-    /// Place on the Ghost root. Positions retain doubles; positions and rotations use ReferenceFrame.Coordinates.
-    /// All participating poses share that source coordinate convention and unit.
+    /// Place on the Ghost root. Positions retain doubles; Cartesian poses use ReferenceFrame.Coordinates.
+    /// In Geographic space, positions are ECEF metres; rotations can use local tangent axes or explicit body-to-ECEF input.
+    /// In Cartesian space, all participating poses share the source coordinate convention and unit.
     /// Realm projection owns this root's world pose while this component is enabled; views inherit that pose.
-    /// With no reference frame, stored coordinates and rotations map directly to Unity world space.
+    /// With no reference frame, Cartesian poses map directly to Unity world space. Explicit ECEF attitudes require a Geographic frame.
     /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished
     /// when inactivity expiry is enabled. Disable this component to release spatial placement and range suppression.
     /// </remarks>
@@ -20,6 +21,7 @@ namespace Emas
     {
         private Double3 _position;
         private Quaternion _rotation = Quaternion.identity;
+        private CoordinateSystem? _earthCenteredBodyAxes;
         private bool _hasPosition;
         private bool _hasRotation;
         private bool _isInRange = true;
@@ -29,7 +31,7 @@ namespace Emas
         private readonly HashSet<Collider> _hiddenColliders = new HashSet<Collider>();
 
         /// <summary>
-        /// Gets the last position in shared Cartesian coordinates, which is meaningful after HasPosition becomes true.
+        /// Gets the last Cartesian position, or ECEF metres after geographic input; meaningful after HasPosition becomes true.
         /// </summary>
         public Double3 Position
         {
@@ -40,7 +42,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets the last rotation in the shared Cartesian frame, independently of position.
+        /// Gets the last source quaternion: Cartesian/local attitude or body-to-ECEF when UsesEarthCenteredRotation is true.
         /// </summary>
         public Quaternion Rotation
         {
@@ -49,6 +51,11 @@ namespace Emas
                 return _rotation;
             }
         }
+
+        /// <summary>Gets whether Rotation is a body-to-ECEF quaternion, rather than a local/source attitude.</summary>
+        public bool UsesEarthCenteredRotation => _earthCenteredBodyAxes.HasValue;
+
+        internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
         /// <summary>
         /// Gets whether a position in shared Cartesian coordinates has been supplied.
@@ -62,7 +69,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets whether a rotation in the shared Cartesian frame has been supplied; otherwise the root's rotation is left alone.
+        /// Gets whether source orientation has been supplied; otherwise the root's rotation is left alone.
         /// </summary>
         public bool HasRotation
         {
@@ -98,12 +105,33 @@ namespace Emas
             _hasPosition = true;
         }
 
+        /// <summary>Supplies a WGS84 position, storing ECEF metres for use with a Geographic reference.</summary>
+        public void SetGeographicPosition(GeoPosition position)
+        {
+            SetPosition(position.ToEarthCentered());
+        }
+
         /// <summary>
-        /// Supplies a rotation in the shared Cartesian frame without changing position or other ghost data.
+        /// Supplies orientation without changing position. In Geographic space, use local tangent attitude
+        /// in ReferenceFrame.Coordinates; otherwise use the shared Cartesian frame.
         /// </summary>
         public void SetRotation(Quaternion rotation)
         {
             _rotation = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
+            _earthCenteredBodyAxes = null;
+            _hasRotation = true;
+        }
+
+        /// <summary>Supplies a body-to-ECEF quaternion for a Geographic reference, independently of position.</summary>
+        /// <param name="rotation">Active rotation mapping source body XYZ vectors into ECEF XYZ.</param>
+        /// <param name="bodyAxes">Signed body axes mapped to Unity right/up/forward. Null uses X forward, Y right, Z down (NED mapping).</param>
+        /// <remarks>Body axes must be right-handed. The global attitude remains unchanged when only position updates.</remarks>
+        public void SetEarthCenteredRotation(Quaternion rotation, CoordinateSystem? bodyAxes = null)
+        {
+            Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
+            CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
+            _rotation = normalized;
+            _earthCenteredBodyAxes = axes;
             _hasRotation = true;
         }
 
@@ -117,7 +145,10 @@ namespace Emas
                 // Assign world pose so anchor transforms do not introduce a second offset.
                 if (HasRotation)
                 {
-                    transform.SetPositionAndRotation(position, projection.ToUnityRotation(Rotation));
+                    Quaternion rotation = _earthCenteredBodyAxes.HasValue
+                        ? projection.ToUnityEarthCenteredRotation(Rotation, _earthCenteredBodyAxes.Value)
+                        : projection.ToUnityRotation(Rotation, Position);
+                    transform.SetPositionAndRotation(position, rotation);
                 }
                 else
                 {

@@ -12,12 +12,16 @@ namespace Emas.RelativeWorld
             root.GetComponent<GeoPositionModule>().Bind(() =>
             {
                 GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
-                return GeoProjection.ToPosition(reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters);
+                return new GeoPosition(reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters);
             });
             root.GetComponent<GeoOrientationModule>().Bind(() =>
             {
                 GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
-                return GeoProjection.ToRotation(reading.YawDegrees, reading.PitchDegrees, reading.RollDegrees);
+                // SDK yaw is clockwise from local north, pitch nose-up, roll right-wing-down.
+                Quaternion yaw = Quaternion.AngleAxis((float)(reading.YawDegrees % 360.0), Vector3.up);
+                Quaternion pitch = Quaternion.AngleAxis(-(float)(reading.PitchDegrees % 360.0), Vector3.right);
+                Quaternion roll = Quaternion.AngleAxis(-(float)(reading.RollDegrees % 360.0), Vector3.forward);
+                return yaw * pitch * roll;
             });
         }
     }

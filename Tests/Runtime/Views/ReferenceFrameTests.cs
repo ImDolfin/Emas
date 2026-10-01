@@ -19,7 +19,7 @@ namespace Emas.Tests
 
             Assert.That(frame.HasPosition, Is.False);
             Assert.That(frame.IsReferenceAvailable, Is.False);
-            Assert.That(frame.TryToUnityPosition(default, out Vector3 unused), Is.False);
+            Assert.That(frame.TryToUnityPosition(default(Double3), out Vector3 unused), Is.False);
             Assert.Throws<InvalidOperationException>(() => frame.ToSimulationPosition(Vector3.zero));
             Assert.Throws<InvalidOperationException>(() => frame.ToUnityRotation(Quaternion.identity));
             Assert.Throws<InvalidOperationException>(() => frame.ToSimulationRotation(Quaternion.identity));

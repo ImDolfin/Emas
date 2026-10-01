@@ -51,9 +51,23 @@ namespace Emas.RelativeWorld
         private void Add(string id, string label, Kind kind, Variant variant, double east, double north, double yaw,
             double up = 0.0, double roll = 0.0)
         {
-            // Produce geographic SDK data from a level road in the fixed datum's tangent plane.
-            GeoProjection.ToGeographic(new Double3(east, up, north), out double latitude,
-                out double longitude, out double altitude);
+            // Only the mock SDK needs a starting road location. Emas has no fixed geographic origin.
+            const double startLatitude = 52.520008;
+            const double startLongitude = 13.404954;
+            const double roadHeight = 40.0;
+            const double semiMajorAxis = 6378137.0;
+            const double flattening = 1.0 / 298.257223563;
+            const double eccentricitySquared = flattening * (2.0 - flattening);
+            const double radiansPerDegree = Math.PI / 180.0;
+            double sinStart = Math.Sin(startLatitude * radiansPerDegree);
+            double meridianRadius = semiMajorAxis * (1.0 - eccentricitySquared)
+                / Math.Pow(1.0 - eccentricitySquared * sinStart * sinStart, 1.5);
+            double latitude = startLatitude + north / (meridianRadius + roadHeight) / radiansPerDegree;
+            double sin = Math.Sin(latitude * radiansPerDegree);
+            double radius = semiMajorAxis / Math.Sqrt(1.0 - eccentricitySquared * sin * sin);
+            double longitude = startLongitude + east / ((radius + roadHeight)
+                * Math.Cos(latitude * radiansPerDegree)) / radiansPerDegree;
+            double altitude = roadHeight + up;
             _current.Add(id, new GeoPoseReading(id, label, kind, variant, latitude, longitude, altitude, yaw, 0.0, roll));
         }
     }

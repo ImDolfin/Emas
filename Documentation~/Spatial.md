@@ -1,6 +1,6 @@
 # Relative worlds and large coordinates
 
-Configure a reference frame for a realm when shared Cartesian positions should be projected relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, enabled `Spatial` components use an identity frame: stored positions and rotations map directly to Unity world space, with no distance limit. Ghosts without an enabled `Spatial` remain application-positioned.
+Configure a reference frame for a realm to project shared Cartesian or geographic positions relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, enabled `Spatial` components use an identity frame: Cartesian poses map directly to Unity world space, with no distance limit. Explicit ECEF attitudes require a Geographic reference. Ghosts without an enabled `Spatial` remain application-positioned.
 
 ## Configure a prefab realm
 
@@ -15,7 +15,7 @@ Environment (another RealmSetup with its own anchors and reference frame)
 
 For a car that stays near the Unity origin, enable **Use Reference Frame**, choose the **Coordinate System** matching the incoming poses, and enable **Follow Ghost** on the screen's Realm Setup. If its identity is known in advance, enter the car's entity ID (`my-car`), anchor ID (`vehicles`) and kind ID. Leave **Entity ID** empty when the target is chosen at runtime; the Anchor and Kind fields are then unused. Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in the shared coordinate units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
 
-For a fixed origin, leave **Follow Ghost** off and enter the frame's **Position** as doubles in the same coordinate system as the Ghosts, plus its **Rotation**. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete component wiring.
+For a fixed origin, leave **Follow Ghost** off. In Cartesian space, enter its shared **Position** as doubles and its **Rotation**. In Geographic space, enter WGS84 latitude, longitude and ellipsoidal height, plus local attitude. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete component wiring.
 
 ## Assign a reference at runtime
 
@@ -38,6 +38,58 @@ The key includes the Anchor and Kind as well as the entity ID. The Ghost can arr
 
 `RealmSetup` normally starts on its first update after enable. Call `StartRealm()` explicitly if you need to assign the key earlier. Stopping and restarting the setup creates a fresh frame, so assign the runtime target for each new Realm. A nonempty Entity ID in the Inspector still requires an Anchor ID and Kind.
 
+## Follow a geographic reference directly
+
+Choose **Reference space > Geographic** in Realm Setup, or set `ReferenceFrame.Space = ReferenceSpace.Geographic`. Feed WGS84 positions directly:
+
+```csharp
+spatial.SetGeographicPosition(new GeoPosition(latitudeDegrees, longitudeDegrees, heightMeters));
+
+realm.ReferenceFrame = new ReferenceFrame
+{
+    Space = ReferenceSpace.Geographic,
+    FollowedGhost = referenceGhost.Key,
+    FollowRotation = false,
+    MaxDistance = 5000
+};
+```
+
+`GeoPosition` uses ellipsoidal height in metres. Convert mean-sea-level height with your application's geoid model when needed. Latitude must be within [-90, 90] degrees and longitude within [-180, 180]. `SetGeographicPosition` converts to Earth-centered, Earth-fixed (ECEF) metres, retained in `Spatial.Position`. Sources already providing ECEF can use `SetPosition` directly. All spatial positions in a Geographic realm must use ECEF metres.
+
+On each update, the reference position defines the local east/north/up tangent axes. The projection subtracts ECEF positions in doubles, then rotates that displacement into the reference's tangent frame and applies Unity placement. Stationary entities retain their global positions while their projected positions change with the reference. No static ENU origin is configured. This uses the WGS84 [geodetic conversion](https://gssc.esa.int/navipedia/index.php/Ellipsoidal_and_Cartesian_Coordinates_Conversion) and [local tangent transformation](https://gssc.esa.int/navipedia/index.php/Transformations_between_ECEF_and_ENU_coordinates).
+
+`Coordinates`, shown as **Attitude axes** in Geographic mode, describes the quaternion supplied to `Spatial.SetRotation`: Unity means local east/up/north, ENU means east/north/up, and NED means north/east/down. Emas accounts for each entity's own tangent plane before applying the reference alignment. It does not treat an entity's local attitude as if it originated at the reference. `FollowRotation = false` keeps local north/up aligned to the scene; true also cancels the reference's local heading, pitch and roll. SDK angle order and quaternion representation remain application responsibilities.
+
+For a fixed geographic reference, assign `frame.GeographicPosition = new GeoPosition(...)` after selecting Geographic space. `frame.Position` exposes the same point in ECEF metres. A followed reference can also be assigned later, using the runtime-selection workflow above. Loss freezes both the last reference position and its tangent axes.
+
+Use `TryToUnityPosition(GeoPosition, out Vector3)` and `ToGeographicPosition(Vector3)` for geographic point conversion. For an entity's attitude, use `ToUnityRotation(rotation, geoPosition)` or `ToSimulationRotation(unityRotation, geoPosition)`; the overloads without a position use the reference location. `ToSimulationPosition` continues to return the stored Cartesian coordinates, which are ECEF in this mode. `GeoPosition.ToEarthCentered()` and `GeoPosition.FromEarthCentered()` convert independently of a Realm.
+
+`MaxDistance` and `DistanceTo` measure straight-line ECEF distance in metres, not surface travel distance. Projection retains Earth curvature; equal-height objects far away need not have the same Unity Y. At an exact ECEF pole (X = Y = 0), longitude is taken as zero to define the tangent axes. Geographic projection requires a reference; removing it restores ordinary identity projection of the stored ECEF numbers.
+
+## Feed ECEF positions and attitudes
+
+Use the same **Geographic** reference space for an SDK that already supplies Earth-centered, Earth-fixed coordinates. Positions bypass WGS84 conversion, and ECEF attitudes have an explicit input method:
+
+```csharp
+spatial.SetPosition(new Double3(ecefX, ecefY, ecefZ)); // ECEF metres
+spatial.SetEarthCenteredRotation(bodyToEcefRotation);
+```
+
+The quaternion must actively rotate source body XYZ vectors into ECEF XYZ. The default body convention is **X forward, Y right, Z down**. For other right-handed body axes, pass their mapping to Unity model right/up/forward:
+
+```csharp
+// SDK body axes: X forward, Y left, Z up.
+CoordinateSystem bodyAxes = new CoordinateSystem(
+    Axis.NegativeY, Axis.PositiveZ, Axis.PositiveX);
+spatial.SetEarthCenteredRotation(bodyToEcefRotation, bodyAxes);
+```
+
+`CoordinateSystem.NorthEastDown` describes the default body mapping; `EastNorthUp` describes X right, Y forward, Z up. This parameter concerns the body's axes, not geographic directions at its current location. Decode SDK quaternion ordering and invert passive ECEF-to-body attitudes in the application as needed. ECEF attitudes require right-handed body axes; a mapping that cannot represent a proper body-to-ECEF rotation is rejected.
+
+Position and attitude can arrive independently, in either order. Emas retains the global quaternion, so moving an entity without another attitude update does not silently change its global orientation. Local geographic attitudes from `SetRotation` and ECEF attitudes can coexist in the same Realm. `UsesEarthCenteredRotation` identifies the stored rotation representation. Calling `SetRotation` switches that Ghost back to the local/source convention selected by the frame's **Attitude axes** setting.
+
+Follow the Ghost's key normally: the frame inherits its attitude representation. For a manual reference, assign its ECEF `Position` and call `frame.SetEarthCenteredRotation(...)`. `ToUnityEarthCenteredRotation(...)` and `ToEarthCenteredRotation(...)` convert attitudes in both directions and take the same optional body-axis mapping. These inputs still display around the reference's moving tangent frame.
+
 ## Choose source coordinates
 
 Each reference frame has a `Coordinates` value. Choose its preset in Realm Setup or assign it in code. Unity is the default; no extra asset is needed.
@@ -58,7 +110,7 @@ frame.Coordinates = new CoordinateSystem(
     right: Axis.NegativeX, up: Axis.PositiveZ, forward: Axis.PositiveY);
 ```
 
-The setting applies to `Spatial` positions and quaternion rotations, the reference pose, and both directions of the conversion helpers. All incoming poses in a realm must use the selected convention. `UnityPosition` and `UnityRotation` remain in Unity coordinates. Reference following and the desired Unity pose are configured independently of the source axes.
+In Cartesian space, the setting applies to `Spatial` positions and quaternion rotations, the reference pose, and both directions of the conversion helpers. In Geographic space it applies to local attitudes; WGS84/ECEF positions have fixed geographic meanings. All Cartesian poses and local geographic attitudes in a realm must use the selected convention. Explicit ECEF attitudes use their own body-axis mapping. `UnityPosition` and `UnityRotation` remain in Unity coordinates. Reference following and the desired Unity pose are configured independently of the source axes.
 
 Rotations are converted by changing both the world and local basis of their rotation matrix, including handedness. Feed quaternions expressed in that source basis; decoding an SDK's angle order, angular units or quaternion representation belongs in the application. Prefab geometry uses Unity local axes.
 
@@ -138,7 +190,7 @@ realm.RegisterPresenceInitializer<Car>(CarKind, (presence, car) =>
 });
 ```
 
-`SdkProxy` is your SDK's concrete proxy type, supplied once with `Detect(id, CarKind, source: proxy)`. `Presence.Source` resolves a weak reference; these readers preserve the last spatial state if it is collected or destroyed. Use `ReferenceFrame.Coordinates` for the common axis and handedness conversion. Put geodetic conversion, unit conversion and SDK rotation decoding in these readers or an application helper. If sources use different conventions, first normalize them to the convention selected for this realm. Each module only knows its input type. Bind only channels supplied by the SDK; unbound or disabled modules leave their channel unchanged. `Spatial.HasPosition` and `HasRotation` indicate whether each channel has been supplied. Missing rotation leaves root rotation under application control.
+`SdkProxy` is your SDK's concrete proxy type, supplied once with `Detect(id, CarKind, source: proxy)`. `Presence.Source` resolves a weak reference; these readers preserve the last spatial state if it is collected or destroyed. Use `ReferenceFrame.Coordinates` for the common axis and handedness conversion. For WGS84 feeds, use Geographic space and `SetGeographicPosition` as described above. Other datum conversions, unit conversion and SDK rotation decoding belong in these readers or an application helper. If sources use different conventions, first normalize them to the convention selected for this realm. Each module only knows its input type. Bind only channels supplied by the SDK; unbound or disabled modules leave their channel unchanged. `Spatial.HasPosition` and `HasRotation` indicate whether each channel has been supplied. Missing rotation leaves root rotation under application control.
 
 The detector calls `Detect(id, CarKind, source: proxy)` on arrival and `Disappear(CarKind, id)` on departure. Data updates require neither another detection nor a report. Each realm update reads and applies the enabled modules, resolves the reference once, and projects all roots using the resulting spatial state. Reference movement also repositions entities whose shared positions stayed unchanged. Sample reference and target data at a common presentation time for interpolated feeds.
 
@@ -146,9 +198,9 @@ Module reads do not refresh `InactivityTimeout`. Leave it disabled for feeds tha
 
 ## Preserve precision before Unity
 
-Store and transport global positions as `Double3`, which has three `double` components. Use one shared Cartesian coordinate system and unit for the realm, with its axes described by `ReferenceFrame.Coordinates`. Different detectors must feed the same system; SDK-specific geodetic or geocentric conversion belongs in the initializer-bound readers or an application helper, keeping the modules independent of the SDK.
+Store and transport global positions as `Double3`, which has three `double` components. Use one shared Cartesian coordinate system and unit for the realm, with its axes described by `ReferenceFrame.Coordinates`. Different detectors must feed the same system. Geographic space standardizes on ECEF metres and handles WGS84 conversion; other coordinate datums must be normalized by the application.
 
-The relative displacement is calculated in double precision before its final conversion to a Unity position:
+For Cartesian space, the relative displacement is calculated in double precision before its final conversion to a Unity position:
 
 ```text
 Unity position = Unity reference position
@@ -195,6 +247,6 @@ Check `HasPosition` before inverse-position, rotation-conversion or reference-di
 
 Import **Relative world**, open `RelativeWorld.unity`, and press Play. Its authored tracking prefab follows the green origin car driving north at 8 m/s. Stationary orange parked cars appear ahead on alternating sides, pass the origin and leave the SDK snapshot behind it. The road markings scroll using the reference frame's actual northward displacement. A white bird circles above the origin, updating both its relative position and heading through the same spatial modules.
 
-`GeoSource` detects the current snapshot and explicitly removes missing IDs. `GeoInitializer` maps WGS84 readings through `GeoProjection` into shared east/up/north coordinates. `GeoPositionModule` and `GeoOrientationModule` apply the source-independent values to `Spatial`. The projection uses a fixed datum; Realm then subtracts the moving origin before converting to Unity floats. A parked car's shared position remains constant even though its Unity position moves past the origin.
+`GeoSource` detects the current snapshot and explicitly removes missing IDs. `GeoInitializer` supplies `GeoPosition` readings and local attitude to the authored modules. Realm Setup uses Geographic space: the driving car defines the tangent frame directly. A parked car's ECEF position remains constant even though its Unity position moves past the origin. The mock SDK has a starting road location, which is unrelated to reference configuration.
 
 Inspect Realm Setup, the road's `RoadMotion` component and the saved blueprints and variants to change the scene configuration. See the [sample guide](../Samples~/RelativeWorld/README.md) for timings, units and the SDK mapping. Disable and re-enable Tracking to restart.

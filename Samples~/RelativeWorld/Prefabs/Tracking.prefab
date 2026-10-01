@@ -49,6 +49,11 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 83648be90a5608b4f87ea6563d3e5cc8, type: 2}
   - {fileID: 11400000, guid: 1a9ba993957a03b45841edd0f919856c, type: 2}
   _useReferenceFrame: 1
+  _referenceSpace: 1
+  _coordinates:
+    _right: 1
+    _up: 2
+    _forward: 3
   _followGhost: 1
   _referenceAnchorId: relative-world
   _referenceKind:

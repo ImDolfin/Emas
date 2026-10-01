@@ -25,7 +25,13 @@ namespace Emas
         [Tooltip("Project Spatial Ghosts relative to a manual or followed reference point. When off, spatial poses map directly to Unity world space.")]
         [SerializeField]
         private bool _useReferenceFrame;
-        [Tooltip("Source coordinate axes shared by all Spatial positions and rotations in this Realm.")]
+        [Tooltip("Cartesian uses shared XYZ positions. Geographic uses WGS84 ECEF positions and a tangent frame at the moving reference.")]
+        [SerializeField]
+        private ReferenceSpace _referenceSpace;
+        [Tooltip("Manual WGS84 reference: latitude/longitude in degrees and ellipsoidal height in metres.")]
+        [SerializeField]
+        private GeoPosition _geographicPosition;
+        [Tooltip("Cartesian source axes, or local attitude axes in Geographic space. Geographic Unity axes mean east/up/north; WGS84 positions always use latitude/longitude/height.")]
         [SerializeField]
         private CoordinateSystem _coordinates = CoordinateSystem.Unity;
         [Tooltip("Use a Ghost in this realm as the moving reference. Leave Entity ID empty to assign ReferenceFrame.FollowedGhost at runtime.")]
@@ -40,10 +46,10 @@ namespace Emas
         [Tooltip("Optional entity ID to follow at startup. Leave empty to assign ReferenceFrame.FollowedGhost at runtime; spatial presentation waits until a reference position is available.")]
         [SerializeField]
         private string _referenceEntityId;
-        [Tooltip("Manual Cartesian reference position in the same units as Spatial positions. Convert latitude, longitude and altitude before entering it.")]
+        [Tooltip("Manual Cartesian reference position in the same units as Spatial positions. For WGS84 latitude/longitude/height, choose Geographic space.")]
         [SerializeField]
         private Double3 _position;
-        [Tooltip("Reference orientation in the shared Cartesian frame. A followed Ghost's published Spatial rotation replaces it.")]
+        [Tooltip("Reference orientation in the shared Cartesian frame or local geographic attitude axes. A followed Ghost's published Spatial rotation replaces it.")]
         [SerializeField]
         private Quaternion _rotation = Quaternion.identity;
         [Tooltip("Unity world position where the reference point appears, usually near the scene origin.")]
@@ -465,6 +471,7 @@ namespace Emas
 
             ReferenceFrame frame = new ReferenceFrame
             {
+                Space = _referenceSpace,
                 Coordinates = _coordinates,
                 UnityPosition = _unityPosition,
                 UnityRotation = _unityRotation,
@@ -487,7 +494,14 @@ namespace Emas
             }
             else
             {
-                frame.Position = _position;
+                if (_referenceSpace == ReferenceSpace.Geographic)
+                {
+                    frame.GeographicPosition = _geographicPosition;
+                }
+                else
+                {
+                    frame.Position = _position;
+                }
                 frame.Rotation = _rotation;
             }
 

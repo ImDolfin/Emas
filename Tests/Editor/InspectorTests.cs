@@ -195,6 +195,35 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
+        /// A manually authored geographic reference validates WGS84 fields and projects around that location.
+        /// </summary>
+        [Test]
+        public void SerializedGeographicReference_ValidatesAndUsesWgs84Origin()
+        {
+            RealmSetup setup = CreateRealm();
+            SerializedObject serialized = new SerializedObject(setup);
+            serialized.FindProperty("_useReferenceFrame").boolValue = true;
+            serialized.FindProperty("_referenceSpace").intValue = (int)ReferenceSpace.Geographic;
+            SerializedProperty geographic = serialized.FindProperty("_geographicPosition");
+            geographic.FindPropertyRelative("_latitudeDegrees").doubleValue = 91;
+            geographic.FindPropertyRelative("_longitudeDegrees").doubleValue = 90;
+            geographic.FindPropertyRelative("_heightMeters").doubleValue = 100;
+            serialized.FindProperty("_unityPosition").vector3Value = new Vector3(3, 4, 5);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            setup.gameObject.SetActive(true);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => setup.StartRealm()).Message, Does.Contain("latitude"));
+            Assert.That(setup.Realm, Is.Null);
+
+            geographic.FindPropertyRelative("_latitudeDegrees").doubleValue = 0;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            setup.StartRealm();
+            ReferenceFrame frame = setup.Realm.ReferenceFrame;
+            Assert.That(frame.Space, Is.EqualTo(ReferenceSpace.Geographic));
+            Assert.That(frame.TryToUnityPosition(new GeoPosition(0, 90, 102), out Vector3 position), Is.True);
+            Assert.That(Vector3.Distance(position, new Vector3(3, 6, 5)), Is.LessThan(0.0001f));
+        }
+
+        /// <summary>
         /// A followed reference authored on the prefab projects distant double coordinates near the Unity origin.
         /// </summary>
         [UnityTest]

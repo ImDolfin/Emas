@@ -112,12 +112,23 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | Member | Use |
 | --- | --- |
 | `Realm.ReferenceFrame` | Optional reference configuration; null maps spatial poses directly to Unity world space |
+| `ReferenceFrame.Space` / `ReferenceSpace` | Cartesian projection (default) or Geographic WGS84 projection around the current reference |
+| `GeoPosition(latitudeDegrees, longitudeDegrees, heightMeters)` | WGS84 coordinates with ellipsoidal height; properties expose the same units |
+| `GeoPosition.ToEarthCentered()` / `FromEarthCentered(position)` | Convert between WGS84 and double-precision ECEF metres |
+| `Spatial.SetEarthCenteredRotation(rotation, bodyAxes)` | Publish active body-to-ECEF attitude for Geographic space; body axes default to forward/right/down |
+| `Spatial.UsesEarthCenteredRotation` / `ReferenceFrame.UsesEarthCenteredRotation` | Identify whether the cached Rotation is body-to-ECEF rather than local/source attitude |
+| `ReferenceFrame.SetEarthCenteredRotation(rotation, bodyAxes)` | Set manual body-to-ECEF reference attitude; assigning Rotation switches back to local/source attitude |
+| `ToUnityEarthCenteredRotation(rotation, bodyAxes)` / `ToEarthCenteredRotation(rotation, bodyAxes)` | Convert ECEF attitudes to/from Unity using a Geographic reference |
+| `Spatial.SetGeographicPosition(position)` | Publish WGS84 coordinates; `Spatial.Position` retains the ECEF value |
+| `ReferenceFrame.GeographicPosition` | Manual or last followed WGS84 reference position, available in Geographic space |
+| `TryToUnityPosition(GeoPosition, out result)` / `ToGeographicPosition(Vector3)` | Geographic point projection and its inverse |
+| `ToUnityRotation(rotation, GeoPosition)` / `ToSimulationRotation(rotation, GeoPosition)` | Convert local attitude at the entity's own geographic location |
 | `Double3(x, y, z)` | Double-precision Cartesian position or displacement; preserve SDK double values |
 | `Double3.Distance(a, b)` | Distance between shared Cartesian positions in double precision |
 | `Spatial.SetPosition(position)` / `Position` / `HasPosition` | Publish and read the root's independent double-precision position channel |
 | `Spatial.SetRotation(rotation)` / `Rotation` / `HasRotation` | Publish and read the optional orientation channel; without it Emas leaves root rotation untouched |
 | `Spatial.IsInRange` | Whether the latest spatial projection can be presented |
-| `ReferenceFrame.Coordinates` | Source axes and handedness for all poses in the realm; defaults to Unity |
+| `ReferenceFrame.Coordinates` | Cartesian pose axes, or local attitude axes in Geographic space; defaults to Unity (east/up/north geographically) |
 | `CoordinateSystem.Unity` / `EastNorthUp` / `NorthEastDown` | Presets for Unity, ENU and NED source coordinates |
 | `new CoordinateSystem(right, up, forward)` | Custom signed source axes mapping to Unity directions; use each of X, Y and Z once via `Axis.PositiveX`, `Axis.NegativeX`, etc. |
 | `CoordinateSystem.Right` / `Up` / `Forward` | Read the source axis mapped to each Unity direction |
@@ -130,10 +141,10 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `ReferenceFrame.IsReferenceAvailable` | Whether the configured reference is currently available; loss preserves the last valid pose |
 | `TryToUnityPosition(position, out result)` | Project with reference initialization and presentation-range checks |
 | `ToSimulationPosition(position)` | Convert a Unity world position into shared Cartesian coordinates |
-| `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the frame mapping |
+| `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the frame mapping; in Geographic space these overloads use the reference location |
 | `DistanceTo(position)` | Double-precision distance from the cached reference |
 
-Add enabled `Spatial` components to participating Ghost roots. Application entity modules supply poses in shared Cartesian units/axes for the realm; `ReferenceFrame.Coordinates` maps that convention to Unity. Changing it reinterprets cached poses on the next update, while conversion helpers use it immediately. The realm subtracts the reference and maps axes in doubles before converting to Unity floats and projects the root in world space, accounting for Anchor parents. Reference movement reprojects all spatial ghosts without requiring another entity publication. Position, rotation and articulation updates remain independent; the spatial API emits no general data-change events.
+Add enabled `Spatial` components to participating Ghost roots. Geographic space stores ECEF positions and projects them into the moving reference's local tangent frame, including local geographic attitudes or explicit body-to-ECEF attitudes. Cartesian application modules supply poses in shared units/axes for the realm; `ReferenceFrame.Coordinates` maps that convention to Unity. Changing it reinterprets cached poses on the next update, while conversion helpers use it immediately. The realm subtracts the reference and maps axes in doubles before converting to Unity floats and projects the root in world space, accounting for Anchor parents. Reference movement reprojects all spatial ghosts without requiring another entity publication. Position, rotation and articulation updates remain independent; the spatial API emits no general data-change events.
 
 Before the first position, while an explicitly assigned reference is uninitialized, or outside the presentation range, spatial views and root rendering/colliders are suppressed while identity, availability and scripts remain active. Requested views return on range entry. Reference loss freezes its last valid pose and sets `IsReferenceAvailable` false; before any valid reference, presentation stays suppressed. With no reference frame, enabled `Spatial` components use identity projection with no distance limit; positions that cannot fit in finite Unity floats remain suppressed. Clearing `Realm.ReferenceFrame` returns to this default. Disable `Spatial` to release transform control. See [relative-world integration](Spatial.md) for complete setup, channel mapping and precision guidance.
 
