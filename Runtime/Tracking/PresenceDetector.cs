@@ -14,6 +14,7 @@ namespace Emas
     {
         private Anchor _anchor;
         private bool _started;
+        // Each attachment gets a new generation so old callbacks cannot publish into a restarted detector.
         private long _registrationGeneration;
         private long? _sourceChangeGeneration;
         private Exception _lastError;
@@ -93,16 +94,27 @@ namespace Emas
         }
 
         /// <summary>
-        /// Detects an entity so the realm can create its stable Presence, root and modules.
+        /// Creates or refreshes a detected entity's stable Presence and initializes its configured Ghost modules.
         /// </summary>
         /// <param name="entityId">The stable SDK entity ID.</param>
         /// <param name="kind">The detected kind.</param>
-        /// <param name="name">An optional entity label.</param>
-        /// <param name="variant">An optional visual variant.</param>
-        /// <param name="capabilities">Typed capability interfaces reported by the SDK.</param>
+        /// <param name="name">The display label; null retains an existing label or uses the entity ID for a new root.</param>
+        /// <param name="variant">The appearance; null retains an existing value, and Variant.None selects blueprint fallback.</param>
+        /// <param name="capabilities">Interface types advertised by the SDK; null retains the current set, and an empty sequence clears it.</param>
         /// <param name="source">An optional application proxy or SDK object, retained weakly on Presence.
         /// Null preserves the existing source. A different source reruns the initializer.</param>
         /// <returns>The stable realm-owned presence handle.</returns>
+        /// <remarks>
+        /// Configured modules must already exist on the root. The initializer binds them before their first read;
+        /// advertised capabilities do not add components or guarantee that Ghost.TryGet can resolve them.
+        /// A new or unavailable entity activates after successful startup, or during the next realm update
+        /// for detections made outside startup. Repeated detection records activity and cancels disappearance grace.
+        /// Source or capability changes rerun initialization; label and variant changes alone do not.
+        /// Initialization failures propagate and stop the affected attachment, with startup rollback handled by the anchor.
+        /// </remarks>
+        /// <exception cref="ArgumentException">An identity is invalid, or a capability is null or is not an interface type.</exception>
+        /// <exception cref="InvalidOperationException">The detector is inactive, another detector owns the identity, or the root type is incompatible.</exception>
+        /// <exception cref="ObjectDisposedException">The owning anchor or realm was disposed.</exception>
         protected Presence Detect(string entityId, Kind kind, string name = null, Variant? variant = null,
             IEnumerable<Type> capabilities = null, object source = null)
         {
@@ -208,7 +220,8 @@ namespace Emas
         /// </param>
         /// <remarks>
         /// Call after updating cached ghost data to reset its inactivity deadline and cancel disappearance grace.
-        /// Any partial data update counts as activity. A ghost retained during grace becomes available after source processing completes.
+        /// Any partial data update counts as activity. A ghost retained during grace becomes available at finalization;
+        /// calls outside lifecycle or dispatched work wait for the next realm update.
         /// GetOrCreate already records activity, so no additional call is needed when publishing through it.
         /// This does not invoke callbacks synchronously or change ghost data.
         /// </remarks>
@@ -321,8 +334,9 @@ namespace Emas
         /// A positive timeout, or null to disable inactivity expiry, which is the default.
         /// </value>
         /// <remarks>
-        /// Configure while detached. Uses unscaled real time and removes expired ghosts during the next realm update,
+        /// Configure while detached. Uses unscaled real time and marks expired presences missing during the next realm update,
         /// after queued publications and detector updates. Detect, GetOrCreate and MarkPublished reset the individual presence's deadline.
+        /// DisappearanceGracePeriod then determines whether removal is immediate or delayed.
         /// Module reads do not count as presence activity. Enable only for feeds that confirm continued presence;
         /// arrival/departure-only feeds should leave expiry disabled.
         /// </remarks>
@@ -361,6 +375,8 @@ namespace Emas
         /// Zero, the default, removes immediately. A later report during the grace period reuses the same
         /// Presence and Ghost root. Configure while detached on Unity's main thread.
         /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The grace period is negative.</exception>
+        /// <exception cref="InvalidOperationException">The detector is attached or running a lifecycle callback.</exception>
         public TimeSpan DisappearanceGracePeriod
         {
             get
@@ -446,7 +462,7 @@ namespace Emas
         /// Gets the anchor, source and operation associated with LastError, or null when no error is recorded.
         /// </summary>
         /// <remarks>
-        /// Built-in sources include the kind and entity ID when known. Captured with the primary error and cleared
+        /// Emas includes the kind and entity ID when known. Captured with the primary error and cleared
         /// before each attachment attempt; cleanup and stale registrations cannot replace that context.
         /// </remarks>
         public string LastErrorContext

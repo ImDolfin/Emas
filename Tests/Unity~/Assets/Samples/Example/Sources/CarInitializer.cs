@@ -11,6 +11,7 @@ namespace Emas.Sample
             string id = presence.Key.EntityId;
             PositionModule position = root.GetComponent<PositionModule>();
             ArticulationModule articulation = root.GetComponent<ArticulationModule>();
+            // Resolve Source on each read so a binding retains the Presence, rather than either SDK feed.
             if (presence.Source is SdkTwoVehicleFeed)
             {
                 position.Bind(() => ((SdkTwoVehicleFeed)presence.Source).Current[id].Coordinates);

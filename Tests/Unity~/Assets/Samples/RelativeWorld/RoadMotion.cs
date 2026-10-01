@@ -35,11 +35,13 @@ namespace Emas.RelativeWorld
                 }
                 else
                 {
+                    // A restarted realm supplies a new frame; do not count its origin reset as travelled distance.
                     _distance = 0;
                     _previousFrame = frame;
                 }
                 _previousPosition = frame.Position;
             }
+            // Wrap at the authored marking spacing to keep local offsets small during long runs.
             float offset = (float)(_distance % 5.0);
             for (int index = 0; index < _markings.Length; index++)
             {

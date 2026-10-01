@@ -60,6 +60,7 @@ namespace Emas
             try
             {
                 _notificationItems.Clear();
+                // New subscriptions created by a callback join the next pass, preventing recursive initial notifications.
                 _notificationItems.AddRange(_items);
                 for (int index = 0; index < _notificationItems.Count; index++)
                 {
@@ -116,8 +117,10 @@ namespace Emas
                 }
 
                 subscription.Seen.IntersectWith(keys);
+                // Drain departures before arrivals so loss and recovery of the same Key remain observable.
                 departures.Clear();
                 departures.AddRange(subscription.Departures);
+                // Departures queued by these callbacks stay in Departures for the next notification pass.
                 subscription.Departures.Clear();
                 for (int index = 0; index < departures.Count; index++)
                 {

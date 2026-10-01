@@ -27,7 +27,12 @@ namespace Emas
         private bool _isReferenceAvailable;
 
         /// <summary>Gets or sets Cartesian or WGS84 geographic projection; defaults to Cartesian.</summary>
-        /// <remarks>Geographic positions are stored as ECEF metres. Geographic rotations accept local tangent or body-to-ECEF input.</remarks>
+        /// <remarks>
+        /// Geographic positions are stored as ECEF metres. Geographic rotations accept local tangent or body-to-ECEF input.
+        /// Changing space reinterprets stored positions without converting them. Assign Rotation to clear ECEF attitude mode
+        /// before projecting in Cartesian space.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The space is unknown, or a stored position cannot define a geographic frame.</exception>
         public ReferenceSpace Space
         {
             get
@@ -50,6 +55,7 @@ namespace Emas
 
         /// <summary>Gets or sets the reference's WGS84 position in Geographic space.</summary>
         /// <remarks>A followed Ghost replaces it on the next update. Position exposes the same point in ECEF metres.</remarks>
+        /// <exception cref="InvalidOperationException">The space is not Geographic, or the getter has no reference position yet.</exception>
         public GeoPosition GeographicPosition
         {
             get
@@ -98,8 +104,10 @@ namespace Emas
         /// Gets or sets the shared Cartesian position mapped to UnityPosition; Geographic space uses ECEF metres.
         /// </summary>
         /// <remarks>
-        /// Setting this establishes a manual reference. A followed ghost overwrites it during realm projection.
+        /// Setting this supplies a usable reference immediately but does not clear FollowedGhost.
+        /// A followed ghost overwrites it during realm projection. The getter returns zero before HasPosition becomes true.
         /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The position is not finite or cannot define a Geographic tangent frame.</exception>
         public Double3 Position
         {
             get
@@ -123,6 +131,8 @@ namespace Emas
         /// Gets the cached reference quaternion, or sets local/source attitude and clears ECEF attitude mode.
         /// Use UsesEarthCenteredRotation to identify the cached representation.
         /// </summary>
+        /// <remarks>Local geographic attitude uses Coordinates at the reference location. Finite nonzero quaternions are normalized.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">A component is not finite or the quaternion has zero length.</exception>
         public Quaternion Rotation
         {
             get
@@ -142,6 +152,10 @@ namespace Emas
         /// <summary>Sets manual reference attitude from a body-to-ECEF quaternion in Geographic space.</summary>
         /// <param name="rotation">Active rotation mapping source body XYZ vectors into ECEF XYZ.</param>
         /// <param name="bodyAxes">Body axes mapped to Unity directions; null uses forward/right/down (NED mapping).</param>
+        /// <remarks>Normalizes the quaternion. A followed Ghost with rotation data replaces this attitude during projection.</remarks>
+        /// <exception cref="InvalidOperationException">The reference space is not Geographic.</exception>
+        /// <exception cref="ArgumentException">The body axes are invalid or not right-handed.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public void SetEarthCenteredRotation(Quaternion rotation, CoordinateSystem? bodyAxes = null)
         {
             RequireGeographic();
@@ -202,10 +216,12 @@ namespace Emas
         /// Gets or sets the maximum presentation distance in shared coordinate units, or null for no distance limit.
         /// </summary>
         /// <remarks>
-        /// A configured limit must be positive and finite. Outside it, ghosts remain available and their views
+        /// A configured limit must be positive and finite. Geographic space measures ECEF chord distance in metres.
+        /// Outside it, ghosts remain available and their views
         /// are suppressed without cancelling requests. Returning into range restores requested presentation.
         /// Choose a local range suitable for Unity float precision; data and distance calculations remain doubles.
         /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The limit is nonpositive or not finite.</exception>
         public double? MaxDistance
         {
             get
@@ -274,11 +290,16 @@ namespace Emas
         }
 
         /// <summary>
-        /// Converts a shared Cartesian position to Unity world space, subtracting the reference before float conversion.
+        /// Converts a shared Cartesian position, or ECEF metres in Geographic space, into Unity world space.
         /// </summary>
+        /// <param name="position">The finite position in this frame's source space.</param>
+        /// <param name="unityPosition">The projected world point on success; zero on failure.</param>
         /// <returns>
-        /// False if no reference position exists, the point exceeds MaxDistance, or the result cannot fit in Vector3.
+        /// False if no reference position exists, the point exceeds MaxDistance, the point is Earth's center in
+        /// Geographic space, or the result cannot fit in Vector3.
         /// </returns>
+        /// <remarks>Subtracts the reference in double precision before converting to floats. Uses the cached pose without resolving FollowedGhost.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">An input coordinate is not finite.</exception>
         public bool TryToUnityPosition(Double3 position, out Vector3 unityPosition)
         {
             ValidatePosition(position, nameof(position));
@@ -286,6 +307,11 @@ namespace Emas
         }
 
         /// <summary>Projects a WGS84 position using a Geographic reference and its range limit.</summary>
+        /// <param name="position">The WGS84 position to project.</param>
+        /// <param name="unityPosition">The projected world point on success; zero on failure.</param>
+        /// <returns>True if the position can be shown with the cached reference pose and range limit.</returns>
+        /// <exception cref="InvalidOperationException">The reference space is not Geographic.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The geographic input is invalid or its ECEF coordinates overflow.</exception>
         public bool TryToUnityPosition(GeoPosition position, out Vector3 unityPosition)
         {
             RequireGeographic();
@@ -293,6 +319,11 @@ namespace Emas
         }
 
         /// <summary>Converts a Unity world point back into WGS84 coordinates using a Geographic reference.</summary>
+        /// <param name="unityPosition">The finite Unity world point.</param>
+        /// <returns>The WGS84 position, including ellipsoidal height in metres.</returns>
+        /// <remarks>The inverse conversion does not apply MaxDistance.</remarks>
+        /// <exception cref="InvalidOperationException">The space is not Geographic or no reference position has been supplied.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The input or resulting geographic position is invalid.</exception>
         public GeoPosition ToGeographicPosition(Vector3 unityPosition)
         {
             RequireGeographic();
@@ -302,6 +333,11 @@ namespace Emas
         /// <summary>
         /// Converts a Unity world position back into double-precision Cartesian coordinates, or ECEF metres in Geographic space.
         /// </summary>
+        /// <param name="unityPosition">The finite Unity world point.</param>
+        /// <returns>The point in this frame's source space.</returns>
+        /// <remarks>Does not apply MaxDistance or restore precision already lost in the Unity input.</remarks>
+        /// <exception cref="InvalidOperationException">No reference position has been supplied.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The input is not finite or the converted coordinates overflow.</exception>
         public Double3 ToSimulationPosition(Vector3 unityPosition)
         {
             RequirePosition();
@@ -317,6 +353,10 @@ namespace Emas
         /// Converts an orientation to Unity. In Geographic space this overload uses the reference location
         /// as the attitude origin; use the GeoPosition overload for an entity at another location.
         /// </summary>
+        /// <param name="rotation">A local/source quaternion in Coordinates, even when the reference itself uses ECEF attitude.</param>
+        /// <returns>The normalized Unity world orientation.</returns>
+        /// <exception cref="InvalidOperationException">No reference position has been supplied.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public Quaternion ToUnityRotation(Quaternion rotation)
         {
             RequirePosition();
@@ -327,6 +367,10 @@ namespace Emas
         /// Converts Unity orientation back into the source axes. Geographic space uses the reference location;
         /// use the GeoPosition overload for attitude at another location.
         /// </summary>
+        /// <param name="unityRotation">The Unity world orientation.</param>
+        /// <returns>A normalized local/source quaternion in Coordinates.</returns>
+        /// <exception cref="InvalidOperationException">No reference position has been supplied.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public Quaternion ToSimulationRotation(Quaternion unityRotation)
         {
             RequirePosition();
@@ -335,6 +379,11 @@ namespace Emas
         }
 
         /// <summary>Converts an entity's local geographic attitude to Unity, including its tangent-frame orientation.</summary>
+        /// <param name="rotation">Local attitude in Coordinates at the entity's position.</param>
+        /// <param name="position">The entity's WGS84 position, which determines its local east/up/north axes.</param>
+        /// <returns>The normalized Unity world orientation.</returns>
+        /// <exception cref="InvalidOperationException">The space is not Geographic or no reference position has been supplied.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The position or quaternion is invalid.</exception>
         public Quaternion ToUnityRotation(Quaternion rotation, GeoPosition position)
         {
             RequireGeographic();
@@ -343,6 +392,11 @@ namespace Emas
         }
 
         /// <summary>Converts Unity orientation back into local attitude at the supplied geographic position.</summary>
+        /// <param name="unityRotation">The Unity world orientation.</param>
+        /// <param name="position">The entity's WGS84 position, which determines its local tangent axes.</param>
+        /// <returns>A normalized local attitude quaternion in Coordinates.</returns>
+        /// <exception cref="InvalidOperationException">The space is not Geographic or no reference position has been supplied.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The position or quaternion is invalid.</exception>
         public Quaternion ToSimulationRotation(Quaternion unityRotation, GeoPosition position)
         {
             RequireGeographic();
@@ -354,6 +408,10 @@ namespace Emas
         /// <summary>Converts body-to-ECEF attitude into Unity orientation using this Geographic reference.</summary>
         /// <param name="rotation">Active body-to-ECEF quaternion.</param>
         /// <param name="bodyAxes">Body axes mapped to Unity directions; null uses forward/right/down.</param>
+        /// <returns>The normalized Unity world orientation.</returns>
+        /// <exception cref="InvalidOperationException">The space is not Geographic or no reference position has been supplied.</exception>
+        /// <exception cref="ArgumentException">The body axes are invalid or not right-handed.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public Quaternion ToUnityEarthCenteredRotation(Quaternion rotation, CoordinateSystem? bodyAxes = null)
         {
             RequireGeographic();
@@ -365,6 +423,10 @@ namespace Emas
         /// <summary>Converts Unity orientation back into a body-to-ECEF quaternion using this Geographic reference.</summary>
         /// <param name="unityRotation">Unity world orientation.</param>
         /// <param name="bodyAxes">Body axes mapped to Unity directions; null uses forward/right/down.</param>
+        /// <returns>The normalized active rotation from body XYZ into ECEF XYZ.</returns>
+        /// <exception cref="InvalidOperationException">The space is not Geographic or no reference position has been supplied.</exception>
+        /// <exception cref="ArgumentException">The body axes are invalid or not right-handed.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public Quaternion ToEarthCenteredRotation(Quaternion unityRotation, CoordinateSystem? bodyAxes = null)
         {
             RequireGeographic();
@@ -376,6 +438,10 @@ namespace Emas
         /// <summary>
         /// Calculates Cartesian distance in doubles; Geographic space measures the ECEF chord in metres, not surface distance.
         /// </summary>
+        /// <param name="position">The finite Cartesian or ECEF point in this frame's source space.</param>
+        /// <returns>The distance from the cached reference, or positive infinity if it exceeds double range.</returns>
+        /// <exception cref="InvalidOperationException">No reference position has been supplied.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An input coordinate is not finite.</exception>
         public double DistanceTo(Double3 position)
         {
             RequirePosition();
@@ -405,6 +471,7 @@ namespace Emas
 
             _position = spatial.Position;
             _hasPosition = true;
+            // Position-only updates retain the previous attitude and its local/ECEF representation.
             if (spatial.HasRotation)
             {
                 _rotation = spatial.Rotation;
@@ -423,6 +490,7 @@ namespace Emas
                         .ToLocalEarthCenteredRotation(_rotation, _earthCenteredBodyAxes.Value)
                     : Quaternion.identity;
             }
+            // Cancel the reference's converted attitude before applying the desired Unity scene alignment.
             Quaternion alignment = _unityRotation * (FollowRotation ? Quaternion.Inverse(referenceRotation) : Quaternion.identity);
             return new Projection(_hasPosition, _position, _unityPosition,
                 SpatialMath.NormalizeRotation(alignment, nameof(Rotation)), _coordinates, _maxDistance, _space);
@@ -452,7 +520,7 @@ namespace Emas
             }
         }
 
-        // One value is shared by every participant in a projection pass.
+        // Freeze pose, axes and range once per pass so all roots use the same reference, even if callbacks change it.
         internal readonly struct Projection
         {
             private readonly bool _hasPosition;
@@ -489,6 +557,7 @@ namespace Emas
 
                 try
                 {
+                    // Remove the large origin in doubles, then map the small offset into tangent/Unity axes.
                     Double3 displacement = position - _position;
                     Double3 local = _space == ReferenceSpace.Geographic
                         ? _geographicBasis.ToLocal(displacement) : _coordinates.ToUnity(displacement);
@@ -504,6 +573,7 @@ namespace Emas
 
             internal Double3 ToSimulationPosition(Vector3 unityPosition)
             {
+                // Undo scene translation and alignment before restoring the source basis and large origin.
                 Double3 offset = new Double3((double)unityPosition.x - _unityPosition.x,
                     (double)unityPosition.y - _unityPosition.y, (double)unityPosition.z - _unityPosition.z);
                 Double3 local = SpatialMath.Rotate(Quaternion.Inverse(Alignment), offset);
@@ -519,6 +589,7 @@ namespace Emas
 
             internal Quaternion ToUnityRotation(Quaternion rotation, GeoPosition position)
             {
+                // Convert the entity's local axes, rotate its tangent frame into the reference tangent frame, then align the scene.
                 return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(position)
                     * _coordinates.ToUnityRotation(rotation), nameof(rotation));
             }

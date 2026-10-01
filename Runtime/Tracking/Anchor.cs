@@ -5,10 +5,11 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Represents one scene coordinate frame and its sources.
+    /// Groups detectors and entity identities beneath a realm-owned scene transform.
     /// </summary>
     /// <remarks>
-    /// Owned by its realm; all operations use the Unity thread. Dispose stops sources and removes owned and prepared ghosts.
+    /// Owned by its realm; all operations use the Unity thread. Ghosts are parented here, while enabled Spatial
+    /// components assign world poses through the realm's reference frame. Dispose stops detectors and removes owned and prepared ghosts.
     /// </remarks>
     public sealed class Anchor : IDisposable
     {
@@ -444,6 +445,7 @@ namespace Emas
             }
 
             List<SourceTick> sources = new List<SourceTick>(_sources.Count);
+            // Snapshot attachment generations so a detector restarted by an earlier callback waits until the next tick.
             for (int index = 0; index < _sources.Count; index++)
             {
                 sources.Add(new SourceTick(_sources[index]));

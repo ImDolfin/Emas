@@ -12,7 +12,7 @@ namespace Emas.Sample
     {
         private readonly Dictionary<string, SdkTwoVehicleProxy> _current = new Dictionary<string, SdkTwoVehicleProxy>();
 
-        /// <summary>Gets the latest SDK observations keyed by entity ID.</summary>
+        /// <summary>Gets the live read-only dictionary updated by ReadVehicles, keyed by entity ID formatted as a string.</summary>
         public IReadOnlyDictionary<string, SdkTwoVehicleProxy> Current => _current;
 
         /// <summary>

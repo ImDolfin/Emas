@@ -20,7 +20,7 @@ namespace Emas
         /// The stable identifier.
         /// </param>
         /// <exception cref="ArgumentException">
-        /// Thrown when <paramref name="id"/> is empty.
+        /// Thrown when <paramref name="id"/> is null or empty.
         /// </exception>
         public Kind(string id)
         {

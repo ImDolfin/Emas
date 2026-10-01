@@ -107,6 +107,7 @@ namespace Emas
                 return largest;
             }
 
+            // Scale before squaring so a representable distance does not overflow in the intermediate sum.
             x /= largest;
             y /= largest;
             z /= largest;

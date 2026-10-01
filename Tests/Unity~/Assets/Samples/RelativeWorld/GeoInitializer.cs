@@ -9,6 +9,7 @@ namespace Emas.RelativeWorld
         protected override void Initialize(Presence presence, Ghost root)
         {
             string id = presence.Key.EntityId;
+            // Capture identity and Presence, then resolve the latest SDK snapshot without retaining the SDK itself.
             root.GetComponent<GeoPositionModule>().Bind(() =>
             {
                 GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
@@ -21,6 +22,7 @@ namespace Emas.RelativeWorld
                 Quaternion yaw = Quaternion.AngleAxis((float)(reading.YawDegrees % 360.0), Vector3.up);
                 Quaternion pitch = Quaternion.AngleAxis(-(float)(reading.PitchDegrees % 360.0), Vector3.right);
                 Quaternion roll = Quaternion.AngleAxis(-(float)(reading.RollDegrees % 360.0), Vector3.forward);
+                // Apply roll, then pitch, then yaw; negative pitch/roll match the SDK's nose-up/right-wing-down signs.
                 return yaw * pitch * roll;
             });
         }

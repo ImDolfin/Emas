@@ -2,14 +2,14 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Stores source-independent data for the Ghost's consumers.</summary>
+    /// <summary>Stores normalized steering from either SDK for the manifested vehicle's articulation.</summary>
     public sealed class ArticulationModule : EntityModule<float>, IArticulate
     {
         /// <inheritdoc />
         public float Steering { get; private set; }
 
-        /// <summary>Updates the value exposed to consumers.</summary>
-        /// <param name="value">The value read through the initializer's mapping.</param>
+        /// <summary>Replaces the steering value exposed through IArticulate.</summary>
+        /// <param name="value">The SDK's steering input, expected in [-1, 1]; stored without clamping.</param>
         public override void Apply(float value)
         {
             Steering = value;

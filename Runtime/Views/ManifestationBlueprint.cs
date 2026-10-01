@@ -7,6 +7,10 @@ namespace Emas
     /// <summary>
     /// Defines the optional ghost root and named visual manifestations for one kind.
     /// </summary>
+    /// <remarks>
+    /// Variant names match case-sensitively; unspecified or unknown variants use the optional fallback.
+    /// Registration captures settings per realm. Re-register after edits; existing Ghost roots retain their components.
+    /// </remarks>
     [CreateAssetMenu(fileName = "New Emas Manifestation Blueprint", menuName = "Emas/Manifestation Blueprint")]
     public sealed class ManifestationBlueprint : ScriptableObject
     {
@@ -89,6 +93,7 @@ namespace Emas
         /// <param name="fallbackViewPrefab">The optional view for unspecified or unknown appearances.</param>
         /// <exception cref="ArgumentException">The kind or a variant is invalid.</exception>
         /// <remarks>
+        /// Copies the supplied rows; null means no named appearances. Names must be unique and each row requires a prefab.
         /// Existing registrations keep their captured settings until each realm registers this asset again.
         /// </remarks>
         public void Configure(Kind kind, Ghost ghostPrefab, IEnumerable<ManifestationVariant> variants,
@@ -163,6 +168,7 @@ namespace Emas
         /// </summary>
         /// <param name="variant">The requested appearance.</param>
         /// <returns>The matching prefab, the fallback, or null when neither is configured.</returns>
+        /// <remarks>Reads this asset's current settings, which may differ from a realm's captured registration.</remarks>
         public GameObject ResolveViewPrefab(Variant variant)
         {
             return ResolveViewPrefab(_variants, _fallbackViewPrefab, variant);

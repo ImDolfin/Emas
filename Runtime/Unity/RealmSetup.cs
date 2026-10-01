@@ -93,7 +93,8 @@ namespace Emas
         /// </summary>
         /// <remarks>
         /// Called automatically on the first Update after enabling in Play Mode, after providers have enabled. It may also be called explicitly while enabled.
-        /// Each anchor's detector provider creates one detector per start. StopRealm or disabling releases the realm.
+        /// Each anchor's provider supplies a detached detector per start; component providers can reuse their detector.
+        /// StopRealm or disabling releases the realm. A startup failure disposes the partially configured realm.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// The setup is disabled, already running, invalid, or stopped during source startup.
@@ -167,6 +168,7 @@ namespace Emas
         {
             _autoStartPending = false;
             _lifetime++;
+            // Clear the live binding before cleanup callbacks can stop or start this setup again.
             Realm realm = _realm;
             _realm = null;
             KeyValuePair<AnchorSetup, IDisposable>[] subscriptions =
@@ -369,6 +371,7 @@ namespace Emas
                     configured = true;
                 }
             }
+            // A configurator can enable another component; rescan until all active configurators have run.
             while (configured);
         }
 
@@ -411,6 +414,7 @@ namespace Emas
                     });
                 }
 
+                // Record ownership before OnStart can disable or reparent the setup and trigger cleanup.
                 _subscriptions.Add(setup, subscription);
                 PresenceDetector source = setup.CreateDetectorProvider().CreateDetector();
                 if (source == null)
@@ -481,6 +485,7 @@ namespace Emas
 
             if (_followGhost)
             {
+                // Leave position undefined even with an empty target: runtime selection must wait for actual data.
                 if (!string.IsNullOrEmpty(_referenceEntityId))
                 {
                     if (string.IsNullOrEmpty(_referenceAnchorId) || !_referenceKind.IsValid)

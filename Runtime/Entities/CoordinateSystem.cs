@@ -121,6 +121,7 @@ namespace Emas
             {
                 throw new ArgumentException(error, nameof(bodyAxes));
             }
+            // A right-handed source mapped into Unity's left-handed directions requires a reflection.
             if (value.Determinant != -1)
             {
                 throw new ArgumentException("ECEF attitudes require right-handed body axes. Use ENU, NED or a right-handed custom mapping.", nameof(bodyAxes));

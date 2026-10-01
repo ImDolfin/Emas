@@ -44,6 +44,7 @@ namespace Emas.RelativeWorld
             }
             foreach (Presence presence in OwnedPresences)
             {
+                // Module reads refresh data but do not signal departure; compare identities with the new SDK population.
                 if (!_sdk.Current.ContainsKey(presence.Key.EntityId))
                 {
                     Disappear(presence.Key.Kind, presence.Key.EntityId);

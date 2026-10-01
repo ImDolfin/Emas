@@ -45,6 +45,7 @@ namespace Emas.Editor
             {
                 Rect row = position;
                 row.height = EditorGUIUtility.singleLineHeight;
+                // Keep Custom selected while editing, even if the current axes happen to match a preset.
                 int preset = property.isExpanded ? 3 : PresetIndex(property);
                 bool mixed = EditorGUI.showMixedValue;
                 EditorGUI.showMixedValue = property.hasMultipleDifferentValues;

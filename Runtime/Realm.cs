@@ -467,10 +467,14 @@ namespace Emas
         /// <remarks>
         /// Register before attaching detectors. The callback runs after root creation and before SDK data is
         /// read or the Ghost becomes available. Presence.Source is already assigned. It runs again when
-        /// the source object or capabilities change, or a retained
-        /// Ghost is rediscovered or handed to a new detector. Define modules on the Ghost or its prefab;
-        /// use GetComponent to bind their readers here.
+        /// the source object or capabilities change, or a retained Ghost is rediscovered or handed to a new detector.
+        /// A GhostInitializer on an AnchorSetup overrides this registration for that anchor.
+        /// Define modules on the Ghost or its prefab; use GetComponent to bind their readers here.
         /// </remarks>
+        /// <exception cref="ArgumentException">The kind is invalid.</exception>
+        /// <exception cref="ArgumentNullException">The initializer is null.</exception>
+        /// <exception cref="InvalidOperationException">A root of this kind already exists, including a prepared root.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void RegisterPresenceInitializer<TGhost>(Kind kind, Action<Presence, TGhost> initialize)
             where TGhost : Ghost
         {
@@ -483,7 +487,7 @@ namespace Emas
         /// </summary>
         /// <param name="key">The anchor, kind and entity identity.</param>
         /// <param name="presence">The tracked presence, or null when absent.</param>
-        /// <returns>True while the realm retains this presence.</returns>
+        /// <returns>True for a retained presence with a live root; false for absent identities or disposed realms.</returns>
         public bool TryGetPresence(Key key, out Presence presence)
         {
             presence = null;
@@ -495,6 +499,8 @@ namespace Emas
         /// </summary>
         /// <param name="presence">The presence to manifest.</param>
         /// <returns>The current view, or null while no view can be shown.</returns>
+        /// <remarks>Uses the same request lifetime and deferred refresh behavior as <see cref="Manifest(IGhost)"/>.</remarks>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public View Manifest(Presence presence)
         {
             return Manifest(_population.FindPresenceRoot(presence));
@@ -504,6 +510,8 @@ namespace Emas
         /// Removes the view of a presence while retaining its detection and Ghost root.
         /// </summary>
         /// <param name="presence">The presence to demanifest.</param>
+        /// <remarks>Null, foreign and removed presences are ignored. Cancels the request until Manifest is called again.</remarks>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void Demanifest(Presence presence)
         {
             Demanifest(_population.FindPresenceRoot(presence));
@@ -520,6 +528,8 @@ namespace Emas
         /// </returns>
         /// <remarks>
         /// Requests made during source mutation or finalization are refreshed after source data is complete.
+        /// The request persists while unavailable, awaiting a reference or outside spatial range; a view can appear
+        /// on a later update without another call. Demanifest cancels that request. Module readers are not refreshed by this call.
         /// Null, foreign and removed ghosts return null.
         /// Presentation failures are logged without stopping tracking; call Manifest again after fixing the cause to retry.
         /// </remarks>
@@ -551,7 +561,7 @@ namespace Emas
         /// The ghost to demanifest.
         /// </param>
         /// <remarks>
-        /// Null, foreign and removed ghosts are ignored; source availability is unchanged.
+        /// Cancels the persistent view request. Null, foreign and removed ghosts are ignored; source availability is unchanged.
         /// </remarks>
         /// <exception cref="ObjectDisposedException">
         /// The realm was disposed.
@@ -570,7 +580,10 @@ namespace Emas
         /// Applies a bounded source batch, refreshes modules and Ghost behavior, projects spatial poses, then finalizes availability, views and queries.
         /// </summary>
         /// <remarks>
-        /// Processes at most 256 queued actions present at update entry. Newly queued actions wait for a later update. A disposed realm does nothing.
+        /// Processes at most 256 queued actions present at update entry, then ticks attached detectors.
+        /// Newly queued actions wait for a later update. Expiry runs after publications, and all module reads finish
+        /// before Ghost.OnUpdate hooks and spatial projection. Availability and views finalize before query notifications.
+        /// A disposed realm does nothing.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// Called inside another update, source callback or finalization phase.
@@ -633,7 +646,8 @@ namespace Emas
         /// Disposes all anchors, ghosts, views and subscriptions.
         /// </summary>
         /// <remarks>
-        /// Repeated disposal is safe. Subsequent mutating operations throw ObjectDisposedException.
+        /// Repeated disposal is safe. Update becomes a no-op; lookups and query results are empty.
+        /// Operations that configure tracking, request views or subscribe throw ObjectDisposedException.
         /// </remarks>
         public void Dispose()
         {
@@ -748,6 +762,7 @@ namespace Emas
 
         private void ExecuteDispatch(DispatchCommand command)
         {
+            // Check the attachment at execution time: work queued before a restart belongs to the old lifetime.
             if (_disposed
                 || (command.Source != null && !command.Source.IsRegistration(this, command.Generation)))
             {
@@ -1011,7 +1026,8 @@ namespace Emas
             try
             {
                 List<Record> records = _identities.Snapshot();
-                // Ghost modules own data updates; detectors only establish presence.
+                // Use one snapshot for the pass; roots created by readers or hooks wait for a later finalization.
+                // Read every root's modules before any Ghost hook can consume another root's data.
                 _population.RefreshModules(records, onlyOwner);
                 if (updateGhosts)
                 {

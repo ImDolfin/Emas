@@ -2,6 +2,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
+    // One tracked root's lifetime and presentation state; availability, spatial visibility and view requests are independent.
     internal sealed class Record
     {
         internal Record(Ghost ghost, PresenceDetector owner, ManifestationBlueprintSnapshot blueprint)
@@ -29,8 +30,10 @@ namespace Emas
         internal bool ViewDirty;
         internal bool RefreshingView;
         internal long ViewVersion;
+        // Ownership changes invalidate module work; attachment generations reject publications from old detector lifetimes.
         internal long OwnershipVersion;
         internal long RegistrationGeneration;
+        // Handover waits for its earliest cleanup update and for work queued through the end of startup.
         internal long HandoverUpdate;
         internal long HandoverDispatchSequence;
         internal double LastPublishedAt;

@@ -80,6 +80,7 @@ namespace Emas.Editor
         {
             SerializedProperty rows = list.serializedProperty;
             HashSet<string> names = new HashSet<string>(System.StringComparer.Ordinal);
+            // The inserted name must be unused on every selected blueprint during multi-object editing.
             foreach (UnityEngine.Object value in targets)
             {
                 SerializedProperty variants = new SerializedObject(value).FindProperty("_variants");
@@ -97,6 +98,7 @@ namespace Emas.Editor
             }
 
             int newIndex = rows.arraySize;
+            // Unity can copy the preceding row on insertion; overwrite both fields to avoid duplicating its prefab.
             rows.InsertArrayElementAtIndex(newIndex);
             SerializedProperty row = rows.GetArrayElementAtIndex(newIndex);
             row.FindPropertyRelative("_name").stringValue = name;

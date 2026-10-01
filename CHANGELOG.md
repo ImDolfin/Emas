@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Clarify XML API documentation for detection, module binding, query filters, view requests and spatial conversions. Add brief code comments explaining lifecycle reentry, handover timing, coordinate mathematics and sample SDK mappings.
+
 - Add Geographic reference space with WGS84 `GeoPosition` input and ECEF double-precision storage. The followed or manual reference defines the local tangent frame directly, including entity-local attitude conversion, inverse helpers, visibility range and reference-loss behavior. Realm Setup exposes geographic coordinates and attitude axes. Update Relative World to feed geographic readings without a static ENU projection origin. Support native ECEF positions and body-to-ECEF attitudes, configurable right-handed body axes, independent input channels, mixed local/ECEF attitudes and inverse ECEF attitude helpers.
 
 - Allow Realm Setup to follow an entity selected at runtime: leave Entity ID empty and assign `ReferenceFrame.FollowedGhost` once the target is known. The frame retains its authored settings and waits for a valid reference pose before showing spatial presentation. Inspector identity fields are optional for runtime assignment; configured IDs still require Anchor and Kind.

@@ -37,6 +37,7 @@ namespace Emas
             }
 
             record.RefreshingView = true;
+            // Scene callbacks can cancel or replace the request; continuation checks compare this captured version.
             long version = record.ViewVersion;
             record.ViewDirty = false;
             string context = "view refresh for " + record.Key;
@@ -167,6 +168,7 @@ namespace Emas
         internal void Destroy(Record record)
         {
             View view = record.View;
+            // Clear bookkeeping before OnDisable can request another view for the same root.
             record.View = null;
             record.ViewPrefab = null;
             try

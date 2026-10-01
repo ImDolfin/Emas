@@ -15,7 +15,8 @@ namespace Emas
     {
         private ComponentDetector _detector;
 
-        /// <summary>Gets the detector for diagnostics, detached configuration and Anchor operations.</summary>
+        /// <summary>Gets the lazily created detector reused for this component's attachments.</summary>
+        /// <remarks>Use for diagnostics and Anchor operations. Configure timeouts and grace only while detached.</remarks>
         public PresenceDetector Detector
         {
             get { return Bridge; }
@@ -42,26 +43,26 @@ namespace Emas
         {
         }
 
-        /// <summary>Detects an arrival; the optional source is held weakly on Presence.</summary>
+        /// <inheritdoc cref="PresenceDetector.Detect"/>
         protected Presence Detect(string entityId, Kind kind, string name = null, Variant? variant = null,
             IEnumerable<Type> capabilities = null, object source = null)
         {
             return Bridge.DetectEntity(entityId, kind, name, variant, capabilities, source);
         }
 
-        /// <summary>Marks an owned entity unavailable and applies its disappearance grace period.</summary>
+        /// <inheritdoc cref="PresenceDetector.Disappear"/>
         protected void Disappear(Kind kind, string entityId)
         {
             Bridge.RemoveEntity(kind, entityId);
         }
 
-        /// <summary>Defers work to a later Realm update; call only on Unity's main thread.</summary>
+        /// <inheritdoc cref="PresenceDetector.Dispatch"/>
         protected void Dispatch(Action action)
         {
             Bridge.Enqueue(action);
         }
 
-        /// <summary>Captures a main-thread dispatcher that rejects callbacks from ended attachments.</summary>
+        /// <inheritdoc cref="PresenceDetector.CaptureDispatcher"/>
         protected Action<Action> CaptureDispatcher()
         {
             return Bridge.Capture();
@@ -106,6 +107,7 @@ namespace Emas
             }
         }
 
+        // The bridge shares the plain detector's ownership, failure handling and callback-generation checks.
         private sealed class ComponentDetector : PresenceDetector
         {
             private readonly PresenceDetectorComponent _owner;

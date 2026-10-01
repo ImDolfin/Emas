@@ -136,6 +136,7 @@ namespace Emas
 
         internal RealmSetup Owner()
         {
+            // The nearest setup owns the anchor, so nested realms do not capture each other's children.
             Transform current = transform;
             while (current != null)
             {

@@ -68,6 +68,7 @@ namespace Emas.Sample
         }
         private void ReadProxies()
         {
+            // The component continues refreshing the application-owned feed after its detector is replaced.
             if (IsUsingSecondSdk)
             {
                 _secondFeed.ReadVehicles(Time.time);

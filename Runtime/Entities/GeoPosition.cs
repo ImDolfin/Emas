@@ -19,6 +19,9 @@ namespace Emas
         [SerializeField] private double _heightMeters;
 
         /// <summary>Creates a WGS84 position in degrees and ellipsoidal metres.</summary>
+        /// <param name="latitudeDegrees">Latitude in [-90, 90], positive north.</param>
+        /// <param name="longitudeDegrees">Longitude in [-180, 180], positive east.</param>
+        /// <param name="heightMeters">Finite height above the WGS84 ellipsoid; negative heights are permitted.</param>
         /// <exception cref="ArgumentOutOfRangeException">Latitude is outside [-90, 90], longitude outside [-180, 180], or a value is not finite.</exception>
         public GeoPosition(double latitudeDegrees, double longitudeDegrees, double heightMeters)
         {
@@ -36,6 +39,8 @@ namespace Emas
         public double HeightMeters => _heightMeters;
 
         /// <summary>Converts to Earth-centered, Earth-fixed XYZ metres without a local origin.</summary>
+        /// <returns>ECEF metres: X through the equator at longitude zero, Y through 90 degrees east, Z through the north pole.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Serialized coordinates are invalid or the result overflows double range.</exception>
         public Double3 ToEarthCentered()
         {
             Validate(_latitudeDegrees, _longitudeDegrees, _heightMeters);
@@ -43,6 +48,7 @@ namespace Emas
             double longitude = _longitudeDegrees * RadiansPerDegree;
             double sin = Math.Sin(latitude);
             double cos = Math.Cos(latitude);
+            // Prime-vertical radius accounts for the WGS84 ellipsoid's flattening at this latitude.
             double radius = SemiMajorAxis / Math.Sqrt(1.0 - EccentricitySquared * sin * sin);
             return new Double3((radius + _heightMeters) * cos * Math.Cos(longitude),
                 (radius + _heightMeters) * cos * Math.Sin(longitude),
@@ -50,6 +56,8 @@ namespace Emas
         }
 
         /// <summary>Converts Earth-centered, Earth-fixed XYZ metres into a WGS84 position.</summary>
+        /// <param name="position">Finite ECEF XYZ metres, excluding Earth's center.</param>
+        /// <returns>Latitude, longitude and ellipsoidal height of the supplied point.</returns>
         /// <remarks>At an exact pole with X = Y = 0, longitude is defined as zero.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The position is not finite, is Earth's center, or exceeds representable geographic values.</exception>
         public static GeoPosition FromEarthCentered(Double3 position)
@@ -62,6 +70,7 @@ namespace Emas
 
             double horizontal = Double3.Distance(new Double3(position.X, position.Y, 0), default(Double3));
             double latitude = Math.Atan2(position.Z, horizontal * (1.0 - EccentricitySquared));
+            // Refine geodetic latitude with the ellipsoid radius; cap iterations and stop once the angle settles.
             for (int iteration = 0; iteration < 32; iteration++)
             {
                 double sin = Math.Sin(latitude);

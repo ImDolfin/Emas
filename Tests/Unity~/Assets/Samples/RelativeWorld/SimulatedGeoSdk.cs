@@ -59,6 +59,7 @@ namespace Emas.RelativeWorld
             const double flattening = 1.0 / 298.257223563;
             const double eccentricitySquared = flattening * (2.0 - flattening);
             const double radiansPerDegree = Math.PI / 180.0;
+            // Approximate short road offsets with ellipsoid curvature radii; this is mock SDK input, not Emas projection.
             double sinStart = Math.Sin(startLatitude * radiansPerDegree);
             double meridianRadius = semiMajorAxis * (1.0 - eccentricitySquared)
                 / Math.Pow(1.0 - eccentricitySquared * sinStart * sinStart, 1.5);

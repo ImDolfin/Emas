@@ -11,7 +11,7 @@ namespace Emas
         /// Gets a required root component contract or fails with the ghost identity.
         /// </summary>
         /// <typeparam name="T">
-        /// The required interface type.
+        /// The required interface or root component class.
         /// </typeparam>
         /// <param name="ghost">
         /// The ghost to read.

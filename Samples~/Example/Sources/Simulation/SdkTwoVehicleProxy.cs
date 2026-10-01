@@ -20,10 +20,10 @@ namespace Emas.Sample
         /// The source appearance code.
         /// </param>
         /// <param name="coordinates">
-        /// The source position.
+        /// Position in the owning anchor's local Unity axes.
         /// </param>
         /// <param name="wheelAngle">
-        /// The source articulation value.
+        /// Normalized steering in [-1, 1], despite the simulated SDK's angle-like name.
         /// </param>
         public SdkTwoVehicleProxy(
             int id,
@@ -62,7 +62,7 @@ namespace Emas.Sample
         }
 
         /// <summary>
-        /// Gets the source position.
+        /// Gets the position in the owning anchor's local Unity axes.
         /// </summary>
         /// <value>
         /// The second-SDK source position.
@@ -74,10 +74,10 @@ namespace Emas.Sample
         }
 
         /// <summary>
-        /// Gets the source articulation value.
+        /// Gets normalized steering in [-1, 1]; this simulated SDK does not use angular units.
         /// </summary>
         /// <value>
-        /// The second-SDK articulation value.
+        /// The steering input mapped directly to IArticulate.Steering.
         /// </value>
         public float WheelAngle
         {

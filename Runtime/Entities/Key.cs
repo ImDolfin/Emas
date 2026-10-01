@@ -6,11 +6,12 @@ namespace Emas
     /// <summary>
     /// Identifies one ghost within one anchor and kind.
     /// </summary>
+    /// <remarks>Equality is case-sensitive and includes all three fields. The same key may exist in different realms.</remarks>
     [Serializable]
     public struct Key : IEquatable<Key>
     {
         /// <summary>
-        /// Creates a key.
+        /// Creates an identity value, normalizing null anchor and entity IDs to empty strings.
         /// </summary>
         /// <param name="anchorId">
         /// The anchor identifier.
@@ -21,6 +22,7 @@ namespace Emas
         /// <param name="entityId">
         /// The source entity identifier.
         /// </param>
+        /// <remarks>This constructor does not validate identity completeness; tracking APIs require nonempty IDs and a valid kind.</remarks>
         public Key(string anchorId, Kind kind, string entityId)
         {
             AnchorId = anchorId ?? string.Empty;

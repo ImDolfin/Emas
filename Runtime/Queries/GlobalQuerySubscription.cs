@@ -28,6 +28,7 @@ namespace Emas
             }
 
             Child child = new Child();
+            // Publish the child before subscribing: initial entries may synchronously dispose this global observer.
             _children.Add(realm, child);
             try
             {
@@ -60,6 +61,7 @@ namespace Emas
 
             _children.Remove(realm);
             child.Subscription?.Dispose();
+            // Scoped disposal cancels callbacks; explicitly report the global observer's known departures for this realm.
             if (_onLeave == null)
             {
                 return;

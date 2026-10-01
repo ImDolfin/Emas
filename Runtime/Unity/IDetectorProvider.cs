@@ -1,18 +1,18 @@
 namespace Emas
 {
     /// <summary>
-    /// Creates one application-owned presence detector for a prefab anchor when its realm starts.
+    /// Supplies an application-owned presence detector whenever a prefab anchor starts.
     /// </summary>
     /// <remarks>
     /// Implement on a MonoBehaviour next to AnchorSetup. Return a new or detached detector each time
-    /// the realm starts. The detector owns its attachment; SDK clients remain application-owned.
+    /// the anchor starts. Emas starts and stops the detector's attachment; SDK clients remain application-owned.
     /// </remarks>
     public interface IDetectorProvider
     {
         /// <summary>
-        /// Creates the detector to attach to this anchor for the current realm lifetime.
+        /// Returns a new or detached detector for this anchor's next attachment.
         /// </summary>
-        /// <returns>The detector to attach.</returns>
+        /// <returns>A non-null detector that is not currently attached to an anchor.</returns>
         PresenceDetector CreateDetector();
     }
 }

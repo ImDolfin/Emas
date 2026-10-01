@@ -7,7 +7,7 @@ namespace Emas
     /// Provides stable identity and root-component access for one ghost.
     /// </summary>
     /// <remarks>
-    /// Read on the Unity thread. Emas owns identity and availability; sources mutate application data through concrete Ghost methods.
+        /// Read on the Unity thread. Emas owns identity and availability; configured modules update application data.
     /// Consumers use read-only application interfaces and must not assume retained data is current while IsAvailable is false.
     /// </remarks>
     public interface IGhost
@@ -57,10 +57,10 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets a root component implementing the requested interface.
+        /// Gets the single root MonoBehaviour assignable to the requested contract type.
         /// </summary>
         /// <typeparam name="T">
-        /// The requested interface type.
+        /// The requested interface or component class.
         /// </typeparam>
         /// <param name="part">
         /// Receives the matching component, when found.
@@ -69,7 +69,9 @@ namespace Emas
         /// True when exactly one matching component exists.
         /// </returns>
         /// <remarks>
-        /// Only root MonoBehaviours participate. No match returns false; multiple matches log a contextual error once until a lookup observes a non-ambiguous result. No component is added.
+        /// Includes disabled root MonoBehaviours, including the Ghost itself; child and view components do not participate.
+        /// No match returns false with a null result. Multiple matches also return false with a null result and log a
+        /// contextual error once until a lookup observes a non-ambiguous result. No component is added.
         /// </remarks>
         bool TryGet<T>(out T part) where T : class;
     }

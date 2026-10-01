@@ -43,6 +43,7 @@ namespace Emas.Editor
             }
         }
 
+        // Display Euler angles but write the quaternion only on edits, preserving untouched serialized rotations.
         internal static void Rotation(SerializedProperty property, string label)
         {
             EditorGUILayout.LabelField(new GUIContent(label + " (degrees)", property.tooltip));

@@ -2,6 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
+    // Owns the shared realm and its persistent Unity runner; isolated RealmSetup lifetimes use their own updates.
     internal static class DefaultRuntime
     {
         private static Realm _realm;
@@ -53,6 +54,7 @@ namespace Emas
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Reset()
         {
+            // Release the previous play session's static state even when Unity domain reload is disabled.
             if (_runner != null)
             {
                 Object.Destroy(_runner.gameObject);

@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
+    // Captures one reference pose, projects eligible roots, and coordinates view suppression without changing availability.
     internal sealed class SpatialManager
     {
         private readonly Realm _realm;

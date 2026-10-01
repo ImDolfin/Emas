@@ -14,6 +14,7 @@ namespace Emas
     /// With no reference frame, Cartesian poses map directly to Unity world space. Explicit ECEF attitudes require a Geographic frame.
     /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished
     /// when inactivity expiry is enabled. Disable this component to release spatial placement and range suppression.
+    /// Supply channels on Unity's main thread; setters store input for the next realm projection.
     /// </remarks>
     [DisallowMultipleComponent]
     [AddComponentMenu("Emas/Spatial")]
@@ -58,7 +59,7 @@ namespace Emas
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
         /// <summary>
-        /// Gets whether a position in shared Cartesian coordinates has been supplied.
+        /// Gets whether a Cartesian or geographic position has been supplied.
         /// </summary>
         public bool HasPosition
         {
@@ -96,8 +97,11 @@ namespace Emas
         }
 
         /// <summary>
-        /// Supplies a position in shared Cartesian coordinates without changing rotation or other ghost data.
+        /// Supplies a shared Cartesian position, or ECEF metres for a Geographic frame, without changing rotation.
         /// </summary>
+        /// <param name="position">The finite position in the realm's source space.</param>
+        /// <remarks>Stores input only. The next realm projection applies it to the root's world transform.</remarks>
+        /// <exception cref="System.ArgumentOutOfRangeException">An input coordinate is not finite.</exception>
         public void SetPosition(Double3 position)
         {
             ReferenceFrame.ValidatePosition(position, nameof(position));
@@ -106,6 +110,8 @@ namespace Emas
         }
 
         /// <summary>Supplies a WGS84 position, storing ECEF metres for use with a Geographic reference.</summary>
+        /// <param name="position">The WGS84 position with ellipsoidal height in metres.</param>
+        /// <remarks>Retains the current attitude; local attitude is reinterpreted at this new position during projection.</remarks>
         public void SetGeographicPosition(GeoPosition position)
         {
             SetPosition(position.ToEarthCentered());
@@ -115,6 +121,9 @@ namespace Emas
         /// Supplies orientation without changing position. In Geographic space, use local tangent attitude
         /// in ReferenceFrame.Coordinates; otherwise use the shared Cartesian frame.
         /// </summary>
+        /// <param name="rotation">The finite nonzero source quaternion; normalized before storage.</param>
+        /// <remarks>Clears ECEF attitude mode. Position remains unchanged until separately supplied.</remarks>
+        /// <exception cref="System.ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public void SetRotation(Quaternion rotation)
         {
             _rotation = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
@@ -126,6 +135,8 @@ namespace Emas
         /// <param name="rotation">Active rotation mapping source body XYZ vectors into ECEF XYZ.</param>
         /// <param name="bodyAxes">Signed body axes mapped to Unity right/up/forward. Null uses X forward, Y right, Z down (NED mapping).</param>
         /// <remarks>Body axes must be right-handed. The global attitude remains unchanged when only position updates.</remarks>
+        /// <exception cref="System.ArgumentException">The body axes are invalid or not right-handed.</exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public void SetEarthCenteredRotation(Quaternion rotation, CoordinateSystem? bodyAxes = null)
         {
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));

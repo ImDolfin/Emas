@@ -9,6 +9,7 @@ namespace Emas
     /// <remarks>
     /// A realm owns this stable handle from the first detection until removal. Detection metadata and
     /// capability interfaces originate with the detector; the realm attaches a Ghost root whose components own its data updates.
+    /// Grace periods and successful detector handovers retain this handle. After removal, detecting the same Key creates a new handle.
     /// </remarks>
     public sealed class Presence
     {
@@ -140,6 +141,7 @@ namespace Emas
         /// </summary>
         /// <typeparam name="T">The capability interface.</typeparam>
         /// <returns>True when the exact interface was reported.</returns>
+        /// <remarks>This checks advertised metadata, not root components. Use Root.TryGet to resolve a component contract.</remarks>
         public bool HasCapability<T>() where T : class
         {
             return _capabilities.Contains(typeof(T));
@@ -197,6 +199,7 @@ namespace Emas
                     }
                 }
 
+                // Capabilities form a set; enumeration order alone must not rerun the initializer.
                 bool changed = next.Count != _capabilities.Count;
                 if (!changed)
                 {

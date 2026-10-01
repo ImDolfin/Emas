@@ -262,6 +262,7 @@ namespace Emas
             bool sourceChanged = source != null && presence.SetSource(source);
             if (sourceChanged)
             {
+                // Drop readers tied to the previous proxy before binding the replacement source.
                 ClearModuleBindings(root);
             }
 
@@ -327,6 +328,7 @@ namespace Emas
             record.LastPublishedAt = _elapsedSeconds();
             if (record.IsMissing)
             {
+                // Retained roots recover at finalization; do not activate before the caller finishes updating data.
                 record.IsMissing = false;
                 record.MissingUntil = 0;
                 record.PendingActivation = true;
@@ -423,6 +425,7 @@ namespace Emas
                 Record record = records[index];
                 if (record.RegistrationGeneration != owner.RegistrationGeneration)
                 {
+                    // Give retained identities one update plus the startup dispatch batch to be reclaimed.
                     record.HandoverUpdate = updateNumber + 1;
                     record.HandoverDispatchSequence = dispatchSequence;
                 }
@@ -461,6 +464,7 @@ namespace Emas
             {
                 Record record = records[index];
                 record.Owner = replacement;
+                // Ownership transfers now, but only a publication from the replacement can claim its attachment generation.
                 record.RegistrationGeneration = -1;
                 InvalidateAvailability(record);
             }
@@ -528,6 +532,7 @@ namespace Emas
 
         internal void RemoveRecord(Record record)
         {
+            // Remove the identity first so view/root cleanup callbacks can safely rediscover the same Key.
             if (!_identities.Remove(record))
             {
                 return;
@@ -554,6 +559,7 @@ namespace Emas
                 ClearModuleBindings(record.Ghost);
             }
 
+            // Invalidate in-progress readers and view refreshes even when the root itself is retained.
             record.OwnershipVersion++;
             record.ViewVersion++;
             record.ViewDirty = true;
@@ -615,6 +621,7 @@ namespace Emas
                 {
                     foreach (EntityModule module in record.Ghost.GetComponents<EntityModule>())
                     {
+                        // A preceding reader can restart the detector or reclaim this root; stop using the old bindings.
                         if (!CanFinalize(record, onlyOwner) || record.Owner != owner
                             || record.RegistrationGeneration != generation || record.OwnershipVersion != ownership)
                         {

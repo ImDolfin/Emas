@@ -9,6 +9,8 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Immutable filters evaluated on the Unity thread. Results contain only available ghosts, with no ordering guarantee.
+    /// Each filter call returns a new description. Kind, anchor, exact name and variant selectors replace the corresponding
+    /// selector; repeated With calls add required contracts. View requests and spatial range do not affect membership.
     /// </remarks>
     public sealed class Query : IEnumerable<IGhost>
     {
@@ -77,10 +79,10 @@ namespace Emas
         /// Restricts the query to an anchor.
         /// </summary>
         /// <param name="anchorId">
-        /// The anchor identifier.
+        /// The case-sensitive anchor identifier, or null to clear this filter.
         /// </param>
         /// <returns>
-        /// A query containing the added filter.
+        /// A new query with this anchor selector and all other filters retained.
         /// </returns>
         public Query InAnchor(string anchorId)
         {
@@ -88,10 +90,10 @@ namespace Emas
         }
 
         /// <summary>
-        /// Restricts the query to ghosts exposing an interface.
+        /// Adds a required root contract to the query.
         /// </summary>
         /// <typeparam name="T">
-        /// The required interface.
+        /// The interface or root MonoBehaviour class resolved through IGhost.TryGet.
         /// </typeparam>
         /// <returns>
         /// A query containing the added filter.
@@ -107,10 +109,10 @@ namespace Emas
         /// Restricts the query to one display name.
         /// </summary>
         /// <param name="name">
-        /// The exact display name.
+        /// The case-insensitive exact display name, or null to clear this filter. Other name filters still apply.
         /// </param>
         /// <returns>
-        /// A query containing the added filter.
+        /// A new query with this exact name selector and all other filters retained.
         /// </returns>
         public Query WithExactName(string name)
         {
@@ -124,7 +126,7 @@ namespace Emas
         /// The variant identifier.
         /// </param>
         /// <returns>
-        /// A query containing the added filter.
+        /// A new query with this variant selector and all other filters retained.
         /// </returns>
         public Query WithVariant(Variant variant)
         {
@@ -326,6 +328,7 @@ namespace Emas
         /// <remarks>
         /// Use this when different realms may contain the same Key. A global observer also reports
         /// departures when an owning realm is disposed. Disposing this subscription does not report departures.
+        /// Notification scheduling and callback failure handling follow <see cref="Observe"/>.
         /// </remarks>
         /// <exception cref="ArgumentNullException">Either callback is null.</exception>
         /// <exception cref="ObjectDisposedException">A scoped query's realm was disposed.</exception>
@@ -350,7 +353,8 @@ namespace Emas
             return RealmRegistry.Subscribe(this, onEnter, onLeave);
         }
 
-        /// <inheritdoc />
+        /// <summary>Enumerates a snapshot of the available ghosts matching at the time enumeration is requested.</summary>
+        /// <returns>An enumerator over the copied results; the referenced ghosts retain their own tracking lifetimes.</returns>
         public IEnumerator<IGhost> GetEnumerator()
         {
             return Evaluate().GetEnumerator();

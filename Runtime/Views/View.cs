@@ -7,6 +7,7 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Emas binds the ghost before activating a view. Read application contracts through Ghost.TryGet in OnEnable or later.
+    /// Awake can run before binding; Ghost is null on an unbound component or prefab.
     /// Prefab reuse may rebind an existing view without another OnEnable; avoid retaining source-specific data or assuming one binding forever.
     /// </remarks>
     [DisallowMultipleComponent]

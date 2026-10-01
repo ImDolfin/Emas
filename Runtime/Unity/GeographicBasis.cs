@@ -36,6 +36,7 @@ namespace Emas
 
         internal Quaternion RotationFrom(GeoPosition position)
         {
+            // Express the other location's north/up axes in this tangent frame to account for Earth's curvature.
             GeographicBasis other = new GeographicBasis(position);
             Double3 forward = ToLocal(other._north);
             Double3 up = ToLocal(other._up);
@@ -43,7 +44,7 @@ namespace Emas
                 new Vector3((float)up.X, (float)up.Y, (float)up.Z));
         }
 
-        // ECEF attitude maps source body vectors into ECEF. Body axes convert those vectors to Unity's model axes.
+        // Convert model forward/up into source body axes, rotate them into ECEF, then express them in local tangent axes.
         internal Quaternion ToLocalEarthCenteredRotation(Quaternion rotation, CoordinateSystem bodyAxes)
         {
             Double3 forward = ToLocal(SpatialMath.Rotate(rotation, bodyAxes.ToSource(new Double3(0, 0, 1))));
@@ -53,6 +54,7 @@ namespace Emas
 
         internal Quaternion ToEarthCenteredRotation(Quaternion localRotation, CoordinateSystem bodyAxes)
         {
+            // Reverse the mapping for body Z/Y to reconstruct the active body-to-ECEF quaternion.
             Double3 forward = ToEarthCentered(SpatialMath.Rotate(localRotation, bodyAxes.ToUnity(new Double3(0, 0, 1))));
             Double3 up = ToEarthCentered(SpatialMath.Rotate(localRotation, bodyAxes.ToUnity(new Double3(0, 1, 0))));
             return Quaternion.LookRotation(ToVector3(forward), ToVector3(up));
