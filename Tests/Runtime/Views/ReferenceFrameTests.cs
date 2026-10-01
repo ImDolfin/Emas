@@ -51,28 +51,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Position-only following ignores network reference heading while retaining Unity placement.
-        /// </summary>
-        [Test]
-        public void PositionOnlyMode_IgnoresReferenceRotation()
-        {
-            ReferenceFrame frame = new ReferenceFrame();
-            frame.Position = new Double3(1000d, 2000d, 3000d);
-            frame.Rotation = new Quaternion(0f, 1f, 0f, 1f);
-            frame.UnityPosition = new Vector3(5f, 6f, 7f);
-            frame.UnityRotation = new Quaternion(0f, 0f, 1f, 1f);
-            frame.FollowRotation = false;
-            Double3 entity = frame.Position + new Double3(20d, 4d, -2d);
-            Quaternion entityRotation = Quaternion.Euler(15f, 25f, 35f);
-
-            Assert.That(frame.TryToUnityPosition(entity, out Vector3 unity), Is.True);
-            Assert.That(Vector3.Distance(unity, new Vector3(1f, 26f, 5f)), Is.LessThan(0.00001f));
-            Assert.That(Double3.Distance(frame.ToSimulationPosition(unity), entity), Is.LessThan(0.00001d));
-            Assert.That(Quaternion.Angle(frame.ToUnityRotation(entityRotation), frame.UnityRotation * entityRotation), Is.LessThan(0.05f));
-            Assert.That(Quaternion.Angle(frame.ToSimulationRotation(frame.ToUnityRotation(entityRotation)), entityRotation), Is.LessThan(0.05f));
-        }
-
-        /// <summary>
         /// Geographic presets map physical directions and handed rotations into Unity's right/up/forward axes.
         /// </summary>
         [Test]
@@ -105,15 +83,16 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Custom signed axes compose with reference cancellation and Unity placement without losing large-origin precision.
+        /// Serialized custom axes compose with reference cancellation and Unity placement without losing large-origin precision.
         /// </summary>
         [Test]
-        public void CustomCoordinates_RoundTripReferenceAndUnityPlacement()
+        public void SerializedCustomCoordinates_RoundTripReferenceAndUnityPlacement()
         {
+            CoordinateSystem coordinates = new CoordinateSystem(Axis.NegativeZ, Axis.NegativeX, Axis.PositiveY);
             ReferenceFrame frame = new ReferenceFrame
             {
                 Position = new Double3(1e12, -1e12, 1e12),
-                Coordinates = new CoordinateSystem(Axis.NegativeZ, Axis.NegativeX, Axis.PositiveY),
+                Coordinates = JsonUtility.FromJson<CoordinateSystem>(JsonUtility.ToJson(coordinates)),
                 Rotation = Quaternion.AngleAxis(90, Vector3.right),
                 UnityPosition = new Vector3(5, 6, 7),
                 UnityRotation = Quaternion.AngleAxis(90, Vector3.forward)
@@ -131,7 +110,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Position-only following still converts source axes and handedness while ignoring the reference orientation.
+        /// Position-only following preserves source axes and Unity placement while ignoring the reference orientation.
         /// </summary>
         [Test]
         public void PositionOnlyMode_RetainsCoordinateConvention()
@@ -141,12 +120,13 @@ namespace Emas.Tests
                 Position = new Double3(1000, 2000, 3000),
                 Coordinates = CoordinateSystem.NorthEastDown,
                 Rotation = Quaternion.AngleAxis(90, Vector3.forward),
+                UnityPosition = new Vector3(5, 6, 7),
                 UnityRotation = Quaternion.AngleAxis(90, Vector3.forward),
                 FollowRotation = false
             };
             Double3 source = frame.Position + new Double3(3, 4, 5);
             Assert.That(frame.TryToUnityPosition(source, out Vector3 unity), Is.True);
-            Assert.That(Vector3.Distance(unity, new Vector3(5, 4, 3)), Is.LessThan(0.0001f));
+            Assert.That(Vector3.Distance(unity, new Vector3(10, 10, 10)), Is.LessThan(0.0001f));
             Assert.That(Double3.Distance(frame.ToSimulationPosition(unity), source), Is.LessThan(0.0001d));
 
             Quaternion expected = frame.UnityRotation * Quaternion.AngleAxis(90, Vector3.up);

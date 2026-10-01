@@ -232,6 +232,79 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Bound WGS84 readers on separate anchors project a target against the latest reference without repeated detection.
+        /// </summary>
+        [Test]
+        public void GeographicReaders_FollowAnotherAnchorAndRefreshWithoutRediscovery()
+        {
+            GameObject rootPrefab = new GameObject("geographic root");
+            rootPrefab.SetActive(false);
+            Ghost root = rootPrefab.AddComponent<Ghost>();
+            rootPrefab.AddComponent<GeographicModule>();
+            GameObject viewPrefab = new GameObject("geographic view");
+            viewPrefab.SetActive(false);
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            blueprint.Configure(SpatialKind, root, null, viewPrefab);
+            _assets.Add(rootPrefab);
+            _assets.Add(viewPrefab);
+            _assets.Add(blueprint);
+            _realm.RegisterManifestationBlueprint(blueprint);
+            _realm.RegisterPresenceInitializer<Ghost>(SpatialKind, (presence, ghost) =>
+            {
+                ghost.GetComponent<GeographicModule>().Bind(() => ((GeographicReading)presence.Source).Position);
+            });
+
+            GeographicSource targets = new GeographicSource();
+            GeographicSource references = new GeographicSource();
+            _realm.GetOrCreateAnchor("targets", targets);
+            _realm.GetOrCreateAnchor("references", references);
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Space = ReferenceSpace.Geographic,
+                FollowedGhost = new Key("references", SpatialKind, "ego"),
+                FollowRotation = false,
+                MaxDistance = 5000
+            };
+            _realm.ReferenceFrame = frame;
+            GeographicReading targetReading = new GeographicReading
+            {
+                Position = new GeoPosition(52.520108, 13.405154, 50.125)
+            };
+            GeographicReading referenceReading = new GeographicReading
+            {
+                Position = new GeoPosition(52.520008, 13.404954, 40.125)
+            };
+            Presence target = targets.Arrive("target", targetReading);
+            Assert.That(_realm.Manifest(target), Is.Null);
+            Assert.That(frame.HasPosition, Is.False);
+            Presence reference = references.Arrive("ego", referenceReading);
+            _realm.Update();
+
+            // Independent PROJ cart/topocentric results, reordered from east/north/up to Unity east/up/north.
+            AssertPosition(target.Root.transform.position, new Vector3(13.575955788316f, 9.999975872273f, 11.127827524704f));
+            AssertPosition(reference.Root.transform.position, Vector3.zero);
+            Assert.That(frame.IsReferenceAvailable, Is.True);
+            View view = _realm.Manifest(target);
+            Assert.That(view, Is.Not.Null);
+            Double3 storedTarget = target.Root.GetComponent<Spatial>().Position;
+
+            referenceReading.Position = new GeoPosition(52.520058, 13.405054, 45.125);
+            _realm.Update();
+            AssertPosition(target.Root.transform.position, new Vector3(6.787977894133f, 4.999993968840f, 5.563909085825f));
+            Assert.That(target.Root.GetComponent<Spatial>().Position, Is.EqualTo(storedTarget));
+            Assert.That(_realm.Manifest(target), Is.SameAs(view));
+
+            reference.Root.GetComponent<Spatial>().SetRotation(Quaternion.AngleAxis(90, Vector3.up));
+            frame.FollowRotation = true;
+            _realm.Update();
+            AssertPosition(target.Root.transform.position, new Vector3(-5.563909085825f, 4.999993968840f, 6.787977894133f));
+            AssertPosition(reference.Root.transform.position, Vector3.zero);
+            // The application owns these sources; Presence deliberately retains only weak references.
+            GC.KeepAlive(targetReading);
+            GC.KeepAlive(referenceReading);
+        }
+
+        /// <summary>
         /// ECEF channels update independently, can drive the reference, and coexist with local geographic attitudes.
         /// </summary>
         [Test]
@@ -652,6 +725,29 @@ namespace Emas.Tests
             {
                 EnableCount++;
                 PositionOnEnable = transform.position;
+            }
+        }
+
+        private sealed class GeographicReading
+        {
+            internal GeoPosition Position;
+        }
+
+        [RequireComponent(typeof(Spatial))]
+        private sealed class GeographicModule : EntityModule<GeoPosition>
+        {
+            /// <summary>Applies a bound WGS84 reading through the public geographic channel.</summary>
+            public override void Apply(GeoPosition position)
+            {
+                GetComponent<Spatial>().SetGeographicPosition(position);
+            }
+        }
+
+        private sealed class GeographicSource : PresenceDetector
+        {
+            internal Presence Arrive(string entityId, GeographicReading source)
+            {
+                return Detect(entityId, SpatialKind, source: source);
             }
         }
 

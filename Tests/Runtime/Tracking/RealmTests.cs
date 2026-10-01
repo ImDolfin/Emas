@@ -30,52 +30,6 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Different kinds may use the same source identifier.
-        /// </summary>
-        [Test]
-        public void SameEntityIdAcrossKinds_CreatesTwoGhosts()
-        {
-            TestSource first = new TestSource(new Kind("vehicles.car"));
-            TestSource second = new TestSource(new Kind("vehicles.aircraft"));
-            _realm.GetOrCreateAnchor("simulation", first, second);
-
-            first.Publish("42", new Variant("car"));
-            second.Publish("42", new Variant("aircraft"));
-            _realm.Update();
-
-            Assert.That(_realm.Query().Count, Is.EqualTo(2));
-            Assert.That(_realm.Query().OfKind(first.Kind).Count, Is.EqualTo(1));
-            Assert.That(_realm.Query().OfKind(second.Kind).Count, Is.EqualTo(1));
-        }
-
-        /// <summary>
-        /// Prepared ghosts remain unavailable until the source initializes them.
-        /// </summary>
-        [Test]
-        public void Prepare_IsUnavailableUntilSourceUsesIt()
-        {
-            Kind kind = new Kind("vehicles.car");
-            _realm.GetOrCreateAnchor("simulation");
-            TestGhost prepared = _realm.Prepare<TestGhost>("simulation", kind, "42", new Variant("small-car"));
-            Assert.That(prepared.IsAvailable, Is.False);
-            Assert.That(_realm.Query().Count, Is.EqualTo(0));
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(prepared.Key, out found), Is.True);
-            Assert.That(found, Is.SameAs(prepared));
-
-            TestSource source = new TestSource(kind);
-            _realm.GetOrCreateAnchor("simulation", source);
-            TestGhost initialized = source.Publish("42", new Variant("car"));
-            Assert.That(initialized.IsAvailable, Is.False);
-            Assert.That(_realm.Query().Count, Is.Zero);
-            _realm.Update();
-
-            Assert.That(initialized, Is.SameAs(prepared));
-            Assert.That(initialized.IsAvailable, Is.True);
-            Assert.That(_realm.Query().OfKind(kind).With<ITestPart>().Count, Is.EqualTo(1));
-        }
-
-        /// <summary>
         /// Subscriptions report current and later available matches once each.
         /// </summary>
         [Test]

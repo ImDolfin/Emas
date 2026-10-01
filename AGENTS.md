@@ -45,6 +45,8 @@ For repository development, open the optional `Tests/Unity~` project in Unity **
 
 ## Test Quality
 
+- Keep the suite small and focused on important public API contracts and boundaries. Prefer a few thorough consumer scenarios over blanket, shallow coverage of every member or input permutation.
+- Add or retain a test only when it protects a distinct contract, meaningful failure or recovery boundary, or required integration. Strengthen an existing scenario when it can cover the same contract clearly; remove redundant cases without losing important behavior coverage.
 - Test observable behavior through public Emas APIs, supported protected detector extension points, or Unity's public serialized-authoring APIs. Do not expose internals to test assemblies or use reflection to reach private production state.
 - Give each test one clear consumer purpose and an XML summary explaining the contract it protects. Prefer representative scenarios over permutations of the same behavior.
 - Keep coverage for meaningful current behavior, including failure handling. Do not keep cases solely because they once reproduced a regression or exercised a removed/legacy implementation.
@@ -64,6 +66,6 @@ For repository development, open the optional `Tests/Unity~` project in Unity **
 
 ## Pull Request Expectations
 
-- Every new public API must have a corresponding test.
+- Every new public API must have focused contract coverage, which may extend an existing scenario instead of adding a separate test for each member.
 - Update `CHANGELOG.md` for user-facing changes.
 - Keep `package.json` version in sync with `Package.Version`.

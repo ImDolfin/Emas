@@ -30,7 +30,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Module diagnostics identify the anchor, detector, operation and entity while retaining the original exception.
+        /// Module diagnostics identify the anchor, unlabeled detector, operation and entity, retaining the original exception and label.
         /// </summary>
         [Test]
         public void ModuleFailure_IdentifiesOperationAndEntity()
@@ -41,11 +41,11 @@ namespace Emas.Tests
                 {
                     throw failure;
                 }));
-            ArrivalDetector source = new ArrivalDetector { Name = "SDK One" };
+            ArrivalDetector source = new ArrivalDetector { Name = " " };
             _realm.GetOrCreateAnchor("vehicles", source);
-            ExpectedErrors.Verify(_realm.Update, "vehicles.*SDK One.*Update modules.*module rejected item");
+            ExpectedErrors.Verify(_realm.Update, "vehicles.*ArrivalDetector.*Update modules.*module rejected item");
             Assert.That(source.LastError, Is.SameAs(failure));
-            Assert.That(source.LastErrorContext, Does.Contain("anchor 'vehicles'").And.Contain("source 'SDK One'"));
+            Assert.That(source.LastErrorContext, Does.Contain("anchor 'vehicles'").And.Contain("source 'ArrivalDetector'"));
             Assert.That(source.LastErrorContext, Does.Contain("operation 'Update modules'").And.Contain("kind 'car'").And.Contain("entity '42'"));
             string recorded = source.LastErrorContext;
             source.Name = "Renamed";
@@ -93,22 +93,6 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.IsAttached && source.IsActive, Is.True);
-        }
-
-        /// <summary>
-        /// Empty labels fall back to the readable detector type so applications can identify unlabeled detectors.
-        /// </summary>
-        [Test]
-        public void Name_UsesTypeFallback()
-        {
-            ArrivalDetector source = new ArrivalDetector();
-            Assert.That(source.Name, Is.EqualTo("ArrivalDetector"));
-            source.Name = "Vehicle SDK";
-            Assert.That(source.Name, Is.EqualTo("Vehicle SDK"));
-            source.Name = " ";
-            Assert.That(source.Name, Is.EqualTo("ArrivalDetector"));
-            source.Name = null;
-            Assert.That(source.Name, Is.EqualTo("ArrivalDetector"));
         }
 
         private sealed class ArrivalDetector : PresenceDetector

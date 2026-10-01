@@ -5,28 +5,10 @@ using UnityEngine;
 namespace Emas.Tests
 {
     /// <summary>
-    /// Verifies serialized coordinate conventions and rejection of ambiguous source axes.
+    /// Verifies invalid source axes cannot replace a usable coordinate convention.
     /// </summary>
     public sealed class CoordinateSystemTests
     {
-        /// <summary>
-        /// A custom convention retains its signed axes through Unity serialization and configures a usable frame.
-        /// </summary>
-        [Test]
-        public void SerializedCustomCoordinates_RetainAxisMapping()
-        {
-            CoordinateSystem value = new CoordinateSystem(Axis.NegativeZ, Axis.NegativeX, Axis.PositiveY);
-            CoordinateSystem copy = JsonUtility.FromJson<CoordinateSystem>(JsonUtility.ToJson(value));
-            ReferenceFrame frame = new ReferenceFrame
-            {
-                Position = default,
-                Coordinates = new CoordinateSystem(copy.Right, copy.Up, copy.Forward)
-            };
-
-            Assert.That(frame.TryToUnityPosition(new Double3(2, 3, 5), out Vector3 position), Is.True);
-            Assert.That(position, Is.EqualTo(new Vector3(-5, -2, 3)));
-        }
-
         /// <summary>
         /// Invalid axes cannot replace a frame's usable convention or define a custom coordinate system.
         /// </summary>

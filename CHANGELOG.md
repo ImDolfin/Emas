@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Document publishing absolute WGS84 positions relative to another tracked entity, with verified geographic examples and coverage for bound readers on separate anchors.
+
 - Clarify XML API documentation for detection, module binding, query filters, view requests and spatial conversions. Add brief code comments explaining lifecycle reentry, handover timing, coordinate mathematics and sample SDK mappings.
 
 - Add Geographic reference space with WGS84 `GeoPosition` input and ECEF double-precision storage. The followed or manual reference defines the local tangent frame directly, including entity-local attitude conversion, inverse helpers, visibility range and reference-loss behavior. Realm Setup exposes geographic coordinates and attitude axes. Update Relative World to feed geographic readings without a static ENU projection origin. Support native ECEF positions and body-to-ECEF attitudes, configurable right-handed body axes, independent input channels, mixed local/ECEF attitudes and inverse ECEF attitude helpers.

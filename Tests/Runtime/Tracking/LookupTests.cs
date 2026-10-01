@@ -54,7 +54,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Every key component is exact and case-sensitive, even when display names match.
+        /// Case-sensitive anchor, kind and source IDs keep separate roots discoverable even when display names match.
         /// </summary>
         [Test]
         public void Lookup_UsesWholeIdentity()
@@ -62,16 +62,24 @@ namespace Emas.Tests
             Probe source = new Probe();
             _realm.GetOrCreateAnchor("anchor", source);
             TestGhost expected = source.Publish("one");
-            source.Publish("One");
-            _realm.GetOrCreateAnchor("Anchor");
-            _realm.Prepare<TestGhost>("Anchor", Kind, "one");
-            _realm.Prepare<TestGhost>("anchor", new Kind("Lookup"), "one");
+            TestGhost otherId = source.Publish("One");
+            TestGhost otherKind = source.Publish("one", new Kind("Lookup"));
+            Probe otherSource = new Probe();
+            _realm.GetOrCreateAnchor("Anchor", otherSource);
+            TestGhost otherAnchor = otherSource.Publish("one");
             _realm.Update();
 
             IGhost found;
-            Assert.That(_realm.TryGetGhost(new Key("anchor", Kind, "one"), out found), Is.True);
-            Assert.That(found, Is.SameAs(expected));
-            Assert.That(found.IsAvailable, Is.True);
+            foreach (IGhost ghost in new IGhost[] { expected, otherId, otherKind, otherAnchor })
+            {
+                Key key = new Key(ghost.Key.AnchorId, ghost.Key.Kind, ghost.Key.EntityId);
+                Assert.That(_realm.TryGetGhost(key, out found), Is.True);
+                Assert.That(found, Is.SameAs(ghost));
+                Assert.That(found.IsAvailable, Is.True);
+            }
+
+            Assert.That(_realm.Query().Count, Is.EqualTo(4));
+            Assert.That(_realm.Query().OfKind(Kind).Count, Is.EqualTo(3));
             Assert.That(_realm.TryGetGhost(new Key("anchor", Kind, "ONE"), out found), Is.False);
             Assert.That(found, Is.Null);
         }
@@ -134,9 +142,9 @@ namespace Emas.Tests
 
         private sealed class Probe : PresenceDetector
         {
-            internal TestGhost Publish(string id)
+            internal TestGhost Publish(string id, Kind? kind = null)
             {
-                return GetOrCreate<TestGhost>(id, Kind, null, "Shared name");
+                return GetOrCreate<TestGhost>(id, kind ?? Kind, null, "Shared name");
             }
 
             internal void Delete(string id)

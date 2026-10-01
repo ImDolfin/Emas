@@ -9,10 +9,10 @@ namespace Emas.Tests
     public sealed class Double3Tests
     {
         /// <summary>
-        /// Coordinate access and subtraction retain nearby fractional differences at large origins.
+        /// Nearby arithmetic and distance retain fractional differences at large origins without float conversion.
         /// </summary>
         [Test]
-        public void Subtraction_PreservesFractionalOffsetsAtLargeCoordinates()
+        public void NearbyArithmetic_PreservesFractionalOffsetsAtLargeCoordinates()
         {
             Double3 origin = new Double3(1e12 + 0.125d, -1e12 + 0.25d, 1e12 + 0.5d);
             Double3 position = new Double3(1e12 + 20.375d, -1e12 + 4.5d, 1e12 - 0.25d);
@@ -22,6 +22,8 @@ namespace Emas.Tests
             Assert.That(offset.Y, Is.EqualTo(4.25d));
             Assert.That(offset.Z, Is.EqualTo(-0.75d));
             Assert.That(origin + offset, Is.EqualTo(position));
+            Assert.That(Double3.Distance(origin, origin + new Double3(3d, 4d, 0d)), Is.EqualTo(5d));
+            Assert.That(Double3.Distance(origin, origin), Is.Zero);
         }
 
         /// <summary>
@@ -37,19 +39,6 @@ namespace Emas.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => { _ = largest + largest; });
             Assert.Throws<ArgumentOutOfRangeException>(() => { _ = largest * 2d; });
             Assert.Throws<ArgumentOutOfRangeException>(() => { _ = default(Double3) * double.NaN; });
-        }
-
-        /// <summary>
-        /// Distance uses the relative double coordinates, with no float conversion.
-        /// </summary>
-        [Test]
-        public void Distance_UsesNearbyDoubleCoordinates()
-        {
-            Double3 first = new Double3(1e12 + 0.125d, 1e12 + 0.25d, 0d);
-            Double3 second = new Double3(1e12 + 3.125d, 1e12 + 4.25d, 0d);
-
-            Assert.That(Double3.Distance(first, second), Is.EqualTo(5d));
-            Assert.That(Double3.Distance(first, first), Is.Zero);
         }
 
         /// <summary>

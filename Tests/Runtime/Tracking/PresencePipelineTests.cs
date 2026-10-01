@@ -30,7 +30,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Ghost preparation is not a detector report and creates a Presence only when claimed.
+        /// Preparation exposes a reusable root to identity lookup; detection claims it, and only an update makes it queryable.
         /// </summary>
         [Test]
         public void Prepare_DoesNotExposePresenceUntilDetection()
@@ -41,6 +41,9 @@ namespace Emas.Tests
             Assert.That(_realm.TryGetPresence(key, out Presence presence), Is.False);
             Assert.That(presence, Is.Null);
             Assert.That(prepared.IsAvailable, Is.False);
+            Assert.That(_realm.TryGetGhost(key, out IGhost found), Is.True);
+            Assert.That(found, Is.SameAs(prepared));
+            Assert.That(_realm.Query().Count, Is.Zero);
 
             Detector detector = new Detector();
             anchor.AddDetector(detector);
@@ -48,8 +51,11 @@ namespace Emas.Tests
             Assert.That(detected.Root, Is.SameAs(prepared));
             Assert.That(_realm.TryGetPresence(key, out presence), Is.True);
             Assert.That(presence, Is.SameAs(detected));
+            Assert.That(detected.IsAvailable, Is.False);
+            Assert.That(_realm.Query().Count, Is.Zero);
             _realm.Update();
             Assert.That(detected.IsAvailable, Is.True);
+            Assert.That(_realm.Query().OfKind(TrackedKind).Single(), Is.SameAs(prepared));
         }
 
         /// <summary>
