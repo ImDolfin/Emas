@@ -124,6 +124,71 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Changing a frame's convention reprojects cached poses on the next update without replacing Ghosts or views.
+        /// </summary>
+        [Test]
+        public void CoordinateChanges_ReprojectCachedPoseAndKeepView()
+        {
+            RegisterView();
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Position = default,
+                Coordinates = CoordinateSystem.NorthEastDown
+            };
+            _realm.ReferenceFrame = frame;
+            Double3 sourcePosition = new Double3(10, 20, -3);
+            Quaternion sourceRotation = Quaternion.AngleAxis(90, Vector3.forward);
+            TestGhost ghost = _source.PublishPosition("car", sourcePosition);
+            _source.PublishRotation("car", sourceRotation);
+            _realm.Update();
+            View view = _realm.Manifest(ghost);
+            AssertPosition(ghost.transform.position, new Vector3(20, 3, 10));
+            AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(90, Vector3.up));
+
+            frame.Coordinates = CoordinateSystem.Unity;
+            AssertPosition(ghost.transform.position, new Vector3(20, 3, 10));
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(10, 20, -3));
+            AssertRotation(ghost.transform.rotation, sourceRotation);
+            Assert.That(_realm.Query().Single(), Is.SameAs(ghost));
+            Assert.That(ActiveView(ghost), Is.SameAs(view));
+            Assert.That(ghost.GetComponent<Spatial>().Position, Is.EqualTo(sourcePosition));
+            AssertRotation(ghost.GetComponent<Spatial>().Rotation, sourceRotation);
+        }
+
+        /// <summary>
+        /// A followed NED pose anchors both position and heading, including while its last valid pose is retained after loss.
+        /// </summary>
+        [Test]
+        public void FollowedCoordinates_AlignAndRetainReferencePose()
+        {
+            Double3 origin = new Double3(1e12, 1e12, -1e12);
+            Quaternion heading = Quaternion.AngleAxis(90, Vector3.forward);
+            TestGhost ego = _source.PublishPosition("ego", origin);
+            _source.PublishRotation("ego", heading);
+            TestGhost target = _source.PublishPosition("target", origin + new Double3(10, 0, 0));
+            _source.PublishRotation("target", heading);
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                FollowedGhost = ego.Key,
+                Coordinates = CoordinateSystem.NorthEastDown
+            };
+            _realm.ReferenceFrame = frame;
+            _realm.Update();
+            AssertPosition(ego.transform.position, Vector3.zero);
+            AssertRotation(ego.transform.rotation, Quaternion.identity);
+            AssertPosition(target.transform.position, new Vector3(-10, 0, 0));
+            AssertRotation(target.transform.rotation, Quaternion.identity);
+
+            _source.RemoveEntity("ego");
+            _realm.Update();
+            Assert.That(frame.IsReferenceAvailable, Is.False);
+            Assert.That(frame.Position, Is.EqualTo(origin));
+            AssertPosition(target.transform.position, new Vector3(-10, 0, 0));
+            AssertRotation(target.transform.rotation, Quaternion.identity);
+        }
+
+        /// <summary>
         /// Parent translation, rotation and scale do not get applied twice to projected world poses.
         /// </summary>
         [Test]

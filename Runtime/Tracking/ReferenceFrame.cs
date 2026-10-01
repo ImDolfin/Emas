@@ -8,12 +8,14 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Assign to Realm.ReferenceFrame to customize spatial projection; null uses an identity frame. Positions share one Cartesian
-    /// coordinate system and unit. Supply position and rotation independently, or follow a spatial ghost by key.
+    /// coordinate system and unit, with source axes selected by Coordinates. Supply position and rotation independently,
+    /// or follow a spatial ghost by key.
     /// All configuration and conversion calls require Unity's main thread.
     /// </remarks>
     public sealed class ReferenceFrame
     {
         private Double3 _position;
+        private CoordinateSystem _coordinates = CoordinateSystem.Unity;
         private Quaternion _rotation = Quaternion.identity;
         private Vector3 _unityPosition;
         private Quaternion _unityRotation = Quaternion.identity;
@@ -21,6 +23,32 @@ namespace Emas
         private Key? _followedGhost;
         private bool _hasPosition;
         private bool _isReferenceAvailable;
+
+        /// <summary>
+        /// Gets or sets the source axes and handedness used by positions and rotations; defaults to Unity.
+        /// </summary>
+        /// <remarks>
+        /// All Spatial poses and the reference pose must use this convention. Changing it reinterprets stored poses
+        /// on the next realm update; conversion methods use it immediately. UnityPosition and UnityRotation stay in Unity space.
+        /// </remarks>
+        /// <exception cref="ArgumentException">The mapping contains undefined or repeated source axes.</exception>
+        public CoordinateSystem Coordinates
+        {
+            get
+            {
+                return _coordinates;
+            }
+            set
+            {
+                string error = value.GetConfigurationError();
+                if (error != null)
+                {
+                    throw new ArgumentException(error, nameof(value));
+                }
+
+                _coordinates = value;
+            }
+        }
 
         /// <summary>
         /// Gets or sets the shared Cartesian position mapped to UnityPosition.
@@ -205,7 +233,7 @@ namespace Emas
             Projection projection = Capture();
             Double3 offset = new Double3((double)unityPosition.x - _unityPosition.x,
                 (double)unityPosition.y - _unityPosition.y, (double)unityPosition.z - _unityPosition.z);
-            return _position + SpatialMath.Rotate(Quaternion.Inverse(projection.Alignment), offset);
+            return _position + _coordinates.ToSource(SpatialMath.Rotate(Quaternion.Inverse(projection.Alignment), offset));
         }
 
         /// <summary>
@@ -224,7 +252,7 @@ namespace Emas
         {
             RequirePosition();
             Quaternion rotation = SpatialMath.NormalizeRotation(unityRotation, nameof(unityRotation));
-            return SpatialMath.NormalizeRotation(Quaternion.Inverse(Capture().Alignment) * rotation, nameof(unityRotation));
+            return SpatialMath.NormalizeRotation(_coordinates.ToSourceRotation(Quaternion.Inverse(Capture().Alignment) * rotation), nameof(unityRotation));
         }
 
         /// <summary>
@@ -255,9 +283,10 @@ namespace Emas
 
         internal Projection Capture()
         {
-            Quaternion alignment = _unityRotation * (FollowRotation ? Quaternion.Inverse(_rotation) : Quaternion.identity);
+            Quaternion referenceRotation = _coordinates.ToUnityRotation(_rotation);
+            Quaternion alignment = _unityRotation * (FollowRotation ? Quaternion.Inverse(referenceRotation) : Quaternion.identity);
             return new Projection(_hasPosition, _position, _unityPosition,
-                SpatialMath.NormalizeRotation(alignment, nameof(Rotation)), _maxDistance);
+                SpatialMath.NormalizeRotation(alignment, nameof(Rotation)), _coordinates, _maxDistance);
         }
 
         internal static void ValidatePosition(Double3 position, string parameter)
@@ -280,14 +309,16 @@ namespace Emas
         internal readonly struct Projection
         {
             private readonly bool _hasPosition;
+            private readonly CoordinateSystem _coordinates;
             private readonly Double3 _position;
             private readonly Vector3 _unityPosition;
             private readonly double? _maxDistance;
             internal readonly Quaternion Alignment;
 
-            internal Projection(bool hasPosition, Double3 position, Vector3 unityPosition, Quaternion alignment, double? maxDistance)
+            internal Projection(bool hasPosition, Double3 position, Vector3 unityPosition, Quaternion alignment, CoordinateSystem coordinates, double? maxDistance)
             {
                 _hasPosition = hasPosition;
+                _coordinates = coordinates;
                 _position = position;
                 _unityPosition = unityPosition;
                 Alignment = alignment;
@@ -304,7 +335,7 @@ namespace Emas
 
                 try
                 {
-                    Double3 offset = SpatialMath.Rotate(Alignment, position - _position);
+                    Double3 offset = SpatialMath.Rotate(Alignment, _coordinates.ToUnity(position - _position));
                     return SpatialMath.TryToVector3(offset + new Double3(_unityPosition.x, _unityPosition.y, _unityPosition.z), out result);
                 }
                 catch (ArgumentOutOfRangeException)
@@ -316,7 +347,7 @@ namespace Emas
 
             internal Quaternion ToUnityRotation(Quaternion rotation)
             {
-                return SpatialMath.NormalizeRotation(Alignment * rotation, nameof(rotation));
+                return SpatialMath.NormalizeRotation(Alignment * _coordinates.ToUnityRotation(rotation), nameof(rotation));
             }
         }
     }

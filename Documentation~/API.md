@@ -117,6 +117,10 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `Spatial.SetPosition(position)` / `Position` / `HasPosition` | Publish and read the root's independent double-precision position channel |
 | `Spatial.SetRotation(rotation)` / `Rotation` / `HasRotation` | Publish and read the optional orientation channel; without it Emas leaves root rotation untouched |
 | `Spatial.IsInRange` | Whether the latest spatial projection can be presented |
+| `ReferenceFrame.Coordinates` | Source axes and handedness for all poses in the realm; defaults to Unity |
+| `CoordinateSystem.Unity` / `EastNorthUp` / `NorthEastDown` | Presets for Unity, ENU and NED source coordinates |
+| `new CoordinateSystem(right, up, forward)` | Custom signed source axes mapping to Unity directions; use each of X, Y and Z once via `Axis.PositiveX`, `Axis.NegativeX`, etc. |
+| `CoordinateSystem.Right` / `Up` / `Forward` | Read the source axis mapped to each Unity direction |
 | `ReferenceFrame.Position` / `Rotation` | Manual reference pose in shared Cartesian coordinates, or the latest resolved followed pose |
 | `ReferenceFrame.UnityPosition` / `UnityRotation` | Desired Unity world pose of the reference; defaults to zero/identity |
 | `ReferenceFrame.FollowedGhost` | Optional key to follow within this realm; null uses manual configuration |
@@ -129,7 +133,7 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the frame mapping |
 | `DistanceTo(position)` | Double-precision distance from the cached reference |
 
-Add enabled `Spatial` components to participating Ghost roots. Application entity modules normalize SDK positions into shared Cartesian units/axes for the realm. The realm subtracts the reference in doubles before converting to Unity floats and projects the root in world space, accounting for Anchor parents. Reference movement reprojects all spatial ghosts without requiring another entity publication. Position, rotation and articulation updates remain independent; the spatial API emits no general data-change events.
+Add enabled `Spatial` components to participating Ghost roots. Application entity modules supply poses in shared Cartesian units/axes for the realm; `ReferenceFrame.Coordinates` maps that convention to Unity. Changing it reinterprets cached poses on the next update, while conversion helpers use it immediately. The realm subtracts the reference and maps axes in doubles before converting to Unity floats and projects the root in world space, accounting for Anchor parents. Reference movement reprojects all spatial ghosts without requiring another entity publication. Position, rotation and articulation updates remain independent; the spatial API emits no general data-change events.
 
 Before the first position, while an explicitly assigned reference is uninitialized, or outside the presentation range, spatial views and root rendering/colliders are suppressed while identity, availability and scripts remain active. Requested views return on range entry. Reference loss freezes its last valid pose and sets `IsReferenceAvailable` false; before any valid reference, presentation stays suppressed. With no reference frame, enabled `Spatial` components use identity projection with no distance limit; positions that cannot fit in finite Unity floats remain suppressed. Clearing `Realm.ReferenceFrame` returns to this default. Disable `Spatial` to release transform control. See [relative-world integration](Spatial.md) for complete setup, channel mapping and precision guidance.
 

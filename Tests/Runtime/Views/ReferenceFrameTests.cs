@@ -73,6 +73,88 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Geographic presets map physical directions and handed rotations into Unity's right/up/forward axes.
+        /// </summary>
+        [Test]
+        public void GeographicCoordinates_MapPositionsAndRotations()
+        {
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Position = default,
+                Coordinates = CoordinateSystem.EastNorthUp
+            };
+            Assert.That(frame.TryToUnityPosition(new Double3(2, 3, 5), out Vector3 enu), Is.True);
+            Assert.That(enu, Is.EqualTo(new Vector3(2, 5, 3)));
+            Quaternion sourceTurn = Quaternion.AngleAxis(90, Vector3.forward);
+            Assert.That(Vector3.Distance(frame.ToUnityRotation(sourceTurn) * Vector3.forward, Vector3.left),
+                Is.LessThan(0.0001f));
+
+            frame.Coordinates = CoordinateSystem.NorthEastDown;
+            Assert.That(frame.TryToUnityPosition(new Double3(2, 3, 5), out Vector3 ned), Is.True);
+            Assert.That(ned, Is.EqualTo(new Vector3(3, -5, 2)));
+            Assert.That(Vector3.Distance(frame.ToUnityRotation(sourceTurn) * Vector3.forward, Vector3.right),
+                Is.LessThan(0.0001f));
+
+            Quaternion source = Quaternion.AngleAxis(30, Vector3.right)
+                * Quaternion.AngleAxis(40, Vector3.up) * Quaternion.AngleAxis(50, Vector3.forward);
+            Quaternion expected = Quaternion.AngleAxis(-30, Vector3.forward)
+                * Quaternion.AngleAxis(-40, Vector3.right) * Quaternion.AngleAxis(50, Vector3.up);
+            Assert.That(Quaternion.Angle(frame.ToUnityRotation(source), expected), Is.LessThan(0.05f));
+            Assert.That(Quaternion.Angle(frame.ToSimulationRotation(expected), source), Is.LessThan(0.05f));
+            Assert.That(Double3.Distance(frame.ToSimulationPosition(ned), new Double3(2, 3, 5)), Is.LessThan(0.00001d));
+        }
+
+        /// <summary>
+        /// Custom signed axes compose with reference cancellation and Unity placement without losing large-origin precision.
+        /// </summary>
+        [Test]
+        public void CustomCoordinates_RoundTripReferenceAndUnityPlacement()
+        {
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Position = new Double3(1e12, -1e12, 1e12),
+                Coordinates = new CoordinateSystem(Axis.NegativeZ, Axis.NegativeX, Axis.PositiveY),
+                Rotation = Quaternion.AngleAxis(90, Vector3.right),
+                UnityPosition = new Vector3(5, 6, 7),
+                UnityRotation = Quaternion.AngleAxis(90, Vector3.forward)
+            };
+            Double3 source = frame.Position + new Double3(20.25d, 4.5d, -2.75d);
+            Assert.That(frame.TryToUnityPosition(source, out Vector3 unity), Is.True);
+            Assert.That(Vector3.Distance(unity, new Vector3(25.25f, 10.5f, 4.25f)), Is.LessThan(0.0001f));
+            Assert.That(Double3.Distance(frame.ToSimulationPosition(unity), source), Is.LessThan(0.001d));
+
+            Quaternion sourceRotation = frame.Rotation * Quaternion.AngleAxis(90, Vector3.forward);
+            Quaternion expected = frame.UnityRotation * Quaternion.AngleAxis(-90, Vector3.right);
+            Assert.That(Quaternion.Angle(frame.ToUnityRotation(sourceRotation), expected), Is.LessThan(0.05f));
+            Assert.That(Quaternion.Angle(frame.ToSimulationRotation(expected), sourceRotation), Is.LessThan(0.05f));
+            Assert.That(Quaternion.Angle(frame.ToUnityRotation(frame.Rotation), frame.UnityRotation), Is.LessThan(0.05f));
+        }
+
+        /// <summary>
+        /// Position-only following still converts source axes and handedness while ignoring the reference orientation.
+        /// </summary>
+        [Test]
+        public void PositionOnlyMode_RetainsCoordinateConvention()
+        {
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Position = new Double3(1000, 2000, 3000),
+                Coordinates = CoordinateSystem.NorthEastDown,
+                Rotation = Quaternion.AngleAxis(90, Vector3.forward),
+                UnityRotation = Quaternion.AngleAxis(90, Vector3.forward),
+                FollowRotation = false
+            };
+            Double3 source = frame.Position + new Double3(3, 4, 5);
+            Assert.That(frame.TryToUnityPosition(source, out Vector3 unity), Is.True);
+            Assert.That(Vector3.Distance(unity, new Vector3(5, 4, 3)), Is.LessThan(0.0001f));
+            Assert.That(Double3.Distance(frame.ToSimulationPosition(unity), source), Is.LessThan(0.0001d));
+
+            Quaternion expected = frame.UnityRotation * Quaternion.AngleAxis(90, Vector3.up);
+            Assert.That(Quaternion.Angle(frame.ToUnityRotation(frame.Rotation), expected), Is.LessThan(0.05f));
+            Assert.That(Quaternion.Angle(frame.ToSimulationRotation(expected), frame.Rotation), Is.LessThan(0.05f));
+        }
+
+        /// <summary>
         /// Presentation distance is measured in double-precision shared coordinates and includes its boundary.
         /// </summary>
         [Test]
@@ -82,10 +164,11 @@ namespace Emas.Tests
             frame.Position = new Double3(1e12, 1e12, 1e12);
             frame.UnityPosition = new Vector3(500f, 600f, 700f);
             frame.MaxDistance = 5d;
+            frame.Coordinates = CoordinateSystem.NorthEastDown;
 
             Assert.That(frame.MaxDistance, Is.EqualTo(5d));
             Assert.That(frame.TryToUnityPosition(frame.Position + new Double3(3d, 4d, 0d), out Vector3 boundary), Is.True);
-            Assert.That(boundary, Is.EqualTo(new Vector3(503f, 604f, 700f)));
+            Assert.That(boundary, Is.EqualTo(new Vector3(504f, 600f, 703f)));
             Double3 outside = frame.Position + new Double3(3d, 4.25d, 0d);
             Assert.That(frame.TryToUnityPosition(outside, out Vector3 unused), Is.False);
             Assert.That(frame.DistanceTo(outside), Is.GreaterThan(5d));

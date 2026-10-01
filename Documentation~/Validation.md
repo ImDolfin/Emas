@@ -42,6 +42,10 @@ Keep a test when it protects a distinct behavior that an application depends on.
 
 ## Results
 
+Configurable reference coordinates passed **15 EditMode** and **146 PlayMode** tests in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. Coverage includes ENU/NED positions and handed rotations, custom signed axes, inverse conversions, large-origin precision, distance limits, position-only following, reference loss, runtime convention changes retaining Ghosts/views, serialization and invalid authored mappings. Imported-sample consistency checks also pass.
+
+The suites ran with `-batchmode -nographics`. A separate Direct3D 11 capture of Realm Setup was visually reviewed for the NED preset and Custom axis selectors. Both layouts render without overlapping fields; custom axes appear only when needed. The temporary preview helper was removed. Reports, logs, `PresetInspector.png` and `CustomInspector.png` are in `Tests/Unity~/TestResults/CoordinateSystems/`.
+
 Inspector cleanup passed **14 EditMode tests** in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. Removed Setup Help foldouts and inspector diagnostics buttons, including their unused shared helpers. The diagnostics overlay owns its own window shortcut. This check used `-batchmode -nographics`; reports are in `Tests/Unity~/TestResults/InspectorCleanup/`.
 
 Inline blueprint variants passed **14 EditMode** and **139 PlayMode** tests in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. Coverage includes exact named-prefab selection, fallback behavior, independent registration snapshots, switching named LOD variants while retaining Ghost roots, cancellation through Demanifest, invalid row validation, serialized row reordering/removal and undo/redo. All three imported samples match the package after seven separate variant assets were folded into their blueprints.

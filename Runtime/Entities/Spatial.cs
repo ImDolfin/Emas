@@ -7,7 +7,8 @@ namespace Emas
     /// Stores independent position and rotation updates for world or realm-relative placement.
     /// </summary>
     /// <remarks>
-    /// Place on the Ghost root. Positions use the realm's shared Cartesian coordinates and retain doubles.
+    /// Place on the Ghost root. Positions retain doubles; positions and rotations use ReferenceFrame.Coordinates.
+    /// All participating poses share that source coordinate convention and unit.
     /// Realm projection owns this root's world pose while this component is enabled; views inherit that pose.
     /// With no reference frame, stored coordinates and rotations map directly to Unity world space.
     /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished

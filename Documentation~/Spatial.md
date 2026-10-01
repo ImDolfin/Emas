@@ -13,9 +13,35 @@ Screen (RealmSetup: manifestation blueprints and reference frame)
 Environment (another RealmSetup with its own anchors and reference frame)
 ```
 
-For a car that stays near the Unity origin, enable **Use Reference Frame** and **Follow Ghost** on the screen's Realm Setup. Enter the car's anchor ID (`vehicles`), kind ID and entity ID (`my-car`). Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in the shared coordinate units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
+For a car that stays near the Unity origin, enable **Use Reference Frame**, choose the **Coordinate System** matching the incoming poses, and enable **Follow Ghost** on the screen's Realm Setup. Enter the car's anchor ID (`vehicles`), kind ID and entity ID (`my-car`). Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in the shared coordinate units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
 
 For a fixed origin, leave **Follow Ghost** off and enter the frame's **Position** as doubles in the same coordinate system as the Ghosts, plus its **Rotation**. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete component wiring.
+
+## Choose source coordinates
+
+Each reference frame has a `Coordinates` value. Choose its preset in Realm Setup or assign it in code. Unity is the default; no extra asset is needed.
+
+| Preset | Source X | Source Y | Source Z | Unity right / up / forward |
+| --- | --- | --- | --- | --- |
+| `CoordinateSystem.Unity` | Right | Up | Forward | +X / +Y / +Z |
+| `CoordinateSystem.EastNorthUp` | East | North | Up | +X / +Z / +Y |
+| `CoordinateSystem.NorthEastDown` | North | East | Down | +Y / -Z / +X |
+
+ENU and NED both place east along Unity right and north along Unity forward. For another convention, select **Custom** and choose the signed source axis mapped to each Unity direction. Each of X, Y and Z must appear exactly once. The mapping determines handedness automatically.
+
+```csharp
+frame.Coordinates = CoordinateSystem.NorthEastDown;
+
+// Custom source: X left, Y forward, Z up.
+frame.Coordinates = new CoordinateSystem(
+    right: Axis.NegativeX, up: Axis.PositiveZ, forward: Axis.PositiveY);
+```
+
+The setting applies to `Spatial` positions and quaternion rotations, the reference pose, and both directions of the conversion helpers. All incoming poses in a realm must use the selected convention. `UnityPosition` and `UnityRotation` remain in Unity coordinates. Reference following and the desired Unity pose are configured independently of the source axes.
+
+Rotations are converted by changing both the world and local basis of their rotation matrix, including handedness. Feed quaternions expressed in that source basis; decoding an SDK's angle order, angular units or quaternion representation belongs in the application. Prefab geometry uses Unity local axes.
+
+Changing `Coordinates` at runtime reinterprets stored source poses on the next realm update, retaining Ghosts and views. Conversion helpers use the new setting immediately. It does not rewrite the stored source data.
 
 ## Keep your car fixed by code
 
@@ -91,7 +117,7 @@ realm.RegisterPresenceInitializer<Car>(CarKind, (presence, car) =>
 });
 ```
 
-`SdkProxy` is your SDK's concrete proxy type, supplied once with `Detect(id, CarKind, source: proxy)`. `Presence.Source` resolves a weak reference; these readers preserve the last spatial state if it is collected or destroyed. Put coordinate, axis or unit conversions in these readers or an application helper. Each module only knows its input type. Bind only channels supplied by the SDK; unbound or disabled modules leave their channel unchanged. `Spatial.HasPosition` and `HasRotation` indicate whether each channel has been supplied. Missing rotation leaves root rotation under application control.
+`SdkProxy` is your SDK's concrete proxy type, supplied once with `Detect(id, CarKind, source: proxy)`. `Presence.Source` resolves a weak reference; these readers preserve the last spatial state if it is collected or destroyed. Use `ReferenceFrame.Coordinates` for the common axis and handedness conversion. Put geodetic conversion, unit conversion and SDK rotation decoding in these readers or an application helper. If sources use different conventions, first normalize them to the convention selected for this realm. Each module only knows its input type. Bind only channels supplied by the SDK; unbound or disabled modules leave their channel unchanged. `Spatial.HasPosition` and `HasRotation` indicate whether each channel has been supplied. Missing rotation leaves root rotation under application control.
 
 The detector calls `Detect(id, CarKind, source: proxy)` on arrival and `Disappear(CarKind, id)` on departure. Data updates require neither another detection nor a report. Each realm update reads and applies the enabled modules, resolves the reference once, and projects all roots using the resulting spatial state. Reference movement also repositions entities whose shared positions stayed unchanged. Sample reference and target data at a common presentation time for interpolated feeds.
 
@@ -99,18 +125,19 @@ Module reads do not refresh `InactivityTimeout`. Leave it disabled for feeds tha
 
 ## Preserve precision before Unity
 
-Store and transport global positions as `Double3`, which has three `double` components. Convert SDK axes and units into one shared Cartesian coordinate system for the realm. Different detectors must feed the same system; SDK-specific geodetic or geocentric conversion belongs in the initializer-bound readers or an application helper, keeping the modules independent of the SDK.
+Store and transport global positions as `Double3`, which has three `double` components. Use one shared Cartesian coordinate system and unit for the realm, with its axes described by `ReferenceFrame.Coordinates`. Different detectors must feed the same system; SDK-specific geodetic or geocentric conversion belongs in the initializer-bound readers or an application helper, keeping the modules independent of the SDK.
 
 The relative displacement is calculated in double precision before its final conversion to a Unity position:
 
 ```text
 Unity position = Unity reference position
                + Unity reference rotation
-               * inverse(reference rotation)
+               * inverse(converted reference rotation)
+               * coordinate basis
                * (entity position - reference position)
 ```
 
-With position-only following, the inverse reference rotation is omitted. Absolute positions around one billion metres can therefore yield nearby Unity positions such as `20.25 m` without first rounding the global values into floats. Converting an already-rounded global `Vector3` to `Double3` cannot recover precision.
+The coordinate basis maps source axes to Unity axes. A source rotation matrix `R` becomes `B * R * inverse(B)`, where `B` is that basis. With position-only following, the inverse converted reference rotation is omitted. Absolute positions around one billion metres can therefore yield nearby Unity positions such as `20.25 m` without first rounding the global values into floats. Converting an already-rounded global `Vector3` to `Double3` cannot recover precision.
 
 Projected roots stay beneath their Anchors. Projection sets world position and compensates for parent placement; do not add an Anchor's offset to spatial coordinates a second time. Ordinary ghosts without an enabled `Spatial` retain their existing positioning behavior. Network scenery that should move with the reference should use spatial projection too; a local cockpit can remain fixed in the Unity scene.
 
@@ -138,7 +165,7 @@ Application consumers can use the same conversion and distance rules:
 | --- | --- |
 | `TryToUnityPosition(position, out unityPosition)` | Project a double position when the reference is initialized and the position is within its presentation range |
 | `ToSimulationPosition(unityPosition)` | Convert a Unity world position back into the frame's shared Cartesian coordinates |
-| `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the frame's active rotation mapping |
+| `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the selected coordinates and reference alignment |
 | `DistanceTo(position)` | Compute distance from the cached reference in doubles |
 
 Check `HasPosition` before inverse-position, rotation-conversion or reference-distance operations when following a ghost that has not published yet. `TryToUnityPosition` returns false while no reference exists or a result cannot fit in finite Unity floats. Use `Double3.Distance(a, b)` for distances between positions in the shared coordinate system independently of a reference frame. Followed state is resolved during realm updates, so conversion helpers use the latest resolved reference.

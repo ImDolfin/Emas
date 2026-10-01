@@ -59,6 +59,7 @@ namespace Emas.Editor
                 }
                 using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(useFrame)))
                 {
+                    InspectorLayout.Field(serializedObject, "_coordinates", "Coordinate system");
                     InspectorLayout.Field(serializedObject, "_followGhost", "Follow a Ghost");
                     if (follow.hasMultipleDifferentValues)
                     {

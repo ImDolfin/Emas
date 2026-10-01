@@ -42,7 +42,7 @@ public sealed class PositionModule : EntityModule<Double3>
 }
 ```
 
-`YourGeo.Wgs84ToEnu` is **application code**, not an Emas API. Give it one fixed WGS84 latitude, longitude, and height as the local ENU conversion point. Convert each reading to Earth-centered XYZ, subtract that fixed point's XYZ, then rotate into east/up/north metres. This fixed conversion point is separate from the moving `origin` Ghost chosen below; **both** Ghosts must use the same conversion point and axes. `AltitudeMeters` here means WGS84 ellipsoidal height; convert mean-sea-level SDK altitude before passing it to the converter. The [working WGS84 conversion](Samples~/RelativeWorld/GeoProjection.cs) shows the full calculation. If the SDK also supplies orientation, the initializer converts it to a `Quaternion` for a separate rotation module; see the [orientation example](Samples~/RelativeWorld/GeoOrientationModule.cs).
+`YourGeo.Wgs84ToEnu` is **application code**, not an Emas API. Give it one fixed WGS84 latitude, longitude, and height as the local ENU conversion point. Convert each reading to Earth-centered XYZ, subtract that fixed point's XYZ, then rotate into east/north/up metres. The reference frame below maps ENU axes into Unity. This fixed conversion point is separate from the moving `origin` Ghost chosen below; **both** Ghosts must use the same conversion point and axes. `AltitudeMeters` here means WGS84 ellipsoidal height; convert mean-sea-level SDK altitude before passing it to the converter. The [working WGS84 conversion](Samples~/RelativeWorld/GeoProjection.cs) shows the calculation; that sample orders its result as east/up/north and uses the Unity coordinate preset. If the SDK also supplies orientation, the initializer converts it to a `Quaternion` for a separate rotation module; see the [orientation example](Samples~/RelativeWorld/GeoOrientationModule.cs).
 
 Save a prefab with **Emas > Ghost**, `PositionModule` and `Spatial`, and assign it to the blueprint. No Ghost subclass is needed. Derive one only when the entity has additional behavior that combines its modules. Override `protected virtual void OnUpdate()` for that behavior: the Realm invokes it once per update after all module readers finish and before spatial projection. It can run before initial activation, so use the initializer for required setup. Disabled or unavailable Ghosts are skipped, except roots awaiting their first activation; view requests do not trigger this hook.
 
@@ -88,6 +88,7 @@ realm.RegisterManifestationBlueprint(blueprint);
 
 realm.ReferenceFrame = new ReferenceFrame
 {
+    Coordinates = CoordinateSystem.EastNorthUp,
     FollowedGhost = new Key("items", TrackedDetector.Kind, "origin"),
     UnityPosition = Vector3.zero,
     FollowRotation = false
@@ -126,7 +127,7 @@ Put `RealmSetup` on the root and assign the optional blueprint. On `Items`, add 
 
 Code setup stays the same: construct a plain `PresenceDetector` with injected dependencies, register `Realm.RegisterPresenceInitializer<TGhost>`, then call `Anchor.AddDetector`. A scene `GhostInitializer` takes precedence for its own Anchor; without one enabled at attachment, the Realm's Kind registration applies. `IDetectorProvider` and `IRealmConfigurator` remain optional integration hooks when an application needs a factory or Realm-wide setup.
 
-For the moving origin, set **Follow Ghost** to anchor `items`, Kind `tracked.item`, entity `origin`. There are no latitude/longitude fields on `ReferenceFrame` or Realm Setup: their **Position** field is already-converted Cartesian `Double3`. For a fixed reference, convert its latitude/longitude/altitude with the same `YourGeo.Wgs84ToEnu` function and assign that `Double3` to `ReferenceFrame.Position` instead of following a Ghost. `Unity Position` chooses where the reference appears in the scene. If your module writes ordinary local Unity transforms instead of `Spatial`, omit the reference frame. See [Spatial](Documentation~/Spatial.md) for projection and reference loss.
+Choose **East North Up (ENU)** under **Coordinate System** for the mapping above. Unity, NED and custom signed axes are also available per frame. For the moving origin, set **Follow Ghost** to anchor `items`, Kind `tracked.item`, entity `origin`. There are no latitude/longitude fields on `ReferenceFrame` or Realm Setup: their **Position** field is already-converted Cartesian `Double3`. For a fixed reference, convert its latitude/longitude/altitude with the same `YourGeo.Wgs84ToEnu` function and assign that `Double3` to `ReferenceFrame.Position` instead of following a Ghost. `Unity Position` chooses where the reference appears in the scene. If your module writes ordinary local Unity transforms instead of `Spatial`, omit the reference frame. See [Spatial](Documentation~/Spatial.md) for projection and reference loss.
 
 ## Tests
 

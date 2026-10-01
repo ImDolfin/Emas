@@ -25,6 +25,9 @@ namespace Emas
         [Tooltip("Project Spatial Ghosts relative to a manual or followed reference point. When off, spatial poses map directly to Unity world space.")]
         [SerializeField]
         private bool _useReferenceFrame;
+        [Tooltip("Source coordinate axes shared by all Spatial positions and rotations in this Realm.")]
+        [SerializeField]
+        private CoordinateSystem _coordinates = CoordinateSystem.Unity;
         [Tooltip("Use a Ghost in this realm as the moving reference. Identify it with the next three fields.")]
         [SerializeField]
         private bool _followGhost;
@@ -462,6 +465,7 @@ namespace Emas
 
             ReferenceFrame frame = new ReferenceFrame
             {
+                Coordinates = _coordinates,
                 UnityPosition = _unityPosition,
                 UnityRotation = _unityRotation,
                 FollowRotation = _followRotation,

@@ -166,6 +166,35 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
+        /// Authored coordinate axes reject ambiguous mappings before startup and configure projection once corrected.
+        /// </summary>
+        [Test]
+        public void SerializedCoordinates_ValidateAndConfigureReference()
+        {
+            RealmSetup setup = CreateRealm();
+            SerializedObject serialized = new SerializedObject(setup);
+            serialized.FindProperty("_useReferenceFrame").boolValue = true;
+            SerializedProperty coordinates = serialized.FindProperty("_coordinates");
+            coordinates.FindPropertyRelative("_right").intValue = (int)Axis.PositiveY;
+            coordinates.FindPropertyRelative("_up").intValue = (int)Axis.NegativeY;
+            coordinates.FindPropertyRelative("_forward").intValue = (int)Axis.PositiveX;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            setup.gameObject.SetActive(true);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => setup.StartRealm()).Message,
+                Does.Contain("each source axis"));
+            Assert.That(setup.Realm, Is.Null);
+
+            coordinates.FindPropertyRelative("_up").intValue = (int)Axis.NegativeZ;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            setup.StartRealm();
+            ReferenceFrame frame = setup.Realm.ReferenceFrame;
+            Assert.That(frame.TryToUnityPosition(new Double3(2, 3, 5), out Vector3 position), Is.True);
+            Assert.That(position, Is.EqualTo(new Vector3(3, -5, 2)));
+            Assert.That(Quaternion.Angle(frame.ToUnityRotation(Quaternion.AngleAxis(90, Vector3.forward)),
+                Quaternion.AngleAxis(90, Vector3.up)), Is.LessThan(0.05f));
+        }
+
+        /// <summary>
         /// A followed reference authored on the prefab projects distant double coordinates near the Unity origin.
         /// </summary>
         [UnityTest]

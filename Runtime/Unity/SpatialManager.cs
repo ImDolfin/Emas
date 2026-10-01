@@ -30,7 +30,7 @@ namespace Emas
             }
 
             return frame == null
-                ? new ReferenceFrame.Projection(true, default(Double3), Vector3.zero, Quaternion.identity, null)
+                ? new ReferenceFrame.Projection(true, default(Double3), Vector3.zero, Quaternion.identity, CoordinateSystem.Unity, null)
                 : frame.Capture();
         }
 
