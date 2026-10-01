@@ -28,16 +28,16 @@ namespace Emas
         [Tooltip("Source coordinate axes shared by all Spatial positions and rotations in this Realm.")]
         [SerializeField]
         private CoordinateSystem _coordinates = CoordinateSystem.Unity;
-        [Tooltip("Use a Ghost in this realm as the moving reference. Identify it with the next three fields.")]
+        [Tooltip("Use a Ghost in this realm as the moving reference. Leave Entity ID empty to assign ReferenceFrame.FollowedGhost at runtime.")]
         [SerializeField]
         private bool _followGhost;
-        [Tooltip("Anchor ID of the followed Ghost; must match an Anchor Setup in this realm.")]
+        [Tooltip("Anchor ID for the Entity ID configured here; must match an Anchor Setup in this realm. Runtime assignment supplies the complete Key.")]
         [SerializeField]
         private string _referenceAnchorId;
-        [Tooltip("Kind reported for the followed Ghost by its detector.")]
+        [Tooltip("Kind of the Entity ID configured here. Runtime assignment supplies the complete Key.")]
         [SerializeField]
         private Kind _referenceKind;
-        [Tooltip("Stable entity ID of the followed Ghost within its Anchor and Kind.")]
+        [Tooltip("Optional entity ID to follow at startup. Leave empty to assign ReferenceFrame.FollowedGhost at runtime; spatial presentation waits until a reference position is available.")]
         [SerializeField]
         private string _referenceEntityId;
         [Tooltip("Manual Cartesian reference position in the same units as Spatial positions. Convert latitude, longitude and altitude before entering it.")]
@@ -474,13 +474,15 @@ namespace Emas
 
             if (_followGhost)
             {
-                if (string.IsNullOrEmpty(_referenceAnchorId) || !_referenceKind.IsValid
-                    || string.IsNullOrEmpty(_referenceEntityId))
+                if (!string.IsNullOrEmpty(_referenceEntityId))
                 {
-                    throw new ArgumentException("A followed ghost needs an anchor ID, kind and entity ID.");
-                }
+                    if (string.IsNullOrEmpty(_referenceAnchorId) || !_referenceKind.IsValid)
+                    {
+                        throw new ArgumentException("A configured reference Entity ID needs an anchor ID and kind.");
+                    }
 
-                frame.FollowedGhost = new Key(_referenceAnchorId, _referenceKind, _referenceEntityId);
+                    frame.FollowedGhost = new Key(_referenceAnchorId, _referenceKind, _referenceEntityId);
+                }
                 frame.Rotation = _rotation;
             }
             else

@@ -67,10 +67,14 @@ namespace Emas.Editor
                     }
                     else if (follow.boolValue)
                     {
-                        InspectorLayout.Field(serializedObject, "_referenceAnchorId", "Anchor ID");
-                        SerializedProperty kind = serializedObject.FindProperty("_referenceKind._id");
-                        EditorGUILayout.PropertyField(kind, new GUIContent("Kind ID", "The Kind passed to Detect, not a prefab name."));
-                        InspectorLayout.Field(serializedObject, "_referenceEntityId", "Entity ID");
+                        SerializedProperty entityId = serializedObject.FindProperty("_referenceEntityId");
+                        InspectorLayout.Field(serializedObject, "_referenceEntityId", "Entity ID (optional)");
+                        using (new EditorGUI.DisabledScope(!entityId.hasMultipleDifferentValues && string.IsNullOrEmpty(entityId.stringValue)))
+                        {
+                            InspectorLayout.Field(serializedObject, "_referenceAnchorId", "Anchor ID");
+                            SerializedProperty kind = serializedObject.FindProperty("_referenceKind._id");
+                            EditorGUILayout.PropertyField(kind, new GUIContent("Kind ID", "The Kind passed to Detect, not a prefab name."));
+                        }
                     }
                     else
                     {
@@ -110,7 +114,7 @@ namespace Emas.Editor
                 InspectorLayout.ReadOnly("Anchors", realm.Anchors.Count.ToString());
                 InspectorLayout.ReadOnly("Available entities", realm.Query().Count.ToString());
                 ReferenceFrame frame = realm.ReferenceFrame;
-                InspectorLayout.ReadOnly("Reference", frame == null ? "Identity / world coordinates" : frame.IsReferenceAvailable ? "Available" : frame.HasPosition ? "Last known pose" : "Waiting for position");
+                InspectorLayout.ReadOnly("Reference", frame == null ? "Identity / world coordinates" : frame.IsReferenceAvailable ? "Available" : frame.HasPosition ? "Last known pose" : frame.FollowedGhost.HasValue ? "Waiting for position" : "Waiting for reference");
                 if (frame != null)
                 {
                     InspectorLayout.ReadOnly("Shared position", frame.HasPosition ? frame.Position.ToString() : "Not received");

@@ -42,6 +42,10 @@ Keep a test when it protects a distinct behavior that an application depends on.
 
 ## Results
 
+Runtime reference selection passed **17 EditMode** and **146 PlayMode** tests in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. A blank authored Entity ID now allows Realm startup while spatial presentation waits. Tests cover runtime target assignment and switching, retained coordinate/placement/range settings and views, fresh waiting state after restart, and validation of incomplete nonempty identities. Imported samples remain consistent.
+
+The suites used `-batchmode -nographics`. Direct3D 11 captures of Realm Setup were visually reviewed: the Entity ID is marked optional, Anchor and Kind are disabled while it is empty, and the live frame reports **Waiting for reference**. The temporary preview helper was removed. Reports, logs and captures are in `Tests/Unity~/TestResults/RuntimeReference/`.
+
 Configurable reference coordinates passed **15 EditMode** and **146 PlayMode** tests in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. Coverage includes ENU/NED positions and handed rotations, custom signed axes, inverse conversions, large-origin precision, distance limits, position-only following, reference loss, runtime convention changes retaining Ghosts/views, serialization and invalid authored mappings. Imported-sample consistency checks also pass.
 
 The suites ran with `-batchmode -nographics`. A separate Direct3D 11 capture of Realm Setup was visually reviewed for the NED preset and Custom axis selectors. Both layouts render without overlapping fields; custom axes appear only when needed. The temporary preview helper was removed. Reports, logs, `PresetInspector.png` and `CustomInspector.png` are in `Tests/Unity~/TestResults/CoordinateSystems/`.

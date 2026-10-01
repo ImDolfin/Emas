@@ -162,6 +162,7 @@ namespace Emas
         /// Gets or sets the spatial ghost to follow in the owning realm, or null for manual reference updates.
         /// </summary>
         /// <remarks>
+        /// Assign or replace the key when the target identity becomes known at runtime.
         /// The key is resolved again on each projection, including after source replacement or entity recreation.
         /// Loss freezes the last valid pose and sets IsReferenceAvailable to false. Before the first reference
         /// position arrives, spatial presentation is suppressed. Clearing this key keeps the last pose as a manual reference.

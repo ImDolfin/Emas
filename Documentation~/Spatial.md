@@ -13,9 +13,30 @@ Screen (RealmSetup: manifestation blueprints and reference frame)
 Environment (another RealmSetup with its own anchors and reference frame)
 ```
 
-For a car that stays near the Unity origin, enable **Use Reference Frame**, choose the **Coordinate System** matching the incoming poses, and enable **Follow Ghost** on the screen's Realm Setup. Enter the car's anchor ID (`vehicles`), kind ID and entity ID (`my-car`). Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in the shared coordinate units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
+For a car that stays near the Unity origin, enable **Use Reference Frame**, choose the **Coordinate System** matching the incoming poses, and enable **Follow Ghost** on the screen's Realm Setup. If its identity is known in advance, enter the car's entity ID (`my-car`), anchor ID (`vehicles`) and kind ID. Leave **Entity ID** empty when the target is chosen at runtime; the Anchor and Kind fields are then unused. Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in the shared coordinate units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
 
 For a fixed origin, leave **Follow Ghost** off and enter the frame's **Position** as doubles in the same coordinate system as the Ghosts, plus its **Rotation**. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete component wiring.
+
+## Assign a reference at runtime
+
+Enable **Use Reference Frame** and **Follow a Ghost**, and leave **Entity ID (optional)** empty. Realm Setup starts with an uninitialized reference while retaining your coordinate system, Unity placement, rotation-following and distance settings. Ghosts remain tracked and queryable, but spatial views stay suppressed until a reference position is available.
+
+After Realm Setup starts, assign the selected Ghost's key:
+
+```csharp
+realmSetup.Realm.ReferenceFrame.FollowedGhost = ghost.Key;
+```
+
+If your SDK supplies only the identity, construct the full key instead:
+
+```csharp
+realmSetup.Realm.ReferenceFrame.FollowedGhost =
+    new Key(anchorId, kind, runtimeEntityId);
+```
+
+The key includes the Anchor and Kind as well as the entity ID. The Ghost can arrive later; the frame begins following on the update that resolves its first valid `Spatial` position. Assign a different key to switch targets without replacing the frame or its settings. If a previous reference position exists, it is retained while waiting for the new target.
+
+`RealmSetup` normally starts on its first update after enable. Call `StartRealm()` explicitly if you need to assign the key earlier. Stopping and restarting the setup creates a fresh frame, so assign the runtime target for each new Realm. A nonempty Entity ID in the Inspector still requires an Anchor ID and Kind.
 
 ## Choose source coordinates
 

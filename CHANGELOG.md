@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Allow Realm Setup to follow an entity selected at runtime: leave Entity ID empty and assign `ReferenceFrame.FollowedGhost` once the target is known. The frame retains its authored settings and waits for a valid reference pose before showing spatial presentation. Inspector identity fields are optional for runtime assignment; configured IDs still require Anchor and Kind.
+
 - Add per-reference-frame coordinate conventions with Unity, East North Up (ENU), North East Down (NED) and custom signed-axis mappings. Realm Setup exposes a compact preset selector with inline custom axes. Position and quaternion projection, inverse conversions and reference following honor the selected handedness while retaining double-precision displacement. Runtime changes reproject cached poses without replacing Ghosts or views.
 
 - Remove the Setup Help foldouts from Ghost, Realm Setup and Anchor Setup Inspectors and the Open Emas Diagnostics buttons from Realm Setup and Anchor Setup Inspectors.

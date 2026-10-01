@@ -226,6 +226,94 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
+        /// An empty authored target waits for runtime selection and preserves frame settings and views when the target changes.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator SerializedReferenceFrame_WaitsForRuntimeTarget()
+        {
+            yield return new EnterPlayMode();
+            RealmSetup setup = CreateRealm();
+            SetBlueprint(setup, CreateBlueprint("runtime reference view"));
+            AnchorSetup anchor = CreateAnchor(setup, "world");
+            anchor.GetComponent<InspectorProvider>().Factory = () => new SpatialDetector();
+            SerializedObject serialized = new SerializedObject(setup);
+            serialized.FindProperty("_useReferenceFrame").boolValue = true;
+            serialized.FindProperty("_followGhost").boolValue = true;
+            serialized.FindProperty("_unityPosition").vector3Value = new Vector3(5, 6, 7);
+            serialized.FindProperty("_unityRotation").quaternionValue = Quaternion.AngleAxis(90, Vector3.up);
+            serialized.FindProperty("_followRotation").boolValue = false;
+            serialized.FindProperty("_limitDistance").boolValue = true;
+            serialized.FindProperty("_maxDistance").doubleValue = 100;
+            SerializedProperty coordinates = serialized.FindProperty("_coordinates");
+            coordinates.FindPropertyRelative("_right").intValue = (int)Axis.PositiveX;
+            coordinates.FindPropertyRelative("_up").intValue = (int)Axis.PositiveZ;
+            coordinates.FindPropertyRelative("_forward").intValue = (int)Axis.PositiveY;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            setup.gameObject.SetActive(true);
+            setup.StartRealm();
+            Realm realm = setup.Realm;
+            realm.Update();
+
+            ReferenceFrame frame = realm.ReferenceFrame;
+            Assert.That(frame.FollowedGhost, Is.Null);
+            Assert.That(frame.HasPosition, Is.False);
+            Assert.That(frame.IsReferenceAvailable, Is.False);
+            Assert.That(realm.Query().Count, Is.EqualTo(2));
+            Assert.That(realm.TryGetGhost(new Key("world", TestKind, "ego"), out IGhost ego), Is.True);
+            Assert.That(realm.TryGetGhost(new Key("world", TestKind, "traffic"), out IGhost traffic), Is.True);
+            Ghost trafficRoot = (Ghost)traffic;
+            Assert.That(trafficRoot.GetComponent<Spatial>().IsInRange, Is.False);
+            Assert.That(trafficRoot.GetComponentInChildren<View>(true), Is.Null);
+
+            frame.FollowedGhost = ego.Key;
+            realm.Update();
+            Assert.That(frame.IsReferenceAvailable, Is.True);
+            Assert.That(Vector3.Distance(trafficRoot.transform.position, new Vector3(5, 6, -13.25f)), Is.LessThan(0.0001f));
+            View view = trafficRoot.GetComponentInChildren<View>(true);
+            Assert.That(view, Is.Not.Null);
+            Assert.That(frame.TryToUnityPosition(frame.Position + new Double3(0, 0, 1), out Vector3 up), Is.True);
+            Assert.That(Vector3.Distance(up, new Vector3(5, 7, 7)), Is.LessThan(0.0001f));
+            Assert.That(frame.TryToUnityPosition(frame.Position + new Double3(101, 0, 0), out Vector3 outside), Is.False);
+
+            frame.FollowedGhost = traffic.Key;
+            realm.Update();
+            Assert.That(realm.ReferenceFrame, Is.SameAs(frame));
+            Assert.That(Vector3.Distance(trafficRoot.transform.position, frame.UnityPosition), Is.LessThan(0.0001f));
+            Assert.That(trafficRoot.GetComponentInChildren<View>(true), Is.SameAs(view));
+
+            setup.StopRealm();
+            setup.StartRealm();
+            setup.Realm.Update();
+            Assert.That(setup.Realm.ReferenceFrame.FollowedGhost, Is.Null);
+            Assert.That(setup.Realm.ReferenceFrame.HasPosition, Is.False);
+        }
+
+        /// <summary>
+        /// A nonempty authored target still requires a complete identity and can start after its missing fields are supplied.
+        /// </summary>
+        [Test]
+        public void SerializedReferenceFrame_ConfiguredTargetRequiresAnchorAndKind()
+        {
+            RealmSetup setup = CreateRealm();
+            SerializedObject serialized = new SerializedObject(setup);
+            serialized.FindProperty("_useReferenceFrame").boolValue = true;
+            serialized.FindProperty("_followGhost").boolValue = true;
+            serialized.FindProperty("_referenceEntityId").stringValue = "ego";
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            setup.gameObject.SetActive(true);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => setup.StartRealm()).Message,
+                Does.Contain("anchor ID and kind"));
+            Assert.That(setup.Realm, Is.Null);
+
+            serialized.FindProperty("_referenceAnchorId").stringValue = "world";
+            serialized.FindProperty("_referenceKind._id").stringValue = TestKind.Id;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            setup.StartRealm();
+            Assert.That(setup.Realm.ReferenceFrame.FollowedGhost, Is.EqualTo(new Key("world", TestKind, "ego")));
+            Assert.That(setup.Realm.ReferenceFrame.HasPosition, Is.False);
+        }
+
+        /// <summary>
         /// Opening diagnostics and the overlay does not advance an explicitly managed Realm or construct scene objects.
         /// </summary>
         [UnityTest]

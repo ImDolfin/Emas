@@ -123,7 +123,7 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `CoordinateSystem.Right` / `Up` / `Forward` | Read the source axis mapped to each Unity direction |
 | `ReferenceFrame.Position` / `Rotation` | Manual reference pose in shared Cartesian coordinates, or the latest resolved followed pose |
 | `ReferenceFrame.UnityPosition` / `UnityRotation` | Desired Unity world pose of the reference; defaults to zero/identity |
-| `ReferenceFrame.FollowedGhost` | Optional key to follow within this realm; null uses manual configuration |
+| `ReferenceFrame.FollowedGhost` | Key to follow within this realm; assign or replace it at runtime. Null uses manual configuration or waits if no reference position exists |
 | `ReferenceFrame.FollowRotation` | Follow reference orientation as well as position; defaults to true |
 | `ReferenceFrame.MaxDistance` | Optional positive double presentation range; null disables the configured limit |
 | `ReferenceFrame.HasPosition` | Whether manual configuration or following has provided a usable cached reference position |
