@@ -11,7 +11,7 @@ namespace Emas.Minimal
         /// <inheritdoc />
         protected override void OnStart()
         {
-            Detect("one", Kind, source: this);
+            Detect("one", Kind, variant: new Variant("marker"), source: this);
         }
 
         internal Vector3 ReadPosition(string id)

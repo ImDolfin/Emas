@@ -10,11 +10,11 @@ namespace Emas
         internal readonly ManifestationBlueprint Asset;
         internal readonly Kind Kind;
         internal readonly Ghost GhostPrefab;
-        private readonly ManifestationBlueprint.ViewMapping[] _views;
+        private readonly ManifestationVariant[] _views;
         private readonly GameObject _fallbackViewPrefab;
 
         internal ManifestationBlueprintSnapshot(ManifestationBlueprint asset, Kind kind, Ghost ghostPrefab,
-            ManifestationBlueprint.ViewMapping[] views, GameObject fallbackViewPrefab)
+            ManifestationVariant[] views, GameObject fallbackViewPrefab)
         {
             Asset = asset;
             Kind = kind;
@@ -31,9 +31,9 @@ namespace Emas
             }
         }
 
-        internal GameObject ResolveViewPrefab(Variant variant, DetailLevel detailLevel)
+        internal GameObject ResolveViewPrefab(Variant variant)
         {
-            return ManifestationBlueprint.ResolveViewPrefab(_views, _fallbackViewPrefab, variant, detailLevel);
+            return ManifestationBlueprint.ResolveViewPrefab(_views, _fallbackViewPrefab, variant);
         }
     }
 }

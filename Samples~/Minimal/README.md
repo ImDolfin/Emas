@@ -14,13 +14,12 @@ The assets form a small, complete presentation setup:
 
 | Asset | Purpose |
 | --- | --- |
-| `MarkerBlueprint.asset` | Maps `minimal.marker` to its Ghost root and default variant. |
+| `MarkerBlueprint.asset` | Maps `minimal.marker` to its Ghost root and the inline `marker` variant. |
 | `MarkerRoot.prefab` | Contains a plain `Ghost` and its reusable `MarkerPositionModule`. |
-| `Default Marker Variant.asset` | Maps the empty variant ID (`Variant.None`) at Full detail to the view. |
 | `MarkerView.prefab` | Contains the cube mesh and its `Marker.mat` material. |
 | `Tracking.prefab` | Reusable, fully configured realm, anchor, detector and initializer. |
 
-Change the material or mesh in `MarkerView.prefab` to customize the cube. Swap the blueprint's root or variant assets in the Inspector to change the setup. These assets are saved with the sample; Play Mode only creates the tracked instances.
+Change the material or mesh in `MarkerView.prefab` to customize the cube. Edit the blueprint's Ghost Prefab or named variant rows in the Inspector to change the setup. These assets are saved with the sample; Play Mode only creates the tracked instances.
 
 ## Connect a source
 

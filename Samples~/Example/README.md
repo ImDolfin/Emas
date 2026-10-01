@@ -9,13 +9,12 @@ The scene is configured before Play. Expand **Tracking** to inspect its `RealmSe
 | Asset | What to inspect |
 | --- | --- |
 | `Prefabs/Tracking.prefab` | Realm blueprint assignments, anchor IDs, automatic views, detector components and initializers |
-| `Blueprints/Cars.asset` | Car ghost root, three appearance variants and the unknown-vehicle fallback |
-| `Variants/SmallCar.asset`, `LargeCar.asset`, `Truck.asset` | Appearance IDs and their Full-detail view prefabs |
+| `Blueprints/Cars.asset` | Car ghost root, three inline named variant rows and the unknown-vehicle fallback |
 | `Prefabs/Ghosts/` | Plain `Ghost` components, configured position/articulation modules and `ApplyPosition` |
 | `Prefabs/Views/` | A shared `VehicleView` prefab, actual Unity prefab variants for the vehicle appearances |
 | `Materials/` | Saved materials assigned to the authored view and environment renderers |
 
-To customize an appearance, open its view prefab variant and change the body, cabin or material. To add another car appearance, duplicate a `ManifestationVariant` asset, assign a unique variant ID and view prefab, and add it to `Cars.asset`. Map that ID in your detector. Entity data and SDK handover do not depend on the visual prefab.
+To customize an appearance, open its view prefab variant and change the body, cabin or material. To add another car appearance, add a row to the **Variants** table in `Cars.asset`, enter a unique name and assign its view prefab. Use that name in your detector's `Variant` value. Alternative LODs can use separate rows such as `small-car-low`. Entity data and SDK handover do not depend on the visual prefab.
 
 ## Read the integration code
 

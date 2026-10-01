@@ -130,7 +130,6 @@ namespace Emas.Tests
             Assert.Throws<ObjectDisposedException>(() => _realm.Prepare<ProbeGhost>("anchor", Kind, "late"));
             Assert.Throws<ObjectDisposedException>(() => _realm.Manifest(ghost));
             Assert.Throws<ObjectDisposedException>(() => _realm.Demanifest(ghost));
-            Assert.Throws<ObjectDisposedException>(() => _realm.SetDetailLevel(ghost, DetailLevel.Full));
             Assert.Throws<ObjectDisposedException>(() => _realm.RemoveAnchor("anchor"));
             Assert.Throws<ObjectDisposedException>(() => _realm.Query().OnAvailable(value =>
             {
@@ -526,23 +525,13 @@ namespace Emas.Tests
             GameObject second = new GameObject("Second view");
             second.SetActive(false);
             second.AddComponent<ProbeView>();
-            ManifestationVariant firstVariant = ScriptableObject.CreateInstance<ManifestationVariant>();
-            firstVariant.Configure(First, new[]
-            {
-                new ManifestationVariant.DetailMapping(DetailLevel.Full, first)
-            });
-            ManifestationVariant secondVariant = ScriptableObject.CreateInstance<ManifestationVariant>();
-            secondVariant.Configure(Second, new[]
-            {
-                new ManifestationVariant.DetailMapping(DetailLevel.Full, second)
-            });
+            ManifestationVariant firstVariant = new ManifestationVariant(First.Id, first);
+            ManifestationVariant secondVariant = new ManifestationVariant(Second.Id, second);
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             blueprint.Configure(Kind, ghost, new[] { firstVariant, secondVariant }, first);
             _assets.Add(root);
             _assets.Add(first);
             _assets.Add(second);
-            _assets.Add(firstVariant);
-            _assets.Add(secondVariant);
             _assets.Add(blueprint);
             return blueprint;
         }

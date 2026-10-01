@@ -419,7 +419,7 @@ namespace Emas.Tests
             {
                 oldPrefab.SetActive(false);
                 newPrefab.SetActive(false);
-                shared.Configure(kind, null, null, oldPrefab);
+                shared.Configure(kind, null, new[] { new ManifestationVariant("car", oldPrefab) }, null);
                 _realm.RegisterManifestationBlueprint(shared);
                 Anchor localAnchor = otherRealm.GetOrCreateAnchor("simulation");
                 Anchor globalAnchor = _realm.GetOrCreateAnchor("simulation");
@@ -428,14 +428,14 @@ namespace Emas.Tests
                 TestSource globalSource = new TestSource(kind);
                 localAnchor.AddDetector(localSource);
                 globalAnchor.AddDetector(globalSource);
-                TestGhost localGhost = localSource.Publish("one", Variant.None);
-                TestGhost globalGhost = globalSource.Publish("one", Variant.None);
+                TestGhost localGhost = localSource.Publish("one", new Variant("car"));
+                TestGhost globalGhost = globalSource.Publish("one", new Variant("car"));
                 _realm.Update();
                 otherRealm.Update();
                 Assert.That(otherRealm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
                 Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
 
-                shared.Configure(kind, null, null, newPrefab);
+                shared.Configure(kind, null, new[] { new ManifestationVariant("car", newPrefab) }, null);
                 Assert.That(otherRealm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
                 Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
 
@@ -460,90 +460,55 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Removes a requested view for None while retaining the available ghost.
+        /// Named LOD variants switch a requested view without replacing the root; demanifesting cancels automatic refresh.
         /// </summary>
         [Test]
-        public void ManifestNone_RemovesViewButRetainsGhost()
+        public void VariantChanges_SwitchViewsAndRespectDemanifest()
         {
             Kind kind = new Kind("vehicles.car");
-            GameObject ghostTemplate = new GameObject("Ghost Template");
-            GameObject viewPrefab = new GameObject("Car View");
+            GameObject fullPrefab = new GameObject("small car");
+            GameObject lowPrefab = new GameObject("small car low");
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            ManifestationVariant manifestationVariant = ScriptableObject.CreateInstance<ManifestationVariant>();
             try
             {
-                ghostTemplate.SetActive(false);
-                ghostTemplate.AddComponent<TestGhost>();
-                viewPrefab.SetActive(false);
-                manifestationVariant.Configure(new Variant("small-car"), new[]
+                fullPrefab.SetActive(false);
+                lowPrefab.SetActive(false);
+                Variant full = new Variant("small_car");
+                Variant low = new Variant("small_car_low");
+                blueprint.Configure(kind, null, new[]
                 {
-                    new ManifestationVariant.DetailMapping(DetailLevel.Full, viewPrefab),
-                    new ManifestationVariant.DetailMapping(DetailLevel.Minimal, viewPrefab)
-                });
-                blueprint.Configure(kind, ghostTemplate.GetComponent<TestGhost>(),
-                    new[] { manifestationVariant }, null);
+                    new ManifestationVariant(full.Id, fullPrefab),
+                    new ManifestationVariant(low.Id, lowPrefab)
+                }, null);
                 _realm.RegisterManifestationBlueprint(blueprint);
-
                 TestSource source = new TestSource(kind);
                 _realm.GetOrCreateAnchor("simulation", source);
-                TestGhost ghost = source.Publish("42", new Variant("small-car"));
+                TestGhost ghost = source.Publish("42", full);
                 _realm.Update();
 
                 View view = _realm.Manifest(ghost);
-                Assert.That(view, Is.Not.Null);
-                _realm.SetDetailLevel(ghost, DetailLevel.Minimal);
+                Assert.That(view.gameObject.name, Is.EqualTo("small car"));
                 Assert.That(_realm.Manifest(ghost), Is.SameAs(view));
-                Assert.That(view.RequestedDetailLevel, Is.EqualTo(DetailLevel.Minimal));
 
-                _realm.Manifest(ghost, DetailLevel.None);
-                Assert.That(_realm.Query().OfKind(kind).Count, Is.EqualTo(1));
-                Assert.That(_realm.Manifest(ghost, DetailLevel.None), Is.Null);
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(blueprint);
-                UnityEngine.Object.DestroyImmediate(manifestationVariant);
-                UnityEngine.Object.DestroyImmediate(ghostTemplate);
-                UnityEngine.Object.DestroyImmediate(viewPrefab);
-            }
-        }
-
-        /// <summary>
-        /// A lower-detail prefab keeps the caller's requested level on its instantiated view.
-        /// </summary>
-        [Test]
-        public void View_ReportsRequestedDetailLevelWhenUsingLowerDetailPrefab()
-        {
-            Kind kind = new Kind("vehicles.car");
-            GameObject prefab = new GameObject("Minimal view");
-            prefab.SetActive(false);
-            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            ManifestationVariant manifestationVariant = ScriptableObject.CreateInstance<ManifestationVariant>();
-            try
-            {
-                manifestationVariant.Configure(Variant.None, new[]
-                {
-                    new ManifestationVariant.DetailMapping(DetailLevel.Minimal, prefab)
-                });
-                blueprint.Configure(kind, null, new[] { manifestationVariant }, null);
-                _realm.RegisterManifestationBlueprint(blueprint);
-                TestSource source = new TestSource(kind);
-                _realm.GetOrCreateAnchor("simulation", source);
-                TestGhost ghost = source.Publish("42", Variant.None);
+                Assert.That(source.Publish("42", low), Is.SameAs(ghost));
                 _realm.Update();
-                View view = _realm.Manifest(ghost, DetailLevel.Full);
-                Assert.That(view, Is.Not.Null);
-                Assert.That(view.gameObject.name, Is.EqualTo("Minimal view"));
-                Assert.That(view.RequestedDetailLevel, Is.EqualTo(DetailLevel.Full));
-                _realm.SetDetailLevel(ghost, DetailLevel.Reduced);
-                Assert.That(_realm.Manifest(ghost), Is.SameAs(view));
-                Assert.That(view.RequestedDetailLevel, Is.EqualTo(DetailLevel.Reduced));
+                View lowView = ghost.GetComponentInChildren<View>();
+                Assert.That(lowView.gameObject.name, Is.EqualTo("small car low"));
+                Assert.That(lowView.Ghost, Is.SameAs(ghost));
+                Assert.That(lowView, Is.Not.SameAs(view));
+
+                _realm.Demanifest(ghost);
+                source.Publish("42", full);
+                _realm.Update();
+                Assert.That(ghost.GetComponentInChildren<View>(), Is.Null);
+                Assert.That(_realm.Query().OfKind(kind).Single(), Is.SameAs(ghost));
+                Assert.That(_realm.Manifest(ghost).gameObject.name, Is.EqualTo("small car"));
             }
             finally
             {
                 UnityEngine.Object.DestroyImmediate(blueprint);
-                UnityEngine.Object.DestroyImmediate(manifestationVariant);
-                UnityEngine.Object.DestroyImmediate(prefab);
+                UnityEngine.Object.DestroyImmediate(fullPrefab);
+                UnityEngine.Object.DestroyImmediate(lowPrefab);
             }
         }
 

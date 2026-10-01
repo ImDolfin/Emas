@@ -22,7 +22,7 @@ Identity is `(anchor ID, kind, entity ID)` within one realm. The detector report
 
 Queries see available Ghost roots only; the corresponding `Presence.IsAvailable` follows the same lifecycle. `realm.Query()` is scoped to one realm; `Query.All()` includes every live realm and follows realms created later. Its filters, scalar results, enumeration and subscriptions use the same available-ghost rules. `realm.Query(globalQuery)` reuses the global query's filters within that realm. Root components provide data contracts; visual children do not participate in interface lookup. A viewless available ghost remains active and runs its root behaviors. Developers can call `Realm.Manifest(presence, detailLevel)` to request its optional view.
 
-Manifestation blueprints are resolved by Kind within a Realm. `RealmSetup` registers the mappings for every anchor in that realm; anchors only group identities, attach detectors and optionally request views automatically. Variants select different appearances within a Kind. Each realm registration holds a snapshot of the blueprint and its referenced variant assets. Asset edits take effect in that realm after re-registration, which refreshes requested views across all anchors on the next update while keeping existing roots. Other realms retain their own mappings. Re-registering after a kind change releases the old kind in the realm and refreshes both kinds. Root prefab changes affect newly created ghosts. With no blueprint, Emas creates a viewless root of the registered Ghost type, or a plain `Ghost` when no initializer is registered; empty blueprints also remain silent.
+Manifestation blueprints are resolved by Kind within a Realm. `RealmSetup` registers the mappings for every anchor in that realm; anchors only group identities, attach detectors and optionally request views automatically. Variants select different appearances within a Kind. Each realm registration holds a snapshot of the blueprint and its inline named variant rows. Asset edits take effect in that realm after re-registration, which refreshes requested views across all anchors on the next update while keeping existing roots. Other realms retain their own mappings. Re-registering after a kind change releases the old kind in the realm and refreshes both kinds. Root prefab changes affect newly created ghosts. With no blueprint, Emas creates a viewless root of the registered Ghost type, or a plain `Ghost` when no initializer is registered; empty blueprints also remain silent.
 
 ## Identity and deferred commands
 
@@ -80,7 +80,7 @@ A successful restart or replacement has a bounded startup handover. Existing roo
 
 Detectors can set `DisappearanceGracePeriod` before attachment. A disappearance makes the Presence unavailable, deactivates its root and removes it from available queries immediately. A report during grace reuses the same Presence and Ghost root; after the deadline the realm removes them. The default zero removes immediately. `InactivityTimeout` separately detects silent feeds using unscaled time since each report. A timeout follows the same disappearance path. Direct Ghost integrations that update cached roots can call `MarkPublished`; `Detect` records presence activity; module value reads do not refresh inactivity deadlines.
 
-Demanifesting removes only the visual child and keeps the Presence and Ghost root. Failed view requests can retry through `Manifest` or a manifestation blueprint, variant or detail change; unchanged detector reports leave them alone.
+Demanifesting removes only the visual child and keeps the Presence and Ghost root. Failed view requests can retry through `Manifest` or a manifestation blueprint or variant change; unchanged detector reports leave them alone.
 
 Detectors retain the original first exception in `LastError` and its captured anchor/detector/operation in `LastErrorContext`; cleanup errors cannot hide either and old registrations cannot change a restarted detector's status. See [detector contracts](API.md).
 
@@ -98,7 +98,7 @@ Identity map traversal uses snapshots and rechecks membership/registration after
 | [Population](../Runtime/Tracking/Population.cs) | Create roots and apply per-Kind initializer strategies and module data; own identity mutations, availability, detector ownership, grace/expiry, handover, rollback and removal |
 | [IdentityMap](../Runtime/Tracking/IdentityMap.cs) | Keep one current record per key and reject stale object references |
 | [CommandQueue&lt;T&gt;](../Runtime/Tracking/CommandQueue.cs) | Share FIFO ordering, sequence tracking and reentrancy-safe bounded or full drains |
-| [ViewManager](../Runtime/Views/ViewManager.cs) | Own view requests and detail-level bookkeeping; stage, bind, refresh and destroy views; contain presentation failures per ghost |
+| [ViewManager](../Runtime/Views/ViewManager.cs) | Own view requests; stage, bind, refresh and destroy views; contain presentation failures per ghost |
 | [Subscriptions](../Runtime/Queries/Subscriptions.cs) | Reconcile matches with reusable sets; notify safely |
 | [SceneChangeQueue](../Runtime/Unity/SceneChangeQueue.cs) | Use the shared queue to apply nested GameObject changes after the current scene operation returns |
 | [PresenceDetector](../Runtime/Tracking/PresenceDetector.cs) / [Anchor](../Runtime/Tracking/Anchor.cs) | SDK detection, attachment lifecycle and scene ownership |
@@ -116,10 +116,10 @@ Assembly dependencies: editor and tests may reference runtime; runtime never ref
 | `Runtime/Entities/` | Presence handles, entity modules, Ghost contracts, spatial state and identity/coordinate values |
 | `Runtime/Tracking/` | Anchors, detectors, population lifecycle, identity storage and command execution |
 | `Runtime/Queries/` | Filtering and subscriptions |
-| `Runtime/Views/` | ManifestationBlueprint, ManifestationVariant, detail level and view lifecycle |
+| `Runtime/Views/` | ManifestationBlueprint, inline ManifestationVariant rows and view lifecycle |
 | `Runtime/Unity/` | Prefab realm and anchor setup, automatic runner and queued scene changes |
 | `Editor/Diagnostics/` | Passive multi-Realm diagnostics and optional Scene view overlay |
-| `Editor/Inspectors/` | ManifestationBlueprint, ManifestationVariant, RealmSetup and AnchorSetup authoring validation |
+| `Editor/Inspectors/` | ManifestationBlueprint variant table, RealmSetup and AnchorSetup authoring validation |
 | `Tests/Runtime/` | Tests grouped by the same responsibilities |
 | `Samples~/Minimal/` | Quick start with one marker and a position module |
 | `Samples~/Example/` | Three cars, reusable modules and SDK replacement |

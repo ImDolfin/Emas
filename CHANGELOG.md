@@ -2,6 +2,11 @@
 
 ## 0.1.0
 
+- Remove the Setup Help foldouts from Ghost, Realm Setup and Anchor Setup Inspectors and the Open Emas Diagnostics buttons from Realm Setup and Anchor Setup Inspectors.
+
+- Replace separate Manifestation Variant assets with serializable named rows inside each blueprint. Edit Name and View Prefab together in a reorderable Inspector table with add/remove controls and duplicate-name validation. Update all shipped and imported sample blueprints to this format.
+- Remove DetailLevel, detail mappings, SetDetailLevel and detail-specific Manifest overloads. Each variant selects one prefab; model alternative LODs with distinct variant names. Use Manifest to request a view and Demanifest to cancel it; unspecified or unknown variants use the blueprint fallback.
+
 - Remove the Callback sample and reduce the Emas example to three cars and SDK replacement, without aircraft or cockpit demonstrations.
 - Rework Relative World as steady driving past stationary parked cars on alternating sides, with explicit membership cleanup and road markings driven by reference travel. Add an authored bird view whose SDK position and heading circle the moving reference.
 

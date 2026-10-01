@@ -10,7 +10,6 @@ namespace Emas.Editor
     {
         private bool _showModules;
         private bool _showIdentity;
-        private bool _showHelp;
 
         /// <summary>Draws custom settings with optional module and identity details.</summary>
         public override void OnInspectorGUI()
@@ -60,10 +59,6 @@ namespace Emas.Editor
                     }
                 }
             }
-            InspectorLayout.Help(ref _showHelp,
-                "Add reusable modules to this root. An initializer binds their inputs to Presence.Source. " +
-                "The detector supplies identity at runtime; views are optional. " +
-                "Each Realm update reads modules, calls an enabled Ghost's OnUpdate, then applies Spatial placement.");
         }
 
         /// <inheritdoc />

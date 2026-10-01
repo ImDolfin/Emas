@@ -14,16 +14,11 @@ namespace Emas
             _sceneChanges = sceneChanges;
         }
 
-        internal void Request(Record record, DetailLevel detailLevel)
+        internal void Request(Record record)
         {
             record.ViewVersion++;
             record.ViewDirty = true;
-            record.RequestedDetailLevel = detailLevel;
-            record.ViewRequested = detailLevel.Level > 0;
-            if (!record.ViewRequested)
-            {
-                Destroy(record);
-            }
+            record.ViewRequested = true;
         }
 
         internal void Cancel(Record record)
@@ -31,35 +26,7 @@ namespace Emas
             record.ViewVersion++;
             record.ViewDirty = false;
             record.ViewRequested = false;
-            record.RequestedDetailLevel = DetailLevel.None;
             Destroy(record);
-        }
-
-        internal bool SetDetailLevel(Record record, DetailLevel detailLevel)
-        {
-            record.ViewVersion++;
-            record.ViewDirty = true;
-            record.RequestedDetailLevel = detailLevel;
-            if (detailLevel.Level <= 0)
-            {
-                if (record.ViewRequested)
-                {
-                    record.ViewRequested = false;
-                    Destroy(record);
-                }
-
-                return false;
-            }
-
-            return record.ViewRequested;
-        }
-
-        internal static void ValidateDetailLevel(DetailLevel detailLevel)
-        {
-            if (detailLevel.Level < 0)
-            {
-                throw new System.ArgumentOutOfRangeException(nameof(detailLevel), "A detail level cannot be negative.");
-            }
         }
 
         internal void Refresh(Record record)
@@ -75,7 +42,7 @@ namespace Emas
             string context = "view refresh for " + record.Key;
             try
             {
-                if (!record.ViewRequested || record.RequestedDetailLevel.Level <= 0 || !record.SpatialVisible)
+                if (!record.ViewRequested || !record.SpatialVisible)
                 {
                     Destroy(record);
                     return;
@@ -92,23 +59,23 @@ namespace Emas
                     return;
                 }
 
-                GameObject prefab = record.ManifestationBlueprint.ResolveViewPrefab(record.Ghost.Variant, record.RequestedDetailLevel);
+                GameObject prefab = record.ManifestationBlueprint.ResolveViewPrefab(record.Ghost.Variant);
                 if (prefab == null)
                 {
                     Destroy(record);
                     if (record.ManifestationBlueprint.HasManifestationPrefab)
                     {
-                        Debug.LogWarning("No Emas view prefab resolves for ghost " + record.Key + " at detail level " + record.RequestedDetailLevel + ".");
+                        Debug.LogWarning("No Emas view prefab resolves for ghost " + record.Key + " with variant '" + record.Ghost.Variant + "'.");
                     }
                     return;
                 }
 
-                context += " (prefab '" + prefab.name + "', detail " + record.RequestedDetailLevel + ")";
+                context += " (prefab '" + prefab.name + "')";
 
                 // Rebind the existing child when the requested appearance resolves to the same prefab.
                 if (record.View != null && record.ViewPrefab == prefab)
                 {
-                    record.View.Bind(record.Ghost, record.RequestedDetailLevel);
+                    record.View.Bind(record.Ghost);
                     if (record.Ghost.gameObject.activeInHierarchy)
                     {
                         _sceneChanges.SetActive(record.View.gameObject, true);
@@ -139,7 +106,7 @@ namespace Emas
                         view = instance.AddComponent<View>();
                     }
 
-                    view.Bind(record.Ghost, record.RequestedDetailLevel);
+                    view.Bind(record.Ghost);
                     instance.name = prefab.name;
                     instance.transform.SetParent(record.Ghost.transform, false);
                     if (!CanContinue(record, version))

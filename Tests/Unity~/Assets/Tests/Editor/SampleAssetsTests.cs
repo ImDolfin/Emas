@@ -90,21 +90,13 @@ namespace Emas.Tests.Samples
                     Assert.That(variants.arraySize, Is.GreaterThan(0));
                     for (int variantIndex = 0; variantIndex < variants.arraySize; variantIndex++)
                     {
-                        ManifestationVariant variant = variants.GetArrayElementAtIndex(variantIndex)
-                            .objectReferenceValue as ManifestationVariant;
-                        Assert.That(variant, Is.Not.Null);
-                        Assert.That(AssetDatabase.GetAssetPath(variant), Does.StartWith(directory));
-                        SerializedProperty details = new SerializedObject(variant).FindProperty("_details");
-                        Assert.That(details.arraySize, Is.GreaterThan(0));
-                        for (int detailIndex = 0; detailIndex < details.arraySize; detailIndex++)
-                        {
-                            GameObject view = details.GetArrayElementAtIndex(detailIndex)
-                                .FindPropertyRelative("_prefab").objectReferenceValue as GameObject;
-                            Assert.That(view, Is.Not.Null);
-                            Assert.That(PrefabUtility.IsPartOfPrefabAsset(view), Is.True);
-                            Assert.That(AssetDatabase.GetAssetPath(view), Does.StartWith(directory));
-                            Assert.That(view.GetComponentsInChildren<Renderer>(true), Is.Not.Empty);
-                        }
+                        SerializedProperty variant = variants.GetArrayElementAtIndex(variantIndex);
+                        Assert.That(variant.FindPropertyRelative("_name").stringValue, Is.Not.Empty);
+                        GameObject view = variant.FindPropertyRelative("_prefab").objectReferenceValue as GameObject;
+                        Assert.That(view, Is.Not.Null);
+                        Assert.That(PrefabUtility.IsPartOfPrefabAsset(view), Is.True);
+                        Assert.That(AssetDatabase.GetAssetPath(view), Does.StartWith(directory));
+                        Assert.That(view.GetComponentsInChildren<Renderer>(true), Is.Not.Empty);
                     }
                 }
             }

@@ -15,7 +15,10 @@ MonoBehaviour:
   _kindId: sample.vehicle.car
   _ghostPrefab: {fileID: 7944343211524934669, guid: 62de5cfb427dfb044a1265fee203a1c7, type: 3}
   _variants:
-  - {fileID: 11400000, guid: ab93e0b0142542c468dcdc740c081940, type: 2}
-  - {fileID: 11400000, guid: 160a8f59923239049a438f98d24e247d, type: 2}
-  - {fileID: 11400000, guid: 59ff546970744bd41a332eb78b1fa6fa, type: 2}
+  - _name: small-car
+    _prefab: {fileID: 4406375652296563570, guid: 9579121046feb5848acf6e7f1a253b80, type: 3}
+  - _name: large-car
+    _prefab: {fileID: 5532233477178594005, guid: cc5902ee3d506da43959061307fe80e5, type: 3}
+  - _name: truck
+    _prefab: {fileID: 1726153098173210229, guid: d7356fdd30b618849876776f0935753f, type: 3}
   _fallbackViewPrefab: {fileID: 284131427873504901, guid: 8a67638896c504c44a1f75980620644b, type: 3}

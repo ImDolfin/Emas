@@ -491,24 +491,13 @@ namespace Emas
         }
 
         /// <summary>
-        /// Requests a manifestation for a detected presence at its current or Full detail level.
+        /// Requests a manifestation for a detected presence.
         /// </summary>
         /// <param name="presence">The presence to manifest.</param>
         /// <returns>The current view, or null while no view can be shown.</returns>
         public View Manifest(Presence presence)
         {
             return Manifest(_population.FindPresenceRoot(presence));
-        }
-
-        /// <summary>
-        /// Requests a manifestation for a detected presence at a specific detail level.
-        /// </summary>
-        /// <param name="presence">The presence to manifest.</param>
-        /// <param name="detailLevel">The desired detail level.</param>
-        /// <returns>The current view, or null while no view can be shown.</returns>
-        public View Manifest(Presence presence, DetailLevel detailLevel)
-        {
-            return Manifest(_population.FindPresenceRoot(presence), detailLevel);
         }
 
         /// <summary>
@@ -521,17 +510,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Changes the requested detail level of a presence's view.
-        /// </summary>
-        /// <param name="presence">The presence whose view should change.</param>
-        /// <param name="detailLevel">The desired detail level.</param>
-        public void SetDetailLevel(Presence presence, DetailLevel detailLevel)
-        {
-            SetDetailLevel(_population.FindPresenceRoot(presence), detailLevel);
-        }
-
-        /// <summary>
-        /// Requests a view at Full detail when no view request exists, or refreshes the existing request.
+        /// Requests or refreshes the view selected by the ghost's variant.
         /// </summary>
         /// <param name="ghost">
         /// The ghost.
@@ -540,7 +519,8 @@ namespace Emas
         /// The view component, or null when no view can be created yet.
         /// </returns>
         /// <remarks>
-        /// Null, foreign and removed ghosts return null. Detail level None clears the request.
+        /// Requests made during source mutation or finalization are refreshed after source data is complete.
+        /// Null, foreign and removed ghosts return null.
         /// Presentation failures are logged without stopping tracking; call Manifest again after fixing the cause to retry.
         /// </remarks>
         /// <exception cref="ObjectDisposedException">
@@ -550,54 +530,14 @@ namespace Emas
         {
             ThrowIfDisposed();
             Record record = _identities.Find(ghost);
-            if (record != null && record.ViewRequested)
-            {
-                RefreshView(record);
-                return record.View;
-            }
-
-            return Manifest(ghost, DetailLevel.Full);
-        }
-
-        /// <summary>
-        /// Requests a view at a specific detail level.
-        /// </summary>
-        /// <remarks>
-        /// Requests made during source mutation or finalization are refreshed after source data is complete.
-        /// </remarks>
-        /// <param name="ghost">
-        /// The ghost.
-        /// </param>
-        /// <param name="detailLevel">
-        /// The desired detail level.
-        /// </param>
-        /// <returns>
-        /// The view component, or null when no view can be created yet.
-        /// </returns>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// Thrown when the detail level is negative.
-        /// </exception>
-        /// <remarks>
-        /// Null, foreign and removed ghosts return null. Detail level None clears the request.
-        /// Presentation failures are logged without stopping tracking; call Manifest again after fixing the cause to retry.
-        /// </remarks>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
-        public View Manifest(IGhost ghost, DetailLevel detailLevel)
-        {
-            ThrowIfDisposed();
-            ViewManager.ValidateDetailLevel(detailLevel);
-            Record record = _identities.Find(ghost);
             if (record == null)
             {
                 return null;
             }
 
-            _views.Request(record, detailLevel);
-            if (detailLevel.Level <= 0)
+            if (!record.ViewRequested)
             {
-                return null;
+                _views.Request(record);
             }
 
             RefreshView(record);
@@ -623,35 +563,6 @@ namespace Emas
             if (record != null)
             {
                 _views.Cancel(record);
-            }
-        }
-
-        /// <summary>
-        /// Changes the requested view detail level.
-        /// </summary>
-        /// <param name="ghost">
-        /// The ghost whose view should change.
-        /// </param>
-        /// <param name="detailLevel">
-        /// The desired detail level.
-        /// </param>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// Thrown when the detail level is negative.
-        /// </exception>
-        /// <remarks>
-        /// Does not create a request for a never-requested ghost. Null, foreign and removed ghosts are ignored.
-        /// </remarks>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
-        public void SetDetailLevel(IGhost ghost, DetailLevel detailLevel)
-        {
-            ThrowIfDisposed();
-            ViewManager.ValidateDetailLevel(detailLevel);
-            Record record = _identities.Find(ghost);
-            if (record != null && _views.SetDetailLevel(record, detailLevel))
-            {
-                RefreshView(record);
             }
         }
 

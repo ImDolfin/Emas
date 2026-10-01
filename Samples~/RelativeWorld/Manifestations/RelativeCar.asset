@@ -15,6 +15,8 @@ MonoBehaviour:
   _kindId: relative.car
   _ghostPrefab: {fileID: 6418851634799385831, guid: 1fb701fe6c1a24a44be4a3018779b40f, type: 3}
   _variants:
-  - {fileID: 11400000, guid: 4bca8f74de544014eade893027703e66, type: 2}
-  - {fileID: 11400000, guid: 716e14bc58e2fa24f89a17aa5e00accf, type: 2}
+  - _name: origin
+    _prefab: {fileID: 7277492304596596831, guid: 03926be200d309e44a62891e93447591, type: 3}
+  - _name: target
+    _prefab: {fileID: 5287495648173194149, guid: 4199f5d202f656f4089f6fe2ddeef967, type: 3}
   _fallbackViewPrefab: {fileID: 0}

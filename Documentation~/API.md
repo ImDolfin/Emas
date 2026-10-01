@@ -170,30 +170,42 @@ Declare named constants in application classes for autocomplete. Kinds and varia
 | Omitted/null variant in `Detect`, `Prepare` or `GetOrCreate` | Preserve the existing appearance |
 | `Variant.None` | Unspecified appearance; explicitly passing it clears the appearance |
 | `WithVariant(None)` | Match unspecified appearances; omitting the filter matches any appearance |
-| `DetailLevel` | Non-negative level: None=0, Minimal=1, Reduced=2, Full=3; custom levels allowed |
 
 ## Views and manifestation blueprints
 
 | Operation | Effect |
 | --- | --- |
-| `Manifest(presence)` or `Manifest(ghost)` | Request Full for a new request; preserve an existing requested detail level |
-| `Manifest(presence, detailLevel)` or `Manifest(ghost, detailLevel)` | Request the selected detail level; return the current view or null |
-| `SetDetailLevel(presence, detailLevel)` or `SetDetailLevel(ghost, detailLevel)` | Update detail level; does not create a request for a never-requested entity |
-| `Demanifest(presence)` or `Demanifest(ghost)` | Remove the view and request while retaining the Presence and Ghost root |
+| `Manifest(presence)` or `Manifest(ghost)` | Request or refresh the view selected by the current variant; return the current view or null |
+| `Demanifest(presence)` or `Demanifest(ghost)` | Remove the view and cancel its request while retaining the Presence and Ghost root |
 
-A `ManifestationBlueprint` describes one `Kind`: an optional Ghost root prefab, references to `ManifestationVariant` assets, and an optional fallback view prefab. Each variant asset describes one `Variant` and holds its view prefabs by `DetailLevel`. For example, an SUV kind can reference separate ModelA, ModelB and ModelC variant assets, each with Full and Reduced views. Create them through **Assets > Create > Emas > Manifestation Blueprint** and **Manifestation Variant**, or configure them in code with `ManifestationVariant.Configure(variant, detailMappings)` and `ManifestationBlueprint.Configure(kind, ghostPrefab, variants, fallbackViewPrefab)`.
+A `ManifestationBlueprint` describes one `Kind`: an optional Ghost root prefab, an inline table of named variants, and an optional fallback view prefab. Create it through **Assets > Create > Emas > Manifestation Blueprint**. Under **Variants**, use **+** to add a row, enter its **Name**, and assign its **View Prefab**. Drag rows to reorder them; select a row and use **?** to remove it. Adding a row creates a unique starter name and an empty prefab field. Names are case-sensitive and must be non-empty and unique within the blueprint. Each row requires a prefab. Row order does not affect selection.
 
-Each Kind resolves to one blueprint in its Realm, shared by all anchors. Assign it on `RealmSetup` or call `Realm.RegisterManifestationBlueprint`. Each registration copies the blueprint and its variant assets. Editing either asset takes effect in that realm only after re-registration, which refreshes requested views across all its anchors without replacing existing Ghost roots. Other realms retain their own registration snapshots. Re-registering after a kind change releases the old kind. A new Ghost prefab applies only to newly created roots. `ResolveViewPrefab(variant, detailLevel)` selects a prefab; `FallbackViewPrefab` exposes the optional fallback.
+| Name | View Prefab |
+| --- | --- |
+| `small_car` | `SmallCar.prefab` |
+| `small_car_low` | `SmallCarLow.prefab` |
+| `truck` | `Truck.prefab` |
 
-When upgrading an existing `Blueprint` asset with entries in its former `_views` list, create one `ManifestationVariant` asset per distinct variant, copy each detail level and prefab into that asset, then assign the variant assets to the renamed `ManifestationBlueprint`. The asset GUID is retained, so realm and anchor references remain assigned, but old `_views` entries cannot become variant asset references automatically. Record those entries before saving the upgraded asset, or recover them from version control. Replace code using `Blueprint.ViewMapping` with `ManifestationVariant.DetailMapping` and the renamed registration methods.
+Report `new Variant("small_car_low")` to select that appearance. Different LODs are ordinary named variants; Emas does not choose an LOD automatically. Renaming a row changes the identifier, so update the corresponding code value too. There are no separate variant assets.
 
-Selection for positive levels: **exact variant/detail level > highest lower positive detail level for that variant > fallback > no view**. `DetailLevel.None` always resolves to no prefab. `ManifestationVariant.DetailMapping(detailLevel, prefab)` requires a positive level and a non-null prefab; variant IDs must be unique within a blueprint, and detail levels must be unique within a variant. A configured blueprint with an unresolved requested view reports a diagnostic and removes any obsolete view. A kind with no assigned blueprint uses the built-in silent default. A report gets the initializer's Ghost type or `Ghost`; direct `GetOrCreate<TGhost>` calls get their requested Ghost type. The plain root has no view. An intentionally empty assigned blueprint is silent too; prefab setup skips automatic view requests for it.
+For code configuration, `new ManifestationVariant(name, prefab)` creates one serializable row. Its `Name`, `Variant` and `Prefab` properties expose that mapping:
 
-`View.RequestedDetailLevel` records the requested level, even when a lower-detail prefab is selected. `ManifestationVariant.DetailMapping.DetailLevel` describes the level supported by that prefab.
-Views require an available ghost and a positive request. View binding finishes before activation. Requests made during detector reports or finalization defer refresh, so `Manifest` may return the previous view or null until that phase completes. Requests outside those phases refresh immediately.
+```csharp
+blueprint.Configure(CarKind, ghostPrefab, new[]
+{
+    new ManifestationVariant("small_car", smallCarPrefab),
+    new ManifestationVariant("small_car_low", smallCarLowPrefab)
+}, fallbackViewPrefab);
+```
 
-Emas catches view creation/refresh failures per ghost, cleans up the failed view and logs its key, prefab and requested detail. The detector and Ghosts stay available. The view request survives: retry with `Manifest`, re-register the manifestation blueprint, or change the variant or requested detail. Ordinary detector reports with unchanged appearance do not retry the failed view.
+Each Kind resolves to one blueprint in its Realm, shared by all anchors. Assign it on `RealmSetup` or call `Realm.RegisterManifestationBlueprint`. Each registration copies the blueprint's variant rows. Editing the asset takes effect in that realm only after re-registration, which refreshes requested views across all its anchors without replacing existing Ghost roots. Other realms retain their own registration snapshots. Re-registering after a kind change releases the old kind. A new Ghost prefab applies only to newly created roots. `ResolveViewPrefab(variant)` selects a prefab; `FallbackViewPrefab` exposes the optional fallback.
+
+Selection is **exact variant name > fallback > no view**. `Variant.None` selects the fallback, if configured. Use `Demanifest` to hide a view. A configured blueprint with an unresolved requested view reports a diagnostic and removes any obsolete view. A kind with no assigned blueprint uses the built-in silent default. A report gets the initializer's Ghost type or `Ghost`; direct `GetOrCreate<TGhost>` calls get their requested Ghost type. The plain root has no view. An intentionally empty assigned blueprint is silent too; prefab setup skips automatic view requests for it.
+
+Views require an available ghost and an active manifestation request. View binding finishes before activation. Variant changes refresh an existing request; they do not create a new request after `Demanifest`. Requests inside detector reports or finalization defer refresh, so `Manifest` may return the previous view or null until that phase completes. Requests outside those phases refresh immediately.
+
+Emas catches view creation/refresh failures per ghost, cleans up the failed view and logs its key and prefab. The detector and Ghosts stay available. The view request survives: retry with `Manifest`, re-register the manifestation blueprint, or change the variant. Ordinary detector reports with unchanged appearance do not retry the failed view.
 
 Implementation: [detectors](../Runtime/Tracking/PresenceDetector.cs), [Presence](../Runtime/Entities/Presence.cs), [entity modules](../Runtime/Entities/EntityModule.cs), [realm](../Runtime/Realm.cs), [queries](../Runtime/Queries/Query.cs), [manifestation blueprints](../Runtime/Views/ManifestationBlueprint.cs) and [variants](../Runtime/Views/ManifestationVariant.cs).
 
-Integration policy: [Guidelines](Guidelines.md). Authoring errors appear in ManifestationBlueprint/ManifestationVariant/RealmSetup/AnchorSetup Inspectors using the same validation as runtime registration. **Window > Emas** passively inspects every live Realm, including Realm Setup instances and realms created from code. Select a Realm, filter by Anchor or detector name, and inspect health, available/owned counts, timing in seconds and expandable failure details. The optional **Emas** Scene view overlay provides the same Realm selector and a compact health summary. Neither UI starts tracking.
+Integration policy: [Guidelines](Guidelines.md). Authoring errors appear in ManifestationBlueprint/RealmSetup/AnchorSetup Inspectors using the same validation as runtime registration. **Window > Emas** passively inspects every live Realm, including Realm Setup instances and realms created from code. Select a Realm, filter by Anchor or detector name, and inspect health, available/owned counts, timing in seconds and expandable failure details. The optional **Emas** Scene view overlay provides the same Realm selector and a compact health summary. Neither UI starts tracking.

@@ -79,22 +79,5 @@ namespace Emas.Editor
         {
             return !property.hasMultipleDifferentValues && property.boolValue;
         }
-
-        internal static void Help(ref bool expanded, string text)
-        {
-            expanded = EditorGUILayout.Foldout(expanded, "Setup help", true);
-            if (expanded)
-            {
-                EditorGUILayout.HelpBox(text, MessageType.None);
-            }
-        }
-
-        internal static void DiagnosticsButton()
-        {
-            if (GUILayout.Button("Open Emas diagnostics"))
-            {
-                DiagnosticsWindow.ShowWindow();
-            }
-        }
     }
 }

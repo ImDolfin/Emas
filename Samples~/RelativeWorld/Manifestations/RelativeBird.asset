@@ -15,5 +15,6 @@ MonoBehaviour:
   _kindId: relative.bird
   _ghostPrefab: {fileID: 6418851634799385831, guid: 1fb701fe6c1a24a44be4a3018779b40f, type: 3}
   _variants:
-  - {fileID: 11400000, guid: f2137617d01114d4fac21158bc93565f, type: 2}
+  - _name: bird
+    _prefab: {fileID: 9043747614033171071, guid: e5eec1e3f91906041b272a3a5c32c7fc, type: 3}
   _fallbackViewPrefab: {fileID: 0}

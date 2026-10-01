@@ -7,8 +7,8 @@ Open `RelativeWorld.unity` and press Play. The green origin drives north at **8 
 - **Tracking / Realm Setup** follows `relative-world / relative.car / origin`, with orientation following and a 45 m presentation range.
 - **Geodetic Feed / Geo Source** simulates the SDK and detects arrivals and departures. **Geo Initializer** maps geographic readings to the modules saved on `Prefabs/RelativeCar.prefab`.
 - **Environment / Road Motion** references that Realm Setup and the authored road markings. It scrolls them using the reference frame's actual northward travel, wrapping the repeating five-metre pattern.
-- `Manifestations/RelativeBird.asset` maps `relative.bird` to the saved `BirdView.prefab` and its variant. It reuses the same spatial Ghost root and modules as the cars.
-- `Manifestations/RelativeCar.asset` selects the plain Ghost root, `Spatial`, position and orientation modules. `Origin.asset` and `Target.asset` select the green driving and orange parked views.
+- `Manifestations/RelativeBird.asset` maps `relative.bird` to the saved `BirdView.prefab` through its inline `bird` variant. It reuses the same spatial Ghost root and modules as the cars.
+- `Manifestations/RelativeCar.asset` selects the plain Ghost root, `Spatial`, position and orientation modules. Its inline `origin` and `target` variant rows select the green driving and orange parked views.
 
 The road, markings, camera, light, tracking prefab and vehicle prefabs are saved assets or scene objects. No bootstrap creates the scene. Disable and re-enable Tracking to restart the drive.
 

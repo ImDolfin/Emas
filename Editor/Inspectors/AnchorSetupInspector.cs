@@ -8,8 +8,6 @@ namespace Emas.Editor
     [CanEditMultipleObjects]
     public sealed class AnchorSetupInspector : UnityEditor.Editor
     {
-        private bool _showHelp;
-
         /// <summary>Draws concise authoring controls and read-only connections.</summary>
         public override void OnInspectorGUI()
         {
@@ -73,11 +71,6 @@ namespace Emas.Editor
                     }
                 }
             }
-            InspectorLayout.Help(ref _showHelp,
-                "Add a PresenceDetectorComponent beside this Anchor. Add an optional GhostInitializer to map SDK sources to modules. " +
-                "Without an enabled initializer, the Realm's registered Kind initializer is used. " +
-                "Blueprints belong on Realm Setup. Disable this Anchor Setup before editing its startup settings.");
-            InspectorLayout.DiagnosticsButton();
         }
 
         /// <inheritdoc />

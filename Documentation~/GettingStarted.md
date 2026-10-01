@@ -4,7 +4,7 @@ Emas tracks SDK entities as stable Presences, initializes invisible Ghost roots 
 
 ## Run the sample
 
-Add `package.json` through **Package Manager > Add package from disk**, import **Quick start**, open its `QuickStart.unity` scene and press Play. One cube moves along its anchor's X axis. The scene is already configured with a reusable `Tracking.prefab`, Ghost and view prefabs, a manifestation variant, a blueprint, and its camera and environment. Inspect and edit those assets before changing code. Disable and re-enable the Tracking object to exercise cleanup and restart.
+Add `package.json` through **Package Manager > Add package from disk**, import **Quick start**, open its `QuickStart.unity` scene and press Play. One cube moves along its anchor's X axis. The scene is already configured with a reusable `Tracking.prefab`, Ghost and view prefabs, a blueprint with an inline named variant, and its camera and environment. Inspect and edit those assets before changing code. Disable and re-enable the Tracking object to exercise cleanup and restart.
 
 ## Build the same integration
 
@@ -14,9 +14,9 @@ The saved `MarkerRoot.prefab` contains `Ghost` and `MarkerPositionModule`; no en
 
 1. `MarkerPositionModule : EntityModule<Vector3>` applies a local position. It knows nothing about the SDK or its proxy type.
 2. `MarkerInitializer.Initialize` binds the configured module to a value reader.
-3. `MarkerSource` calls `Detect("one", MarkerSource.Kind)` once in `OnStart`. Later position changes do not go through the detector.
+3. `MarkerSource` calls `Detect("one", MarkerSource.Kind, variant: new Variant("marker"))` once in `OnStart`. Later position changes do not go through the detector.
 
-For a real SDK, pass the discovered proxy with `Detect(id, MarkerSource.Kind, source: proxy)`. The initializer resolves it directly; `SdkProxy` below stands for your SDK's concrete proxy type:
+For a real SDK, pass the discovered proxy with `Detect(id, MarkerSource.Kind, variant: new Variant("marker"), source: proxy)`. The initializer resolves it directly; `SdkProxy` below stands for your SDK's concrete proxy type:
 
 ```csharp
 public sealed class MarkerInitializer : GhostInitializer
@@ -49,12 +49,11 @@ The imported sample already contains this setup. To create it in another scene:
 
 1. Create an empty GameObject with **Emas > Ghost** and `MarkerPositionModule` components and save it as `MarkerRoot.prefab`. Keep its transform at the identity; this is the invisible Ghost root that receives position data.
 2. Create a cube and save it as `MarkerView.prefab`. Keep its local position and rotation at zero and scale at one. Assign a material to its renderer, then remove both temporary objects from the scene.
-3. Create **Assets > Create > Emas > Manifestation Variant**, named `Default Marker Variant`. Leave **Variant** empty (`Variant.None`), and add one detail mapping: **Full (3)** to `MarkerView.prefab`.
-4. Create **Assets > Create > Emas > Manifestation Blueprint**, named `MarkerBlueprint`. Set **Kind Id** to `minimal.marker`, assign `MarkerRoot.prefab` as **Ghost Prefab**, and add the default variant to **Variants**. Leave **Fallback View Prefab** empty.
-5. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and the `MarkerSource` and `MarkerInitializer` components. On Realm Setup, assign `MarkerBlueprint` as the realm mapping for `minimal.marker`. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled. Save the object as `Tracking.prefab` and keep its instance in the scene. Add a camera and light if the scene has none.
-6. Press Play. Realm Setup creates its realm and attaches the detector, invoking `MarkerInitializer` for each detected Ghost. Emas creates a `Presence` and instantiates the authored plain `Ghost` root beneath the anchor, reads the mapped position through `MarkerPositionModule` and attaches the cube view selected by the variant. Move Tracking to move its anchor frame.
+3. Create **Assets > Create > Emas > Manifestation Blueprint**, named `MarkerBlueprint`. Set **Kind Id** to `minimal.marker` and assign `MarkerRoot.prefab` as **Ghost Prefab**. In the **Variants** table, press **+**, set **Name** to `marker`, and assign `MarkerView.prefab` in **View Prefab**. Leave **Fallback View Prefab** empty.
+4. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and the `MarkerSource` and `MarkerInitializer` components. On Realm Setup, assign `MarkerBlueprint` as the realm mapping for `minimal.marker`. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled. Save the object as `Tracking.prefab` and keep its instance in the scene. Add a camera and light if the scene has none.
+5. Press Play. Realm Setup creates its realm and attaches the detector, invoking `MarkerInitializer` for each detected Ghost. Emas creates a `Presence` and instantiates the authored plain `Ghost` root beneath the anchor, reads the mapped position through `MarkerPositionModule` and attaches the cube view selected by the `marker` variant. Move Tracking to move its anchor frame.
 
-For several appearances of one Kind, create a **Manifestation Variant** asset for each appearance and assign its detail-level view prefabs. Add those assets to the Kind's Manifestation Blueprint. A Kind with no blueprint still gets its Ghost root and remains visually silent until a view is configured.
+For several appearances of one Kind, add named rows to the blueprint's **Variants** table. Each row selects one view prefab. Use names such as `small_car` and `small_car_low` for alternative LODs, and report the desired name as a `Variant` from the detector. A Kind with no blueprint still gets its Ghost root and remains visually silent until a view is configured.
 
 Each Realm Setup owns one isolated realm and can have several Anchor Setup objects beneath it. Add one `PresenceDetectorComponent` subclass and optionally one `GhostInitializer` subclass beside each Anchor Setup. Disabling the detector stops that Anchor; enabling it starts a fresh attachment. An enabled initializer is selected at attachment and replaces the Realm's per-Kind initializer for this Anchor, including its root-type selection. Author the Ghost type and modules in the blueprint. Without an enabled local initializer, `RegisterPresenceInitializer<TGhost>` supplies the root type and bindings. Restart the Anchor after changing its initializer configuration.
 
@@ -66,7 +65,7 @@ For integrations that already construct detectors, `IDetectorProvider.CreateDete
 
 ### Read the Inspectors
 
-Section descriptions live in tooltips; expand **Setup help** for wiring guidance. Configuration errors remain visible.
+Section descriptions live in tooltips. Configuration errors remain visible.
 
 - **Realm Setup** groups Kind mappings, coordinate reference, Unity placement and visibility range. Shared positions and radii use your SDK mapping's units; Unity placement uses Unity units. Rotation fields display Euler angles in degrees, wrapping every 360?. A range must be finite and greater than zero; there is no arbitrary maximum. Inapplicable fields are disabled. Startup settings become read-only while the Realm runs; stop it before changing those settings.
 - **Anchor Setup** shows identity, automatic views and the connected Realm, detector and optional initializer. Disable an attached Anchor Setup to edit its startup settings. Ghost construction and appearance belong in the Realm's blueprint list.
@@ -92,11 +91,11 @@ Key key = new Key("quick-start", MarkerSource.Kind, "one");
 Presence presence;
 if (realm != null && realm.TryGetPresence(key, out presence) && presence.IsAvailable)
 {
-    realm.Manifest(presence, DetailLevel.Full);
+    realm.Manifest(presence);
 }
 ```
 
-`realm.Demanifest(presence)` removes its view while retaining the detected Presence and Ghost root. `realm.SetDetailLevel(presence, DetailLevel.Reduced)` changes a requested view's detail. `TryGetPresence` can also find an unavailable Presence during startup handover or disappearance grace; check `IsAvailable` before consuming its data. `TryGetGhost` remains available when you only need the root.
+`realm.Demanifest(presence)` removes its view while retaining the detected Presence and Ghost root. Report another named variant from the detector to switch a requested view. `TryGetPresence` can also find an unavailable Presence during startup handover or disappearance grace; check `IsAvailable` before consuming its data. `TryGetGhost` remains available when you only need the root.
 
 For components, use the `Detector` property as the handle. Use `anchorSetup.Anchor.RestartDetector(detector)` to restart an attached detector and `ReplaceDetector` to change its instance. A successful handover reuses compatible roots and Presence handles when IDs are reported again. Detector failure removes its population immediately, so recovery creates new handles and roots.
 
@@ -134,9 +133,9 @@ Follow the [relative-world guide](Spatial.md) for a fixed ego car, reference los
 
 | Symptom | Check |
 | --- | --- |
-| Nothing appears | Check the Realm Setup, Anchor Setup, Manifestation Blueprint and Manifestation Variant Inspectors for errors. Verify the kind ID and view prefab; an available ghost may intentionally have no view. |
+| Nothing appears | Check the Realm Setup, Anchor Setup, Manifestation Blueprint Inspector for errors. Verify the kind ID and view prefab; an available ghost may intentionally have no view. |
 | A detector stops | Its Presences and Ghosts are removed. While the prefab realm runs, find the detector in `anchorSetup.Anchor.Detectors` and inspect `LastErrorContext` and `LastError`. Fix the cause, then call `anchorSetup.Anchor.RestartDetector(detector)`. If startup stopped the realm, use the Console or an application-held detector reference. **Window > Emas** lets you select any live Realm and inspect its Anchors and detectors. The optional **Emas** overlay in the Scene view shows a compact health summary. |
-| One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its manifestation blueprint, variant or detail to retry. |
+| One view fails | Read its ghost/prefab error in the Console. Tracking stays active. Fix the cause and call `Manifest`, or change its manifestation blueprint, variant to retry. |
 | Polled entities disappear unexpectedly | Check your detector's snapshot comparison and timeout. Compare omissions only for complete reads; use explicit SDK removals for change-only feeds. Exceptions escaping lifecycle methods or dispatched actions stop the detector. |
 | Restart creates duplicates | Unsubscribe in `OnStop`, capture a new dispatcher in each `OnStart`, and dispose consumer query subscriptions when their owner stops. |
 | No tests appear | Open the prepared **`Tests/Unity~`** project through Unity Hub. Package import alone does not opt a consumer into tests. See [Validation](Validation.md). |

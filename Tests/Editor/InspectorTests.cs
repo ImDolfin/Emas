@@ -38,22 +38,84 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Registration rejects an unassigned variant asset with an actionable array index for its author.
+        /// Incomplete and duplicate inline rows identify the offending name or prefab before registration.
         /// </summary>
         [Test]
-        public void SerializedBlueprint_RejectsUnassignedVariant()
+        public void SerializedBlueprint_RejectsInvalidVariants()
         {
             ManifestationBlueprint blueprint = CreateBlueprint(null);
+            GameObject prefab = new GameObject("row prefab");
+            _objects.Add(prefab);
             SerializedObject serialized = new SerializedObject(blueprint);
-            serialized.FindProperty("_variants").arraySize = 1;
+            SerializedProperty rows = serialized.FindProperty("_variants");
+            rows.arraySize = 1;
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             using (Realm realm = new Realm())
             {
-                ArgumentException error = Assert.Throws<ArgumentException>(() =>
-                    realm.RegisterManifestationBlueprint(blueprint));
-                Assert.That(error.Message, Does.Contain("index 0").And.Contain("null"));
+                Assert.That(Assert.Throws<ArgumentException>(() =>
+                    realm.RegisterManifestationBlueprint(blueprint)).Message,
+                    Does.Contain("index 0").And.Contain("name"));
+
+                rows.GetArrayElementAtIndex(0).FindPropertyRelative("_name").stringValue = "car";
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+                Assert.That(Assert.Throws<ArgumentException>(() =>
+                    realm.RegisterManifestationBlueprint(blueprint)).Message,
+                    Does.Contain("car").And.Contain("prefab"));
+
+                rows.GetArrayElementAtIndex(0).FindPropertyRelative("_prefab").objectReferenceValue = prefab;
+                rows.arraySize = 2;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+                Assert.That(Assert.Throws<ArgumentException>(() =>
+                    realm.RegisterManifestationBlueprint(blueprint)).Message,
+                    Does.Contain("index 1").And.Contain("duplicate"));
+
+                rows.GetArrayElementAtIndex(1).FindPropertyRelative("_name").stringValue = "car_low";
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+                Assert.DoesNotThrow(() => realm.RegisterManifestationBlueprint(blueprint));
             }
+        }
+
+        /// <summary>
+        /// Inline rows retain their names and prefab references through serialization, reordering, removal and undo.
+        /// </summary>
+        [Test]
+        public void SerializedBlueprint_InlineRowsSupportEditingAndUndo()
+        {
+            ManifestationBlueprint blueprint = CreateBlueprint(null);
+            GameObject full = new GameObject("full");
+            GameObject low = new GameObject("low");
+            _objects.Add(full);
+            _objects.Add(low);
+            blueprint.Configure(TestKind, null, new[]
+            {
+                new ManifestationVariant("car", full),
+                new ManifestationVariant("car_low", low)
+            }, null);
+            ManifestationBlueprint copy = CreateBlueprint(null);
+            EditorUtility.CopySerialized(blueprint, copy);
+            Assert.That(copy.ResolveViewPrefab(new Variant("car_low")), Is.SameAs(low));
+
+            SerializedObject serialized = new SerializedObject(copy);
+            SerializedProperty rows = serialized.FindProperty("_variants");
+            rows.MoveArrayElement(1, 0);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(copy.ResolveViewPrefab(new Variant("car")), Is.SameAs(full));
+            Assert.That(copy.ResolveViewPrefab(new Variant("car_low")), Is.SameAs(low));
+
+            Undo.IncrementCurrentGroup();
+            int group = Undo.GetCurrentGroup();
+            rows.DeleteArrayElementAtIndex(0);
+            serialized.ApplyModifiedProperties();
+            Undo.FlushUndoRecordObjects();
+            Undo.CollapseUndoOperations(group);
+            Assert.That(copy.ResolveViewPrefab(new Variant("car_low")), Is.Null);
+            Assert.That(copy.ResolveViewPrefab(new Variant("car")), Is.SameAs(full));
+            Undo.PerformUndo();
+            Assert.That(copy.ResolveViewPrefab(new Variant("car_low")), Is.SameAs(low));
+            Undo.PerformRedo();
+            Assert.That(copy.ResolveViewPrefab(new Variant("car_low")), Is.Null);
+            Undo.ClearUndo(copy);
         }
 
         /// <summary>

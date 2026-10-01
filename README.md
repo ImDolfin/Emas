@@ -20,7 +20,7 @@ The integration uses five roles:
 
 `Kind("tracked.item")` identifies the category. A `Variant("standard")` identifies an appearance within that Kind. The detector reports both IDs; asset filenames do not select them.
 
-Create **Assets > Create > Emas > Manifestation Blueprint** with **Kind Id** `tracked.item`. It holds an optional **Ghost Prefab**, an optional **Fallback View Prefab**, and a list of **Manifestation Variant** assets. Assign a Ghost prefab containing a plain `Ghost` and the modules from section 2. For metadata-only entities, leave Ghost Prefab empty: the Realm creates a plain Ghost without modules. Create a variant asset with ID `standard` and map **Full (3)** to a detailed view prefab and **Reduced (2)** to a simpler one. A `ManifestationVariant` represents one appearance; `DetailLevel` selects its view. A missing mapping uses the closest lower level, then the blueprint fallback. With no blueprint, tracking still works but has no view.
+Create **Assets > Create > Emas > Manifestation Blueprint** with **Kind Id** `tracked.item`. It holds an optional **Ghost Prefab**, a **Variants** table, and an optional **Fallback View Prefab**. Assign a Ghost prefab containing a plain `Ghost` and the modules from section 2. For metadata-only entities, leave Ghost Prefab empty: the Realm creates a plain Ghost without modules. Add a table row with **Name** `standard` and assign its **View Prefab**. Each row is stored inside the blueprint; no separate variant asset is needed. For a simpler appearance, add another row such as `standard_low` and report that variant from the detector. An unspecified or unknown name uses the fallback. With no blueprint, tracking still works but has no view.
 
 ### 2. Define reusable modules on the Ghost
 
@@ -109,7 +109,7 @@ Call `realm.Update()` each frame and `realm.Dispose()` when done. `Realm.Default
 if (realm.TryGetPresence(new Key("items", TrackedDetector.Kind, "item-1"), out Presence item)
     && item.IsAvailable)
 {
-    realm.Manifest(item, DetailLevel.Full);
+    realm.Manifest(item);
 }
 ```
 

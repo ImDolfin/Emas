@@ -230,7 +230,7 @@ namespace Emas.Tests
             {
                 TestGhost ghost = _source.PublishPosition("remote", new Double3(30, 40, 0));
                 _realm.Update();
-                View firstView = _realm.Manifest(ghost, DetailLevel.Reduced);
+                View firstView = _realm.Manifest(ghost);
                 Assert.That(firstView, Is.Not.Null, "The range boundary is inclusive.");
                 Assert.That(ghost.GetComponent<Spatial>().IsInRange, Is.True);
 
@@ -260,7 +260,7 @@ namespace Emas.Tests
                 {
                     Assert.That(restored, Is.Not.Null);
                     Assert.That(restored, Is.Not.SameAs(firstView));
-                    Assert.That(restored.RequestedDetailLevel, Is.EqualTo(DetailLevel.Reduced));
+                    Assert.That(restored.Ghost, Is.SameAs(ghost));
                 }
 
                 Assert.That(arrivals, Is.EqualTo(1));

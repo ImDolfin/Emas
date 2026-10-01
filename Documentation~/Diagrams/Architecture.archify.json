@@ -60,7 +60,7 @@
                                                  "blueprint",
                                                  "view"
                                              ],
-                                   "note":  "Manifest(Presence, detail) requests an optional View from the kind\u0027s blueprint. Demanifest retains the Presence and Ghost."
+                                   "note":  "Manifest(Presence) requests an optional View from the kind\u0027s blueprint. Demanifest retains the Presence and Ghost."
                                },
                                {
                                    "id":  "availability",
@@ -179,7 +179,7 @@
                            "id":  "blueprint",
                            "type":  "database",
                            "label":  "ManifestationBlueprint",
-                           "sublabel":  "Variant + detail views",
+                           "sublabel":  "Named variant rows",
                            "pos":  [
                                        1185,
                                        60
@@ -265,7 +265,7 @@
                             "id":  "select",
                             "from":  "blueprint",
                             "to":  "view",
-                            "label":  "Variant + level",
+                            "label":  "Variant name",
                             "labelDy":  24
                         },
                         {
@@ -309,7 +309,7 @@
                       "dot":  "violet",
                       "title":  "Optional presentation",
                       "items":  [
-                                    "Manifest(Presence, detail) selects a View from the kind\u0027s variant assets.",
+                                    "Manifest(Presence) selects a View by its blueprint variant name.",
                                     "Demanifest removes the View; disappearance can retain the Presence during grace."
                                 ]
                   }

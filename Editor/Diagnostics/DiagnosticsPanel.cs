@@ -76,7 +76,10 @@ namespace Emas.Editor
                 {
                     EditorGUILayout.HelpBox("Detector failures need attention. Open diagnostics for context and details.", MessageType.Warning);
                 }
-                InspectorLayout.DiagnosticsButton();
+                if (GUILayout.Button("Open Emas diagnostics"))
+                {
+                    DiagnosticsWindow.ShowWindow();
+                }
                 return;
             }
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))

@@ -8,8 +8,6 @@ namespace Emas.Editor
     [CanEditMultipleObjects]
     public sealed class RealmSetupInspector : UnityEditor.Editor
     {
-        private bool _showHelp;
-
         /// <summary>Draws grouped configuration, units, dependent controls and runtime diagnostics.</summary>
         public override void OnInspectorGUI()
         {
@@ -45,12 +43,6 @@ namespace Emas.Editor
                     DrawRuntime(setup);
                 }
             }
-            InspectorLayout.Help(ref _showHelp,
-                "Assign one blueprint per Kind. Add Anchor Setup and a detector component on each source object. " +
-                "Without a reference frame, Spatial maps directly to Unity world coordinates. " +
-                "Reference positions and radius use the units supplied by your modules. " +
-                "Startup settings are locked while running; stop the Realm to edit them.");
-            InspectorLayout.DiagnosticsButton();
         }
 
         private void DrawReference()

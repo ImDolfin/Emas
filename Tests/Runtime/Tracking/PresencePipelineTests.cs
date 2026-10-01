@@ -419,25 +419,17 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Manifesting a Presence selects the requested view detail while retaining its root.
+        /// A Presence can request and cancel its fallback view while retaining its root and availability.
         /// </summary>
         [Test]
-        public void Manifest_PresenceSelectsDetailAndKeepsRoot()
+        public void Manifest_PresenceKeepsRootAndAvailability()
         {
-            GameObject minimalPrefab = new GameObject("minimal view");
-            GameObject fullPrefab = new GameObject("full view");
-            ManifestationVariant variant = ScriptableObject.CreateInstance<ManifestationVariant>();
+            GameObject prefab = new GameObject("presence view");
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             try
             {
-                minimalPrefab.SetActive(false);
-                fullPrefab.SetActive(false);
-                variant.Configure(Variant.None, new[]
-                {
-                    new ManifestationVariant.DetailMapping(DetailLevel.Minimal, minimalPrefab),
-                    new ManifestationVariant.DetailMapping(DetailLevel.Full, fullPrefab)
-                });
-                blueprint.Configure(TrackedKind, null, new[] { variant }, null);
+                prefab.SetActive(false);
+                blueprint.Configure(TrackedKind, null, null, prefab);
                 _realm.RegisterManifestationBlueprint(blueprint);
                 Detector detector = new Detector();
                 _realm.GetOrCreateAnchor("sdk", detector);
@@ -446,27 +438,20 @@ namespace Emas.Tests
                 _realm.Update();
                 Assert.That(root.GetComponentInChildren<View>(), Is.Null);
 
-                View minimal = _realm.Manifest(presence, DetailLevel.Minimal);
-                Assert.That(minimal, Is.Not.Null);
-                Assert.That(minimal.gameObject.name, Is.EqualTo("minimal view"));
-                Assert.That(minimal.Ghost, Is.SameAs(root));
-                Assert.That(minimal.RequestedDetailLevel, Is.EqualTo(DetailLevel.Minimal));
-
-                View full = _realm.Manifest(presence, DetailLevel.Full);
-                Assert.That(full, Is.Not.Null);
-                Assert.That(full.gameObject.name, Is.EqualTo("full view"));
-                Assert.That(full.RequestedDetailLevel, Is.EqualTo(DetailLevel.Full));
-                Assert.That(presence.Root, Is.SameAs(root));
+                View view = _realm.Manifest(presence);
+                Assert.That(view.gameObject.name, Is.EqualTo("presence view"));
+                Assert.That(view.Ghost, Is.SameAs(root));
+                Assert.That(_realm.Manifest(presence), Is.SameAs(view));
                 _realm.Demanifest(presence);
                 Assert.That(root.GetComponentInChildren<View>(), Is.Null);
+                Assert.That(presence.Root, Is.SameAs(root));
                 Assert.That(presence.IsAvailable, Is.True);
+                Assert.That(_realm.Manifest(presence).Ghost, Is.SameAs(root));
             }
             finally
             {
                 UnityEngine.Object.DestroyImmediate(blueprint);
-                UnityEngine.Object.DestroyImmediate(variant);
-                UnityEngine.Object.DestroyImmediate(minimalPrefab);
-                UnityEngine.Object.DestroyImmediate(fullPrefab);
+                UnityEngine.Object.DestroyImmediate(prefab);
             }
         }
 
@@ -486,7 +471,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(presence.IsAvailable, Is.True);
             Assert.That(_realm.Query().Single(), Is.SameAs(presence.Root));
-            Assert.That(_realm.Manifest(presence, DetailLevel.Full), Is.Null);
+            Assert.That(_realm.Manifest(presence), Is.Null);
             Assert.That(presence.Root.GetComponentInChildren<View>(), Is.Null);
         }
 

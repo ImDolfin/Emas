@@ -42,6 +42,14 @@ Keep a test when it protects a distinct behavior that an application depends on.
 
 ## Results
 
+Inspector cleanup passed **14 EditMode tests** in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. Removed Setup Help foldouts and inspector diagnostics buttons, including their unused shared helpers. The diagnostics overlay owns its own window shortcut. This check used `-batchmode -nographics`; reports are in `Tests/Unity~/TestResults/InspectorCleanup/`.
+
+Inline blueprint variants passed **14 EditMode** and **139 PlayMode** tests in Unity **2022.3.62f3** on **2026-10-01**, with no failures or skips. Coverage includes exact named-prefab selection, fallback behavior, independent registration snapshots, switching named LOD variants while retaining Ghost roots, cancellation through Demanifest, invalid row validation, serialized row reordering/removal and undo/redo. All three imported samples match the package after seven separate variant assets were folded into their blueprints.
+
+The test suites ran with `-batchmode -nographics`. A separate Direct3D 11 capture of the actual blueprint Inspector was visually reviewed: Name and View Prefab columns, row handles and add/remove controls render correctly. This capture did not reproduce the earlier GUI shader issue. The temporary preview helper was removed. Reports, logs and `BlueprintTable.png` are in `Tests/Unity~/TestResults/InlineVariants/`.
+
+The architecture and lifecycle diagrams were regenerated with the current variant API wording. Both pass **9/9 showcase checks**, with zero errors or warnings. Browser containment checks pass at 1440?900, 1600?1000, 1920?1080 and 2048?1320; the final large screenshots were visually reviewed in light and dark themes. Delivery receipts, browser receipts, screenshots and the artifact hashes are recorded alongside the test results in `InlineVariants/`.
+
 The reduced sample set and Relative World driving scene passed **140 PlayMode** and **13 EditMode** tests in Unity **2022.3.62f3** on **2026-09-29**, with no failures or skips. Callback-sample cases were removed; the Emas example now validates three cars on one Anchor and SDK replacement. Relative World checks stationary parking encounters on both sides, explicit departure, reference-driven road motion, bounded populations after large time steps, and a bird's complete orbit with position and heading updates while retaining its Ghost and view. All three imported samples match the package assets.
 
 Direct3D-rendered frames at 0, 3, 5, 9 and 14 simulated seconds were inspected, showing the parked cars passing on alternating sides and the bird above the origin. The bird mesh, material, prefab, variant and blueprint are saved assets. The temporary authoring/capture helper was removed. Test reports and preview images are in `Tests/Unity~/TestResults/DrivingSamples/`. These camera previews validate the sample presentation, not the previously reported Inspector GUI shader issue.

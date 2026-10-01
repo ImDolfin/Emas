@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Defines the optional ghost root and visual manifestations for one kind.
+    /// Defines the optional ghost root and named visual manifestations for one kind.
     /// </summary>
     [CreateAssetMenu(fileName = "New Emas Manifestation Blueprint", menuName = "Emas/Manifestation Blueprint")]
     public sealed class ManifestationBlueprint : ScriptableObject
@@ -16,10 +16,10 @@ namespace Emas
         [Tooltip("Optional root prefab. Leave empty to create a root with the requested Ghost component.")]
         [SerializeField]
         private Ghost _ghostPrefab;
-        [Tooltip("One asset per variant, each containing its view prefabs by detail level.")]
+        [Tooltip("Named appearances stored in this blueprint. Each name selects one view prefab.")]
         [SerializeField]
         private List<ManifestationVariant> _variants = new List<ManifestationVariant>();
-        [Tooltip("Optional view prefab when no variant and detail level mapping matches.")]
+        [Tooltip("Optional view prefab for an unspecified or unknown variant.")]
         [SerializeField]
         private GameObject _fallbackViewPrefab;
 
@@ -69,7 +69,7 @@ namespace Emas
                 {
                     foreach (ManifestationVariant variant in _variants)
                     {
-                        if (variant != null && variant.HasPrefab)
+                        if (variant.Prefab != null)
                         {
                             return true;
                         }
@@ -81,15 +81,15 @@ namespace Emas
         }
 
         /// <summary>
-        /// Configures this kind and its variant assets.
+        /// Configures this kind and its inline named appearances.
         /// </summary>
         /// <param name="kind">The ghost kind.</param>
         /// <param name="ghostPrefab">The optional root prefab.</param>
-        /// <param name="variants">Variant assets containing detail level views.</param>
-        /// <param name="fallbackViewPrefab">The optional fallback view prefab.</param>
+        /// <param name="variants">Named appearances, each selecting one view prefab.</param>
+        /// <param name="fallbackViewPrefab">The optional view for unspecified or unknown appearances.</param>
         /// <exception cref="ArgumentException">The kind or a variant is invalid.</exception>
         /// <remarks>
-        /// Existing registrations keep their captured settings until each realm or anchor registers this asset again.
+        /// Existing registrations keep their captured settings until each realm registers this asset again.
         /// </remarks>
         public void Configure(Kind kind, Ghost ghostPrefab, IEnumerable<ManifestationVariant> variants,
             GameObject fallbackViewPrefab)
@@ -115,8 +115,9 @@ namespace Emas
 
         internal ManifestationBlueprintSnapshot CaptureSnapshot()
         {
-            ViewMapping[] views = CaptureMappings();
-            return new ManifestationBlueprintSnapshot(this, Kind, _ghostPrefab, views, _fallbackViewPrefab);
+            ManifestationVariant[] variants = _variants == null
+                ? new ManifestationVariant[0] : _variants.ToArray();
+            return new ManifestationBlueprintSnapshot(this, Kind, _ghostPrefab, variants, _fallbackViewPrefab);
         }
 
         private static string GetConfigurationError(Kind kind, IReadOnlyList<ManifestationVariant> variants)
@@ -132,121 +133,57 @@ namespace Emas
                 for (int index = 0; index < variants.Count; index++)
                 {
                     ManifestationVariant variant = variants[index];
-                    string entry = "Manifestation variant at index " + index;
-                    if (variant == null)
+                    string entry = "Variant at index " + index;
+                    if (string.IsNullOrWhiteSpace(variant.Name))
                     {
-                        return entry + " is null. Assign a variant asset or remove the entry.";
+                        return entry + " requires a non-empty name. Use the fallback prefab for an unspecified variant.";
                     }
 
-                    string error = variant.GetConfigurationError();
-                    if (error != null)
+                    entry += " ('" + variant.Name + "')";
+                    if (variant.Prefab == null)
                     {
-                        return entry + " ('" + variant.name + "'): " + error;
+                        return entry + " requires a non-null view prefab.";
                     }
 
                     int previousIndex;
-                    if (indices.TryGetValue(variant.Variant.Id, out previousIndex))
+                    if (indices.TryGetValue(variant.Name, out previousIndex))
                     {
-                        return entry + " ('" + variant.name + "') duplicates variant '"
-                            + variant.Variant.Id + "' at index " + previousIndex + ".";
+                        return entry + " duplicates the name at index " + previousIndex + ". Use a unique name.";
                     }
 
-                    indices.Add(variant.Variant.Id, index);
+                    indices.Add(variant.Name, index);
                 }
             }
 
             return null;
         }
 
-        private ViewMapping[] CaptureMappings()
-        {
-            List<ViewMapping> views = new List<ViewMapping>();
-            if (_variants != null)
-            {
-                foreach (ManifestationVariant variant in _variants)
-                {
-                    if (variant == null)
-                    {
-                        continue;
-                    }
-
-                    ManifestationVariant.DetailMapping[] mappings = variant.CaptureMappings();
-                    for (int index = 0; index < mappings.Length; index++)
-                    {
-                        views.Add(new ViewMapping(variant.Variant, mappings[index].DetailLevel, mappings[index].Prefab));
-                    }
-                }
-            }
-
-            return views.ToArray();
-        }
-
         /// <summary>
-        /// Returns the best matching view prefab from this asset's current settings.
+        /// Returns the prefab for an exact variant name, or the optional fallback.
         /// </summary>
-        /// <param name="variant">The requested variant.</param>
-        /// <param name="detailLevel">The requested detail level.</param>
-        /// <returns>The selected prefab, the fallback, or null. None always returns null.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">The detail level is negative.</exception>
-        public GameObject ResolveViewPrefab(Variant variant, DetailLevel detailLevel)
+        /// <param name="variant">The requested appearance.</param>
+        /// <returns>The matching prefab, the fallback, or null when neither is configured.</returns>
+        public GameObject ResolveViewPrefab(Variant variant)
         {
-            return ResolveViewPrefab(CaptureMappings(), _fallbackViewPrefab, variant, detailLevel);
+            return ResolveViewPrefab(_variants, _fallbackViewPrefab, variant);
         }
 
-        internal static GameObject ResolveViewPrefab(IReadOnlyList<ViewMapping> views, GameObject fallbackViewPrefab,
-            Variant variant, DetailLevel detailLevel)
+        internal static GameObject ResolveViewPrefab(IReadOnlyList<ManifestationVariant> variants,
+            GameObject fallbackViewPrefab, Variant variant)
         {
-            if (detailLevel.Level < 0)
+            if (!variant.IsNone && variants != null)
             {
-                throw new ArgumentOutOfRangeException(nameof(detailLevel), "A detail level cannot be negative.");
-            }
-
-            if (detailLevel.Level == 0)
-            {
-                return null;
-            }
-
-            GameObject best = null;
-            DetailLevel bestDetailLevel = DetailLevel.None;
-            if (views != null)
-            {
-                for (int index = 0; index < views.Count; index++)
+                for (int index = 0; index < variants.Count; index++)
                 {
-                    ViewMapping mapping = views[index];
-                    if (mapping.Prefab == null || mapping.Variant != variant)
-                    {
-                        continue;
-                    }
-
-                    if (mapping.DetailLevel == detailLevel && mapping.DetailLevel.Level > 0)
+                    ManifestationVariant mapping = variants[index];
+                    if (mapping.Prefab != null && string.Equals(mapping.Name, variant.Id, StringComparison.Ordinal))
                     {
                         return mapping.Prefab;
                     }
-
-                    if (mapping.DetailLevel.Level > 0 && mapping.DetailLevel > bestDetailLevel
-                        && mapping.DetailLevel <= detailLevel)
-                    {
-                        best = mapping.Prefab;
-                        bestDetailLevel = mapping.DetailLevel;
-                    }
                 }
             }
 
-            return best ?? fallbackViewPrefab;
-        }
-
-        internal struct ViewMapping
-        {
-            internal ViewMapping(Variant variant, DetailLevel detailLevel, GameObject prefab)
-            {
-                Variant = variant;
-                DetailLevel = detailLevel;
-                Prefab = prefab;
-            }
-
-            internal readonly Variant Variant;
-            internal readonly DetailLevel DetailLevel;
-            internal readonly GameObject Prefab;
+            return fallbackViewPrefab;
         }
     }
 }

@@ -15,5 +15,6 @@ MonoBehaviour:
   _kindId: minimal.marker
   _ghostPrefab: {fileID: 7583291907332593950, guid: 29ff642b1ec725d489747879ed86c8c5, type: 3}
   _variants:
-  - {fileID: 11400000, guid: 401f2d2fb54156f489eaebe58585d973, type: 2}
+  - _name: marker
+    _prefab: {fileID: 575407761735601151, guid: 2bd98ecb839038240b9d2d7670862597, type: 3}
   _fallbackViewPrefab: {fileID: 0}

@@ -10,7 +10,6 @@ namespace Emas
             Ghost = ghost;
             Owner = owner;
             ManifestationBlueprint = blueprint;
-            RequestedDetailLevel = DetailLevel.Full;
             RegistrationGeneration = owner == null ? 0 : owner.RegistrationGeneration;
         }
 
@@ -35,6 +34,5 @@ namespace Emas
         internal long HandoverUpdate;
         internal long HandoverDispatchSequence;
         internal double LastPublishedAt;
-        internal DetailLevel RequestedDetailLevel;
     }
 }
