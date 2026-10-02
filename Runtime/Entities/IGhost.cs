@@ -1,4 +1,4 @@
-using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas
@@ -52,6 +52,19 @@ namespace Emas
         /// True when source data is initialized and queryable.
         /// </value>
         bool IsAvailable
+        {
+            get;
+        }
+
+        /// <summary>
+        /// Gets a read-only snapshot of all EntityModule components on the Ghost root, including disabled and unbound modules.
+        /// </summary>
+        /// <remarks>
+        /// Each access observes added or removed root modules; previously returned snapshots retain their membership.
+        /// Module instances remain live Unity components and may later be destroyed. Child and view modules are excluded.
+        /// Use TryGet&lt;TModule&gt; or GetRequired&lt;TModule&gt; for typed access to a single root module.
+        /// </remarks>
+        IReadOnlyList<EntityModule> Modules
         {
             get;
         }

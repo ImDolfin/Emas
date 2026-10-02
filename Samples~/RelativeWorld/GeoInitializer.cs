@@ -8,14 +8,14 @@ namespace Emas.RelativeWorld
         {
             string id = presence.Key.EntityId;
             // Capture identity and Presence, then resolve the latest SDK snapshot without retaining the SDK itself.
-            root.GetComponent<GeoPositionModule>().Bind(() =>
+            root.GetRequired<GeoPositionModule>().Bind(() =>
             {
                 GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
                 return new GeoPosition(reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters);
             });
-            root.GetComponent<GeoOrientationModule>().Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
-            GeoAttachmentModule attachment = root.GetComponent<GeoAttachmentModule>();
-            if (attachment != null)
+            root.GetRequired<GeoOrientationModule>().Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
+            GeoAttachmentModule attachment;
+            if (root.TryGet<GeoAttachmentModule>(out attachment))
             {
                 attachment.Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
             }

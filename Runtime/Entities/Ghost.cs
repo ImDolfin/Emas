@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas
@@ -30,6 +31,8 @@ namespace Emas
         [SerializeField, HideInInspector]
         private bool _isAvailable;
         private GhostPartResolver _partResolver;
+        private List<EntityModule> _moduleBuffer;
+        private IReadOnlyList<EntityModule> _modules = Array.AsReadOnly(Array.Empty<EntityModule>());
 
         /// <inheritdoc />
         public Key Key
@@ -65,6 +68,33 @@ namespace Emas
             get
             {
                 return _isAvailable;
+            }
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyList<EntityModule> Modules
+        {
+            get
+            {
+                if (_moduleBuffer == null)
+                {
+                    _moduleBuffer = new List<EntityModule>();
+                }
+
+                GetComponents(_moduleBuffer);
+                bool changed = _moduleBuffer.Count != _modules.Count;
+                for (int index = 0; !changed && index < _moduleBuffer.Count; index++)
+                {
+                    changed = !ReferenceEquals(_moduleBuffer[index], _modules[index]);
+                }
+
+                if (changed)
+                {
+                    // Replace the snapshot so module readers can inspect a changed root without altering an active pass.
+                    _modules = Array.AsReadOnly(_moduleBuffer.ToArray());
+                }
+
+                return _modules;
             }
         }
 

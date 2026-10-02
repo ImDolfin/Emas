@@ -579,9 +579,12 @@ namespace Emas
 
         private static void ClearModuleBindings(Ghost root)
         {
-            foreach (EntityModule module in root.GetComponents<EntityModule>())
+            foreach (EntityModule module in root.Modules)
             {
-                module.ClearBinding();
+                if (module != null)
+                {
+                    module.ClearBinding();
+                }
             }
         }
 
@@ -619,7 +622,7 @@ namespace Emas
                 long ownership = record.OwnershipVersion;
                 try
                 {
-                    foreach (EntityModule module in record.Ghost.GetComponents<EntityModule>())
+                    foreach (EntityModule module in record.Ghost.Modules)
                     {
                         // A preceding reader can restart the detector or reclaim this root; stop using the old bindings.
                         if (!CanFinalize(record, onlyOwner) || record.Owner != owner

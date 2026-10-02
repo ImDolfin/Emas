@@ -9,8 +9,8 @@ namespace Emas.Sample
         protected override void Initialize(Presence presence, Ghost root)
         {
             string id = presence.Key.EntityId;
-            PositionModule position = root.GetComponent<PositionModule>();
-            ArticulationModule articulation = root.GetComponent<ArticulationModule>();
+            PositionModule position = root.GetRequired<PositionModule>();
+            ArticulationModule articulation = root.GetRequired<ArticulationModule>();
             // Resolve Source on each read so a binding retains the Presence, rather than either SDK feed.
             if (presence.Source is SdkTwoVehicleFeed)
             {

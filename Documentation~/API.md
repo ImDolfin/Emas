@@ -90,14 +90,24 @@ Detector failure or removal deletes its population immediately and discards its 
 | `Presence.Key` / `Name` / `Variant` | Stable identity, per-entity label and visual variant |
 | `Presence.IsAvailable` / `IsRemoved` / `Root` | Detection availability, final removal state and the initialized Ghost root |
 | `Presence.Capabilities` / `HasCapability<T>()` | Snapshot and exact-interface check of SDK-reported capabilities |
-| `Ghost.GetComponent<TModule>()` / `IGhost.TryGet<T>()` | Access module components configured on the Ghost root |
+| `Ghost.Modules` / `IGhost.Modules` | Read-only membership snapshot of root modules, including disabled and unbound components |
 | `IGhost.TryGet<T>(out part)` / `GetRequired<T>()` | Resolve root MonoBehaviour interfaces for consumers; these are separate from reported capabilities |
 
 A Presence is stable from its first detection or report until final removal. Its Key combines anchor ID, Kind and SDK entity ID; the same key in a different realm identifies a different Presence. `TryGetPresence` can return an unavailable Presence, so check `IsAvailable` before treating its data as current. `IsRemoved` becomes true after final removal, and a later report creates a new handle. `Root` holds the invisible Ghost even when no view has been requested. `Prepare<TGhost>` creates only an unavailable Ghost; `TryGetPresence` stays false until a detector first reports that identity. Consumers still use `IGhost` queries and root interfaces.
 
-Declare SDK capabilities as interface types through `Detect`'s optional `capabilities` argument. Emas validates and snapshots the types and removes duplicates. A changed set reruns the initializer, which can use `presence.HasCapability<T>()` to bind or enable Ghost modules. Capability metadata does not add components. Configure modules on the Ghost and find them through `GetComponent<TModule>()` or `IGhost.TryGet<T>()`.
+Declare SDK capabilities as interface types through `Detect`'s optional `capabilities` argument. Emas validates and snapshots the types and removes duplicates. A changed set reruns the initializer, which can use `presence.HasCapability<T>()` to bind or enable Ghost modules. Capability metadata does not add components. Configure modules on the Ghost and access them through `ghost.Modules`, `ghost.GetRequired<TModule>()` or `ghost.TryGet<TModule>(out module)`.
 
-Subclass `EntityModule<TData>` and implement `Apply(TData data)` using source-independent values. In the initializer, call `root.GetComponent<PositionModule>().Bind(() => ((SdkProxy)presence.Source).Position)`. The Ghost determines which modules exist; the initializer knows the SDK and supplies the readers. For immutable SDK snapshots, read the current lookup entry on every invocation. Bindings are released on disappearance, handover and removal. A retained Ghost reconnects when its initializer runs again. For a viewless entity, leave its blueprint unassigned.
+Subclass `EntityModule<TData>` and implement `Apply(TData data)` using source-independent values. In the initializer, call `root.GetRequired<PositionModule>().Bind(() => ((SdkProxy)presence.Source).Position)`. The Ghost determines which modules exist; the initializer knows the SDK and supplies the readers. For immutable SDK snapshots, read the current lookup entry on every invocation. Bindings are released on disappearance, handover and removal. A retained Ghost reconnects when its initializer runs again. For a viewless entity, leave its blueprint unassigned.
+
+`Modules` is available on both concrete `Ghost` roots and queried `IGhost` instances. Each access observes the current root components. Previously returned lists keep their membership, while their module instances remain live Unity components that can be edited, disabled or destroyed. Child and view modules are excluded; `Spatial` is a separate component and is accessible through `GetRequired<Spatial>()`. Use `GetRequired<TModule>()` for one required module or `TryGet<TModule>()` for an optional one; both reject duplicate providers.
+
+```csharp
+foreach (EntityModule module in ghost.Modules)
+{
+    Debug.Log(module.GetType().Name);
+}
+PositionModule position = ghost.GetRequired<PositionModule>();
+```
 
 `InactivityTimeout` defaults to null. Each detection resets the individual identity's inactivity deadline. Choose a timeout longer than the feed's normal interval; feeds that publish only changed values should normally leave it disabled. `DisappearanceGracePeriod` defaults to zero. An explicit `Disappear` or inactivity expiry makes the presence unavailable immediately; with positive grace, its stable Presence and Ghost root remain inactive until the deadline. A detection before that deadline restores them and retains an existing manifestation request. Repeated disappearances do not extend the deadline. Query subscriptions see a departure on availability loss. Once grace expires, the realm removes the root and view; a later detection creates a new Presence. Detector failure, anchor removal and realm disposal bypass grace. Module reads do not refresh presence deadlines; arrival/departure feeds should leave inactivity expiry disabled.
 
@@ -105,7 +115,7 @@ The direct-Ghost path remains available: detectors can use protected `GetOrCreat
 
 Capture a dispatcher in `OnStart` when subscribing to SDK callbacks and release the subscription in `OnStop`. The returned callback accepts an `Action` to run during a later realm update; calls retained from an earlier attachment are ignored. Calling `Dispatch` directly from an old callback instead targets the detector's current attachment. Move SDK events to Unity's main thread before using either mechanism.
 
-Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` when absence is a setup error. Both inspect only root MonoBehaviours. Ambiguous providers are reported with the Ghost key and component types. The Ghost Inspector shows Emas-owned metadata read-only in Play Mode while application fields remain editable.
+Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` when absence is a setup error. Both inspect only root MonoBehaviours. Ambiguous providers are reported with the Ghost key and component types. The Ghost Inspector keeps identity, spatial pose and module sections open. Emas-owned metadata and cached/projected poses are read-only; application fields, module enable switches and serialized module settings remain editable. Each module has a Select button to open its own component Inspector.
 
 ## Spatial coordinates and reference frames
 

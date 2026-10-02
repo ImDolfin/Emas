@@ -236,9 +236,9 @@ The initializer adapts your SDK to those reusable modules. Here the SDK's axes a
 realm.RegisterPresenceInitializer<Car>(CarKind, (presence, car) =>
 {
     Spatial spatial = car.GetComponent<Spatial>();
-    car.GetComponent<PositionModule>().Bind(() => presence.Source is SdkProxy proxy
+    car.GetRequired<PositionModule>().Bind(() => presence.Source is SdkProxy proxy
         ? new Double3(proxy.X, proxy.Y, proxy.Z) : spatial.Position);
-    car.GetComponent<RotationModule>().Bind(() =>
+    car.GetRequired<RotationModule>().Bind(() =>
         (presence.Source as SdkProxy)?.Rotation ?? spatial.Rotation);
 });
 ```

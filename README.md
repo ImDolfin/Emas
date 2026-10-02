@@ -81,7 +81,7 @@ var detector = new TrackedDetector();
 Realm realm = new Realm();
 realm.RegisterPresenceInitializer<Ghost>(TrackedDetector.Kind, (presence, root) =>
 {
-    root.GetComponent<PositionModule>().Bind(() =>
+    root.GetRequired<PositionModule>().Bind(() =>
     {
         var proxy = presence.Source as SdkProxy;
         return proxy == null ? (GeoPosition?)null : new GeoPosition(

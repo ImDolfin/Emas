@@ -23,7 +23,7 @@ public sealed class MarkerInitializer : GhostInitializer
 {
     protected override void Initialize(Presence presence, Ghost marker)
     {
-        marker.GetComponent<MarkerPositionModule>().Bind(() =>
+        marker.GetRequired<MarkerPositionModule>().Bind(() =>
             (presence.Source as SdkProxy)?.Position ?? marker.transform.localPosition);
     }
 }
@@ -69,7 +69,7 @@ Section descriptions live in tooltips. Configuration errors remain visible.
 
 - **Realm Setup** groups Kind mappings, coordinate reference, Unity placement and visibility range. Shared positions and radii use your SDK mapping's units; Unity placement uses Unity units. Rotation fields display Euler angles in degrees, wrapping every 360?. A range must be finite and greater than zero; there is no arbitrary maximum. Inapplicable fields are disabled. Startup settings become read-only while the Realm runs; stop it before changing those settings.
 - **Anchor Setup** shows identity, automatic views and the connected Realm, detector and optional initializer. Disable an attached Anchor Setup to edit its startup settings. Ghost construction and appearance belong in the Realm's blueprint list.
-- **Ghost** shows custom settings and status, with module and runtime identity details in foldouts. The detector supplies IDs, display name and Variant; they are not prefab settings. Disabling the Ghost only skips its `OnUpdate` hook; module and spatial components have their own enable switches.
+- **Ghost** keeps identity, spatial pose and modules visible in open sections. Inspect cached absolute input beside the projected Unity pose, edit serialized module settings inline, or select a named module to open its component Inspector. The detector supplies IDs, display name and Variant; they are not prefab settings. Disabling the Ghost only skips its `OnUpdate` hook; module and spatial components have their own enable switches. Code can enumerate `ghost.Modules` and use `ghost.GetRequired<TModule>()` or `ghost.TryGet<TModule>()` for typed access.
 - **Window > Emas** groups live data by Realm, Anchor and detector. The Scene view **Overlays** menu also offers an optional **Emas** summary. Both are passive; they never create a Realm or start a detector.
 
 ### Find and manifest a presence

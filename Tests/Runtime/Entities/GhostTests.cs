@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -56,6 +57,45 @@ namespace Emas.Tests
 
                 FirstPart first = concrete.gameObject.AddComponent<FirstPart>();
                 Assert.That(ghost.GetRequired<IPart>(), Is.SameAs(first));
+            }
+        }
+
+        /// <summary>
+        /// Consumers can enumerate disabled root modules, resolve them by type, and retain an immutable membership
+        /// snapshot while modules are added or removed, without including a view's child modules.
+        /// </summary>
+        [Test]
+        public void Modules_ExposeRootModulesAsReadOnlyMembershipSnapshots()
+        {
+            using (Realm realm = new Realm())
+            {
+                Probe source = new Probe();
+                realm.GetOrCreateAnchor("simulation", source);
+                Ghost concrete = source.Publish("modules");
+                IGhost ghost = concrete;
+                IReadOnlyList<EntityModule> empty = ghost.Modules;
+                Assert.That(empty, Is.Empty);
+
+                PipelinePositionModule position = concrete.gameObject.AddComponent<PipelinePositionModule>();
+                position.enabled = false;
+                GameObject child = new GameObject("view child");
+                child.transform.SetParent(concrete.transform, false);
+                child.AddComponent<PipelineArticulationModule>();
+                IReadOnlyList<EntityModule> original = ghost.Modules;
+                Assert.That(original, Is.EqualTo(new EntityModule[] { position }));
+                Assert.That(empty, Is.Empty);
+                Assert.That(ghost.GetRequired<PipelinePositionModule>(), Is.SameAs(position));
+                Assert.Throws<NotSupportedException>(() => ((IList<EntityModule>)original).Clear());
+
+                PipelineActionModule action = concrete.gameObject.AddComponent<PipelineActionModule>();
+                Assert.That(ghost.Modules, Is.EqualTo(new EntityModule[] { position, action }));
+                Assert.That(original, Is.EqualTo(new EntityModule[] { position }));
+
+                UnityEngine.Object.DestroyImmediate(position);
+                Assert.That(ghost.Modules, Is.EqualTo(new EntityModule[] { action }));
+                Assert.That(original.Count, Is.EqualTo(1));
+                Assert.That(ghost.TryGet<PipelinePositionModule>(out PipelinePositionModule removed), Is.False);
+                Assert.That(removed, Is.Null);
             }
         }
 

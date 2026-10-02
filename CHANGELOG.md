@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Expose `Ghost.Modules` and `IGhost.Modules` as read-only root-module membership snapshots, including disabled and unbound modules. Observe component additions and removals on each access, reuse unchanged snapshots for realm updates, and use direct typed Ghost access in sample initializers. Keep identity, spatial pose and modules open in the Ghost Inspector, with projected Unity pose, module enable switches and inline serialized settings.
+
 - Demonstrate module-driven attachment in Relative World with separate bird feet, SDK forward/right/down offsets and Geo Source context-menu controls to detach to absolute release poses and reattach to the moving bird. Keep the imported sample and its consumer scenario in sync.
 
 - Add `Spatial.Attach(parentKey, localPosition, localRotation)` and `Detach()` for same-realm entity attachments. Parents may arrive after their parts; missing parents and cycles suppress presentation while preserving tracking. Attachment chains resolve parent-first without reparenting Ghost roots, and detach resumes the latest cached absolute pose.

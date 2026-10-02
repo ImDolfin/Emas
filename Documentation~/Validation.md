@@ -30,7 +30,7 @@ Each test has a consumer-facing purpose documented in its XML summary. Tests use
 
 | Area | Purpose |
 | --- | --- |
-| Entities | Typed identity and appearance values, root contracts, and double-precision coordinate behavior. |
+| Entities | Typed identity and appearance values, root contracts, immutable module membership snapshots with component additions/removals, and double-precision coordinate behavior. |
 | Tracking | Detector ownership and status, SDK data application, identity reuse, cleanup, explicit dispatch, restart, inactivity and disappearance grace. |
 | Queries | Filtering and lookups, paired arrival/departure notifications, and subscriptions across live realms. |
 | Views | Blueprint selection, reference-frame projection, independent spatial channels, geographic yaw/pitch/roll with preserved separation, late-parent attachment chains and recovery, detach handoff, input failures and presentation availability. |
