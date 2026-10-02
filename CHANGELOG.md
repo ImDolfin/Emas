@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Demonstrate module-driven attachment in Relative World with separate bird feet, SDK forward/right/down offsets and Geo Source context-menu controls to detach to absolute release poses and reattach to the moving bird. Keep the imported sample and its consumer scenario in sync.
+
+- Add `Spatial.Attach(parentKey, localPosition, localRotation)` and `Detach()` for same-realm entity attachments. Parents may arrive after their parts; missing parents and cycles suppress presentation while preserving tracking. Attachment chains resolve parent-first without reparenting Ghost roots, and detach resumes the latest cached absolute pose.
+
 - Make Spatial inputs explicit: replace `SetPosition` with `SetCartesianPosition` / `SetEarthCenteredPosition`, and `SetRotation` with `SetSourceRotation`. Add direct geographic yaw/pitch/roll degrees on Spatial and ReferenceFrame; heading is clockwise from true north, pitch nose-up and roll right-wing-down. Named angles keep their physical meaning across source-axis presets. Replace `UsesEarthCenteredRotation` with `RotationSpace`, and update Relative World to ingest SDK angles directly. Clarify full reference-attitude cancellation and fixed-camera use.
 
 - Refresh architecture and lifecycle diagrams for authored module readers, shared geographic/ECEF references and persistent view requests. Keep validation documentation focused on test setup and API contracts.

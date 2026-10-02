@@ -599,6 +599,15 @@ namespace Emas
                 }
             }
 
+            internal bool TryUnityPlacement(Double3 position, out Vector3 result)
+            {
+                result = default(Vector3);
+                // Attachment offsets are already in Unity axes; orthogonal scene alignment preserves source distance.
+                return _hasPosition && (!_maxDistance.HasValue
+                    || Double3.Distance(position, new Double3(_unityPosition.x, _unityPosition.y, _unityPosition.z)) <= _maxDistance.Value)
+                    && SpatialMath.TryToVector3(position, out result);
+            }
+
             internal Double3 ToSimulationPosition(Vector3 unityPosition)
             {
                 // Undo scene translation and alignment before restoring the source basis and large origin.

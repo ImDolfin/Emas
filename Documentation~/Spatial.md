@@ -15,6 +15,28 @@ Configure a reference frame for a realm to project shared Cartesian or geographi
 
 Position and attitude arrive independently. Setters store data; the Realm applies it after all readers run. `Position` contains source Cartesian coordinates or ECEF metres, never latitude/longitude. `Rotation` contains a normalized quaternion; `RotationSpace` identifies `Source`, `Geographic` (east/up/north), or `EarthCentered`. Read them after `HasPosition` or `HasRotation` becomes true. Each rotation setter replaces the previous representation.
 
+## Attach and detach entities
+
+Use `Spatial.Attach` for a part whose presentation should follow another entity instead of independently timed absolute SDK packets. Attach by a complete `Key` in the same Realm; the parent may be discovered after its parts, including on another Anchor or detector:
+
+```csharp
+Spatial part = partGhost.GetComponent<Spatial>();
+Key vehicle = new Key("vehicles", vehicleKind, vehicleId);
+part.Attach(vehicle, new Vector3(1, 0, 2), Quaternion.identity);
+
+// Continue supplying absolute SDK positions and attitudes while attached.
+// Once those channels describe the release pose, resume absolute placement:
+part.Detach();
+```
+
+The position offset uses **Unity local axes and units**: X right, Y up and Z forward. The relative rotation is a Unity quaternion. Source coordinate presets do not reinterpret these offsets. For your SDK's X-forward/Y-right/Z-down position offset, pass `new Vector3(sourceY, -sourceZ, sourceX)`. Parent and Anchor scale do not scale the attachment offset. The overload without a rotation uses identity; call `Attach` again to change the target or local pose.
+
+Keep `Spatial` enabled while attached. Each Realm projection resolves parents before parts, including attachment chains, then combines the parent's projected world pose with the local offset. Ghost roots stay under their Anchors and retain independent identities and lifetimes. This works with Cartesian and Geographic reference frames and full reference-attitude cancellation. The parent can also be application-positioned without an enabled `Spatial`.
+
+`AttachedTo` reports the requested parent even while it is missing. Until that parent is available and presentable, the part remains tracked and queryable but its views, root renderers and colliders are suppressed. A parent without a usable spatial position, an out-of-range parent, or an attachment cycle also suppresses dependent parts. Discovery, rediscovery or breaking the cycle resolves the attachment automatically. An attached part's resulting position must also fit the reference's presentation range.
+
+Attachment does not require an absolute part position or orientation. The absolute setters continue caching their channels; `Position`, `Rotation`, `RotationSpace`, `HasPosition` and `HasRotation` describe that cached input. `Detach` clears the attachment and the next projection uses those channels. It is safe before parent discovery or when already detached. A missing absolute position keeps presentation suppressed; a stale absolute pose can cause a jump, so publish a current release pose before detaching. Reference following continues to consume the followed Ghost's absolute input; follow the vehicle supplying that input when attaching its parts.
+
 ## Configure a prefab realm
 
 Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list maps each Kind to its Ghost and views for every anchor in that realm. Add one **Emas > Anchor Setup** for each anchor frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor ID**, a `PresenceDetectorComponent` subclass and optionally a `GhostInitializer` on the same object. The initializer binds the spatial modules authored on the Ghost prefab. Each blueprint covers one Kind and stores a table of named variants, each selecting one view prefab. For example:
@@ -276,7 +298,7 @@ Check `HasPosition` before inverse-position, rotation-conversion or reference-di
 
 ## Run the example
 
-Import **Relative world**, open `RelativeWorld.unity`, and press Play. Its authored tracking prefab follows the green origin car driving north at 8 m/s. Stationary orange parked cars appear ahead on alternating sides, pass the origin and leave the SDK snapshot behind it. The road markings scroll using the reference frame's actual northward displacement. A white bird circles above the origin, updating both its relative position and heading through the same spatial modules.
+Import **Relative world**, open `RelativeWorld.unity`, and press Play. Its authored tracking prefab follows the green origin car driving north at 8 m/s. Stationary orange parked cars appear ahead on alternating sides, pass the origin and leave the SDK snapshot behind it. The road markings scroll using the reference frame's actual northward displacement. A white bird circles above the origin, updating both its relative position and heading through the same spatial modules. Its orange feet are separately tracked entities driven by `GeoAttachmentModule`, converting SDK body offsets and resolving the bird by key. In the Geo Source component's context menu, choose **Detach bird feet** to hold their absolute release poses, then **Attach bird feet** to restore their local offsets; code can call `SetBirdFeetAttached(bool)`.
 
 `GeoSource` detects the current snapshot and explicitly removes missing IDs. `GeoInitializer` supplies `GeoPosition` readings and local attitude to the authored modules. Realm Setup uses Geographic space: the driving car defines the tangent frame directly. A parked car's ECEF position remains constant even though its Unity position moves past the origin. The mock SDK has a starting road location, which is unrelated to reference configuration.
 

@@ -109,6 +109,8 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 
 ## Spatial coordinates and reference frames
 
+`Spatial.Attach(parentKey, localPosition, localRotation)` selects a same-realm entity's projected pose with a Unity-local offset. The parent can arrive later; pending, unavailable and cyclic attachments suppress presentation while retaining identity. `Attach(parentKey, localPosition)` uses identity relative rotation. `AttachedTo` exposes the requested key; `Detach()` resumes the latest cached absolute channels on the next projection. Offsets use Unity axes and units independently of source-axis configuration, and Ghost roots retain their Anchor parents. See [entity attachment](Spatial.md#attach-and-detach-entities) for arrival, recovery and release-pose behavior.
+
 | Member | Use |
 | --- | --- |
 | `Realm.ReferenceFrame` | Optional reference configuration; null maps spatial poses directly to Unity world space |

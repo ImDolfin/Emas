@@ -14,6 +14,11 @@ namespace Emas.RelativeWorld
                 return new GeoPosition(reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters);
             });
             root.GetComponent<GeoOrientationModule>().Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
+            GeoAttachmentModule attachment = root.GetComponent<GeoAttachmentModule>();
+            if (attachment != null)
+            {
+                attachment.Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
+            }
         }
     }
 }

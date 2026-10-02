@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -15,6 +16,8 @@ namespace Emas
     /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished
     /// when inactivity expiry is enabled. Disable this component to release spatial placement and range suppression.
     /// Supply channels on Unity's main thread; setters store input for the next realm projection.
+    /// Attach selects a same-realm parent by Key, including before discovery. Local attachment poses use Unity axes
+    /// and units; absolute inputs remain cached for Detach. Roots retain their Anchor parents and independent lifetimes.
     /// </remarks>
     [DisallowMultipleComponent]
     [AddComponentMenu("Emas/Spatial")]
@@ -27,6 +30,9 @@ namespace Emas
         private bool _hasPosition;
         private bool _hasRotation;
         private bool _isInRange = true;
+        private Key? _attachedTo;
+        private Vector3 _attachmentPosition;
+        private Quaternion _attachmentRotation = Quaternion.identity;
         private readonly List<Renderer> _renderers = new List<Renderer>();
         private readonly List<Collider> _colliders = new List<Collider>();
         private readonly HashSet<Renderer> _hiddenRenderers = new HashSet<Renderer>();
@@ -71,7 +77,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets whether source orientation has been supplied; otherwise the root's rotation is left alone.
+        /// Gets whether absolute source orientation has been supplied; when detached, missing orientation leaves the root's rotation alone.
         /// </summary>
         public bool HasRotation
         {
@@ -87,7 +93,7 @@ namespace Emas
         /// <remarks>
         /// Outside range or before the first position/reference, renderers and colliders are suppressed while
         /// the ghost remains active and queryable. Originally enabled components are restored on return.
-        /// False also covers coordinates that cannot be projected to finite Unity floats.
+        /// False also covers coordinates that cannot be projected to finite Unity floats and attachments awaiting a presentable parent.
         /// </remarks>
         public bool IsInRange
         {
@@ -95,6 +101,63 @@ namespace Emas
             {
                 return _isInRange;
             }
+        }
+
+        /// <summary>Gets the requested attachment parent, including while it is missing or cannot be presented.</summary>
+        public Key? AttachedTo => _attachedTo;
+
+        /// <summary>Attaches to a same-realm entity at a Unity-local position offset with no relative rotation.</summary>
+        /// <param name="parent">The complete parent identity; the entity may be discovered later.</param>
+        /// <param name="localPosition">Finite offset in Unity units: X right, Y up and Z forward.</param>
+        /// <remarks>Equivalent to Attach(parent, localPosition, Quaternion.identity).</remarks>
+        public void Attach(Key parent, Vector3 localPosition)
+        {
+            Attach(parent, localPosition, Quaternion.identity);
+        }
+
+        /// <summary>Uses a same-realm parent's projected pose and a Unity-local offset instead of the cached absolute pose.</summary>
+        /// <param name="parent">The complete parent identity; the entity may be discovered later.</param>
+        /// <param name="localPosition">Finite offset in Unity units: X right, Y up and Z forward. Parent scale is ignored.</param>
+        /// <param name="localRotation">Finite nonzero relative quaternion in Unity local axes; normalized before storage.</param>
+        /// <remarks>
+        /// Applies on the next realm projection while Spatial is enabled. Attach again to change the parent or offsets.
+        /// Missing, unavailable, hidden or cyclic parents suppress presentation without removing this entity or its attachment.
+        /// Parent arrival or recovery resolves the attachment automatically. Absolute setters continue caching data for Detach.
+        /// </remarks>
+        /// <exception cref="ArgumentException">The parent identity is incomplete or identifies this Ghost.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An offset is nonfinite or the relative quaternion has zero length.</exception>
+        public void Attach(Key parent, Vector3 localPosition, Quaternion localRotation)
+        {
+            if (string.IsNullOrEmpty(parent.AnchorId) || !parent.Kind.IsValid || string.IsNullOrEmpty(parent.EntityId))
+            {
+                throw new ArgumentException("An attachment parent requires an Anchor, Kind and entity ID.", nameof(parent));
+            }
+
+            Ghost ghost = GetComponent<Ghost>();
+            if (ghost != null && ghost.Key == parent)
+            {
+                throw new ArgumentException("An entity cannot attach to itself.", nameof(parent));
+            }
+
+            if (!SpatialMath.IsFinite(localPosition))
+            {
+                throw new ArgumentOutOfRangeException(nameof(localPosition), "The attachment position must be finite.");
+            }
+
+            Quaternion rotation = SpatialMath.NormalizeRotation(localRotation, nameof(localRotation));
+            _attachedTo = parent;
+            _attachmentPosition = localPosition;
+            _attachmentRotation = rotation;
+        }
+
+        /// <summary>Clears the attachment so the next realm projection uses the latest cached absolute position and rotation.</summary>
+        /// <remarks>
+        /// Safe while waiting for a parent or already detached. Does not synthesize an absolute pose from the attachment;
+        /// publish a current SDK pose before detaching for a continuous handoff. Missing absolute position suppresses presentation.
+        /// </remarks>
+        public void Detach()
+        {
+            _attachedTo = null;
         }
 
         /// <summary>
@@ -203,6 +266,24 @@ namespace Emas
                 {
                     transform.position = position;
                 }
+            }
+
+            SetInRange(visible);
+            return visible;
+        }
+
+        internal bool ApplyAttachment(ReferenceFrame.Projection projection, Transform parent)
+        {
+            Vector3 parentPosition = parent.position;
+            Double3 offset = SpatialMath.Rotate(parent.rotation,
+                new Double3(_attachmentPosition.x, _attachmentPosition.y, _attachmentPosition.z));
+            Double3 position = new Double3(parentPosition.x, parentPosition.y, parentPosition.z) + offset;
+            Vector3 unityPosition;
+            bool visible = projection.TryUnityPlacement(position, out unityPosition);
+            if (visible)
+            {
+                Quaternion rotation = SpatialMath.NormalizeRotation(parent.rotation * _attachmentRotation, "rotation");
+                transform.SetPositionAndRotation(unityPosition, rotation);
             }
 
             SetInRange(visible);

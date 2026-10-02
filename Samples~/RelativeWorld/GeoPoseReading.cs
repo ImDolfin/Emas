@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace Emas.RelativeWorld
 {
@@ -24,9 +25,12 @@ namespace Emas.RelativeWorld
         /// <param name="yawDegrees">Heading clockwise from true north, in degrees.</param>
         /// <param name="pitchDegrees">Nose-up pitch in degrees.</param>
         /// <param name="rollDegrees">Right-wing-down roll in degrees.</param>
+        /// <param name="parentId">The parent entity ID while attached; null for absolute placement.</param>
+        /// <param name="parentKind">The attached parent's category.</param>
+        /// <param name="bodyOffset">Parent-local metres in SDK axes: X forward, Y right and Z down.</param>
         public GeoPoseReading(string id, string label, Kind kind, Variant variant, double latitudeDegrees,
             double longitudeDegrees, double altitudeMeters, double yawDegrees, double pitchDegrees,
-            double rollDegrees)
+            double rollDegrees, string parentId = null, Kind parentKind = default, Vector3 bodyOffset = default)
         {
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -39,6 +43,13 @@ namespace Emas.RelativeWorld
             ValidateFinite(yawDegrees, nameof(yawDegrees));
             ValidateFinite(pitchDegrees, nameof(pitchDegrees));
             ValidateFinite(rollDegrees, nameof(rollDegrees));
+            ValidateFinite(bodyOffset.x, nameof(bodyOffset));
+            ValidateFinite(bodyOffset.y, nameof(bodyOffset));
+            ValidateFinite(bodyOffset.z, nameof(bodyOffset));
+            if (parentId != null && (string.IsNullOrWhiteSpace(parentId) || !parentKind.IsValid))
+            {
+                throw new ArgumentException("An attached reading requires a parent ID and Kind.", nameof(parentId));
+            }
 
             Id = id;
             Label = label;
@@ -50,6 +61,9 @@ namespace Emas.RelativeWorld
             YawDegrees = yawDegrees;
             PitchDegrees = pitchDegrees;
             RollDegrees = rollDegrees;
+            ParentId = parentId;
+            ParentKind = parentKind;
+            BodyOffset = bodyOffset;
         }
 
         /// <summary>Gets the stable SDK entity ID.</summary>
@@ -81,6 +95,15 @@ namespace Emas.RelativeWorld
 
         /// <summary>Gets right-wing-down roll in degrees.</summary>
         public double RollDegrees { get; }
+
+        /// <summary>Gets the parent entity ID while attached, or null for absolute spatial placement.</summary>
+        public string ParentId { get; }
+
+        /// <summary>Gets the attached parent's category.</summary>
+        public Kind ParentKind { get; }
+
+        /// <summary>Gets the parent-local offset in metres using SDK X-forward, Y-right and Z-down axes.</summary>
+        public Vector3 BodyOffset { get; }
 
         private static void ValidateRange(double value, double minimum, double maximum, string parameter)
         {

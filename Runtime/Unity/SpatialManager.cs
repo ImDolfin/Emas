@@ -9,6 +9,9 @@ namespace Emas
     {
         private readonly Realm _realm;
         private readonly IdentityMap _identities;
+        private readonly HashSet<Record> _projected = new HashSet<Record>();
+        private readonly HashSet<Record> _visiting = new HashSet<Record>();
+        private readonly List<Record> _chain = new List<Record>();
 
         internal SpatialManager(Realm realm, IdentityMap identities)
         {
@@ -38,15 +41,62 @@ namespace Emas
         internal void Project(List<Record> records, ReferenceFrame frame)
         {
             ReferenceFrame.Projection projection = Capture(frame);
-            for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
+            try
             {
-                Project(records[index], projection);
+                for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
+                {
+                    ProjectChain(records[index], projection);
+                }
+            }
+            finally
+            {
+                ClearProjection();
             }
         }
 
         internal void Project(Record record, ReferenceFrame frame)
         {
-            Project(record, Capture(frame));
+            try
+            {
+                ProjectChain(record, Capture(frame));
+            }
+            finally
+            {
+                ClearProjection();
+            }
+        }
+
+        private void ClearProjection()
+        {
+            _projected.Clear();
+            _visiting.Clear();
+            _chain.Clear();
+        }
+
+        private void ProjectChain(Record record, ReferenceFrame.Projection projection)
+        {
+            _chain.Clear();
+            _visiting.Clear();
+            Record current = record;
+            while (CanProject(current) && !_projected.Contains(current) && _visiting.Add(current))
+            {
+                _chain.Add(current);
+                Spatial spatial = current.Ghost.GetComponent<Spatial>();
+                if (spatial == null || !spatial.enabled || !spatial.AttachedTo.HasValue
+                    || !_identities.TryGetValue(spatial.AttachedTo.Value, out current))
+                {
+                    break;
+                }
+            }
+
+            // Resolve ancestors first, independent of discovery order, without recursion for deep chains.
+            // A cycle has no projected ancestor: its members and descendants remain hidden until the cycle is broken.
+            for (int index = _chain.Count - 1; index >= 0 && !_realm.IsDisposed; index--)
+            {
+                Record item = _chain[index];
+                Project(item, projection);
+                _projected.Add(item);
+            }
         }
 
         private void Project(Record record, ReferenceFrame.Projection projection)
@@ -62,7 +112,21 @@ namespace Emas
             {
                 if (spatial != null && spatial.enabled)
                 {
-                    visible = spatial.ApplyProjection(projection);
+                    if (spatial.AttachedTo.HasValue)
+                    {
+                        Record parent;
+                        visible = _identities.TryGetValue(spatial.AttachedTo.Value, out parent)
+                            && CanProject(parent) && _projected.Contains(parent) && parent.SpatialVisible
+                            && spatial.ApplyAttachment(projection, parent.Ghost.transform);
+                        if (!visible)
+                        {
+                            spatial.SetInRange(false);
+                        }
+                    }
+                    else
+                    {
+                        visible = spatial.ApplyProjection(projection);
+                    }
                 }
                 else if (spatial != null)
                 {
@@ -108,7 +172,7 @@ namespace Emas
 
         private bool CanProject(Record record)
         {
-            return _identities.Contains(record) && record.Ghost != null && record.Owner != null
+            return !_realm.IsDisposed && _identities.Contains(record) && record.Ghost != null && record.Owner != null
                 && record.Owner.IsRegistration(_realm, record.RegistrationGeneration)
                 && (record.Ghost.IsAvailable || record.PendingActivation);
         }

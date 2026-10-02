@@ -45,7 +45,13 @@ namespace Emas.Editor
                         if (spatial != null)
                         {
                             InspectorLayout.ReadOnly("Shared position", spatial.HasPosition ? spatial.Position.ToString() : "Not received");
-                            InspectorLayout.ReadOnly("Spatial presentation", !spatial.enabled ? "Application controlled" : spatial.IsInRange ? "In range" : "Suppressed / awaiting position");
+                            if (spatial.AttachedTo.HasValue)
+                            {
+                                InspectorLayout.ReadOnly("Attached to", spatial.AttachedTo.Value.ToString());
+                            }
+                            InspectorLayout.ReadOnly("Spatial presentation", !spatial.enabled ? "Application controlled"
+                                : !spatial.IsInRange ? "Suppressed / awaiting pose or parent"
+                                : spatial.AttachedTo.HasValue ? "Attached" : "In range");
                         }
                     }
                 }
