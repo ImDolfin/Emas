@@ -400,7 +400,7 @@ namespace Emas
                 GhostInitializer initializer = setup.GetComponent<GhostInitializer>();
                 if (initializer != null && initializer.enabled)
                 {
-                    anchor.InitializeGhost = initializer.Apply;
+                    anchor.SetGhostInitializer(initializer);
                 }
                 if (setup.AutomaticViews)
                 {

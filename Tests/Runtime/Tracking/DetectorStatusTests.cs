@@ -30,7 +30,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Startup sees an active attachment; failure is retained after rollback and cleared before retry.
+        /// Startup and cleanup see their bound Anchor and Realm; failure clears attachment context after rollback and before retry.
         /// </summary>
         [Test]
         public void StartupFailure_RetainsPrimaryErrorAndClearsBeforeRetry()
@@ -40,22 +40,30 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("status");
             Assert.That(source.IsAttached, Is.False);
             Assert.That(source.IsActive, Is.False);
+            Assert.That(source.Anchor, Is.Null);
+            Assert.That(source.Realm, Is.Null);
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.LastErrorContext, Is.Null);
             source.Starting = () =>
             {
                 Assert.That(source.IsAttached && source.IsActive, Is.True);
+                Assert.That(source.Anchor, Is.SameAs(anchor));
+                Assert.That(source.Realm, Is.SameAs(_realm));
                 Assert.That(source.LastError, Is.Null);
                 Assert.That(source.LastErrorContext, Is.Null);
                 throw primary;
             };
             source.Stopping = () =>
             {
+                Assert.That(source.Anchor, Is.SameAs(anchor));
+                Assert.That(source.Realm, Is.SameAs(_realm));
                 throw new Exception("cleanup failure");
             };
             ExpectedErrors.Verify(() => Assert.That(Assert.Throws<InvalidOperationException>(() => anchor.AddDetector(source)), Is.SameAs(primary)), "cleanup failure");
             Assert.That(source.LastError, Is.SameAs(primary));
             Assert.That(source.IsAttached || source.IsActive, Is.False);
+            Assert.That(source.Anchor, Is.Null);
+            Assert.That(source.Realm, Is.Null);
             Assert.That(source.Stops, Is.EqualTo(1));
             source.Starting = () => Assert.That(source.LastError, Is.Null);
             source.Stopping = null;
@@ -66,6 +74,8 @@ namespace Emas.Tests
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.LastErrorContext, Is.Null);
             Assert.That(source.Stops, Is.EqualTo(2));
+            Assert.That(source.Anchor, Is.Null);
+            Assert.That(source.Realm, Is.Null);
         }
 
         /// <summary>

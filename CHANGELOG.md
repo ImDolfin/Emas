@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Expose public `Anchor` and `Realm` context on `GhostInitializer`, `PresenceDetector` and `PresenceDetectorComponent`. Bind before startup callbacks, retain the actual owner across scene reparenting, and clear on detachment or Anchor disposal. Keep initializer context across detector restart/replacement and use direct Anchor access in the car sample.
+
+- Expose `Realm.Ghosts` as a read-only membership snapshot for LINQ searches over entity IDs, types and modules. Include prepared, pending and retained unavailable roots so initialization can resolve already-created parents by partial ID; exclude removed or destroyed roots from new snapshots and return an empty list after disposal.
+
 - Expose `EntityModule.Ghost` for direct access to the module's root Ghost, including disabled modules and inactive roots before the first activation. Resolve and cache the same-GameObject component lazily, retry after a missing or destroyed owner, and demonstrate identity and sibling-component access in Relative World.
 
 - Name newly created Ghost root GameObjects by their entity ID, including prefab clones and plain roots, before application initialization. Keep display metadata independent and preserve root names during metadata updates and reuse. Support Unity name-based lookup and Anchor-scoped hierarchy access.

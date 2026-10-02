@@ -40,7 +40,7 @@ namespace Emas.Sample
         /// </summary>
         public void ReplaceCarSource()
         {
-            Anchor anchor = GetComponent<AnchorSetup>().Anchor;
+            Anchor anchor = Anchor;
             if (anchor == null || !Detector.IsAttached || IsUsingSecondSdk)
             {
                 return;

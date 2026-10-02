@@ -18,7 +18,15 @@ namespace Emas
         private readonly GameObject _gameObject;
         private bool _disposed;
 
-        internal Action<Presence, Ghost> InitializeGhost { get; set; }
+        private GhostInitializer _ghostInitializer;
+        internal Action<Presence, Ghost> InitializeGhost { get; private set; }
+
+        internal void SetGhostInitializer(GhostInitializer initializer)
+        {
+            _ghostInitializer = initializer;
+            InitializeGhost = initializer.Apply;
+            initializer.Bind(this);
+        }
 
         private struct SourceTick
         {
@@ -395,6 +403,14 @@ namespace Emas
                 sources[index].Detach();
 
                 Realm.RemoveSourceGhosts(sources[index]);
+            }
+
+            GhostInitializer initializer = _ghostInitializer;
+            _ghostInitializer = null;
+            InitializeGhost = null;
+            if (initializer != null)
+            {
+                initializer.Unbind(this);
             }
 
             if (_gameObject != null)

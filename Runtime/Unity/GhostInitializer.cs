@@ -14,10 +14,40 @@ namespace Emas
     [DisallowMultipleComponent]
     public abstract class GhostInitializer : MonoBehaviour
     {
+        /// <summary>Gets the Anchor using this initializer, or null while unbound.</summary>
+        /// <remarks>
+        /// Bound before detector startup and Initialize callbacks. Remains bound until that Anchor is disposed,
+        /// including across detector restart or replacement. Scene reparenting does not change the current owner.
+        /// </remarks>
+        public Anchor Anchor { get; private set; }
+
+        /// <summary>Gets the bound Anchor's Realm, or null while unbound.</summary>
+        public Realm Realm
+        {
+            get
+            {
+                return Anchor == null ? null : Anchor.Realm;
+            }
+        }
+
         /// <summary>Binds the detected source to existing Ghost modules before the Ghost becomes available.</summary>
         /// <param name="presence">The stable handle with detection metadata and the weak Source already assigned.</param>
         /// <param name="ghost">The initialized root with its authored module components.</param>
         protected abstract void Initialize(Presence presence, Ghost ghost);
+
+        internal void Bind(Anchor anchor)
+        {
+            Anchor = anchor;
+        }
+
+        internal void Unbind(Anchor anchor)
+        {
+            // Cleanup for an old lifetime must not clear a new binding established from a stop callback.
+            if (ReferenceEquals(Anchor, anchor))
+            {
+                Anchor = null;
+            }
+        }
 
         internal void Apply(Presence presence, Ghost ghost)
         {

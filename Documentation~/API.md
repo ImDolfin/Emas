@@ -12,6 +12,8 @@ Runtime APIs use the `Emas` namespace. All operations require Unity's main threa
 | `EntityModule<TData>.Bind(read)` / `Apply(data)` | Bind a value reader in the initializer; the Ghost component applies that value on realm updates |
 | `PresenceDetectorComponent` | Attach a scene detector using the same lifecycle as a plain detector |
 | `GhostInitializer.Initialize(presence, ghost)` | Bind configured modules for this Anchor before availability |
+| `GhostInitializer.Anchor` / `Realm` | Access this initializer's bound context, including during initialization |
+| `PresenceDetector.Anchor` / `Realm` and component equivalents | Access the detector's attached context from application code and lifecycle callbacks |
 | `IRealmConfigurator.ConfigureRealm(realm)` | Optional Realm-wide registration before scene detectors attach |
 | `IDetectorProvider.CreateDetector()` | Create one new or detached detector for a prefab anchor whenever it starts |
 | `RealmSetup.Realm` | Access the isolated, automatically updated realm while the setup is running |
@@ -21,6 +23,8 @@ Runtime APIs use the `Emas` namespace. All operations require Unity's main threa
 A detector identifies and labels arrivals and reports disappearances. The realm creates a stable Presence and its Ghost root, then runs the registered per-kind initializer to bind readers on the Ghost's configured modules. Register before any Ghost of that kind exists. For scenes, use a `GhostInitializer` beside the Anchor to supply local bindings. Modules belong on the Ghost prefab or in its `RequireComponent` declaration. Initialization runs again when the source object or capabilities change, after disappearance, and during source handover; bindings replace old readers without creating modules.
 
 Implement one small, application-specific `PresenceDetector` subclass for an SDK feed. Override `OnStart` to publish its initial state or subscribe, `OnUpdate` for any polling, and `OnStop` to release subscriptions. Pass the application-owned SDK client into its constructor. `OnStop` runs once per started attachment, including startup failure; it must be able to clean up partially initialized subscriptions. Do not dispose a shared SDK client there.
+
+`GhostInitializer`, `PresenceDetector` and `PresenceDetectorComponent` expose public `Anchor` and `Realm` properties. Inside their callbacks, use `Anchor.Id`, `Anchor.RestartDetector(...)` or `Realm.Ghosts` directly. Detector context is set before `OnStart`, remains available through `OnStop`, and clears on detachment. An attached detector that has stopped after an update or restart failure retains its context for retry. The selected initializer is bound before detectors start and remains bound for that Anchor's lifetime, including detector restarts and replacements; Anchor disposal clears it after detector cleanup. Both properties return null while unbound. Moving a live scene object under another Realm Setup preserves its current attachment until it is detached and reattached.
 
 Call protected `Detect(id, kind, name, variant, capabilities, source)` to announce identity and metadata. The optional capability list contains interface `Type` values: null preserves previous capabilities, while an empty collection clears them. Capabilities describe the SDK entity; the initializer decides which configured modules to bind or enable. The detector does not carry SDK data updates.
 
@@ -56,6 +60,7 @@ Assign blueprints on Realm Setup, at most one per Kind, shared by all its Anchor
 | Operation | Contract |
 | --- | --- |
 | `Realm.Anchors` / `Anchor.Detectors` | Copied, read-only membership snapshots; earlier snapshots stay unchanged and disposed owners return empty snapshots |
+| `Realm.Ghosts` | Copied, read-only snapshot of all live tracked roots, including prepared and unavailable Ghosts; supports LINQ |
 | `Realm.RegisterPresenceInitializer<TGhost>(kind, initialize)` | Register a root type and input bindings before a Ghost of this kind exists |
 | `Realm.RegisterManifestationBlueprint(blueprint)` | Register or replace the blueprint for a Kind across every anchor in this realm |
 | `GetOrCreateAnchor(id, params PresenceDetector[] sources)` | Create or reuse an anchor and attach supplied detectors; overload accepts a parent `Transform` |
@@ -77,6 +82,7 @@ Detector failure or removal deletes its population immediately and discards its 
 | Member | Use |
 | --- | --- |
 | `PresenceDetector.IsAttached` / `IsActive` | Check whether an anchor owns the detector and whether its current registration accepts updates |
+| `PresenceDetector.Anchor` / `Realm` | Current attached context; null after detachment |
 | `PresenceDetector.Name` | Label the detector for diagnostics; it does not name its individual entities |
 | `PresenceDetector.LastError` / `LastErrorContext` | Read the first error and its anchor, detector and operation context from the latest attachment |
 | `PresenceDetector.OnStart` / `OnUpdate` / `OnStop` | Implement a custom SDK subscription or polling lifecycle |
@@ -179,7 +185,28 @@ Before the first position, while an explicitly assigned reference is uninitializ
 
 Use `TryGetGhost` when the full `Key` is known. It reads the realm registry without creating, activating or updating anything. Check `ghost.IsAvailable` before consuming its data; a found ghost may be prepared or awaiting publication during startup handover. Keys are case-sensitive and resolved only within the receiving realm. Removal stops lookup immediately, even before Unity finishes destroying the object.
 
+Use `realm.Ghosts` for list-style searches by partial entity ID, root type or module data. The read-only snapshot includes all live tracked roots in that realm: prepared entities, entities awaiting activation and entities retained during disappearance grace or handover. It is available inside an initializer for roots created so far. Each access takes a fresh membership snapshot; earlier lists retain their membership, while their Unity components remain subject to removal and destruction. New snapshots exclude removed or destroyed roots, and disposed realms return an empty list. No ordering is guaranteed. Use `System.Linq` to filter it:
+
+```csharp
+using System.Linq;
+
+// Inside GhostInitializer.Initialize; select a parent already created on this Anchor.
+IGhost parent = Realm.Ghosts.SingleOrDefault(candidate =>
+    candidate.Key.AnchorId == Anchor.Id
+    && candidate.Key.Kind == new Kind("vehicles.aircraft")
+    && candidate.Key.EntityId.Contains("aircraft-main-"));
+
+if (parent != null)
+{
+    ghost.GetRequired<Spatial>().Attach(parent.Key, new Vector3(0f, -0.1f, 0f));
+}
+```
+
+`Contains` in this example performs a case-sensitive entity-ID substring match; `IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0` opts into case-insensitive matching. `SingleOrDefault` returns null for no match and rejects multiple matches, so scope the search by Anchor, Kind or another distinguishing property. `Where(...).ToList()` collects every match, and `OfType<MyGhost>()` selects a concrete Ghost subtype. Check `IsAvailable` before consuming source data. A parent discovered after the initializer cannot appear in the earlier snapshot; retry against a fresh `Ghosts` snapshot from your module or use a query subscription for later available parents. Once an attachment has a complete parent Key, `Spatial.Attach` handles parent availability and rediscovery.
+
 Queries are immutable and combine all filters. They never create ghosts or components. `realm.Query()` searches one realm; `Query.All()` searches every live realm, including `Realm.Default`, realms created by code, and prefab-configured realms. An all-realm query also sees realms created after the query or subscription. Disposing a realm removes its matches. `realm.Query(Query.All().OfKind(kind))` applies that description to just `realm`.
+
+Queries also implement `IEnumerable<IGhost>` and support LINQ, such as `realm.Query().Where(ghost => ghost.Key.EntityId.Contains("aircraft-main-"))`. They continue to return only available roots. LINQ returns ordinary enumerable results; query subscription methods belong to the Emas `Query` description before applying LINQ.
 
 | Filter/result | Meaning |
 | --- | --- |

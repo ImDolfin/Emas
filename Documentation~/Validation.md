@@ -31,10 +31,10 @@ Each test has a consumer-facing purpose documented in its XML summary. Tests use
 | Area | Purpose |
 | --- | --- |
 | Entities | Typed identity and appearance values, root contracts, module-to-Ghost access while inactive or disabled, immutable module membership snapshots with component additions/removals, and double-precision coordinate behavior. |
-| Tracking | Detector ownership and status, SDK data application, identity reuse, entity-ID root naming and Unity lookup, cleanup, explicit dispatch, restart, inactivity and disappearance grace. |
+| Tracking | Detector ownership and status, SDK data application, identity reuse, partial-ID LINQ searches over pending roots during initialization, read-only root snapshots across removal/disposal, entity-ID root naming and Unity lookup, cleanup, explicit dispatch, restart, inactivity and disappearance grace. |
 | Queries | Filtering and lookups, paired arrival/departure notifications, and subscriptions across live realms. |
 | Views | Blueprint selection, reference-frame projection, independent spatial channels, geographic yaw/pitch/roll with preserved separation, late-parent attachment chains and recovery, detach handoff, input failures and presentation availability. |
-| Unity setup | Isolated/nested realm ownership, configuration timing, reparenting and automatic lifecycle updates. |
+| Unity setup | Isolated/nested realm ownership, initializer and detector Anchor/Realm context before startup and through cleanup, restart, direct disposal, reparenting and automatic lifecycle updates. |
 | Editor authoring | Serialized configuration errors, shared realm blueprint mappings, reference selection and visible Ghost fields. |
 | Samples | Three runnable sample scenes and required consistency between package samples and their imported copies. |
 

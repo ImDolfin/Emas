@@ -91,7 +91,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Moving a live anchor preserves its attachment until disabled; re-enabling attaches it to the new parent realm.
+        /// Moving a live anchor preserves detector and initializer context until disabled; re-enabling binds both to the new realm.
         /// </summary>
         [Test]
         public void ReparentedAnchor_ReenableTransfersOwnership()
@@ -100,25 +100,47 @@ namespace Emas.Tests
             RealmSetup second = CreateRealm("next realm");
             TestProvider provider = CreateAnchor(first, () => new PublishingDetector());
             AnchorSetup anchorSetup = provider.GetComponent<AnchorSetup>();
+            ContextInitializer initializer = provider.gameObject.AddComponent<ContextInitializer>();
+            Assert.That(initializer.Anchor, Is.Null);
+            Assert.That(initializer.Realm, Is.Null);
             first.gameObject.SetActive(true);
             first.StartRealm();
             Anchor original = anchorSetup.Anchor;
+            PresenceDetector originalDetector = original.Detectors[0];
+            Assert.That(initializer.Anchor, Is.SameAs(original));
+            Assert.That(initializer.Realm, Is.SameAs(first.Realm));
             second.gameObject.SetActive(true);
             provider.transform.SetParent(second.transform, false);
             second.StartRealm();
 
             Assert.That(anchorSetup.Anchor, Is.SameAs(original));
+            Assert.That(initializer.Anchor, Is.SameAs(original));
+            Assert.That(initializer.Realm, Is.SameAs(first.Realm));
+            Assert.That(originalDetector.Anchor, Is.SameAs(original));
+            Assert.That(originalDetector.Realm, Is.SameAs(first.Realm));
             Assert.That(first.Realm.Query().Count, Is.EqualTo(1));
             Assert.That(second.Realm.Query().Count, Is.Zero);
 
             anchorSetup.enabled = false;
             Assert.That(anchorSetup.Anchor, Is.Null);
+            Assert.That(initializer.Anchor, Is.Null);
+            Assert.That(initializer.Realm, Is.Null);
+            Assert.That(originalDetector.Anchor, Is.Null);
+            Assert.That(originalDetector.Realm, Is.Null);
             Assert.That(first.Realm.Anchors, Is.Empty);
             Assert.That(first.Realm.Query().Count, Is.Zero);
             anchorSetup.enabled = true;
             Assert.That(anchorSetup.Anchor.Realm, Is.SameAs(second.Realm));
+            Assert.That(initializer.Anchor, Is.SameAs(anchorSetup.Anchor));
+            Assert.That(initializer.Realm, Is.SameAs(second.Realm));
+            Assert.That(anchorSetup.Anchor.Detectors[0].Anchor, Is.SameAs(anchorSetup.Anchor));
+            Assert.That(anchorSetup.Anchor.Detectors[0].Realm, Is.SameAs(second.Realm));
             first.StopRealm();
             Assert.That(second.Realm.Query().Count, Is.EqualTo(1));
+            Assert.That(initializer.Realm, Is.SameAs(second.Realm));
+            second.StopRealm();
+            Assert.That(initializer.Anchor, Is.Null);
+            Assert.That(initializer.Realm, Is.Null);
         }
 
         /// <summary>
@@ -282,6 +304,13 @@ namespace Emas.Tests
 
                 Detect(id, TestKind);
                 _previousId = id;
+            }
+        }
+
+        private sealed class ContextInitializer : GhostInitializer
+        {
+            protected override void Initialize(Presence presence, Ghost ghost)
+            {
             }
         }
 

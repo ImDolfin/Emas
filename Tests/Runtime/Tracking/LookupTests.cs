@@ -1,9 +1,13 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Emas.Tests
 {
     /// <summary>
-    /// Verifies exact identity lookup independently of query availability.
+    /// Verifies exact identity lookup and searchable root membership independently of query availability.
     /// </summary>
     public sealed class LookupTests
     {
@@ -85,6 +89,56 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// An initializer can find a pending attachment parent by partial ID through a read-only membership snapshot.
+        /// Snapshot enumeration stays stable across discovery, removal and disposal while new reads exclude removed or destroyed roots.
+        /// </summary>
+        [Test]
+        public void Ghosts_LinqSearchFindsPendingParentDuringInitialization()
+        {
+            Probe source = new Probe();
+            _realm.GetOrCreateAnchor("anchor", source);
+            TestGhost parent = source.Publish("vehicle-main-123");
+            _realm.GetOrCreateAnchor("other");
+            TestGhost otherAnchor = _realm.Prepare<TestGhost>("other", Kind, "vehicle-main-456");
+            _realm.Prepare<TestGhost>("anchor", Kind, "vehicle-spare-789");
+            IReadOnlyList<IGhost> original = _realm.Ghosts;
+            Assert.That(original.Count, Is.EqualTo(3));
+            Assert.Throws<NotSupportedException>(() => ((IList<IGhost>)original).Clear());
+
+            Kind partKind = new Kind("lookup.part");
+            Vector3 offset = new Vector3(1, 2, 3);
+            _realm.RegisterPresenceInitializer<AttachedGhost>(partKind, (presence, root) =>
+            {
+                IGhost found = _realm.Ghosts.SingleOrDefault(ghost =>
+                    ghost.Key.AnchorId == presence.Key.AnchorId
+                    && ghost.Key.Kind == Kind
+                    && ghost.Key.EntityId.Contains("vehicle-main-"));
+                Assert.That(found, Is.SameAs(parent));
+                Assert.That(found.IsAvailable, Is.False);
+                Assert.That(_realm.Query().Count, Is.Zero);
+                Assert.That(_realm.Ghosts.OfType<AttachedGhost>().Single(), Is.SameAs(root));
+                root.GetRequired<Spatial>().Attach(found.Key, offset);
+            });
+            Presence part = source.PublishMetadata("part-1", partKind);
+            _realm.Update();
+            Assert.That(part.Root.GetRequired<Spatial>().AttachedTo, Is.EqualTo(parent.Key));
+            Assert.That(part.Root.transform.position, Is.EqualTo(offset));
+            Assert.That(_realm.Ghosts.Count, Is.EqualTo(4));
+            Assert.That(original.Count, Is.EqualTo(3));
+
+            source.Delete("vehicle-main-123");
+            Assert.That(_realm.Ghosts.Contains(parent), Is.False);
+            Assert.That(original.Contains(parent), Is.True);
+            UnityEngine.Object.DestroyImmediate(otherAnchor.gameObject);
+            Assert.That(_realm.Ghosts.Contains(otherAnchor), Is.False);
+            Assert.That(_realm.Ghosts.Count, Is.EqualTo(2));
+
+            _realm.Dispose();
+            Assert.That(_realm.Ghosts, Is.Empty);
+            Assert.That(original.Count, Is.EqualTo(3));
+        }
+
+        /// <summary>
         /// Explicit disappearance removes an identity from public lookup before Unity destroys its object.
         /// </summary>
         [Test]
@@ -133,10 +187,17 @@ namespace Emas.Tests
                 Assert.That(found, Is.SameAs(first));
                 Assert.That(other.TryGetGhost(first.Key, out found), Is.True);
                 Assert.That(found, Is.SameAs(second));
+                Assert.That(_realm.Ghosts, Is.EqualTo(new IGhost[] { first }));
+                Assert.That(other.Ghosts, Is.EqualTo(new IGhost[] { second }));
             }
         }
 
         private sealed class TestGhost : Ghost
+        {
+        }
+
+        [RequireComponent(typeof(Spatial))]
+        private sealed class AttachedGhost : Ghost
         {
         }
 
@@ -145,6 +206,11 @@ namespace Emas.Tests
             internal TestGhost Publish(string id, Kind? kind = null)
             {
                 return GetOrCreate<TestGhost>(id, kind ?? Kind, null, "Shared name");
+            }
+
+            internal Presence PublishMetadata(string id, Kind kind)
+            {
+                return Detect(id, kind, name: "Shared name");
             }
 
             internal void Delete(string id)

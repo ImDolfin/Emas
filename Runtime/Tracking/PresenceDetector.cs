@@ -31,11 +31,21 @@ namespace Emas
         /// <value>
         /// The attached anchor, or null while detached.
         /// </value>
-        protected Anchor Anchor
+        public Anchor Anchor
         {
             get
             {
                 return _anchor;
+            }
+        }
+
+        /// <summary>Gets the attached Anchor's Realm, or null while detached.</summary>
+        /// <remarks>Available before OnStart and through OnStop, including while an attached registration is stopped after failure.</remarks>
+        public Realm Realm
+        {
+            get
+            {
+                return _anchor == null ? null : _anchor.Realm;
             }
         }
 

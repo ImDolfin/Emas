@@ -57,10 +57,14 @@ namespace Emas.Tests
             _objects.Clear();
         }
 
-        /// <summary>Local mapping precedes availability, reads updated values, and reconnects the same root to a new source.</summary>
+        /// <summary>Local mapping sees bound Anchor/Realm context before availability, reads updated values, and reconnects the same root to a new source.</summary>
         [Test]
         public void Initializer_BindsAuthoredModulesAndRebindsSource()
         {
+            Assert.That(_initializer.Anchor, Is.Null);
+            Assert.That(_initializer.Realm, Is.Null);
+            Assert.That(_source.Anchor, Is.Null);
+            Assert.That(_source.Realm, Is.Null);
             string observed = null;
             using (_setup.Realm.Query().OnAvailable(ghost => observed = ((Ghost)ghost).GetComponent<TextModule>().Value))
             {
@@ -68,6 +72,11 @@ namespace Emas.Tests
                 _setup.Realm.Update();
             }
             Assert.That(observed, Is.EqualTo("first"));
+            Assert.That(_initializer.Anchor, Is.SameAs(_source.Anchor));
+            Assert.That(_initializer.Realm, Is.SameAs(_setup.Realm));
+            Assert.That(_source.Realm, Is.SameAs(_setup.Realm));
+            Assert.That(_source.Detector.Anchor, Is.SameAs(_source.Anchor));
+            Assert.That(_source.Detector.Realm, Is.SameAs(_setup.Realm));
             Presence presence = _source.Current;
             TextModule module = presence.Root.GetComponent<TextModule>();
             _source.BeforeRead = () => _source.Source.Value = "updated";
@@ -99,13 +108,19 @@ namespace Emas.Tests
             Assert.That(_source.Current.Root.GetComponent<TextModule>().Value, Is.EqualTo("first"));
 
             _source.gameObject.SetActive(false);
+            Assert.That(_initializer.Anchor, Is.Null);
+            Assert.That(_initializer.Realm, Is.Null);
+            Assert.That(_source.Anchor, Is.Null);
+            Assert.That(_source.Realm, Is.Null);
             _initializer.enabled = false;
             _source.gameObject.SetActive(true);
             Assert.That(_source.Current.Root.GetComponent<TextModule>().Value, Is.EqualTo("realm mapping"));
             Assert.That(_initializer.Calls, Is.EqualTo(1));
+            Assert.That(_initializer.Anchor, Is.Null);
+            Assert.That(_initializer.Realm, Is.Null);
         }
 
-        /// <summary>Restart reuses identities and rejects old callbacks while current deferred work still runs.</summary>
+        /// <summary>Restart retains bound context and identities; direct Anchor disposal releases initializer and detector context.</summary>
         [Test]
         public void Restart_UsesTheExistingDetectorLifecycle()
         {
@@ -125,7 +140,14 @@ namespace Emas.Tests
             Assert.That(_source.Starts, Is.EqualTo(2));
             Assert.That(_source.Stops, Is.EqualTo(1));
             Assert.That(_source.OwnedCount, Is.EqualTo(1));
-            Assert.That(_source.Host, Is.SameAs(_source.GetComponent<AnchorSetup>().Anchor));
+            Assert.That(_source.Anchor, Is.SameAs(_source.GetComponent<AnchorSetup>().Anchor));
+            Assert.That(_initializer.Anchor, Is.SameAs(_source.Anchor));
+            Assert.That(_initializer.Realm, Is.SameAs(_setup.Realm));
+            _source.Anchor.Dispose();
+            Assert.That(_source.Anchor, Is.Null);
+            Assert.That(_source.Realm, Is.Null);
+            Assert.That(_initializer.Anchor, Is.Null);
+            Assert.That(_initializer.Realm, Is.Null);
         }
 
         /// <summary>A disabled detector opts out of scene startup; enable, disable and destruction own its attachment.</summary>
@@ -213,10 +235,11 @@ namespace Emas.Tests
             internal int Starts;
             internal int Stops;
             internal int OwnedCount { get { return OwnedPresences.Count; } }
-            internal Anchor Host { get { return Anchor; } }
 
             protected override void OnStart()
             {
+                Assert.That(Anchor, Is.Not.Null);
+                Assert.That(Realm, Is.SameAs(Anchor.Realm));
                 Starts++;
                 Captured = CaptureDispatcher();
                 Publish();
@@ -227,6 +250,8 @@ namespace Emas.Tests
             }
             protected override void OnStop()
             {
+                Assert.That(Anchor, Is.Not.Null);
+                Assert.That(Realm, Is.SameAs(Anchor.Realm));
                 Stops++;
             }
             internal void Publish()
@@ -250,6 +275,10 @@ namespace Emas.Tests
 
             protected override void Initialize(Presence presence, Ghost ghost)
             {
+                Assert.That(Anchor, Is.Not.Null);
+                Assert.That(Realm, Is.SameAs(Anchor.Realm));
+                Assert.That(Anchor.Id, Is.EqualTo(presence.Key.AnchorId));
+                Assert.That(Realm.Ghosts, Does.Contain(ghost));
                 Calls++;
                 if (Fail)
                 {

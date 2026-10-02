@@ -23,7 +23,11 @@ namespace Emas
         }
 
         /// <summary>Gets the attached Anchor, or null while detached.</summary>
-        protected Anchor Anchor { get { return Bridge.Host; } }
+        public Anchor Anchor { get { return Bridge.Anchor; } }
+
+        /// <summary>Gets the attached Anchor's Realm, or null while detached.</summary>
+        /// <remarks>Available before OnStart and through OnStop; scene reparenting retains the current attachment until reattachment.</remarks>
+        public Realm Realm { get { return Bridge.Realm; } }
 
         /// <summary>Gets a snapshot of owned presences, including unavailable ones.</summary>
         protected IReadOnlyList<Presence> OwnedPresences { get { return Bridge.Presences; } }
@@ -117,7 +121,6 @@ namespace Emas
                 _owner = owner;
             }
 
-            internal Anchor Host { get { return Anchor; } }
             internal IReadOnlyList<Presence> Presences { get { return OwnedPresences; } }
             protected override void OnStart()
             {

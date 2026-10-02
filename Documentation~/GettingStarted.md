@@ -78,6 +78,18 @@ Section descriptions live in tooltips. Configuration errors remain visible.
 
 Ghost root GameObjects are named by their entity ID, including prefab instances. You can find an active root through Unity, for example `GameObject.Find("one")`, or use `anchor.Transform.Find("one")` to scope lookup to one Anchor and include inactive roots. Display names remain separate metadata. IDs can repeat across Kinds, Anchors and Realms; use the full Emas `Key` for an unambiguous identity lookup.
 
+For a partial entity ID, use `realm.Ghosts` with LINQ. It contains all live tracked roots, including prepared and pending entities during initialization. Inside `GhostInitializer.Initialize`, the bound `Realm` and `Anchor` are directly accessible:
+
+```csharp
+using System.Linq;
+
+IGhost parent = Realm.Ghosts.SingleOrDefault(ghost =>
+    ghost.Key.AnchorId == Anchor.Id
+    && ghost.Key.EntityId.Contains("parent-"));
+```
+
+`SingleOrDefault` returns null when no root matches and throws when the search is ambiguous. `Where(...).ToList()` returns all matches. Each `Ghosts` access creates a read-only membership snapshot; later discoveries require a fresh read. Check `IsAvailable` before consuming a root's source data. Existing queries also support LINQ but include only available Ghosts.
+
 A query can find available Ghost roots across all live realms, including realms created later:
 
 ```csharp
@@ -108,6 +120,8 @@ For root interfaces, paired query arrivals and departures, and detector replacem
 ## Implement your SDK detector
 
 For scenes, subclass `PresenceDetectorComponent` and attach it beside Anchor Setup. For code and tests, subclass the plain C# `PresenceDetector` and inject the SDK through its constructor. Both use the same lifecycle hooks:
+
+Both detector types expose public `Anchor` and `Realm` properties, bound before `OnStart` and available through `OnStop`. A `GhostInitializer` has the same direct access before `Initialize` runs and keeps it throughout the Anchor's lifetime, including detector replacement. These properties return null while detached or unbound. Reparenting an attached scene object preserves its bound context until reattachment.
 
 | Override | Responsibility |
 | --- | --- |

@@ -47,6 +47,39 @@ namespace Emas
             }
         }
 
+        /// <summary>
+        /// Gets a copied, read-only snapshot of all live tracked Ghost roots in this realm, including unavailable ones.
+        /// </summary>
+        /// <remarks>
+        /// Includes prepared roots, roots awaiting activation and roots retained during disappearance grace or handover.
+        /// Available during application initialization for roots created so far; entities discovered later require a fresh snapshot.
+        /// Supports LINQ over identity, root type and component contracts. Check IsAvailable before consuming source data.
+        /// Earlier snapshots retain their membership; referenced Unity components keep their own lifetimes and may be destroyed.
+        /// Removed or destroyed roots are excluded from new snapshots. Disposed realms return an empty snapshot.
+        /// Read on Unity's main thread. No ordering is guaranteed.
+        /// </remarks>
+        public IReadOnlyList<IGhost> Ghosts
+        {
+            get
+            {
+                if (_disposed)
+                {
+                    return Array.AsReadOnly(Array.Empty<IGhost>());
+                }
+
+                List<IGhost> result = new List<IGhost>();
+                foreach (Record record in _identities.Values)
+                {
+                    if (record.Ghost != null)
+                    {
+                        result.Add(record.Ghost);
+                    }
+                }
+
+                return result.AsReadOnly();
+            }
+        }
+
         private readonly Dictionary<string, Anchor> _anchors = new Dictionary<string, Anchor>();
         private readonly IdentityMap _identities = new IdentityMap();
         private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
