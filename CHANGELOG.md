@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Make `Ghost.GetRequired<T>()` failures distinguish missing and duplicate root components, with entity identity, root GameObject, concrete component types, assemblies and instance IDs. Direct missing-component errors to the Kind's Manifestation Blueprint and its Ghost Prefab field, explain missing blueprint/prefab assignments and root-only lookup, and avoid suggesting both failure causes at once.
+
 - Expose public `Anchor` and `Realm` context on `GhostInitializer`, `PresenceDetector` and `PresenceDetectorComponent`. Bind before startup callbacks, retain the actual owner across scene reparenting, and clear on detachment or Anchor disposal. Keep initializer context across detector restart/replacement and use direct Anchor access in the car sample.
 
 - Expose `Realm.Ghosts` as a read-only membership snapshot for LINQ searches over entity IDs, types and modules. Include prepared, pending and retained unavailable roots so initialization can resolve already-created parents by partial ID; exclude removed or destroyed roots from new snapshots and return an empty list after disposal.

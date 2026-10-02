@@ -13,7 +13,7 @@ namespace Emas.Tests
     public sealed class GhostTests
     {
         /// <summary>
-        /// Lookup refuses an ambiguous contract and resolves the remaining provider after a component is removed.
+        /// Lookup refuses an ambiguous contract, required access identifies both matching components, and removal resolves the remaining provider.
         /// This prevents prefab composition from silently selecting the wrong application component.
         /// </summary>
         [Test]
@@ -31,6 +31,10 @@ namespace Emas.Tests
                 LogAssert.Expect(LogType.Error, new Regex(Regex.Escape(ghost.Key.ToString()) + ".*" + Regex.Escape(typeof(IPart).FullName)));
                 Assert.That(ghost.TryGet<IPart>(out IPart part), Is.False);
                 Assert.That(part, Is.Null);
+                InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ghost.GetRequired<IPart>());
+                Assert.That(error.Message, Does.Contain("found 2 matching root components")
+                    .And.Contain(typeof(FirstPart).FullName).And.Contain(typeof(SecondPart).FullName)
+                    .And.Contain("instance " + first.GetInstanceID()).And.Contain("instance " + second.GetInstanceID()));
 
                 UnityEngine.Object.DestroyImmediate(second);
                 Assert.That(ghost.TryGet<IPart>(out part), Is.True);
@@ -39,8 +43,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Required lookup identifies a missing contract by ghost key, then returns the newly attached provider.
-        /// Consumers can use the same contract access without knowing the concrete ghost type.
+        /// Required lookup searches the Ghost root, directs missing composition to the Kind's blueprint and Ghost Prefab field, and resolves a disabled root provider.
         /// </summary>
         [Test]
         public void GetRequired_ReturnsProviderOrIdentifiesMissingContract()
@@ -48,14 +51,24 @@ namespace Emas.Tests
             using (Realm realm = new Realm())
             {
                 Probe source = new Probe();
-                realm.GetOrCreateAnchor("simulation", source);
+                Anchor anchor = realm.GetOrCreateAnchor("simulation", source);
+                anchor.Transform.gameObject.AddComponent<FirstPart>();
                 Ghost concrete = source.Publish("43");
+                GameObject child = new GameObject("child provider");
+                child.transform.SetParent(concrete.transform, false);
+                child.AddComponent<FirstPart>();
                 realm.Update();
                 IGhost ghost = concrete;
                 InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ghost.GetRequired<IPart>());
-                Assert.That(error.Message, Does.Contain(ghost.Key.ToString()).And.Contain(typeof(IPart).FullName));
+                Assert.That(error.Message, Does.Contain(ghost.Key.ToString()).And.Contain(typeof(IPart).FullName)
+                    .And.Contain("[" + typeof(IPart).Assembly.GetName().Name + "]")
+                    .And.Contain("found 0 matching root components").And.Contain("GameObject '43'")
+                    .And.Contain(typeof(Ghost).FullName).And.Contain("Manifestation Blueprint for Kind 'vehicles.car'")
+                    .And.Contain("Ghost Prefab field").And.Contain("Ghost Prefab is unassigned")
+                    .And.Contain("Anchor, parents, children or views"));
 
                 FirstPart first = concrete.gameObject.AddComponent<FirstPart>();
+                first.enabled = false;
                 Assert.That(ghost.GetRequired<IPart>(), Is.SameAs(first));
             }
         }
