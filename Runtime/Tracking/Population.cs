@@ -206,7 +206,7 @@ namespace Emas
             {
                 if (prefab == null)
                 {
-                    GameObject gameObject = new GameObject("[Ghost] " + entityId);
+                    GameObject gameObject = new GameObject(entityId);
                     gameObject.transform.SetParent(staging.transform, false);
                     typed = gameObject.AddComponent<TGhost>();
                 }
@@ -220,6 +220,7 @@ namespace Emas
                     }
                 }
 
+                typed.gameObject.name = entityId;
                 typed.gameObject.SetActive(false);
                 typed.Initialize(key, nameValue ?? entityId, variant ?? Variant.None);
                 typed.transform.SetParent(anchorTransform, false);

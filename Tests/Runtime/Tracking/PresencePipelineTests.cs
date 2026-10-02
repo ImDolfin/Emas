@@ -462,7 +462,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A metadata-only report needs neither a blueprint nor an initializer.
+        /// A metadata-only report needs neither a blueprint nor an initializer and names its root by entity ID.
         /// </summary>
         [Test]
         public void MetadataOnlyDetection_UsesPlainViewlessGhost()
@@ -471,6 +471,7 @@ namespace Emas.Tests
             _realm.GetOrCreateAnchor("sdk", detector);
             Presence presence = detector.PublishMetadata("silent", "Silent object");
             Assert.That(presence.Root, Is.TypeOf<Ghost>());
+            Assert.That(presence.Root.gameObject.name, Is.EqualTo("silent"));
             Assert.That(presence.Name, Is.EqualTo("Silent object"));
             Assert.That(presence.HasCapability<IPositionCapability>(), Is.False);
             Assert.That(presence.Root.GetComponents<EntityModule>(), Is.Empty);
@@ -482,7 +483,8 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Plain Ghost prefabs bind reusable modules and project after all readers update the followed reference.
+        /// Plain Ghost prefabs bind reusable modules, project after all readers update the followed reference,
+        /// and name roots by entity ID before initialization so Unity can find them once activated.
         /// </summary>
         [Test]
         public void PlainGhostPrefab_ComposesModulesBeforeRelativePlacement()
@@ -499,22 +501,25 @@ namespace Emas.Tests
                 _realm.RegisterManifestationBlueprint(blueprint);
                 _realm.RegisterPresenceInitializer<Ghost>(TrackedKind, (presence, root) =>
                 {
+                    Assert.That(root.gameObject.name, Is.EqualTo(presence.Key.EntityId));
                     root.GetComponent<PipelinePositionModule>().Bind(() => ((Reading)presence.Source).Position);
                 });
                 _realm.ReferenceFrame = new ReferenceFrame
                 {
-                    FollowedGhost = new Key("sdk", TrackedKind, "origin")
+                    FollowedGhost = new Key("sdk", TrackedKind, "named-prefab-origin")
                 };
                 Detector detector = new Detector();
                 _realm.GetOrCreateAnchor("sdk", detector);
                 Reading targetData = new Reading(new Double3(1010, 0, 0), 0);
                 Reading originData = new Reading(new Double3(1000, 0, 0), 0);
-                Presence target = detector.Arrive("target", targetData);
-                Presence origin = detector.Arrive("origin", originData);
+                Presence target = detector.Arrive("named-prefab-target", targetData);
+                Presence origin = detector.Arrive("named-prefab-origin", originData);
                 _realm.Update();
 
                 Assert.That(target.Root, Is.TypeOf<Ghost>());
                 Assert.That(target.Root, Is.Not.SameAs(prefabGhost));
+                Assert.That(GameObject.Find("named-prefab-target"), Is.SameAs(target.Root.gameObject));
+                Assert.That(GameObject.Find("named-prefab-origin"), Is.SameAs(origin.Root.gameObject));
                 Assert.That(target.Root.GetRequired<Spatial>().Position, Is.EqualTo(targetData.Position));
                 Assert.That(target.Root.transform.position, Is.EqualTo(new Vector3(10, 0, 0)));
                 Assert.That(origin.Root.transform.position, Is.EqualTo(Vector3.zero));

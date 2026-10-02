@@ -74,6 +74,8 @@ Section descriptions live in tooltips. Configuration errors remain visible.
 
 ### Find and manifest a presence
 
+Ghost root GameObjects are named by their entity ID, including prefab instances. You can find an active root through Unity, for example `GameObject.Find("one")`, or use `anchor.Transform.Find("one")` to scope lookup to one Anchor and include inactive roots. Display names remain separate metadata. IDs can repeat across Kinds, Anchors and Realms; use the full Emas `Key` for an unambiguous identity lookup.
+
 A query can find available Ghost roots across all live realms, including realms created later:
 
 ```csharp

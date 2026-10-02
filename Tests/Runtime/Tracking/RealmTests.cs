@@ -233,7 +233,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Sets a named display value without changing the typed appearance.
+        /// Updates display metadata without changing the typed appearance or the root's entity-ID name.
         /// </summary>
         [Test]
         public void NamedPublication_CanRetainVariantWhenOmitted()
@@ -241,10 +241,12 @@ namespace Emas.Tests
             Kind kind = new Kind("vehicles.car");
             TestSource source = new TestSource(kind);
             _realm.GetOrCreateAnchor("simulation", source);
-            source.PublishNamed("42", "Car 42", new Variant("small-car"));
-            source.PublishNamed("42", "Car 42 updated", null);
+            TestGhost root = source.PublishNamed("42", "Car 42", new Variant("small-car"));
+            Assert.That(root.gameObject.name, Is.EqualTo("42"));
+            Assert.That(source.PublishNamed("42", "Car 42 updated", null), Is.SameAs(root));
             _realm.Update();
 
+            Assert.That(root.gameObject.name, Is.EqualTo("42"));
             Assert.That(_realm.Query().WithVariant(new Variant("small-car")).Count, Is.EqualTo(1));
             Assert.That(_realm.Query().WithExactName("Car 42 updated").Count, Is.EqualTo(1));
         }
@@ -314,27 +316,32 @@ namespace Emas.Tests
                 nextView.SetActive(false);
                 firstRoot.SetActive(false);
                 nextRoot.SetActive(false);
+                firstRoot.AddComponent<ExtraPart>();
                 blueprint.Configure(kind, firstRoot.AddComponent<TestGhost>(), null, firstView);
                 _realm.RegisterManifestationBlueprint(blueprint);
                 TestSource firstSource = new TestSource(kind);
                 TestSource secondSource = new TestSource(kind);
                 Anchor firstAnchor = _realm.GetOrCreateAnchor("first", firstSource);
-                _realm.GetOrCreateAnchor("second", secondSource);
+                Anchor secondAnchor = _realm.GetOrCreateAnchor("second", secondSource);
                 TestGhost first = firstSource.Publish("one", Variant.None);
                 TestGhost second = secondSource.Publish("one", Variant.None);
                 _realm.Update();
                 foreach (TestGhost ghost in new[] { first, second })
                 {
-                    Assert.That(ghost.gameObject.name, Does.StartWith("first root"));
+                    Assert.That(ghost.gameObject.name, Is.EqualTo("one"));
+                    Assert.That(ghost.TryGet<IExtraPart>(out IExtraPart part), Is.True);
                     Assert.That(_realm.Manifest(ghost).gameObject.name, Is.EqualTo("first view"));
                 }
+                Assert.That(firstAnchor.Transform.Find("one"), Is.SameAs(first.transform));
+                Assert.That(secondAnchor.Transform.Find("one"), Is.SameAs(second.transform));
 
                 blueprint.Configure(kind, nextRoot.AddComponent<TestGhost>(), null, nextView);
                 _realm.RegisterManifestationBlueprint(blueprint);
                 _realm.Update();
                 foreach (TestGhost ghost in new[] { first, second })
                 {
-                    Assert.That(ghost.gameObject.name, Does.StartWith("first root"));
+                    Assert.That(ghost.gameObject.name, Is.EqualTo("one"));
+                    Assert.That(ghost.TryGet<IExtraPart>(out IExtraPart part), Is.True);
                     Assert.That(ghost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("next view"));
                     Assert.That(_realm.Query().InAnchor(ghost.Key.AnchorId).Single(), Is.SameAs(ghost));
                 }
@@ -344,7 +351,8 @@ namespace Emas.Tests
                 _realm.GetOrCreateAnchor("later", laterSource);
                 TestGhost later = laterSource.Publish("two", Variant.None);
                 _realm.Update();
-                Assert.That(later.gameObject.name, Does.StartWith("next root"));
+                Assert.That(later.gameObject.name, Is.EqualTo("two"));
+                Assert.That(later.TryGet<IExtraPart>(out IExtraPart laterPart), Is.False);
                 Assert.That(_realm.Manifest(later).gameObject.name, Is.EqualTo("next view"));
                 Assert.That(_realm.Query().Count, Is.EqualTo(2));
             }

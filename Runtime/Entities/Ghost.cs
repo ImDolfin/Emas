@@ -12,6 +12,7 @@ namespace Emas
     /// Use this component directly on an authored prefab with reusable EntityModule components.
     /// Derive a custom Ghost only when the entity needs additional behavior; subclasses can use RequireComponent.
     /// Modules and other root components can implement read-only application contracts. Emas creates/destroys roots and sets their metadata.
+    /// Created root GameObjects are named by Key.EntityId before application initialization; Name is separate display metadata.
     /// Roots activate after successful publication and deactivate on availability loss; Awake may run before source mapping.
     /// Initializers map source data to the configured modules. Views are optional children, independent of root behaviors.
     /// </remarks>
