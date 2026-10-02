@@ -217,7 +217,7 @@ public sealed class PositionModule : EntityModule<Double3>
 {
     public override void Apply(Double3 position)
     {
-        GetComponent<Spatial>().SetCartesianPosition(position);
+        Ghost.GetRequired<Spatial>().SetCartesianPosition(position);
     }
 }
 
@@ -225,7 +225,7 @@ public sealed class RotationModule : EntityModule<Quaternion>
 {
     public override void Apply(Quaternion rotation)
     {
-        GetComponent<Spatial>().SetSourceRotation(rotation);
+        Ghost.GetRequired<Spatial>().SetSourceRotation(rotation);
     }
 }
 ```

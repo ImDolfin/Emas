@@ -11,7 +11,7 @@ The integration uses five roles:
 | Role | Responsibility |
 | --- | --- |
 | `PresenceDetector` | Detects SDK entity arrivals, metadata, and disappearances. |
-| `EntityModule<TData>` | A Ghost component that reads a mapped value and updates entity state. |
+| `EntityModule<TData>` | A component that reads a mapped value and updates entity state, with direct root access through `Ghost`. |
 | `Ghost` | The entity's Unity root, carrying its components and behavior independently of its view. |
 | `View` | An optional visual child of the Ghost, created when manifestation is requested. |
 | `Realm` | Owns tracked entities and coordinates detector updates, data application, and views. |
@@ -39,7 +39,7 @@ public sealed class PositionModule : EntityModule<GeoPosition?>
     {
         if (position.HasValue)
         {
-            GetComponent<Spatial>().SetGeographicPosition(position.Value);
+            Ghost.GetRequired<Spatial>().SetGeographicPosition(position.Value);
         }
     }
 }

@@ -25,6 +25,8 @@ While playing, select **Tracking / Geodetic Feed**, open the **Geo Source** comp
 
 The two foot identities are `relative.bird-foot / bird-left-foot` and `bird-right-foot`. The SDK reports them before the bird on startup. Each foot's `GeoAttachmentModule` binds to the current immutable SDK reading and calls `Spatial.Attach` with the bird's complete key, so the parent does not need to be discovered yet. The parts remain separate Ghost roots under the same Anchor.
 
+The modules access their root through `EntityModule.Ghost`: the attachment module reads `Ghost.Key.AnchorId` and resolves its `Spatial` with `Ghost.GetRequired<Spatial>()`. No module needs to retrieve its Ghost with `GetComponent` or wait for an activation callback.
+
 The SDK's `BodyOffset` uses metres in **X forward, Y right, Z down** axes. The module converts it to Unity local axes with `(Y, -Z, X)`. Attached feet follow the bird's projected position and bank; absolute position and orientation modules continue caching a coherent release pose. When the SDK clears `ParentId`, the attachment module calls `Detach` and those absolute channels take over. Reattaching retains the existing Ghosts and views. No part script needs its own transform update.
 
 ## Geographic projection

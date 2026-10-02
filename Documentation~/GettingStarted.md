@@ -43,6 +43,8 @@ public sealed class MarkerPositionModule : EntityModule<Vector3>
 
 The realm reads and applies enabled, bound modules before spatial projection and query notifications. Source is weak: resolve it inside the reader and handle null if it is collected or destroyed. For immutable SDK snapshots, supply the SDK client or a stable application cache as the source. Disappearance and source handover release old readers; the initializer reconnects the same module components when a retained Ghost returns. The sample positions are **anchor-local** Unity coordinates. For shared double-precision positions, use `Spatial` and a `Double3` module as shown in [Spatial](Spatial.md).
 
+Every `EntityModule` exposes `Ghost` for its same-GameObject root. Inside a module, use `Ghost.Key` for identity, `Ghost.Modules` for its module list, and `Ghost.GetRequired<T>()` or `Ghost.TryGet<T>()` for another root component. This works while the module or root is disabled and before the first activation; a GameObject without a Ghost returns null.
+
 ### Configure the scene and view
 
 The imported sample already contains this setup. To create it in another scene:

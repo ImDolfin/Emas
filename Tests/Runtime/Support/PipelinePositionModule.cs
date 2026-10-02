@@ -9,7 +9,7 @@ namespace Emas.Tests
         /// <summary>Sets the shared position used by consumers.</summary>
         public override void Apply(Double3 position)
         {
-            GetComponent<Spatial>().SetCartesianPosition(position);
+            Ghost.GetRequired<Spatial>().SetCartesianPosition(position);
         }
     }
 }

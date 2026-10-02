@@ -91,6 +91,7 @@ Detector failure or removal deletes its population immediately and discards its 
 | `Presence.IsAvailable` / `IsRemoved` / `Root` | Detection availability, final removal state and the initialized Ghost root |
 | `Presence.Capabilities` / `HasCapability<T>()` | Snapshot and exact-interface check of SDK-reported capabilities |
 | `Ghost.Modules` / `IGhost.Modules` | Read-only membership snapshot of root modules, including disabled and unbound components |
+| `EntityModule.Ghost` | Access the Ghost on this module's GameObject, including while inactive or disabled |
 | `IGhost.TryGet<T>(out part)` / `GetRequired<T>()` | Resolve root MonoBehaviour interfaces for consumers; these are separate from reported capabilities |
 
 A Presence is stable from its first detection or report until final removal. Its Key combines anchor ID, Kind and SDK entity ID; the same key in a different realm identifies a different Presence. `TryGetPresence` can return an unavailable Presence, so check `IsAvailable` before treating its data as current. `IsRemoved` becomes true after final removal, and a later report creates a new handle. `Root` holds the invisible Ghost even when no view has been requested. `Prepare<TGhost>` creates only an unavailable Ghost; `TryGetPresence` stays false until a detector first reports that identity. Consumers still use `IGhost` queries and root interfaces.
@@ -100,6 +101,15 @@ Emas names each created Ghost root GameObject exactly `Key.EntityId`, including 
 Declare SDK capabilities as interface types through `Detect`'s optional `capabilities` argument. Emas validates and snapshots the types and removes duplicates. A changed set reruns the initializer, which can use `presence.HasCapability<T>()` to bind or enable Ghost modules. Capability metadata does not add components. Configure modules on the Ghost and access them through `ghost.Modules`, `ghost.GetRequired<TModule>()` or `ghost.TryGet<TModule>(out module)`.
 
 Subclass `EntityModule<TData>` and implement `Apply(TData data)` using source-independent values. In the initializer, call `root.GetRequired<PositionModule>().Bind(() => ((SdkProxy)presence.Source).Position)`. The Ghost determines which modules exist; the initializer knows the SDK and supplies the readers. For immutable SDK snapshots, read the current lookup entry on every invocation. Bindings are released on disappearance, handover and removal. A retained Ghost reconnects when its initializer runs again. For a viewless entity, leave its blueprint unassigned.
+
+Inside a module, `Ghost` provides direct access to its root: use `Ghost.Key`, `Ghost.Modules` or `Ghost.GetRequired<Spatial>()`. The property resolves lazily and works before the root's first activation, without requiring `Awake` or `OnEnable`. It only searches the module's own GameObject; no Ghost there returns null, and a later access retries after a missing or destroyed component. It does not add a Ghost automatically. Emas initializes identity before application initialization and module reads. For example:
+
+```csharp
+public override void Apply(GeoPosition position)
+{
+    Ghost.GetRequired<Spatial>().SetGeographicPosition(position);
+}
+```
 
 `Modules` is available on both concrete `Ghost` roots and queried `IGhost` instances. Each access observes the current root components. Previously returned lists keep their membership, while their module instances remain live Unity components that can be edited, disabled or destroyed. Child and view modules are excluded; `Spatial` is a separate component and is accessible through `GetRequired<Spatial>()`. Use `GetRequired<TModule>()` for one required module or `TryGet<TModule>()` for an optional one; both reject duplicate providers.
 

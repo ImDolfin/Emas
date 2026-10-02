@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Expose `EntityModule.Ghost` for direct access to the module's root Ghost, including disabled modules and inactive roots before the first activation. Resolve and cache the same-GameObject component lazily, retry after a missing or destroyed owner, and demonstrate identity and sibling-component access in Relative World.
+
 - Name newly created Ghost root GameObjects by their entity ID, including prefab clones and plain roots, before application initialization. Keep display metadata independent and preserve root names during metadata updates and reuse. Support Unity name-based lookup and Anchor-scoped hierarchy access.
 
 - Expose `Ghost.Modules` and `IGhost.Modules` as read-only root-module membership snapshots, including disabled and unbound modules. Observe component additions and removals on each access, reuse unchanged snapshots for realm updates, and use direct typed Ghost access in sample initializers. Keep identity, spatial pose and modules open in the Ghost Inspector, with projected Unity pose, module enable switches and inline serialized settings.

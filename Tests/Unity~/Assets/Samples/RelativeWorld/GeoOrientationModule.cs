@@ -10,7 +10,7 @@ namespace Emas.RelativeWorld
         /// <param name="value">Latest SDK snapshot with heading clockwise from north, nose-up pitch and right-wing-down roll.</param>
         public override void Apply(GeoPoseReading value)
         {
-            GetComponent<Spatial>().SetGeographicRotation(value.YawDegrees, value.PitchDegrees, value.RollDegrees);
+            Ghost.GetRequired<Spatial>().SetGeographicRotation(value.YawDegrees, value.PitchDegrees, value.RollDegrees);
         }
     }
 }

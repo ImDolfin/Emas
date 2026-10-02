@@ -62,7 +62,8 @@ namespace Emas.Tests
 
         /// <summary>
         /// Consumers can enumerate disabled root modules, resolve them by type, and retain an immutable membership
-        /// snapshot while modules are added or removed, without including a view's child modules.
+        /// snapshot while modules are added or removed. Each module resolves its own root Ghost even while inactive;
+        /// a view's child modules do not participate or borrow the parent's Ghost.
         /// </summary>
         [Test]
         public void Modules_ExposeRootModulesAsReadOnlyMembershipSnapshots()
@@ -78,9 +79,18 @@ namespace Emas.Tests
 
                 PipelinePositionModule position = concrete.gameObject.AddComponent<PipelinePositionModule>();
                 position.enabled = false;
+                Assert.That(concrete.gameObject.activeSelf, Is.False);
+                Assert.That(position.Ghost, Is.SameAs(concrete));
                 GameObject child = new GameObject("view child");
                 child.transform.SetParent(concrete.transform, false);
-                child.AddComponent<PipelineArticulationModule>();
+                PipelineArticulationModule childModule = child.AddComponent<PipelineArticulationModule>();
+                Assert.That(childModule.Ghost, Is.Null);
+                Ghost childGhost = child.AddComponent<Ghost>();
+                Assert.That(childModule.Ghost, Is.SameAs(childGhost));
+                UnityEngine.Object.DestroyImmediate(childGhost);
+                Assert.That(childModule.Ghost, Is.Null);
+                childGhost = child.AddComponent<Ghost>();
+                Assert.That(childModule.Ghost, Is.SameAs(childGhost));
                 IReadOnlyList<EntityModule> original = ghost.Modules;
                 Assert.That(original, Is.EqualTo(new EntityModule[] { position }));
                 Assert.That(empty, Is.Empty);
@@ -88,6 +98,7 @@ namespace Emas.Tests
                 Assert.Throws<NotSupportedException>(() => ((IList<EntityModule>)original).Clear());
 
                 PipelineActionModule action = concrete.gameObject.AddComponent<PipelineActionModule>();
+                Assert.That(action.Ghost, Is.SameAs(concrete));
                 Assert.That(ghost.Modules, Is.EqualTo(new EntityModule[] { position, action }));
                 Assert.That(original, Is.EqualTo(new EntityModule[] { position }));
 

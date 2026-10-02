@@ -483,7 +483,8 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Plain Ghost prefabs bind reusable modules, project after all readers update the followed reference,
+        /// Plain Ghost prefabs bind reusable modules that resolve their own cloned Ghost before activation,
+        /// project after all readers update the followed reference,
         /// and name roots by entity ID before initialization so Unity can find them once activated.
         /// </summary>
         [Test]
@@ -493,7 +494,8 @@ namespace Emas.Tests
             prefab.SetActive(false);
             Ghost prefabGhost = prefab.AddComponent<Ghost>();
             prefab.AddComponent<Spatial>();
-            prefab.AddComponent<PipelinePositionModule>();
+            PipelinePositionModule prefabModule = prefab.AddComponent<PipelinePositionModule>();
+            Assert.That(prefabModule.Ghost, Is.SameAs(prefabGhost));
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             try
             {
@@ -502,7 +504,10 @@ namespace Emas.Tests
                 _realm.RegisterPresenceInitializer<Ghost>(TrackedKind, (presence, root) =>
                 {
                     Assert.That(root.gameObject.name, Is.EqualTo(presence.Key.EntityId));
-                    root.GetComponent<PipelinePositionModule>().Bind(() => ((Reading)presence.Source).Position);
+                    PipelinePositionModule module = root.GetRequired<PipelinePositionModule>();
+                    Assert.That(module.Ghost, Is.SameAs(root));
+                    Assert.That(module.Ghost.Key, Is.EqualTo(presence.Key));
+                    module.Bind(() => ((Reading)presence.Source).Position);
                 });
                 _realm.ReferenceFrame = new ReferenceFrame
                 {

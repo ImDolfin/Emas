@@ -10,7 +10,7 @@ namespace Emas.RelativeWorld
         /// <param name="value">The mapped value supplied by the initializer's reader.</param>
         public override void Apply(GeoPosition value)
         {
-            GetComponent<Spatial>().SetGeographicPosition(value);
+            Ghost.GetRequired<Spatial>().SetGeographicPosition(value);
         }
     }
 }

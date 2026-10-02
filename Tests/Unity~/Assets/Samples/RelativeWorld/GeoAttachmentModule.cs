@@ -10,14 +10,14 @@ namespace Emas.RelativeWorld
         /// <param name="value">The latest SDK snapshot, including optional parent identity and local body offset.</param>
         public override void Apply(GeoPoseReading value)
         {
-            Spatial spatial = GetComponent<Spatial>();
+            Spatial spatial = Ghost.GetRequired<Spatial>();
             if (value.ParentId == null)
             {
                 spatial.Detach();
             }
             else
             {
-                Key parent = new Key(GetComponent<Ghost>().Key.AnchorId, value.ParentKind, value.ParentId);
+                Key parent = new Key(Ghost.Key.AnchorId, value.ParentKind, value.ParentId);
                 Vector3 offset = value.BodyOffset;
                 spatial.Attach(parent, new Vector3(offset.y, -offset.z, offset.x));
             }
