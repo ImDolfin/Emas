@@ -410,7 +410,7 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Ghost authoring exposes application fields while keeping runtime-owned identity and availability out of the Inspector.
+        /// Ghost authoring exposes application fields and independent spatial smoothing controls while hiding runtime-owned identity and availability.
         /// </summary>
         [Test]
         public void GhostAuthoring_ExposesApplicationFieldsAndHidesRuntimeMetadata()
@@ -435,6 +435,14 @@ namespace Emas.Editor.Tests
             Assert.That(visible, Does.Not.Contain("_name"));
             Assert.That(visible, Does.Not.Contain("_variant"));
             Assert.That(visible, Does.Not.Contain("_isAvailable"));
+
+            Spatial spatial = root.AddComponent<Spatial>();
+            SerializedObject spatialSettings = new SerializedObject(spatial);
+            spatialSettings.FindProperty("_positionSmoothingTime").floatValue = 0.15f;
+            spatialSettings.FindProperty("_rotationSmoothingTime").floatValue = 0.03f;
+            spatialSettings.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(spatial.PositionSmoothingTime, Is.EqualTo(0.15f));
+            Assert.That(spatial.RotationSmoothingTime, Is.EqualTo(0.03f));
         }
 
         private RealmSetup CreateRealm()

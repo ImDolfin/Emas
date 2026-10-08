@@ -238,7 +238,7 @@ namespace Emas.Tests.Samples
                     Ghost ghost = detector.Publish();
                     Spatial spatial = ghost.GetRequired<Spatial>();
                     spatial.SetGeographicPosition(new GeoPosition(52, 13, 40));
-                    spatial.SmoothingTime = 0.1f;
+                    spatial.PositionSmoothingTime = 0.1f;
                     realm.ReferenceFrame = new ReferenceFrame
                     {
                         Space = ReferenceSpace.Geographic,

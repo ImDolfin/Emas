@@ -23,9 +23,12 @@ namespace Emas
     [AddComponentMenu("Emas/Spatial")]
     public sealed class Spatial : MonoBehaviour
     {
-        [Tooltip("Position and rotation smoothing time constant in unscaled seconds. Zero applies SDK poses directly.")]
+        [Tooltip("Position smoothing time constant in unscaled seconds. Zero applies SDK positions directly, independently of rotation.")]
         [Min(0)]
-        [SerializeField] private float _smoothingTime;
+        [SerializeField] private float _positionSmoothingTime;
+        [Tooltip("Rotation smoothing time constant in unscaled seconds. Zero applies SDK rotations directly. On a followed Ghost, this controls how quickly reference orientation repositions other Ghosts when Follow Rotation is enabled.")]
+        [Min(0)]
+        [SerializeField] private float _rotationSmoothingTime;
         [Tooltip("Minimum SDK speed for rejecting position corrections opposite velocity, in source units per second (ECEF metres/second in Geographic space).")]
         [Min(0)]
         [SerializeField] private float _minimumForwardSpeed = 0.1f;
@@ -52,26 +55,46 @@ namespace Emas
         private readonly HashSet<Renderer> _hiddenRenderers = new HashSet<Renderer>();
         private readonly HashSet<Collider> _hiddenColliders = new HashSet<Collider>();
 
-        /// <summary>Gets or sets the smoothing time constant in unscaled seconds; zero disables smoothing (the default).</summary>
-        /// <remarks>Larger values reduce jitter and increase lag. Raw Position and Rotation remain unchanged.
-        /// Changing this setting resets smoothing on the next projection.</remarks>
+        /// <summary>Gets or sets the position smoothing time constant in unscaled seconds; zero disables position smoothing (the default).</summary>
+        /// <remarks>Larger values reduce positional jitter and increase lag. Raw Position remains unchanged.
+        /// Changing this setting resets only position smoothing on the next projection; rotation smoothing retains its history.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The time is negative or nonfinite.</exception>
-        public float SmoothingTime
+        public float PositionSmoothingTime
         {
-            get => _smoothingTime;
+            get => _positionSmoothingTime;
             set
             {
                 RequireNonnegative(value, nameof(value));
-                if (_smoothingTime != value)
+                if (_positionSmoothingTime != value)
                 {
-                    _smoothingTime = value;
-                    ResetSmoothing();
+                    _positionSmoothingTime = value;
+                    _hasSmoothedPosition = false;
+                }
+            }
+        }
+
+        /// <summary>Gets or sets the rotation smoothing time constant in unscaled seconds; zero disables rotation smoothing (the default).</summary>
+        /// <remarks>Larger values reduce angular jitter and increase lag. Raw Rotation remains unchanged.
+        /// Changing this setting resets only rotation smoothing on the next projection; position smoothing retains its history.
+        /// When ReferenceFrame follows this Ghost's rotation, its smoothed orientation also controls repositioning of other Ghosts.
+        /// Set this to zero for immediate reference orientation changes while independently smoothing position.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The time is negative or nonfinite.</exception>
+        public float RotationSmoothingTime
+        {
+            get => _rotationSmoothingTime;
+            set
+            {
+                RequireNonnegative(value, nameof(value));
+                if (_rotationSmoothingTime != value)
+                {
+                    _rotationSmoothingTime = value;
+                    _hasSmoothedRotation = false;
                 }
             }
         }
 
         /// <summary>Gets or sets the minimum supplied speed for preventing motion opposite velocity, in source units per second.</summary>
-        /// <remarks>Defaults to 0.1. Only applies with smoothing enabled and a nonzero velocity channel.
+        /// <remarks>Defaults to 0.1. Only applies with position smoothing enabled and a nonzero velocity channel.
         /// In Geographic space the unit is ECEF metres per second. Lower speeds permit corrections in any direction.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The speed is negative or nonfinite.</exception>
         public float MinimumForwardSpeed
@@ -143,24 +166,34 @@ namespace Emas
         // Filter absolute source data before capturing the shared reference; never filter origin movement.
         internal void PrepareSmoothing(double timestamp)
         {
-            if (!enabled || AttachedTo.HasValue || !SpatialMath.IsFinite(_smoothingTime) || _smoothingTime <= 0)
+            if (!enabled || AttachedTo.HasValue)
             {
                 ResetSmoothing();
                 return;
             }
 
-            double weight = 1d - Math.Exp(-Math.Max(0d, timestamp - _smoothingTimestamp) / _smoothingTime);
-            if (HasPosition)
+            double elapsed = Math.Max(0d, timestamp - _smoothingTimestamp);
+            if (HasPosition && SpatialMath.IsFinite(_positionSmoothingTime) && _positionSmoothingTime > 0)
             {
+                double weight = 1d - Math.Exp(-elapsed / _positionSmoothingTime);
                 _smoothedPosition = _hasSmoothedPosition ? SmoothPosition(weight) : Position;
                 _hasSmoothedPosition = true;
             }
-
-            if (HasRotation)
+            else
             {
+                _hasSmoothedPosition = false;
+            }
+
+            if (HasRotation && SpatialMath.IsFinite(_rotationSmoothingTime) && _rotationSmoothingTime > 0)
+            {
+                double weight = 1d - Math.Exp(-elapsed / _rotationSmoothingTime);
                 _smoothedRotation = _hasSmoothedRotation
                     ? Quaternion.Slerp(_smoothedRotation, Rotation, (float)weight) : Rotation;
                 _hasSmoothedRotation = true;
+            }
+            else
+            {
+                _hasSmoothedRotation = false;
             }
 
             _smoothingTimestamp = timestamp;

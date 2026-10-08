@@ -723,13 +723,14 @@ namespace Emas.Tests
             Assert.That(ActiveView(ghost), Is.Not.Null);
         }
 
-        /// <summary>Smoothing works without velocity, retains raw channels and progresses while Unity game time is paused.</summary>
+        /// <summary>Position and rotation smooth at independent rates without velocity or game time, and changing either control preserves the other channel's history.</summary>
         [UnityTest]
         public IEnumerator Smoothing_WithoutVelocityFiltersIndependentChannelsAndCanBeResetOrDisabled()
         {
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(1e9, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
-            spatial.SmoothingTime = 2;
+            spatial.PositionSmoothingTime = 2;
+            spatial.RotationSmoothingTime = 0.5f;
             Quaternion initialRotation = Quaternion.Euler(0, 350, 0);
             spatial.SetSourceRotation(initialRotation);
             _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1e9, 0, 0) };
@@ -737,10 +738,14 @@ namespace Emas.Tests
             AssertPosition(ghost.transform.position, Vector3.zero);
             AssertRotation(ghost.transform.rotation, initialRotation);
             Assert.That(spatial.HasVelocity, Is.False);
-            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.SmoothingTime = float.NaN);
-            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.SmoothingTime = -1);
+            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.PositionSmoothingTime = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.PositionSmoothingTime = -1);
+            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = float.PositiveInfinity);
+            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = -1);
             Assert.Throws<ArgumentOutOfRangeException>(() => spatial.MinimumForwardSpeed = float.PositiveInfinity);
-            Assert.That(spatial.SmoothingTime, Is.EqualTo(2));
+            Assert.That(spatial.PositionSmoothingTime, Is.EqualTo(2));
+            Assert.That(spatial.RotationSmoothingTime, Is.EqualTo(0.5f));
 
             float timeScale = Time.timeScale;
             try
@@ -756,15 +761,34 @@ namespace Emas.Tests
                 Assert.That(ghost.transform.position.y, Is.GreaterThan(0).And.LessThan(2));
                 Assert.That(Quaternion.Angle(initialRotation, ghost.transform.rotation), Is.GreaterThan(0).And.LessThan(20));
                 Assert.That(ghost.transform.eulerAngles.y, Is.GreaterThan(350).Or.LessThan(10), "Rotation crosses zero along the shortest arc.");
+                double positionProgress = ghost.transform.position.x / 10d;
+                double expectedRotationProgress = 1d - Math.Pow(1d - positionProgress,
+                    spatial.PositionSmoothingTime / spatial.RotationSmoothingTime);
+                Assert.That(Quaternion.Angle(initialRotation, ghost.transform.rotation),
+                    Is.EqualTo(20d * expectedRotationProgress).Within(0.05), "Each channel uses its own time constant.");
                 Assert.That(spatial.Position, Is.EqualTo(input));
                 AssertRotation(spatial.Rotation, targetRotation);
+
+                spatial.RotationSmoothingTime = 0;
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, targetRotation);
+                Assert.That(ghost.transform.position.x, Is.LessThan(10), "Changing rotation smoothing keeps position history.");
+                spatial.RotationSmoothingTime = 2;
+                _realm.Update();
+                Quaternion nextRotation = Quaternion.Euler(0, 90, 0);
+                spatial.SetSourceRotation(nextRotation);
+                spatial.PositionSmoothingTime = 0;
+                yield return AdvanceSmoothing(0.04);
+                AssertPosition(ghost.transform.position, new Vector3(10, 2, 0));
+                Assert.That(Quaternion.Angle(targetRotation, ghost.transform.rotation), Is.GreaterThan(0).And.LessThan(80),
+                    "Disabling position smoothing keeps rotation smoothing active.");
 
                 spatial.ResetSmoothing();
                 _realm.Update();
                 AssertPosition(ghost.transform.position, new Vector3(10, 2, 0));
-                AssertRotation(ghost.transform.rotation, targetRotation);
+                AssertRotation(ghost.transform.rotation, nextRotation);
                 spatial.SetCartesianPosition(new Double3(1e9 + 20, 2, 0));
-                spatial.SmoothingTime = 0;
+                spatial.PositionSmoothingTime = 0;
                 _realm.Update();
                 AssertPosition(ghost.transform.position, new Vector3(20, 2, 0));
             }
@@ -781,7 +805,7 @@ namespace Emas.Tests
             _realm.ReferenceFrame = new ReferenceFrame { Coordinates = CoordinateSystem.NorthEastDown, Position = default(Double3) };
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(10, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
-            spatial.SmoothingTime = 0.1f;
+            spatial.PositionSmoothingTime = 0.1f;
             spatial.MinimumForwardSpeed = 1;
             spatial.SetCartesianVelocity(new Double3(8, 0, 0));
             _realm.Update();
@@ -813,12 +837,12 @@ namespace Emas.Tests
             Assert.That(spatial.HasVelocity, Is.False);
             Assert.That(ghost.transform.position.z, Is.LessThan(before));
             spatial.SetCartesianVelocity(new Double3(8, 0, 0));
-            spatial.SmoothingTime = 0;
+            spatial.PositionSmoothingTime = 0;
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(0, 0, 8));
         }
 
-        /// <summary>The same smoothed geographic pose supplies the reference and root; attachments inherit it once and frame placement changes immediately.</summary>
+        /// <summary>A geographic reference shares independently smoothed channels with its root; unsmoothed reference rotation repositions smoothed targets and attached parts immediately.</summary>
         [UnityTest]
         public IEnumerator Smoothing_GeographicReferenceAndAttachmentsSharePresentationPose()
         {
@@ -831,13 +855,16 @@ namespace Emas.Tests
             _realm.ReferenceFrame = frame;
             TestGhost reference = _source.PublishEarthCenteredPosition("reference", origin.ToEarthCentered());
             Spatial spatial = reference.GetComponent<Spatial>();
-            spatial.SmoothingTime = 2;
+            spatial.PositionSmoothingTime = 2;
+            spatial.RotationSmoothingTime = 2;
             spatial.SetGeographicRotation(0, 0, 0);
             spatial.SetEarthCenteredVelocity(new Double3(0, 0, 0));
             TestGhost target = _source.PublishEarthCenteredPosition("target", new GeoPosition(52.520108, 13.404954, 40).ToEarthCentered());
+            target.GetComponent<Spatial>().PositionSmoothingTime = 2;
             TestGhost part = _source.Publish("part");
             Spatial partSpatial = part.gameObject.AddComponent<Spatial>();
-            partSpatial.SmoothingTime = 2;
+            partSpatial.PositionSmoothingTime = 2;
+            partSpatial.RotationSmoothingTime = 2;
             Vector3 offset = new Vector3(2, 0, 0);
             partSpatial.Attach(reference.Key, offset);
             _realm.Update();
@@ -849,11 +876,31 @@ namespace Emas.Tests
             Assert.That(Double3.Distance(frame.Position, origin.ToEarthCentered()), Is.GreaterThan(0));
             Assert.That(Double3.Distance(frame.Position, input), Is.GreaterThan(0));
             Assert.That(spatial.Position, Is.EqualTo(input));
+            Assert.That(Quaternion.Angle(Quaternion.identity, frame.Rotation), Is.GreaterThan(0).And.LessThan(90));
             AssertPosition(reference.transform.position, frame.UnityPosition);
             AssertRotation(reference.transform.rotation, frame.UnityRotation);
             Assert.That(frame.TryToUnityPosition(target.GetComponent<Spatial>().Position, out Vector3 targetPosition), Is.True);
             AssertPosition(target.transform.position, targetPosition);
             AssertPosition(part.transform.position, reference.transform.position + reference.transform.rotation * offset);
+
+            spatial.RotationSmoothingTime = 0;
+            spatial.SetGeographicRotation(180, 0, 0);
+            _realm.Update();
+            AssertRotation(frame.Rotation, spatial.Rotation);
+            Assert.That(Double3.Distance(frame.Position, input), Is.GreaterThan(0), "Changing reference rotation keeps position smoothing history.");
+            Assert.That(frame.TryToUnityPosition(target.GetComponent<Spatial>().Position, out targetPosition), Is.True);
+            AssertPosition(target.transform.position, targetPosition);
+            AssertPosition(part.transform.position, reference.transform.position + reference.transform.rotation * offset);
+
+            frame.FollowRotation = false;
+            spatial.RotationSmoothingTime = 2;
+            _realm.Update();
+            spatial.SetGeographicRotation(270, 0, 0);
+            yield return AdvanceSmoothing(0.04);
+            ReferenceFrame cardinalFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, Position = frame.Position };
+            Assert.That(cardinalFrame.TryToUnityPosition(target.GetComponent<Spatial>().Position, out targetPosition), Is.True);
+            AssertPosition(target.transform.position, targetPosition, 0.001f);
+            frame.FollowRotation = true;
 
             frame.UnityPosition = new Vector3(100, 2, 3);
             frame.UnityRotation = Quaternion.Euler(10, 20, 30);
@@ -877,7 +924,7 @@ namespace Emas.Tests
             _realm.ReferenceFrame = frame;
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(5, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
-            spatial.SmoothingTime = 10;
+            spatial.PositionSmoothingTime = 10;
             _realm.Update();
             spatial.SetCartesianPosition(new Double3(100, 0, 0));
             _realm.Update();

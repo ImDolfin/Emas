@@ -161,6 +161,8 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `Spatial.SetCartesianPosition(position)` / `Position` / `HasPosition` | Publish shared Cartesian XYZ in Coordinates axes; Position exposes Cartesian input or ECEF storage after geographic input |
 | `Spatial.SetSourceRotation(rotation)` / `Rotation` / `HasRotation` | Publish a source quaternion in Coordinates axes; Rotation and RotationSpace identify stored attitude; without it root rotation is left alone |
 | `Spatial.IsInRange` | Whether the latest spatial projection can be presented |
+| `Spatial.PositionSmoothingTime` / `RotationSmoothingTime` | Independent unscaled time constants; zero applies that channel directly. Changing one preserves the other's history. The followed Ghost's rotation setting governs shared reference orientation when FollowRotation is enabled |
+| `Spatial.ResetSmoothing()` | Reset both smoothing histories so the next projection uses the latest input pose directly |
 | `ReferenceFrame.Coordinates` | Cartesian pose axes or geographic source quaternion axes; named geographic angles and ECEF inputs have explicit conventions |
 | `CoordinateSystem.Unity` / `EastNorthUp` / `NorthEastDown` | Presets for Unity, ENU and NED source coordinates |
 | `new CoordinateSystem(right, up, forward)` | Custom signed source axes mapping to Unity directions; use each of X, Y and Z once via `Axis.PositiveX`, `Axis.NegativeX`, etc. |
