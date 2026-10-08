@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Emas
@@ -30,30 +29,13 @@ namespace Emas
         [Min(0)]
         [SerializeField] private float _rotationSmoothingTime;
 
-        private Double3 _velocity;
-        private bool _hasVelocity;
-        private Double3 _acceleration;
-        private bool _hasAcceleration;
-        private double _positionTimestamp;
-        private Double3 _smoothedPosition;
-        private Quaternion _smoothedRotation = Quaternion.identity;
-        private bool _hasSmoothedPosition;
-        private bool _hasSmoothedRotation;
-        private double _smoothingTimestamp;
-        private Double3 _position;
-        private Quaternion _rotation = Quaternion.identity;
+        private readonly PoseSmoother _smoother = new PoseSmoother();
+        private readonly PresentationSuppression _suppression = new PresentationSuppression();
         private RotationSpace _rotationSpace;
         private CoordinateSystem? _earthCenteredBodyAxes;
-        private bool _hasPosition;
-        private bool _hasRotation;
-        private bool _isInRange = true;
         private Key? _attachedTo;
         private Vector3 _attachmentPosition;
         private Quaternion _attachmentRotation = Quaternion.identity;
-        private readonly List<Renderer> _renderers = new List<Renderer>();
-        private readonly List<Collider> _colliders = new List<Collider>();
-        private readonly HashSet<Renderer> _hiddenRenderers = new HashSet<Renderer>();
-        private readonly HashSet<Collider> _hiddenColliders = new HashSet<Collider>();
 
         /// <summary>Gets or sets the position smoothing time constant in unscaled seconds; zero disables position smoothing (the default).</summary>
         /// <remarks>Larger values reduce positional jitter and increase lag. Optional velocity and acceleration predict motion
@@ -69,7 +51,7 @@ namespace Emas
                 if (_positionSmoothingTime != value)
                 {
                     _positionSmoothingTime = value;
-                    _hasSmoothedPosition = false;
+                    _smoother.ResetPosition();
                 }
             }
         }
@@ -89,16 +71,16 @@ namespace Emas
                 if (_rotationSmoothingTime != value)
                 {
                     _rotationSmoothingTime = value;
-                    _hasSmoothedRotation = false;
+                    _smoother.ResetRotation();
                 }
             }
         }
 
         /// <summary>Gets the last supplied Cartesian velocity or ECEF metres per second; valid when HasVelocity is true.</summary>
-        public Double3 Velocity => _velocity;
+        public Double3 Velocity => _smoother.Velocity;
 
         /// <summary>Gets whether an SDK velocity has been supplied for motion-assisted position smoothing.</summary>
-        public bool HasVelocity => _hasVelocity;
+        public bool HasVelocity => _smoother.HasVelocity;
 
         /// <summary>Supplies velocity in the shared Cartesian source axes and units per second, independently of position.</summary>
         /// <remarks>Assists position smoothing with bounded motion prediction; corrections in every direction remain accepted.
@@ -106,7 +88,7 @@ namespace Emas
         /// <exception cref="ArgumentOutOfRangeException">A coordinate is nonfinite.</exception>
         public void SetCartesianVelocity(Double3 velocity)
         {
-            StoreVelocity(velocity);
+            _smoother.SetVelocity(velocity);
         }
 
         /// <summary>Supplies an ECEF velocity vector in metres per second for Geographic smoothing.</summary>
@@ -114,7 +96,7 @@ namespace Emas
         /// <exception cref="ArgumentOutOfRangeException">A coordinate is nonfinite.</exception>
         public void SetEarthCenteredVelocity(Double3 velocity)
         {
-            StoreVelocity(velocity);
+            _smoother.SetVelocity(velocity);
         }
 
         /// <summary>Supplies ENU velocity in metres per second, converting it to ECEF at the supplied tangent origin.</summary>
@@ -123,34 +105,33 @@ namespace Emas
         /// <remarks>Stores an ECEF vector independently of position and reference axes; does not change pose.</remarks>
         public void SetGeographicVelocity(Double3 velocity, GeoPosition origin)
         {
-            StoreVelocity(origin.ToEarthCenteredVector(velocity));
+            _smoother.SetVelocity(origin.ToEarthCenteredVector(velocity));
         }
 
         /// <summary>Clears velocity and disables motion prediction; position smoothing continues accepting all corrections.</summary>
         public void ClearVelocity()
         {
-            _hasVelocity = false;
-            _velocity = default(Double3);
+            _smoother.ClearVelocity();
         }
 
         /// <summary>Gets the last supplied Cartesian acceleration or ECEF metres per second squared; valid when HasAcceleration is true.</summary>
-        public Double3 Acceleration => _acceleration;
+        public Double3 Acceleration => _smoother.Acceleration;
 
         /// <summary>Gets whether optional acceleration has been supplied to assist prediction when velocity is available.</summary>
-        public bool HasAcceleration => _hasAcceleration;
+        public bool HasAcceleration => _smoother.HasAcceleration;
 
         /// <summary>Supplies linear acceleration in shared Cartesian source axes and units per second squared.</summary>
         /// <remarks>Assists position smoothing only when velocity is also present. Does not change pose or velocity.</remarks>
         public void SetCartesianAcceleration(Double3 acceleration)
         {
-            StoreAcceleration(acceleration);
+            _smoother.SetAcceleration(acceleration);
         }
 
         /// <summary>Supplies ECEF linear acceleration in metres per second squared for Geographic smoothing.</summary>
         /// <remarks>Supply kinematic acceleration, with gravity already removed from accelerometer measurements.</remarks>
         public void SetEarthCenteredAcceleration(Double3 acceleration)
         {
-            StoreAcceleration(acceleration);
+            _smoother.SetAcceleration(acceleration);
         }
 
         /// <summary>Supplies ENU linear acceleration in metres per second squared, converting it at the supplied tangent origin.</summary>
@@ -158,26 +139,24 @@ namespace Emas
         /// <param name="origin">The SDK's ENU tangent origin; use the entity's location for entity-local ENU.</param>
         public void SetGeographicAcceleration(Double3 acceleration, GeoPosition origin)
         {
-            StoreAcceleration(origin.ToEarthCenteredVector(acceleration));
+            _smoother.SetAcceleration(origin.ToEarthCenteredVector(acceleration));
         }
 
         /// <summary>Clears optional acceleration without changing velocity or smoothing history.</summary>
         public void ClearAcceleration()
         {
-            _hasAcceleration = false;
-            _acceleration = default(Double3);
+            _smoother.ClearAcceleration();
         }
 
         /// <summary>Discards smoothing history so the next projection snaps to the latest SDK pose, including after a teleport.</summary>
         /// <remarks>Retains all input channels, attachment and smoothing settings.</remarks>
         public void ResetSmoothing()
         {
-            _hasSmoothedPosition = false;
-            _hasSmoothedRotation = false;
+            _smoother.Reset();
         }
 
-        internal Double3 PresentationPosition => _hasSmoothedPosition ? _smoothedPosition : Position;
-        internal Quaternion PresentationRotation => _hasSmoothedRotation ? _smoothedRotation : Rotation;
+        internal Double3 PresentationPosition => _smoother.PresentationPosition;
+        internal Quaternion PresentationRotation => _smoother.PresentationRotation;
 
         private static void RequireNonnegative(float value, string parameter)
         {
@@ -185,20 +164,6 @@ namespace Emas
             {
                 throw new ArgumentOutOfRangeException(parameter, "The value must be finite and nonnegative.");
             }
-        }
-
-        private void StoreVelocity(Double3 velocity)
-        {
-            ReferenceFrame.ValidatePosition(velocity, nameof(velocity));
-            _velocity = velocity;
-            _hasVelocity = true;
-        }
-
-        private void StoreAcceleration(Double3 acceleration)
-        {
-            ReferenceFrame.ValidatePosition(acceleration, nameof(acceleration));
-            _acceleration = acceleration;
-            _hasAcceleration = true;
         }
 
         // Filter absolute source data before capturing the shared reference; never filter origin movement.
@@ -210,67 +175,7 @@ namespace Emas
                 return;
             }
 
-            double elapsed = Math.Max(0d, timestamp - _smoothingTimestamp);
-            if (HasPosition && SpatialMath.IsFinite(_positionSmoothingTime) && _positionSmoothingTime > 0)
-            {
-                double weight = 1d - Math.Exp(-elapsed / _positionSmoothingTime);
-                _smoothedPosition = _hasSmoothedPosition ? SmoothPosition(weight, elapsed, timestamp) : Position;
-                _hasSmoothedPosition = true;
-            }
-            else
-            {
-                _hasSmoothedPosition = false;
-            }
-
-            if (HasRotation && SpatialMath.IsFinite(_rotationSmoothingTime) && _rotationSmoothingTime > 0)
-            {
-                double weight = 1d - Math.Exp(-elapsed / _rotationSmoothingTime);
-                _smoothedRotation = _hasSmoothedRotation
-                    ? Quaternion.Slerp(_smoothedRotation, Rotation, (float)weight) : Rotation;
-                _hasSmoothedRotation = true;
-            }
-            else
-            {
-                _hasSmoothedRotation = false;
-            }
-
-            _smoothingTimestamp = timestamp;
-        }
-
-        private Double3 SmoothPosition(double weight, double elapsed, double timestamp)
-        {
-            // Integrate supplied motion, then blend its error against the latest observation in every direction.
-            // Cap prediction age so a stopped SDK cannot drive the presentation indefinitely.
-            double age = Math.Max(0d, timestamp - _positionTimestamp);
-            double predictionAge = HasVelocity ? Math.Min(age, _positionSmoothingTime) : 0d;
-            double step = HasVelocity
-                ? Math.Min(elapsed, Math.Max(0d, _positionSmoothingTime - Math.Max(0d, age - elapsed))) : 0d;
-            double accelerationAge = HasAcceleration ? 0.5d * predictionAge * predictionAge : 0d;
-            // A fresh packet's velocity is at its observation time; integrate acceleration backward
-            // over the preceding part of this step, then forward over any packet age.
-            double accelerationStep = HasAcceleration
-                ? step * (predictionAge - 0.5d * step) : 0d;
-            double x = SmoothCoordinate(Position.X, _smoothedPosition.X, Velocity.X, Acceleration.X,
-                predictionAge, step, accelerationAge, accelerationStep, weight);
-            double y = SmoothCoordinate(Position.Y, _smoothedPosition.Y, Velocity.Y, Acceleration.Y,
-                predictionAge, step, accelerationAge, accelerationStep, weight);
-            double z = SmoothCoordinate(Position.Z, _smoothedPosition.Z, Velocity.Z, Acceleration.Z,
-                predictionAge, step, accelerationAge, accelerationStep, weight);
-            return SpatialMath.IsFinite(x) && SpatialMath.IsFinite(y) && SpatialMath.IsFinite(z)
-                ? new Double3(x, y, z) : Position;
-        }
-
-        private static double SmoothCoordinate(double position, double smoothed, double velocity, double acceleration,
-            double age, double step, double accelerationAge, double accelerationStep, double weight)
-        {
-            double predicted = smoothed + velocity * step + acceleration * accelerationStep;
-            double target = position + velocity * age + acceleration * accelerationAge;
-            double correction = target - predicted;
-            if (!SpatialMath.IsFinite(correction))
-            {
-                return double.NaN;
-            }
-            return predicted + correction * weight;
+            _smoother.Prepare(_positionSmoothingTime, _rotationSmoothingTime, timestamp);
         }
 
         /// <summary>
@@ -280,7 +185,7 @@ namespace Emas
         {
             get
             {
-                return _position;
+                return _smoother.Position;
             }
         }
 
@@ -291,7 +196,7 @@ namespace Emas
         {
             get
             {
-                return _rotation;
+                return _smoother.Rotation;
             }
         }
 
@@ -307,7 +212,7 @@ namespace Emas
         {
             get
             {
-                return _hasPosition;
+                return _smoother.HasPosition;
             }
         }
 
@@ -318,7 +223,7 @@ namespace Emas
         {
             get
             {
-                return _hasRotation;
+                return _smoother.HasRotation;
             }
         }
 
@@ -334,7 +239,7 @@ namespace Emas
         {
             get
             {
-                return _isInRange;
+                return _suppression.IsInRange;
             }
         }
 
@@ -440,12 +345,11 @@ namespace Emas
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             if (_rotationSpace != Emas.RotationSpace.Source)
             {
-                _hasSmoothedRotation = false;
+                _smoother.ResetRotation();
             }
-            _rotation = normalized;
+            _smoother.SetRotation(normalized);
             _rotationSpace = Emas.RotationSpace.Source;
             _earthCenteredBodyAxes = null;
-            _hasRotation = true;
         }
 
         /// <summary>Supplies local geographic yaw, pitch and roll in degrees for a Geographic reference.</summary>
@@ -463,12 +367,11 @@ namespace Emas
             Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
             if (_rotationSpace != Emas.RotationSpace.Geographic)
             {
-                _hasSmoothedRotation = false;
+                _smoother.ResetRotation();
             }
-            _rotation = rotation;
+            _smoother.SetRotation(rotation);
             _rotationSpace = Emas.RotationSpace.Geographic;
             _earthCenteredBodyAxes = null;
-            _hasRotation = true;
         }
 
         /// <summary>Supplies a body-to-ECEF quaternion for a Geographic reference, independently of position.</summary>
@@ -483,23 +386,16 @@ namespace Emas
             CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
             if (_rotationSpace != Emas.RotationSpace.EarthCentered || !_earthCenteredBodyAxes.Equals(axes))
             {
-                _hasSmoothedRotation = false;
+                _smoother.ResetRotation();
             }
-            _rotation = normalized;
+            _smoother.SetRotation(normalized);
             _rotationSpace = Emas.RotationSpace.EarthCentered;
             _earthCenteredBodyAxes = axes;
-            _hasRotation = true;
         }
 
         private void StorePosition(Double3 position)
         {
-            ReferenceFrame.ValidatePosition(position, nameof(position));
-            if (!_hasPosition || _position != position)
-            {
-                _positionTimestamp = Time.realtimeSinceStartupAsDouble;
-            }
-            _position = position;
-            _hasPosition = true;
+            _smoother.SetPosition(position, Time.realtimeSinceStartupAsDouble);
         }
 
         // Called by the realm after every trait has updated and the shared reference is captured.
@@ -550,72 +446,22 @@ namespace Emas
 
         internal void SetInRange(bool value)
         {
-            _isInRange = value;
-            if (value)
+            if (!value)
             {
-                RestorePresentation();
-                return;
+                ResetSmoothing();
             }
 
-            ResetSmoothing();
-
-            // Include newly attached components while hidden; preserve components already disabled by the application.
-            GetComponentsInChildren(true, _renderers);
-            foreach (Renderer renderer in _renderers)
-            {
-                if (renderer != null && renderer.enabled)
-                {
-                    _hiddenRenderers.Add(renderer);
-                    renderer.enabled = false;
-                }
-            }
-
-            GetComponentsInChildren(true, _colliders);
-            foreach (Collider collider in _colliders)
-            {
-                if (collider != null && collider.enabled)
-                {
-                    _hiddenColliders.Add(collider);
-                    collider.enabled = false;
-                }
-            }
-
-            _renderers.Clear();
-            _colliders.Clear();
-            _hiddenRenderers.RemoveWhere(item => item == null);
-            _hiddenColliders.RemoveWhere(item => item == null);
-        }
-
-        private void RestorePresentation()
-        {
-            foreach (Renderer renderer in _hiddenRenderers)
-            {
-                if (renderer != null)
-                {
-                    renderer.enabled = true;
-                }
-            }
-
-            foreach (Collider collider in _hiddenColliders)
-            {
-                if (collider != null)
-                {
-                    collider.enabled = true;
-                }
-            }
-
-            _hiddenRenderers.Clear();
-            _hiddenColliders.Clear();
+            _suppression.SetInRange(this, value);
         }
 
         private void OnDestroy()
         {
-            RestorePresentation();
+            _suppression.Restore();
         }
 
         private void OnEnable()
         {
-            if (!_isInRange)
+            if (!IsInRange)
             {
                 SetInRange(false);
             }
@@ -627,8 +473,7 @@ namespace Emas
             // Temporarily hiding the hierarchy must not release range suppression on reactivation.
             if (!enabled)
             {
-                _isInRange = true;
-                RestorePresentation();
+                SetInRange(true);
             }
         }
     }

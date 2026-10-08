@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Make `Spatial` a component facade over internal `PoseSmoother` and `PresentationSuppression` helpers. Separate raw pose/motion channels and smoothing histories from renderer/collider suppression, retaining the public API, serialized controls, reference following, attachment behavior and lifecycle restoration.
+
 - Replace velocity direction rejection with motion-assisted position smoothing that accepts corrections in every direction. Remove `MinimumForwardSpeed`. Add optional Cartesian/ECEF acceleration, explicit ENU velocity and acceleration setters, and `GeoPosition.ToEarthCenteredVector` for tangent-vector conversion. Cap prediction at one position smoothing time after the last changed position. Update Relative World's separate optional motion traits to accept ENU observations with their own tangent origin.
 
 - Split Spatial smoothing into independent `PositionSmoothingTime` and `RotationSmoothingTime`, with zero disabling only its own channel. Changing one setting preserves the other's history. The followed Ghost's rotation setting controls reference orientation and scene repositioning, independently of position smoothing and optional motion prediction.

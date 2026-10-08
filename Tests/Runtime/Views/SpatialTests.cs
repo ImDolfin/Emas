@@ -676,7 +676,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Range also suppresses root geometry and physics, restoring only previously enabled components.
+        /// Spatial suppression preserves application-disabled geometry, captures newly added inactive children, survives hierarchy toggles and restores owned states on recovery, disable or removal.
         /// </summary>
         [Test]
         public void RangeSuppression_RestoresOriginalRendererAndColliderStates()
@@ -703,12 +703,29 @@ namespace Emas.Tests
             Assert.That(disabledCollider.enabled, Is.False);
             Assert.That(ghost.gameObject.activeInHierarchy, Is.True);
 
+            GameObject lateChild = new GameObject("geometry added while suppressed");
+            lateChild.transform.SetParent(ghost.transform, false);
+            lateChild.SetActive(false);
+            MeshRenderer lateRenderer = lateChild.AddComponent<MeshRenderer>();
+            BoxCollider lateCollider = lateChild.AddComponent<BoxCollider>();
+            _realm.Update();
+            Assert.That(lateRenderer.enabled, Is.False);
+            Assert.That(lateCollider.enabled, Is.False);
+
+            ghost.gameObject.SetActive(false);
+            Assert.That(visibleRenderer.enabled, Is.False, "A hierarchy toggle does not release spatial suppression.");
+            ghost.gameObject.SetActive(true);
+            Assert.That(lateRenderer.enabled, Is.False);
+            UnityEngine.Object.DestroyImmediate(lateCollider);
+            _realm.Update();
+
             _source.PublishPosition("remote", new Double3(6, 0, 0));
             _realm.Update();
             Assert.That(visibleRenderer.enabled, Is.True);
             Assert.That(activeCollider.enabled, Is.True);
             Assert.That(disabledRenderer.enabled, Is.False);
             Assert.That(disabledCollider.enabled, Is.False);
+            Assert.That(lateRenderer.enabled, Is.True, "Recovery restores owned component state even on inactive children.");
             Assert.That(ActiveView(ghost), Is.Not.Null);
 
             _source.PublishPosition("remote", new Double3(50, 0, 0));
@@ -720,6 +737,26 @@ namespace Emas.Tests
             Assert.That(activeCollider.enabled, Is.True);
             Assert.That(disabledRenderer.enabled, Is.False);
             Assert.That(disabledCollider.enabled, Is.False);
+            Assert.That(ActiveView(ghost), Is.Not.Null);
+
+            _realm.ReferenceFrame = new ReferenceFrame { MaxDistance = 10 };
+            _realm.Update();
+            Spatial spatial = ghost.GetComponent<Spatial>();
+            spatial.enabled = false;
+            Assert.That(spatial.IsInRange, Is.True);
+            Assert.That(visibleRenderer.enabled, Is.True);
+            Assert.That(activeCollider.enabled, Is.True);
+            Assert.That(disabledRenderer.enabled, Is.False);
+            spatial.enabled = true;
+            _realm.Update();
+            Assert.That(visibleRenderer.enabled, Is.False);
+            UnityEngine.Object.DestroyImmediate(spatial);
+            Assert.That(visibleRenderer.enabled, Is.True);
+            Assert.That(activeCollider.enabled, Is.True);
+            Assert.That(lateRenderer.enabled, Is.True);
+            Assert.That(disabledRenderer.enabled, Is.False);
+            Assert.That(disabledCollider.enabled, Is.False);
+            _realm.Update();
             Assert.That(ActiveView(ghost), Is.Not.Null);
         }
 
