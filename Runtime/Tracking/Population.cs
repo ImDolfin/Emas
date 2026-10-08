@@ -623,8 +623,10 @@ namespace Emas
                 long ownership = record.OwnershipVersion;
                 try
                 {
-                    foreach (Trait trait in record.Ghost.Traits)
+                    IReadOnlyList<Trait> traits = record.Ghost.Traits;
+                    for (int index = 0; index < traits.Count; index++)
                     {
+                        Trait trait = traits[index];
                         // A preceding reader can restart the detector or reclaim this root; stop using the old bindings.
                         if (!CanFinalize(record, onlyOwner) || record.Owner != owner
                             || record.RegistrationGeneration != generation || record.OwnershipVersion != ownership)

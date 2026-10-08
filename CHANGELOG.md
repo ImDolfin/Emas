@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Avoid per-Ghost trait enumerator allocations during realm updates by indexing the existing read-only membership snapshot.
+
 - Exclude destroyed Ghost roots from query results, including contract filters, and report their observer departures on the next realm update.
 
 - Add a PowerShell command for local EditMode and PlayMode validation and a GitHub Actions workflow that runs both suites and retains test reports.
