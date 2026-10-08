@@ -2,11 +2,13 @@
 
 ## 0.1.0
 
-- Split Spatial smoothing into independent `PositionSmoothingTime` and `RotationSmoothingTime`, with zero disabling only its own channel. Changing one setting preserves the other's history. The followed Ghost's rotation setting controls reference orientation and scene repositioning, independently of position smoothing and optional velocity guarding.
+- Replace velocity direction rejection with motion-assisted position smoothing that accepts corrections in every direction. Remove `MinimumForwardSpeed`. Add optional Cartesian/ECEF acceleration, explicit ENU velocity and acceleration setters, and `GeoPosition.ToEarthCenteredVector` for tangent-vector conversion. Cap prediction at one position smoothing time after the last changed position. Update Relative World's separate optional motion traits to accept ENU observations with their own tangent origin.
+
+- Split Spatial smoothing into independent `PositionSmoothingTime` and `RotationSmoothingTime`, with zero disabling only its own channel. Changing one setting preserves the other's history. The followed Ghost's rotation setting controls reference orientation and scene repositioning, independently of position smoothing and optional motion prediction.
 
 - Rename data components to `Trait` / `Trait<TData>` and root membership to `Ghost.Traits` / `IGhost.Traits`. Align concrete sample and test component names, Inspector labels, diagnostics and documentation with Traits, preserving Unity script asset GUIDs.
 
-- Add opt-in `Spatial.PositionSmoothingTime` and `RotationSmoothingTime` for double-precision position and quaternion smoothing before reference projection. Optional Cartesian/ECEF velocity channels reject backward jitter above `MinimumForwardSpeed`, while stops, reversals and missing velocity permit correction. Preserve raw pose access, smooth followed references consistently, inherit attachments once, and provide `ResetSmoothing` for teleports. Demonstrate optional nullable velocity binding with Relative World's `GeoVelocityTrait`.
+- Add opt-in `Spatial.PositionSmoothingTime` and `RotationSmoothingTime` for double-precision position and quaternion smoothing before reference projection. Preserve raw pose access, smooth followed references consistently, inherit attachments once, and provide `ResetSmoothing` for teleports. Demonstrate optional motion binding with Relative World's traits.
 
 - Make `Ghost.GetRequired<T>()` failures distinguish missing and duplicate root components, with entity identity, root GameObject, concrete component types, assemblies and instance IDs. Direct missing-component errors to the Kind's Manifestation Blueprint and its Ghost Prefab field, explain missing blueprint/prefab assignments and root-only lookup, and avoid suggesting both failure causes at once.
 

@@ -35,6 +35,29 @@ namespace Emas.Tests
             }
         }
 
+        /// <summary>ENU motion vectors rotate at their explicit tangent origin without translation, height dependence or an east/up/north axis swap.</summary>
+        [Test]
+        public void EarthCenteredVectors_RotateEastNorthUpAtTheSuppliedOrigin()
+        {
+            Double3 enu = new Double3(1, 2, 3);
+            Assert.That(Double3.Distance(new GeoPosition(0, 0, 0).ToEarthCenteredVector(enu),
+                new Double3(3, 1, 2)), Is.LessThan(1e-12));
+            Assert.That(Double3.Distance(new GeoPosition(0, 90, 1000).ToEarthCenteredVector(enu),
+                new Double3(-1, 3, 2)), Is.LessThan(1e-12));
+            Assert.That(Double3.Distance(new GeoPosition(90, 0, -100).ToEarthCenteredVector(enu),
+                new Double3(-2, 1, 3)), Is.LessThan(1e-12));
+            GeoPosition origin = new GeoPosition(52.520008, 13.404954, 40);
+            Double3 rotated = origin.ToEarthCenteredVector(enu);
+            Assert.That(Double3.Distance(rotated, default(Double3)),
+                Is.EqualTo(Double3.Distance(enu, default(Double3))).Within(1e-12));
+            Assert.That(new GeoPosition(origin.LatitudeDegrees, origin.LongitudeDegrees, 40000).ToEarthCenteredVector(enu),
+                Is.EqualTo(rotated));
+            GeoPosition invalid = JsonUtility.FromJson<GeoPosition>("{\"_latitudeDegrees\":100}");
+            Assert.Throws<ArgumentOutOfRangeException>(() => invalid.ToEarthCenteredVector(enu));
+            Double3 extreme = new Double3(double.MaxValue, double.MaxValue, double.MaxValue);
+            Assert.Throws<ArgumentOutOfRangeException>(() => new GeoPosition(0, 45, 0).ToEarthCenteredVector(extreme));
+        }
+
         /// <summary>Serialized geographic values retain their units and format independently of the application's culture.</summary>
         [Test]
         public void Serialization_RetainsGeographicCoordinates()

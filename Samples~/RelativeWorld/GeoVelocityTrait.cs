@@ -2,18 +2,19 @@ using UnityEngine;
 
 namespace Emas.RelativeWorld
 {
-    /// <summary>Optionally supplies SDK ECEF velocity for Spatial's smoothing direction guard.</summary>
+    /// <summary>Optionally supplies SDK ENU velocity for Spatial's motion-assisted smoothing.</summary>
     [RequireComponent(typeof(Spatial))]
-    public sealed class GeoVelocityTrait : Trait<Double3?>
+    public sealed class GeoVelocityTrait : Trait<GeoPoseReading>
     {
-        /// <summary>Applies ECEF metres per second, or clears the optional velocity channel when no reading is available.</summary>
-        /// <param name="value">An ECEF XYZ velocity; null means the SDK does not currently supply velocity.</param>
-        public override void Apply(Double3? value)
+        /// <summary>Converts optional ENU metres per second at the reading's location, or clears unavailable velocity.</summary>
+        /// <param name="value">The SDK observation, including its tangent origin and optional ENU velocity.</param>
+        public override void Apply(GeoPoseReading value)
         {
             Spatial spatial = Ghost.GetRequired<Spatial>();
-            if (value.HasValue)
+            if (value != null && value.EastNorthUpVelocity.HasValue)
             {
-                spatial.SetEarthCenteredVelocity(value.Value);
+                spatial.SetGeographicVelocity(value.EastNorthUpVelocity.Value,
+                    new GeoPosition(value.LatitudeDegrees, value.LongitudeDegrees, value.AltitudeMeters));
             }
             else
             {

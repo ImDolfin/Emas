@@ -55,6 +55,18 @@ namespace Emas
                 (radius * (1.0 - EccentricitySquared) + _heightMeters) * sin);
         }
 
+        /// <summary>Rotates an east/north/up vector into ECEF XYZ at this WGS84 tangent origin without adding a position offset.</summary>
+        /// <param name="eastNorthUp">X east, Y north, Z up; units are preserved, including velocity and linear acceleration.</param>
+        /// <remarks>Uses geodetic latitude and longitude. Height does not affect vector rotation.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The origin or vector is invalid, or the rotated vector overflows.</exception>
+        public Double3 ToEarthCenteredVector(Double3 eastNorthUp)
+        {
+            ReferenceFrame.ValidatePosition(eastNorthUp, nameof(eastNorthUp));
+            GeographicBasis basis = new GeographicBasis(this);
+            // The internal geographic basis uses east/up/north, while this public SDK contract uses ENU.
+            return basis.ToEarthCentered(new Double3(eastNorthUp.X, eastNorthUp.Z, eastNorthUp.Y));
+        }
+
         /// <summary>Converts Earth-centered, Earth-fixed XYZ metres into a WGS84 position.</summary>
         /// <param name="position">Finite ECEF XYZ metres, excluding Earth's center.</param>
         /// <returns>Latitude, longitude and ellipsoidal height of the supplied point.</returns>

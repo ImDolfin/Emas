@@ -28,11 +28,12 @@ namespace Emas.RelativeWorld
         /// <param name="parentId">The parent entity ID while attached; null for absolute placement.</param>
         /// <param name="parentKind">The attached parent's category.</param>
         /// <param name="bodyOffset">Parent-local metres in SDK axes: X forward, Y right and Z down.</param>
-        /// <param name="earthCenteredVelocity">Optional ECEF XYZ velocity in metres per second for smoothing.</param>
+        /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for smoothing.</param>
+        /// <param name="eastNorthUpAcceleration">Optional local ENU linear acceleration in metres per second squared, with gravity removed.</param>
         public GeoPoseReading(string id, string label, Kind kind, Variant variant, double latitudeDegrees,
             double longitudeDegrees, double altitudeMeters, double yawDegrees, double pitchDegrees,
             double rollDegrees, string parentId = null, Kind parentKind = default, Vector3 bodyOffset = default,
-            Double3? earthCenteredVelocity = null)
+            Double3? eastNorthUpVelocity = null, Double3? eastNorthUpAcceleration = null)
         {
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -66,7 +67,8 @@ namespace Emas.RelativeWorld
             ParentId = parentId;
             ParentKind = parentKind;
             BodyOffset = bodyOffset;
-            EarthCenteredVelocity = earthCenteredVelocity;
+            EastNorthUpVelocity = eastNorthUpVelocity;
+            EastNorthUpAcceleration = eastNorthUpAcceleration;
         }
 
         /// <summary>Gets the stable SDK entity ID.</summary>
@@ -108,8 +110,11 @@ namespace Emas.RelativeWorld
         /// <summary>Gets the parent-local offset in metres using SDK X-forward, Y-right and Z-down axes.</summary>
         public Vector3 BodyOffset { get; }
 
-        /// <summary>Gets optional ECEF XYZ velocity in metres per second, independently of the pose channels.</summary>
-        public Double3? EarthCenteredVelocity { get; }
+        /// <summary>Gets optional X-east, Y-north, Z-up velocity in metres per second at this reading's location.</summary>
+        public Double3? EastNorthUpVelocity { get; }
+
+        /// <summary>Gets optional X-east, Y-north, Z-up linear acceleration in metres per second squared, with gravity removed.</summary>
+        public Double3? EastNorthUpAcceleration { get; }
 
         private static void ValidateRange(double value, double minimum, double maximum, string parameter)
         {

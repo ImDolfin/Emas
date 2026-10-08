@@ -213,14 +213,15 @@ namespace Emas.Tests.Samples
             return null;
         }
 
-        /// <summary>A separately bound velocity trait is optional and releases the Spatial guard when its reader returns no velocity.</summary>
+        /// <summary>Separate optional motion traits convert the same packet's ENU basis independently of pose-reader order and clear unavailable channels.</summary>
         [Test]
-        public void GeoVelocityReader_AppliesOptionalVelocityThroughRealmTraitUpdates()
+        public void GeoMotionReaders_ApplyOptionalEnuVelocityAndAccelerationThroughRealmTraitUpdates()
         {
             GameObject prefab = new GameObject("optional velocity root");
             prefab.SetActive(false);
             Ghost root = prefab.AddComponent<Ghost>();
             prefab.AddComponent<Emas.RelativeWorld.GeoVelocityTrait>();
+            prefab.AddComponent<Emas.RelativeWorld.GeoAccelerationTrait>();
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             try
             {
@@ -228,16 +229,19 @@ namespace Emas.Tests.Samples
                 {
                     blueprint.Configure(CarKind, root, null, null);
                     realm.RegisterManifestationBlueprint(blueprint);
-                    Double3? velocity = null;
+                    Emas.RelativeWorld.GeoPoseReading reading = new Emas.RelativeWorld.GeoPoseReading(
+                        "optional", "Optional motion", CarKind, default, 0, 90, 40, 0, 0, 0);
                     realm.RegisterPresenceInitializer<Ghost>(CarKind, (presence, ghost) =>
                     {
-                        ghost.GetRequired<Emas.RelativeWorld.GeoVelocityTrait>().Bind(() => velocity);
+                        ghost.GetRequired<Emas.RelativeWorld.GeoVelocityTrait>().Bind(() => reading);
+                        ghost.GetRequired<Emas.RelativeWorld.GeoAccelerationTrait>().Bind(() => reading);
                     });
                     VelocityDetector detector = new VelocityDetector();
                     realm.GetOrCreateAnchor("sdk", detector);
                     Ghost ghost = detector.Publish();
                     Spatial spatial = ghost.GetRequired<Spatial>();
-                    spatial.SetGeographicPosition(new GeoPosition(52, 13, 40));
+                    GeoPosition position = new GeoPosition(52, 13, 40);
+                    spatial.SetGeographicPosition(position);
                     spatial.PositionSmoothingTime = 0.1f;
                     realm.ReferenceFrame = new ReferenceFrame
                     {
@@ -246,13 +250,22 @@ namespace Emas.Tests.Samples
                     };
                     realm.Update();
                     Assert.That(spatial.HasVelocity, Is.False);
-                    velocity = new Double3(1, 2, 3);
+                    Assert.That(spatial.HasAcceleration, Is.False);
+                    reading = new Emas.RelativeWorld.GeoPoseReading("optional", "Optional motion", CarKind,
+                        default, 0, 90, 40, 0, 0, 0, eastNorthUpVelocity: new Double3(1, 2, 3),
+                        eastNorthUpAcceleration: new Double3(4, 5, 6));
                     realm.Update();
                     Assert.That(spatial.HasVelocity, Is.True);
-                    Assert.That(spatial.Velocity, Is.EqualTo(velocity.Value));
-                    velocity = null;
+                    Assert.That(Double3.Distance(spatial.Velocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12));
+                    Assert.That(spatial.HasAcceleration, Is.True);
+                    Assert.That(Double3.Distance(spatial.Acceleration, new Double3(-4, 6, 5)), Is.LessThan(1e-12));
+                    Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()), "Motion traits do not overwrite pose or use its location implicitly.");
+                    spatial.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
+                    Assert.That(spatial.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
+                    reading = null;
                     realm.Update();
                     Assert.That(spatial.HasVelocity, Is.False);
+                    Assert.That(spatial.HasAcceleration, Is.False);
                     Assert.That(spatial.IsInRange, Is.True);
                     AssertOriginPose(ghost);
                 }

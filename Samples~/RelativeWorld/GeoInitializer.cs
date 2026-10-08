@@ -17,7 +17,12 @@ namespace Emas.RelativeWorld
             GeoVelocityTrait velocity;
             if (root.TryGet<GeoVelocityTrait>(out velocity))
             {
-                velocity.Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id].EarthCenteredVelocity);
+                velocity.Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
+            }
+            GeoAccelerationTrait acceleration;
+            if (root.TryGet<GeoAccelerationTrait>(out acceleration))
+            {
+                acceleration.Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
             }
             GeoAttachmentTrait attachment;
             if (root.TryGet<GeoAttachmentTrait>(out attachment))

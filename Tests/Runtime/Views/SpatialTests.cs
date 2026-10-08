@@ -743,7 +743,6 @@ namespace Emas.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = float.PositiveInfinity);
             Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = float.NaN);
             Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = -1);
-            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.MinimumForwardSpeed = float.PositiveInfinity);
             Assert.That(spatial.PositionSmoothingTime, Is.EqualTo(2));
             Assert.That(spatial.RotationSmoothingTime, Is.EqualTo(0.5f));
 
@@ -798,48 +797,82 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Optional SDK velocity blocks backward jitter, retains lateral corrections and respects reversal, low speed and missing velocity.</summary>
+        /// <summary>Optional SDK motion reduces position lag, accepts opposite corrections and bounds stale prediction; clearing channels and disabling smoothing restore pose-only handling.</summary>
         [UnityTest]
-        public IEnumerator Smoothing_VelocityGuardsDirectionWithoutPreventingStopsOrReversals()
+        public IEnumerator Smoothing_VelocityPredictsMotionWithoutRejectingCorrections()
         {
             _realm.ReferenceFrame = new ReferenceFrame { Coordinates = CoordinateSystem.NorthEastDown, Position = default(Double3) };
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(10, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
             spatial.PositionSmoothingTime = 0.1f;
-            spatial.MinimumForwardSpeed = 1;
             spatial.SetCartesianVelocity(new Double3(8, 0, 0));
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(0, 0, 10));
-            spatial.SetCartesianPosition(new Double3(9, 2, 0));
+            spatial.SetCartesianPosition(new Double3(-10, 2, 0));
             yield return AdvanceSmoothing(0.04);
-            Assert.That(ghost.transform.position.z, Is.EqualTo(10).Within(0.0001));
+            Assert.That(ghost.transform.position.z, Is.LessThan(10), "A correction opposite strong velocity is accepted.");
             Assert.That(ghost.transform.position.x, Is.GreaterThan(0));
-            Assert.That(spatial.Position, Is.EqualTo(new Double3(9, 2, 0)));
+            Assert.That(spatial.Position, Is.EqualTo(new Double3(-10, 2, 0)));
             Assert.That(spatial.HasVelocity, Is.True);
             Assert.That(spatial.Velocity, Is.EqualTo(new Double3(8, 0, 0)));
 
-            spatial.SetCartesianVelocity(new Double3(-8, 0, 0));
-            yield return AdvanceSmoothing(0.04);
-            Assert.That(ghost.transform.position.z, Is.LessThan(10));
             spatial.ResetSmoothing();
-            spatial.SetCartesianPosition(new Double3(10, 0, 0));
-            spatial.SetCartesianVelocity(new Double3(0.5, 0, 0));
-            _realm.Update();
-            spatial.SetCartesianPosition(new Double3(9, 0, 0));
-            yield return AdvanceSmoothing(0.04);
-            Assert.That(ghost.transform.position.z, Is.LessThan(10), "Low speeds allow correction back toward the measurement.");
-
+            spatial.SetCartesianPosition(default(Double3));
             spatial.SetCartesianVelocity(new Double3(8, 0, 0));
+            spatial.SetCartesianAcceleration(new Double3(4, 0, 0));
+            _realm.Update();
+            yield return AdvanceSmoothing(0.3);
+            Assert.That(ghost.transform.position.z, Is.EqualTo(0.82f).Within(0.02f), "Prediction is capped at one smoothing time, including acceleration.");
+            float stoppedPrediction = ghost.transform.position.z;
+            double cachedUntil = Time.realtimeSinceStartupAsDouble + 0.08;
+            do
+            {
+                yield return null;
+                spatial.SetCartesianPosition(default(Double3));
+                _realm.Update();
+            }
+            while (Time.realtimeSinceStartupAsDouble < cachedUntil);
+            Assert.That(ghost.transform.position.z, Is.EqualTo(stoppedPrediction).Within(0.01f));
+            Assert.That(spatial.Position, Is.EqualTo(default(Double3)), "Prediction never changes the SDK input.");
+            Assert.That(spatial.HasAcceleration, Is.True);
+            Assert.That(spatial.Acceleration, Is.EqualTo(new Double3(4, 0, 0)));
+            spatial.ClearVelocity();
+            yield return AdvanceSmoothing(0.04);
+            Assert.That(ghost.transform.position.z, Is.LessThan(stoppedPrediction), "Acceleration alone does not predict travel.");
+            spatial.ClearAcceleration();
+            Assert.That(spatial.HasAcceleration, Is.False);
+            spatial.SetCartesianVelocity(new Double3(8, 0, 0));
+
+            TestGhost unassisted = _source.PublishPosition("unassisted", default(Double3));
+            Spatial other = unassisted.GetComponent<Spatial>();
+            other.PositionSmoothingTime = spatial.PositionSmoothingTime;
+            spatial.ResetSmoothing();
+            spatial.SetCartesianPosition(default(Double3));
+            _realm.Update();
+            double started = Time.realtimeSinceStartupAsDouble;
+            double deadline = started + 0.12;
+            do
+            {
+                yield return null;
+                Double3 position = new Double3(8 * (Time.realtimeSinceStartupAsDouble - started), 0, 0);
+                spatial.SetCartesianPosition(position);
+                other.SetCartesianPosition(position);
+                _realm.Update();
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+            Assert.That(Math.Abs(ghost.transform.position.z - spatial.Position.X),
+                Is.LessThan(Math.Abs(unassisted.transform.position.z - other.Position.X)), "Velocity reduces lag on a moving stream.");
+
             spatial.ClearVelocity();
             float before = ghost.transform.position.z;
-            spatial.SetCartesianPosition(new Double3(8, 0, 0));
+            spatial.SetCartesianPosition(new Double3(-8, 0, 0));
             yield return AdvanceSmoothing(0.04);
             Assert.That(spatial.HasVelocity, Is.False);
             Assert.That(ghost.transform.position.z, Is.LessThan(before));
             spatial.SetCartesianVelocity(new Double3(8, 0, 0));
             spatial.PositionSmoothingTime = 0;
             _realm.Update();
-            AssertPosition(ghost.transform.position, new Vector3(0, 0, 8));
+            AssertPosition(ghost.transform.position, new Vector3(0, 0, -8));
         }
 
         /// <summary>A geographic reference shares independently smoothed channels with its root; unsmoothed reference rotation repositions smoothed targets and attached parts immediately.</summary>

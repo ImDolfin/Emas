@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Stores independent pose and optional velocity updates with opt-in smoothing for world or realm-relative placement.
+    /// Stores independent pose and optional motion updates with opt-in smoothing for world or realm-relative placement.
     /// </summary>
     /// <remarks>
     /// Place on the Ghost root. Positions retain doubles; Cartesian poses use ReferenceFrame.Coordinates.
@@ -29,12 +29,12 @@ namespace Emas
         [Tooltip("Rotation smoothing time constant in unscaled seconds. Zero applies SDK rotations directly. On a followed Ghost, this controls how quickly reference orientation repositions other Ghosts when Follow Rotation is enabled.")]
         [Min(0)]
         [SerializeField] private float _rotationSmoothingTime;
-        [Tooltip("Minimum SDK speed for rejecting position corrections opposite velocity, in source units per second (ECEF metres/second in Geographic space).")]
-        [Min(0)]
-        [SerializeField] private float _minimumForwardSpeed = 0.1f;
 
         private Double3 _velocity;
         private bool _hasVelocity;
+        private Double3 _acceleration;
+        private bool _hasAcceleration;
+        private double _positionTimestamp;
         private Double3 _smoothedPosition;
         private Quaternion _smoothedRotation = Quaternion.identity;
         private bool _hasSmoothedPosition;
@@ -56,7 +56,8 @@ namespace Emas
         private readonly HashSet<Collider> _hiddenColliders = new HashSet<Collider>();
 
         /// <summary>Gets or sets the position smoothing time constant in unscaled seconds; zero disables position smoothing (the default).</summary>
-        /// <remarks>Larger values reduce positional jitter and increase lag. Raw Position remains unchanged.
+        /// <remarks>Larger values reduce positional jitter and increase lag. Optional velocity and acceleration predict motion
+        /// for at most this many seconds after a changed position input, while allowing corrections in every direction. Raw Position remains unchanged.
         /// Changing this setting resets only position smoothing on the next projection; rotation smoothing retains its history.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The time is negative or nonfinite.</exception>
         public float PositionSmoothingTime
@@ -93,29 +94,15 @@ namespace Emas
             }
         }
 
-        /// <summary>Gets or sets the minimum supplied speed for preventing motion opposite velocity, in source units per second.</summary>
-        /// <remarks>Defaults to 0.1. Only applies with position smoothing enabled and a nonzero velocity channel.
-        /// In Geographic space the unit is ECEF metres per second. Lower speeds permit corrections in any direction.</remarks>
-        /// <exception cref="ArgumentOutOfRangeException">The speed is negative or nonfinite.</exception>
-        public float MinimumForwardSpeed
-        {
-            get => _minimumForwardSpeed;
-            set
-            {
-                RequireNonnegative(value, nameof(value));
-                _minimumForwardSpeed = value;
-            }
-        }
-
         /// <summary>Gets the last supplied Cartesian velocity or ECEF metres per second; valid when HasVelocity is true.</summary>
         public Double3 Velocity => _velocity;
 
-        /// <summary>Gets whether an SDK velocity has been supplied for the backward-motion guard.</summary>
+        /// <summary>Gets whether an SDK velocity has been supplied for motion-assisted position smoothing.</summary>
         public bool HasVelocity => _hasVelocity;
 
         /// <summary>Supplies velocity in the shared Cartesian source axes and units per second, independently of position.</summary>
-        /// <remarks>Used only by smoothing to reject backward jitter. Does not extrapolate position.
-        /// Update velocity when stopping or reversing; ClearVelocity releases the guard.</remarks>
+        /// <remarks>Assists position smoothing with bounded motion prediction; corrections in every direction remain accepted.
+        /// Update velocity when stopping or reversing. Prediction ends one PositionSmoothingTime after the latest changed position input.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">A coordinate is nonfinite.</exception>
         public void SetCartesianVelocity(Double3 velocity)
         {
@@ -130,11 +117,55 @@ namespace Emas
             StoreVelocity(velocity);
         }
 
-        /// <summary>Clears the velocity channel so smoothing permits position corrections in any direction.</summary>
+        /// <summary>Supplies ENU velocity in metres per second, converting it to ECEF at the supplied tangent origin.</summary>
+        /// <param name="velocity">X east, Y north, Z up, in metres per second.</param>
+        /// <param name="origin">The SDK's ENU tangent origin; use the entity's location for entity-local ENU.</param>
+        /// <remarks>Stores an ECEF vector independently of position and reference axes; does not change pose.</remarks>
+        public void SetGeographicVelocity(Double3 velocity, GeoPosition origin)
+        {
+            StoreVelocity(origin.ToEarthCenteredVector(velocity));
+        }
+
+        /// <summary>Clears velocity and disables motion prediction; position smoothing continues accepting all corrections.</summary>
         public void ClearVelocity()
         {
             _hasVelocity = false;
             _velocity = default(Double3);
+        }
+
+        /// <summary>Gets the last supplied Cartesian acceleration or ECEF metres per second squared; valid when HasAcceleration is true.</summary>
+        public Double3 Acceleration => _acceleration;
+
+        /// <summary>Gets whether optional acceleration has been supplied to assist prediction when velocity is available.</summary>
+        public bool HasAcceleration => _hasAcceleration;
+
+        /// <summary>Supplies linear acceleration in shared Cartesian source axes and units per second squared.</summary>
+        /// <remarks>Assists position smoothing only when velocity is also present. Does not change pose or velocity.</remarks>
+        public void SetCartesianAcceleration(Double3 acceleration)
+        {
+            StoreAcceleration(acceleration);
+        }
+
+        /// <summary>Supplies ECEF linear acceleration in metres per second squared for Geographic smoothing.</summary>
+        /// <remarks>Supply kinematic acceleration, with gravity already removed from accelerometer measurements.</remarks>
+        public void SetEarthCenteredAcceleration(Double3 acceleration)
+        {
+            StoreAcceleration(acceleration);
+        }
+
+        /// <summary>Supplies ENU linear acceleration in metres per second squared, converting it at the supplied tangent origin.</summary>
+        /// <param name="acceleration">X east, Y north, Z up, in metres per second squared; gravity must already be removed.</param>
+        /// <param name="origin">The SDK's ENU tangent origin; use the entity's location for entity-local ENU.</param>
+        public void SetGeographicAcceleration(Double3 acceleration, GeoPosition origin)
+        {
+            StoreAcceleration(origin.ToEarthCenteredVector(acceleration));
+        }
+
+        /// <summary>Clears optional acceleration without changing velocity or smoothing history.</summary>
+        public void ClearAcceleration()
+        {
+            _hasAcceleration = false;
+            _acceleration = default(Double3);
         }
 
         /// <summary>Discards smoothing history so the next projection snaps to the latest SDK pose, including after a teleport.</summary>
@@ -163,6 +194,13 @@ namespace Emas
             _hasVelocity = true;
         }
 
+        private void StoreAcceleration(Double3 acceleration)
+        {
+            ReferenceFrame.ValidatePosition(acceleration, nameof(acceleration));
+            _acceleration = acceleration;
+            _hasAcceleration = true;
+        }
+
         // Filter absolute source data before capturing the shared reference; never filter origin movement.
         internal void PrepareSmoothing(double timestamp)
         {
@@ -176,7 +214,7 @@ namespace Emas
             if (HasPosition && SpatialMath.IsFinite(_positionSmoothingTime) && _positionSmoothingTime > 0)
             {
                 double weight = 1d - Math.Exp(-elapsed / _positionSmoothingTime);
-                _smoothedPosition = _hasSmoothedPosition ? SmoothPosition(weight) : Position;
+                _smoothedPosition = _hasSmoothedPosition ? SmoothPosition(weight, elapsed, timestamp) : Position;
                 _hasSmoothedPosition = true;
             }
             else
@@ -199,42 +237,40 @@ namespace Emas
             _smoothingTimestamp = timestamp;
         }
 
-        private Double3 SmoothPosition(double weight)
+        private Double3 SmoothPosition(double weight, double elapsed, double timestamp)
         {
-            double x = Position.X - _smoothedPosition.X;
-            double y = Position.Y - _smoothedPosition.Y;
-            double z = Position.Z - _smoothedPosition.Z;
-            if (!SpatialMath.IsFinite(x) || !SpatialMath.IsFinite(y) || !SpatialMath.IsFinite(z))
-            {
-                return Position;
-            }
+            // Integrate supplied motion, then blend its error against the latest observation in every direction.
+            // Cap prediction age so a stopped SDK cannot drive the presentation indefinitely.
+            double age = Math.Max(0d, timestamp - _positionTimestamp);
+            double predictionAge = HasVelocity ? Math.Min(age, _positionSmoothingTime) : 0d;
+            double step = HasVelocity
+                ? Math.Min(elapsed, Math.Max(0d, _positionSmoothingTime - Math.Max(0d, age - elapsed))) : 0d;
+            double accelerationAge = HasAcceleration ? 0.5d * predictionAge * predictionAge : 0d;
+            // A fresh packet's velocity is at its observation time; integrate acceleration backward
+            // over the preceding part of this step, then forward over any packet age.
+            double accelerationStep = HasAcceleration
+                ? step * (predictionAge - 0.5d * step) : 0d;
+            double x = SmoothCoordinate(Position.X, _smoothedPosition.X, Velocity.X, Acceleration.X,
+                predictionAge, step, accelerationAge, accelerationStep, weight);
+            double y = SmoothCoordinate(Position.Y, _smoothedPosition.Y, Velocity.Y, Acceleration.Y,
+                predictionAge, step, accelerationAge, accelerationStep, weight);
+            double z = SmoothCoordinate(Position.Z, _smoothedPosition.Z, Velocity.Z, Acceleration.Z,
+                predictionAge, step, accelerationAge, accelerationStep, weight);
+            return SpatialMath.IsFinite(x) && SpatialMath.IsFinite(y) && SpatialMath.IsFinite(z)
+                ? new Double3(x, y, z) : Position;
+        }
 
-            double speed = Double3.Distance(Velocity, default(Double3));
-            if (HasVelocity && speed > 0d && speed >= _minimumForwardSpeed)
+        private static double SmoothCoordinate(double position, double smoothed, double velocity, double acceleration,
+            double age, double step, double accelerationAge, double accelerationStep, double weight)
+        {
+            double predicted = smoothed + velocity * step + acceleration * accelerationStep;
+            double target = position + velocity * age + acceleration * accelerationAge;
+            double correction = target - predicted;
+            if (!SpatialMath.IsFinite(correction))
             {
-                // Scale before normalization to support finite velocities whose magnitude overflows.
-                double largest = Math.Max(Math.Abs(Velocity.X), Math.Max(Math.Abs(Velocity.Y), Math.Abs(Velocity.Z)));
-                double vx = Velocity.X / largest;
-                double vy = Velocity.Y / largest;
-                double vz = Velocity.Z / largest;
-                double length = Math.Sqrt(vx * vx + vy * vy + vz * vz);
-                vx /= length;
-                vy /= length;
-                vz /= length;
-                double along = x * vx + y * vy + z * vz;
-                if (along < 0d)
-                {
-                    x -= along * vx;
-                    y -= along * vy;
-                    z -= along * vz;
-                }
+                return double.NaN;
             }
-
-            double px = _smoothedPosition.X + x * weight;
-            double py = _smoothedPosition.Y + y * weight;
-            double pz = _smoothedPosition.Z + z * weight;
-            return SpatialMath.IsFinite(px) && SpatialMath.IsFinite(py) && SpatialMath.IsFinite(pz)
-                ? new Double3(px, py, pz) : Position;
+            return predicted + correction * weight;
         }
 
         /// <summary>
@@ -458,6 +494,10 @@ namespace Emas
         private void StorePosition(Double3 position)
         {
             ReferenceFrame.ValidatePosition(position, nameof(position));
+            if (!_hasPosition || _position != position)
+            {
+                _positionTimestamp = Time.realtimeSinceStartupAsDouble;
+            }
             _position = position;
             _hasPosition = true;
         }
