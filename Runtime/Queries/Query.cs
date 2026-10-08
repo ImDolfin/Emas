@@ -376,7 +376,9 @@ namespace Emas
 
         internal bool Matches(IGhost ghost)
         {
-            if (ghost == null || !ghost.IsAvailable)
+            // Interface null checks do not detect destroyed Unity components.
+            Ghost root = ghost as Ghost;
+            if (root == null || !root.IsAvailable)
             {
                 return false;
             }

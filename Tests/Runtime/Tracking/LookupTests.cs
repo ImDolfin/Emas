@@ -156,18 +156,41 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Destroyed Unity roots are not returned as live interface references.
+        /// Destroyed published roots leave lookups and query results immediately, then notify observers once on update.
         /// </summary>
         [Test]
-        public void DestroyedGhost_ReturnsFalse()
+        public void DestroyedGhost_LeavesLookupsAndQueries()
         {
-            _realm.GetOrCreateAnchor("anchor");
-            TestGhost prepared = _realm.Prepare<TestGhost>("anchor", Kind, "one");
-            Key key = prepared.Key;
-            UnityEngine.Object.DestroyImmediate(prepared.gameObject);
-            IGhost found;
-            Assert.That(_realm.TryGetGhost(key, out found), Is.False);
-            Assert.That(found, Is.Null);
+            Probe source = new Probe();
+            _realm.GetOrCreateAnchor("anchor", source);
+            TestGhost ghost = source.Publish("one");
+            Key key = ghost.Key;
+            _realm.Update();
+
+            Query query = _realm.Query();
+            Query typed = query.With<TestGhost>();
+            int arrivals = 0;
+            List<Key> departures = new List<Key>();
+            using (typed.Observe(match => arrivals++, departures.Add))
+            {
+                Assert.That(arrivals, Is.EqualTo(1));
+                UnityEngine.Object.DestroyImmediate(ghost.gameObject);
+
+                IGhost found;
+                Assert.That(_realm.TryGetGhost(key, out found), Is.False);
+                Assert.That(found, Is.Null);
+                Assert.That(_realm.Ghosts, Is.Empty);
+                Assert.That(query.Count, Is.Zero);
+                Assert.That(query.ToArray(), Is.Empty);
+                Assert.That(query.FirstOrDefault(), Is.Null);
+                Assert.That(typed.Count, Is.Zero);
+                Assert.That(departures, Is.Empty);
+
+                _realm.Update();
+                _realm.Update();
+                Assert.That(arrivals, Is.EqualTo(1));
+                Assert.That(departures, Is.EqualTo(new[] { key }));
+            }
         }
 
         /// <summary>

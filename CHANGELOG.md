@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Exclude destroyed Ghost roots from query results, including contract filters, and report their observer departures on the next realm update.
+
+- Add a PowerShell command for local EditMode and PlayMode validation and a GitHub Actions workflow that runs both suites and retains test reports.
+
 - Separate plain `Spatial` placement from optional `Smoothing` and `Prediction` behavior Traits on each Ghost root. Replace smoothing time constants with independent position/rotation half-lives (0–0.5 second Inspector ranges and tradeoff tooltips); prediction has its own extrapolation limit. Move motion setters to Prediction. Add seconds/nanoseconds `Timestamp` inputs, per-channel duplicate/stale ordering, shared arrival-based SDK clock alignment, timestamp-derived velocity and `Realm.ResetSpatialTime` recovery. Preserve immediate unsmoothed reference orientation, raw inputs, attachments and suppression. Update Relative World and API documentation for timestamped observation readers.
 
 - Keep `Spatial` focused on raw pose storage, reference placement, attachments and presentation suppression. Optional `Smoothing` owns filter history and `Prediction` owns motion observations and estimates, preserving reference following and lifecycle restoration.

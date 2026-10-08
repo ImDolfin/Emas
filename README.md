@@ -141,6 +141,8 @@ Choose **Geographic** under **Reference space**. **Source quaternion axes** desc
 
 This project already includes the samples and test configuration. No manifest editing or sample import is needed. The repository root is a UPM package; `Tests/Unity~` is the Unity project to open. See [validation](Documentation~/Validation.md) for testing in other projects.
 
+On Windows, close the test project in Unity and run `powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools~\Validate.ps1` from the repository root to run both suites. See [command-line validation and CI setup](Documentation~/Validation.md#command-line-validation) for editor selection, reports and GitHub Actions configuration.
+
 ## Documentation
 
 - [Getting started](Documentation~/GettingStarted.md): install and integrate a source.

@@ -1,0 +1,39 @@
+name: Unity validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unity-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    name: EditMode and PlayMode
+    # Run only repository-owned code on the activated self-hosted machine.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: [self-hosted, Windows, X64, unity-2022.3.62f3]
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Unity tests
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
+        run: .\Tools~\Validate.ps1
+
+      - name: Upload test results and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unity-validation
+          path: TestResults/Validation
+          if-no-files-found: warn
+          retention-days: 14
