@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Add opt-in `Spatial.SmoothingTime` for double-precision position and quaternion smoothing before reference projection. Optional Cartesian/ECEF velocity channels reject backward jitter above `MinimumForwardSpeed`, while stops, reversals and missing velocity permit correction. Preserve raw pose access, smooth followed references consistently, inherit attachments once, and provide `ResetSmoothing` for teleports. Demonstrate optional nullable velocity binding with Relative World's `GeoVelocityModule`.
+
 - Make `Ghost.GetRequired<T>()` failures distinguish missing and duplicate root components, with entity identity, root GameObject, concrete component types, assemblies and instance IDs. Direct missing-component errors to the Kind's Manifestation Blueprint and its Ghost Prefab field, explain missing blueprint/prefab assignments and root-only lookup, and avoid suggesting both failure causes at once.
 
 - Expose public `Anchor` and `Realm` context on `GhostInitializer`, `PresenceDetector` and `PresenceDetectorComponent`. Bind before startup callbacks, retain the actual owner across scene reparenting, and clear on detachment or Anchor disposal. Keep initializer context across detector restart/replacement and use direct Anchor access in the car sample.

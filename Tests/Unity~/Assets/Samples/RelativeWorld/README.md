@@ -15,6 +15,8 @@ The road, markings, camera, light, tracking prefab and vehicle prefabs are saved
 
 ## SDK and reference coordinates
 
+For jittery SDK data, set **Spatial > Smoothing Time** on the Ghost prefab to a positive value such as `0.1` seconds. Smoothing is disabled by default. An optional `GeoVelocityModule` can be added beside `GeoPositionModule`; `GeoInitializer` binds it only when present. Supply `GeoPoseReading.EarthCenteredVelocity` in ECEF XYZ metres per second, or leave it null. Velocity enables the backward-motion guard; position and orientation smoothing also work without it. Update velocity when stopping or reversing, and call `Spatial.ResetSmoothing()` for teleports. See [spatial smoothing](../../Documentation~/Spatial.md#smooth-sdk-poses).
+
 `SimulatedGeoSdk` supplies complete WGS84 snapshots: latitude/longitude in degrees, ellipsoidal altitude in metres and attitude in degrees. The origin advances along a level road. Parking bays are fixed 80 m apart, alternating left and right; the first is 24 m ahead. The SDK includes parked cars from 38 m ahead to 22 m behind the origin, leaving gaps between encounters. Each bay has a stable `parked-N` identity and a fixed geographic pose.
 
 The bird is always present as `relative.bird / bird`. Its four-metre-radius orbit moves with the driving origin and takes eight seconds per lap. Its heading follows the relative orbit, with a constant 20-degree bank. Both position and orientation arrive as SDK readings and pass through the initializer and modules; the bird view contains only authored geometry.

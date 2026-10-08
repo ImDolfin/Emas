@@ -15,6 +15,33 @@ Configure a reference frame for a realm to project shared Cartesian or geographi
 
 Position and attitude arrive independently. Setters store data; the Realm applies it after all readers run. `Position` contains source Cartesian coordinates or ECEF metres, never latitude/longitude. `Rotation` contains a normalized quaternion; `RotationSpace` identifies `Source`, `Geographic` (east/up/north), or `EarthCentered`. Read them after `HasPosition` or `HasRotation` becomes true. Each rotation setter replaces the previous representation.
 
+## Smooth SDK poses
+
+On the Ghost's **Spatial** component, set **Smoothing Time** to a positive time constant in seconds; start around `0.1` and adjust for your SDK. The default `0` keeps direct pose application. Position uses exponential smoothing in double-precision source coordinates and rotation follows the shortest quaternion arc. Larger values reduce jitter and increase lag. Smoothing uses Unity's unscaled clock, advances on realm projection even between SDK packets, and does not extrapolate beyond the latest position.
+
+```csharp
+Spatial spatial = ghost.GetRequired<Spatial>();
+spatial.SmoothingTime = 0.1f;
+```
+
+`Position` and `Rotation` continue to expose the latest raw input. The smoothed pose supplies both the root and a following reference frame, so the followed entity stays at the configured Unity pose. Changes to reference placement and coordinate conversion apply immediately. Attached parts inherit their parent's projected pose without a second smoothing pass. Source range checks still suppress an entity immediately when its latest input is outside `MaxDistance`; returning to range or re-enabling Spatial starts with a fresh pose.
+
+Velocity is optional. Without it, position and rotation still smooth normally. If your SDK supplies velocity, bind it through a separate `EntityModule`, just like the position channel. Use `SetCartesianVelocity(Double3)` for shared source axes and units per second, or `SetEarthCenteredVelocity(Double3)` for ECEF XYZ metres per second in Geographic space. **Minimum Forward Speed** (default `0.1`) sets the speed at which the guard rejects position corrections opposite the supplied velocity; perpendicular corrections continue to smooth. It follows the velocity direction, independently of the model's heading.
+
+The Relative World sample includes an optional `GeoVelocityModule : EntityModule<Double3?>`. Add it to a geographic Ghost prefab when your SDK supports velocity. Its reader returns ECEF metres per second or `null` when velocity is unavailable:
+
+```csharp
+GeoVelocityModule velocity;
+if (root.TryGet<GeoVelocityModule>(out velocity))
+{
+    velocity.Bind(() => ReadOptionalEcefVelocity(presence)); // Application SDK mapping: Double3?
+}
+```
+
+`GeoInitializer` demonstrates the optional binding using `GeoPoseReading.EarthCenteredVelocity`; existing sample prefabs and mock readings do not require velocity. Convert body or local tangent SDK velocity into ECEF before supplying it. A Cartesian module can use the same nullable pattern and call `SetCartesianVelocity` instead.
+
+Publish current velocity whenever the entity stops, turns or reverses. Zero or a speed below `MinimumForwardSpeed` permits corrections in any direction; `ClearVelocity()` releases the guard if the SDK stops supplying velocity. The guard retains its last velocity until updated or cleared and does not predict travel. For a teleport or intentional discontinuity, call `ResetSmoothing()` after supplying the new pose; the next projection snaps to that input while retaining smoothing settings and channels. Changes between source, geographic and ECEF attitude representations restart rotation smoothing rather than blending incompatible quaternions.
+
 ## Attach and detach entities
 
 Use `Spatial.Attach` for a part whose presentation should follow another entity instead of independently timed absolute SDK packets. Attach by a complete `Key` in the same Realm; the parent may be discovered after its parts, including on another Anchor or detector:

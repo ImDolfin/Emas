@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>
-    /// Stores independent position and rotation updates for world or realm-relative placement.
+    /// Stores independent pose and optional velocity updates with opt-in smoothing for world or realm-relative placement.
     /// </summary>
     /// <remarks>
     /// Place on the Ghost root. Positions retain doubles; Cartesian poses use ReferenceFrame.Coordinates.
@@ -23,6 +23,20 @@ namespace Emas
     [AddComponentMenu("Emas/Spatial")]
     public sealed class Spatial : MonoBehaviour
     {
+        [Tooltip("Position and rotation smoothing time constant in unscaled seconds. Zero applies SDK poses directly.")]
+        [Min(0)]
+        [SerializeField] private float _smoothingTime;
+        [Tooltip("Minimum SDK speed for rejecting position corrections opposite velocity, in source units per second (ECEF metres/second in Geographic space).")]
+        [Min(0)]
+        [SerializeField] private float _minimumForwardSpeed = 0.1f;
+
+        private Double3 _velocity;
+        private bool _hasVelocity;
+        private Double3 _smoothedPosition;
+        private Quaternion _smoothedRotation = Quaternion.identity;
+        private bool _hasSmoothedPosition;
+        private bool _hasSmoothedRotation;
+        private double _smoothingTimestamp;
         private Double3 _position;
         private Quaternion _rotation = Quaternion.identity;
         private RotationSpace _rotationSpace;
@@ -37,6 +51,158 @@ namespace Emas
         private readonly List<Collider> _colliders = new List<Collider>();
         private readonly HashSet<Renderer> _hiddenRenderers = new HashSet<Renderer>();
         private readonly HashSet<Collider> _hiddenColliders = new HashSet<Collider>();
+
+        /// <summary>Gets or sets the smoothing time constant in unscaled seconds; zero disables smoothing (the default).</summary>
+        /// <remarks>Larger values reduce jitter and increase lag. Raw Position and Rotation remain unchanged.
+        /// Changing this setting resets smoothing on the next projection.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The time is negative or nonfinite.</exception>
+        public float SmoothingTime
+        {
+            get => _smoothingTime;
+            set
+            {
+                RequireNonnegative(value, nameof(value));
+                if (_smoothingTime != value)
+                {
+                    _smoothingTime = value;
+                    ResetSmoothing();
+                }
+            }
+        }
+
+        /// <summary>Gets or sets the minimum supplied speed for preventing motion opposite velocity, in source units per second.</summary>
+        /// <remarks>Defaults to 0.1. Only applies with smoothing enabled and a nonzero velocity channel.
+        /// In Geographic space the unit is ECEF metres per second. Lower speeds permit corrections in any direction.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The speed is negative or nonfinite.</exception>
+        public float MinimumForwardSpeed
+        {
+            get => _minimumForwardSpeed;
+            set
+            {
+                RequireNonnegative(value, nameof(value));
+                _minimumForwardSpeed = value;
+            }
+        }
+
+        /// <summary>Gets the last supplied Cartesian velocity or ECEF metres per second; valid when HasVelocity is true.</summary>
+        public Double3 Velocity => _velocity;
+
+        /// <summary>Gets whether an SDK velocity has been supplied for the backward-motion guard.</summary>
+        public bool HasVelocity => _hasVelocity;
+
+        /// <summary>Supplies velocity in the shared Cartesian source axes and units per second, independently of position.</summary>
+        /// <remarks>Used only by smoothing to reject backward jitter. Does not extrapolate position.
+        /// Update velocity when stopping or reversing; ClearVelocity releases the guard.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">A coordinate is nonfinite.</exception>
+        public void SetCartesianVelocity(Double3 velocity)
+        {
+            StoreVelocity(velocity);
+        }
+
+        /// <summary>Supplies an ECEF velocity vector in metres per second for Geographic smoothing.</summary>
+        /// <remarks>Use ECEF XYZ, not body or local tangent axes. Does not change position or rotation.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">A coordinate is nonfinite.</exception>
+        public void SetEarthCenteredVelocity(Double3 velocity)
+        {
+            StoreVelocity(velocity);
+        }
+
+        /// <summary>Clears the velocity channel so smoothing permits position corrections in any direction.</summary>
+        public void ClearVelocity()
+        {
+            _hasVelocity = false;
+            _velocity = default(Double3);
+        }
+
+        /// <summary>Discards smoothing history so the next projection snaps to the latest SDK pose, including after a teleport.</summary>
+        /// <remarks>Retains all input channels, attachment and smoothing settings.</remarks>
+        public void ResetSmoothing()
+        {
+            _hasSmoothedPosition = false;
+            _hasSmoothedRotation = false;
+        }
+
+        internal Double3 PresentationPosition => _hasSmoothedPosition ? _smoothedPosition : Position;
+        internal Quaternion PresentationRotation => _hasSmoothedRotation ? _smoothedRotation : Rotation;
+
+        private static void RequireNonnegative(float value, string parameter)
+        {
+            if (!SpatialMath.IsFinite(value) || value < 0)
+            {
+                throw new ArgumentOutOfRangeException(parameter, "The value must be finite and nonnegative.");
+            }
+        }
+
+        private void StoreVelocity(Double3 velocity)
+        {
+            ReferenceFrame.ValidatePosition(velocity, nameof(velocity));
+            _velocity = velocity;
+            _hasVelocity = true;
+        }
+
+        // Filter absolute source data before capturing the shared reference; never filter origin movement.
+        internal void PrepareSmoothing(double timestamp)
+        {
+            if (!enabled || AttachedTo.HasValue || !SpatialMath.IsFinite(_smoothingTime) || _smoothingTime <= 0)
+            {
+                ResetSmoothing();
+                return;
+            }
+
+            double weight = 1d - Math.Exp(-Math.Max(0d, timestamp - _smoothingTimestamp) / _smoothingTime);
+            if (HasPosition)
+            {
+                _smoothedPosition = _hasSmoothedPosition ? SmoothPosition(weight) : Position;
+                _hasSmoothedPosition = true;
+            }
+
+            if (HasRotation)
+            {
+                _smoothedRotation = _hasSmoothedRotation
+                    ? Quaternion.Slerp(_smoothedRotation, Rotation, (float)weight) : Rotation;
+                _hasSmoothedRotation = true;
+            }
+
+            _smoothingTimestamp = timestamp;
+        }
+
+        private Double3 SmoothPosition(double weight)
+        {
+            double x = Position.X - _smoothedPosition.X;
+            double y = Position.Y - _smoothedPosition.Y;
+            double z = Position.Z - _smoothedPosition.Z;
+            if (!SpatialMath.IsFinite(x) || !SpatialMath.IsFinite(y) || !SpatialMath.IsFinite(z))
+            {
+                return Position;
+            }
+
+            double speed = Double3.Distance(Velocity, default(Double3));
+            if (HasVelocity && speed > 0d && speed >= _minimumForwardSpeed)
+            {
+                // Scale before normalization to support finite velocities whose magnitude overflows.
+                double largest = Math.Max(Math.Abs(Velocity.X), Math.Max(Math.Abs(Velocity.Y), Math.Abs(Velocity.Z)));
+                double vx = Velocity.X / largest;
+                double vy = Velocity.Y / largest;
+                double vz = Velocity.Z / largest;
+                double length = Math.Sqrt(vx * vx + vy * vy + vz * vz);
+                vx /= length;
+                vy /= length;
+                vz /= length;
+                double along = x * vx + y * vy + z * vz;
+                if (along < 0d)
+                {
+                    x -= along * vx;
+                    y -= along * vy;
+                    z -= along * vz;
+                }
+            }
+
+            double px = _smoothedPosition.X + x * weight;
+            double py = _smoothedPosition.Y + y * weight;
+            double pz = _smoothedPosition.Z + z * weight;
+            return SpatialMath.IsFinite(px) && SpatialMath.IsFinite(py) && SpatialMath.IsFinite(pz)
+                ? new Double3(px, py, pz) : Position;
+        }
 
         /// <summary>
         /// Gets the last Cartesian source position or absolute ECEF metres after geographic/ECEF input; valid after HasPosition is true.
@@ -148,6 +314,7 @@ namespace Emas
             _attachedTo = parent;
             _attachmentPosition = localPosition;
             _attachmentRotation = rotation;
+            ResetSmoothing();
         }
 
         /// <summary>Clears the attachment so the next realm projection uses the latest cached absolute position and rotation.</summary>
@@ -157,7 +324,11 @@ namespace Emas
         /// </remarks>
         public void Detach()
         {
-            _attachedTo = null;
+            if (_attachedTo.HasValue)
+            {
+                _attachedTo = null;
+                ResetSmoothing();
+            }
         }
 
         /// <summary>
@@ -197,7 +368,12 @@ namespace Emas
         /// <exception cref="System.ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public void SetSourceRotation(Quaternion rotation)
         {
-            _rotation = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
+            Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
+            if (_rotationSpace != Emas.RotationSpace.Source)
+            {
+                _hasSmoothedRotation = false;
+            }
+            _rotation = normalized;
             _rotationSpace = Emas.RotationSpace.Source;
             _earthCenteredBodyAxes = null;
             _hasRotation = true;
@@ -216,6 +392,10 @@ namespace Emas
         public void SetGeographicRotation(double yawDegrees, double pitchDegrees, double rollDegrees)
         {
             Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
+            if (_rotationSpace != Emas.RotationSpace.Geographic)
+            {
+                _hasSmoothedRotation = false;
+            }
             _rotation = rotation;
             _rotationSpace = Emas.RotationSpace.Geographic;
             _earthCenteredBodyAxes = null;
@@ -232,6 +412,10 @@ namespace Emas
         {
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
+            if (_rotationSpace != Emas.RotationSpace.EarthCentered || !_earthCenteredBodyAxes.Equals(axes))
+            {
+                _hasSmoothedRotation = false;
+            }
             _rotation = normalized;
             _rotationSpace = Emas.RotationSpace.EarthCentered;
             _earthCenteredBodyAxes = axes;
@@ -249,17 +433,18 @@ namespace Emas
         internal bool ApplyProjection(ReferenceFrame.Projection projection)
         {
             Vector3 position = default(Vector3);
-            bool visible = HasPosition && projection.TryToUnityPosition(Position, out position);
+            bool visible = HasPosition && projection.TryToUnityPosition(Position, out position)
+                && projection.TryToUnityPosition(PresentationPosition, out position);
             if (visible)
             {
                 // Assign world pose so anchor transforms do not introduce a second offset.
                 if (HasRotation)
                 {
                     Quaternion rotation = _earthCenteredBodyAxes.HasValue
-                        ? projection.ToUnityEarthCenteredRotation(Rotation, _earthCenteredBodyAxes.Value)
+                        ? projection.ToUnityEarthCenteredRotation(PresentationRotation, _earthCenteredBodyAxes.Value)
                         : _rotationSpace == Emas.RotationSpace.Geographic
-                            ? projection.ToUnityGeographicRotation(Rotation, Position)
-                            : projection.ToUnityRotation(Rotation, Position);
+                            ? projection.ToUnityGeographicRotation(PresentationRotation, PresentationPosition)
+                            : projection.ToUnityRotation(PresentationRotation, PresentationPosition);
                     transform.SetPositionAndRotation(position, rotation);
                 }
                 else
@@ -298,6 +483,8 @@ namespace Emas
                 RestorePresentation();
                 return;
             }
+
+            ResetSmoothing();
 
             // Include newly attached components while hidden; preserve components already disabled by the application.
             GetComponentsInChildren(true, _renderers);
@@ -363,6 +550,7 @@ namespace Emas
 
         private void OnDisable()
         {
+            ResetSmoothing();
             // Temporarily hiding the hierarchy must not release range suppression on reactivation.
             if (!enabled)
             {

@@ -213,6 +213,65 @@ namespace Emas.Tests.Samples
             return null;
         }
 
+        /// <summary>A separately bound velocity module is optional and releases the Spatial guard when its reader returns no velocity.</summary>
+        [Test]
+        public void GeoVelocityReader_AppliesOptionalVelocityThroughRealmModuleUpdates()
+        {
+            GameObject prefab = new GameObject("optional velocity root");
+            prefab.SetActive(false);
+            Ghost root = prefab.AddComponent<Ghost>();
+            prefab.AddComponent<Emas.RelativeWorld.GeoVelocityModule>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            try
+            {
+                using (Realm realm = new Realm())
+                {
+                    blueprint.Configure(CarKind, root, null, null);
+                    realm.RegisterManifestationBlueprint(blueprint);
+                    Double3? velocity = null;
+                    realm.RegisterPresenceInitializer<Ghost>(CarKind, (presence, ghost) =>
+                    {
+                        ghost.GetRequired<Emas.RelativeWorld.GeoVelocityModule>().Bind(() => velocity);
+                    });
+                    VelocityDetector detector = new VelocityDetector();
+                    realm.GetOrCreateAnchor("sdk", detector);
+                    Ghost ghost = detector.Publish();
+                    Spatial spatial = ghost.GetRequired<Spatial>();
+                    spatial.SetGeographicPosition(new GeoPosition(52, 13, 40));
+                    spatial.SmoothingTime = 0.1f;
+                    realm.ReferenceFrame = new ReferenceFrame
+                    {
+                        Space = ReferenceSpace.Geographic,
+                        FollowedGhost = ghost.Key
+                    };
+                    realm.Update();
+                    Assert.That(spatial.HasVelocity, Is.False);
+                    velocity = new Double3(1, 2, 3);
+                    realm.Update();
+                    Assert.That(spatial.HasVelocity, Is.True);
+                    Assert.That(spatial.Velocity, Is.EqualTo(velocity.Value));
+                    velocity = null;
+                    realm.Update();
+                    Assert.That(spatial.HasVelocity, Is.False);
+                    Assert.That(spatial.IsInRange, Is.True);
+                    AssertOriginPose(ghost);
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(blueprint);
+                Object.DestroyImmediate(prefab);
+            }
+        }
+
+        private sealed class VelocityDetector : PresenceDetector
+        {
+            internal Ghost Publish()
+            {
+                return Detect("optional", CarKind).Root;
+            }
+        }
+
         private static Ghost Car(Realm realm, string id)
         {
             Assert.That(realm.TryGetGhost(new Key("relative-world", CarKind, id), out IGhost ghost), Is.True, id);

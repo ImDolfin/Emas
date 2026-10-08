@@ -19,7 +19,7 @@ namespace Emas
             _identities = identities;
         }
 
-        private ReferenceFrame.Projection Capture(ReferenceFrame frame)
+        private ReferenceFrame.Projection Capture(ReferenceFrame frame, double timestamp)
         {
             if (frame != null && frame.FollowedGhost.HasValue)
             {
@@ -28,6 +28,11 @@ namespace Emas
                 if (_identities.TryGetValue(frame.FollowedGhost.Value, out reference) && CanProject(reference))
                 {
                     spatial = reference.Ghost.GetComponent<Spatial>();
+                }
+
+                if (spatial != null)
+                {
+                    spatial.PrepareSmoothing(timestamp);
                 }
 
                 frame.UpdateFollowedPose(spatial);
@@ -40,12 +45,13 @@ namespace Emas
 
         internal void Project(List<Record> records, ReferenceFrame frame)
         {
-            ReferenceFrame.Projection projection = Capture(frame);
+            double timestamp = Time.realtimeSinceStartupAsDouble;
+            ReferenceFrame.Projection projection = Capture(frame, timestamp);
             try
             {
                 for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
                 {
-                    ProjectChain(records[index], projection);
+                    ProjectChain(records[index], projection, timestamp);
                 }
             }
             finally
@@ -58,11 +64,24 @@ namespace Emas
         {
             try
             {
-                ProjectChain(record, Capture(frame));
+                double timestamp = Time.realtimeSinceStartupAsDouble;
+                ProjectChain(record, Capture(frame, timestamp), timestamp);
             }
             finally
             {
                 ClearProjection();
+            }
+        }
+
+        private void PrepareSmoothing(Record record, double timestamp)
+        {
+            if (CanProject(record))
+            {
+                Spatial spatial = record.Ghost.GetComponent<Spatial>();
+                if (spatial != null)
+                {
+                    spatial.PrepareSmoothing(timestamp);
+                }
             }
         }
 
@@ -73,7 +92,7 @@ namespace Emas
             _chain.Clear();
         }
 
-        private void ProjectChain(Record record, ReferenceFrame.Projection projection)
+        private void ProjectChain(Record record, ReferenceFrame.Projection projection, double timestamp)
         {
             _chain.Clear();
             _visiting.Clear();
@@ -94,6 +113,7 @@ namespace Emas
             for (int index = _chain.Count - 1; index >= 0 && !_realm.IsDisposed; index--)
             {
                 Record item = _chain[index];
+                PrepareSmoothing(item, timestamp);
                 Project(item, projection);
                 _projected.Add(item);
             }

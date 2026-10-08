@@ -479,6 +479,7 @@ namespace Emas
                 try
                 {
                     GeoPosition.FromEarthCentered(spatial.Position);
+                    GeoPosition.FromEarthCentered(spatial.PresentationPosition);
                 }
                 catch (ArgumentOutOfRangeException)
                 {
@@ -491,12 +492,12 @@ namespace Emas
                 return;
             }
 
-            _position = spatial.Position;
+            _position = spatial.PresentationPosition;
             _hasPosition = true;
             // Position-only updates retain the previous attitude and its local/ECEF representation.
             if (spatial.HasRotation)
             {
-                _rotation = spatial.Rotation;
+                _rotation = spatial.PresentationRotation;
                 _rotationSpace = spatial.RotationSpace;
                 _earthCenteredBodyAxes = spatial.EarthCenteredBodyAxes;
             }

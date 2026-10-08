@@ -40,6 +40,7 @@ crashlytics-build.properties
 # Generated test output
 artifacts/
 TestResults/
+TestResults.meta
 [Ii]nitTestScene*.unity*
 [Pp]lay[Mm]ode[Tt]est[Rr]unner*.unity*
 
