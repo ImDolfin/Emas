@@ -8,14 +8,14 @@ The scene contains an instance of `Tracking.prefab` plus an authored camera, lig
 
 - **Realm Setup** assigns `MarkerBlueprint.asset` as the realm blueprint for the marker Kind.
 - **Anchor Setup** uses the `quick-start` anchor ID with automatic views enabled.
-- **Marker Source** is the detector component; **Marker Initializer** binds the position module.
+- **Marker Source** is the detector component; **Marker Initializer** binds the position trait.
 
 The assets form a small, complete presentation setup:
 
 | Asset | Purpose |
 | --- | --- |
 | `MarkerBlueprint.asset` | Maps `minimal.marker` to its Ghost root and the inline `marker` variant. |
-| `MarkerRoot.prefab` | Contains a plain `Ghost` and its reusable `MarkerPositionModule`. |
+| `MarkerRoot.prefab` | Contains a plain `Ghost` and its reusable `MarkerPositionTrait`. |
 | `MarkerView.prefab` | Contains the cube mesh and its `Marker.mat` material. |
 | `Tracking.prefab` | Reusable, fully configured realm, anchor, detector and initializer. |
 
@@ -26,8 +26,8 @@ Change the material or mesh in `MarkerView.prefab` to customize the cube. Edit t
 The remaining scripts show only the data integration:
 
 - `MarkerSource` derives from `PresenceDetectorComponent` and detects the permanent marker once in `OnStart`.
-- `MarkerInitializer` derives from `GhostInitializer` and binds the Ghost's position module.
-- `MarkerPositionModule` reads a mapped `Vector3` each realm update and applies it to the root.
+- `MarkerInitializer` derives from `GhostInitializer` and binds the Ghost's position trait.
+- `MarkerPositionTrait` reads a mapped `Vector3` each realm update and applies it to the root.
 
 Replace the simulated position reader in `MarkerSource` with a reader of your SDK proxy. This marker is always present; call `Disappear` with the kind and stable ID when a real entity departs. Call Emas on Unity's main thread.
 

@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Emas.Sample
 {
     /// <summary>Stores normalized steering from either SDK for the manifested vehicle's articulation.</summary>
-    public sealed class ArticulationModule : EntityModule<float>, IArticulate
+    public sealed class ArticulationTrait : Trait<float>, IArticulate
     {
         /// <inheritdoc />
         public float Steering { get; private set; }

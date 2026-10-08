@@ -61,7 +61,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// An anchor enabled on demand configures its root and data module before detection, once per realm lifetime.
+        /// An anchor enabled on demand configures its root and data trait before detection, once per realm lifetime.
         /// </summary>
         [Test]
         public void EnabledAnchor_ConfiguresPresenceOncePerRealmLifetime()
@@ -230,9 +230,9 @@ namespace Emas.Tests
             Presence presence;
             Assert.That(realm.TryGetPresence(new Key("default", TestKind, "one"), out presence), Is.True);
             Assert.That(realm.Query().Single(), Is.TypeOf<TextGhost>());
-            TextModule module = presence.Root.GetComponent<TextModule>();
-            Assert.That(module, Is.Not.Null);
-            Assert.That(module.Value, Is.EqualTo("one"));
+            TextTrait trait = presence.Root.GetComponent<TextTrait>();
+            Assert.That(trait, Is.Not.Null);
+            Assert.That(trait.Value, Is.EqualTo("one"));
         }
 
         private sealed class TestProvider : MonoBehaviour, IDetectorProvider
@@ -253,13 +253,13 @@ namespace Emas.Tests
             internal int Calls;
 
             /// <summary>
-            /// Registers a typed root and module before the detector publishes data.
+            /// Registers a typed root and trait before the detector publishes data.
             /// </summary>
             public void ConfigureRealm(Realm realm)
             {
                 Calls++;
                 realm.RegisterPresenceInitializer<TextGhost>(TestKind,
-                    (presence, root) => root.GetComponent<TextModule>().Bind(() => presence.Key.EntityId));
+                    (presence, root) => root.GetComponent<TextTrait>().Bind(() => presence.Key.EntityId));
             }
         }
 

@@ -48,7 +48,7 @@ namespace Emas
         /// <remarks>
         /// May be a proxy, SDK client or another application object. Returns null when unassigned,
         /// collected, destroyed as a Unity object, or released on disappearance, handover or removal.
-        /// Emas does not own or dispose it. Resolve this property inside module readers rather than
+        /// Emas does not own or dispose it. Resolve this property inside trait readers rather than
         /// capturing its target if the binding should also avoid retaining the source.
         /// </remarks>
         public object Source

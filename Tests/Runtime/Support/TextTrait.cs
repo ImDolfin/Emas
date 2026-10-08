@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Emas.Tests
 {
     /// <summary>Stores a mapped value used to verify initialization and failure context.</summary>
-    public sealed class TextModule : EntityModule<string>
+    public sealed class TextTrait : Trait<string>
     {
         internal string Value;
 

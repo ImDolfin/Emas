@@ -30,7 +30,7 @@ namespace Emas
         internal bool ViewDirty;
         internal bool RefreshingView;
         internal long ViewVersion;
-        // Ownership changes invalidate module work; attachment generations reject publications from old detector lifetimes.
+        // Ownership changes invalidate trait work; attachment generations reject publications from old detector lifetimes.
         internal long OwnershipVersion;
         internal long RegistrationGeneration;
         // Handover waits for its earliest cleanup update and for work queued through the end of startup.

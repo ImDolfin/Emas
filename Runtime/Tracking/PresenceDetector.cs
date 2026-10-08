@@ -8,7 +8,7 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Use all detector operations on Unity's main thread. The application handles SDK threading before calling Emas.
-    /// Attach through an Anchor. Detect arrivals and disappearances; Ghost modules read their own mapped inputs. SDK clients remain application-owned.
+    /// Attach through an Anchor. Detect arrivals and disappearances; Ghost traits read their own mapped inputs. SDK clients remain application-owned.
     /// </remarks>
     public abstract class PresenceDetector
     {
@@ -104,7 +104,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Creates or refreshes a detected entity's stable Presence and initializes its configured Ghost modules.
+        /// Creates or refreshes a detected entity's stable Presence and initializes its configured Ghost traits.
         /// </summary>
         /// <param name="entityId">The stable SDK entity ID.</param>
         /// <param name="kind">The detected kind.</param>
@@ -115,7 +115,7 @@ namespace Emas
         /// Null preserves the existing source. A different source reruns the initializer.</param>
         /// <returns>The stable realm-owned presence handle.</returns>
         /// <remarks>
-        /// Configured modules must already exist on the root. The initializer binds them before their first read;
+        /// Configured traits must already exist on the root. The initializer binds them before their first read;
         /// advertised capabilities do not add components or guarantee that Ghost.TryGet can resolve them.
         /// A new or unavailable entity activates after successful startup, or during the next realm update
         /// for detections made outside startup. Repeated detection records activity and cancels disappearance grace.
@@ -347,7 +347,7 @@ namespace Emas
         /// Configure while detached. Uses unscaled real time and marks expired presences missing during the next realm update,
         /// after queued publications and detector updates. Detect, GetOrCreate and MarkPublished reset the individual presence's deadline.
         /// DisappearanceGracePeriod then determines whether removal is immediate or delayed.
-        /// Module reads do not count as presence activity. Enable only for feeds that confirm continued presence;
+        /// Trait reads do not count as presence activity. Enable only for feeds that confirm continued presence;
         /// arrival/departure-only feeds should leave expiry disabled.
         /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">

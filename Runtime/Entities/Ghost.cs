@@ -9,12 +9,12 @@ namespace Emas
     /// </summary>
 
     /// <remarks>
-    /// Use this component directly on an authored prefab with reusable EntityModule components.
+    /// Use this component directly on an authored prefab with reusable Trait components.
     /// Derive a custom Ghost only when the entity needs additional behavior; subclasses can use RequireComponent.
-    /// Modules and other root components can implement read-only application contracts. Emas creates/destroys roots and sets their metadata.
+    /// Traits and other root components can implement read-only application contracts. Emas creates/destroys roots and sets their metadata.
     /// Created root GameObjects are named by Key.EntityId before application initialization; Name is separate display metadata.
     /// Roots activate after successful publication and deactivate on availability loss; Awake may run before source mapping.
-    /// Initializers map source data to the configured modules. Views are optional children, independent of root behaviors.
+    /// Initializers map source data to the configured traits. Views are optional children, independent of root behaviors.
     /// </remarks>
     [AddComponentMenu("Emas/Ghost")]
     public class Ghost : MonoBehaviour, IGhost
@@ -32,8 +32,8 @@ namespace Emas
         [SerializeField, HideInInspector]
         private bool _isAvailable;
         private GhostPartResolver _partResolver;
-        private List<EntityModule> _moduleBuffer;
-        private IReadOnlyList<EntityModule> _modules = Array.AsReadOnly(Array.Empty<EntityModule>());
+        private List<Trait> _traitBuffer;
+        private IReadOnlyList<Trait> _traits = Array.AsReadOnly(Array.Empty<Trait>());
 
         /// <inheritdoc />
         public Key Key
@@ -73,29 +73,29 @@ namespace Emas
         }
 
         /// <inheritdoc />
-        public IReadOnlyList<EntityModule> Modules
+        public IReadOnlyList<Trait> Traits
         {
             get
             {
-                if (_moduleBuffer == null)
+                if (_traitBuffer == null)
                 {
-                    _moduleBuffer = new List<EntityModule>();
+                    _traitBuffer = new List<Trait>();
                 }
 
-                GetComponents(_moduleBuffer);
-                bool changed = _moduleBuffer.Count != _modules.Count;
-                for (int index = 0; !changed && index < _moduleBuffer.Count; index++)
+                GetComponents(_traitBuffer);
+                bool changed = _traitBuffer.Count != _traits.Count;
+                for (int index = 0; !changed && index < _traitBuffer.Count; index++)
                 {
-                    changed = !ReferenceEquals(_moduleBuffer[index], _modules[index]);
+                    changed = !ReferenceEquals(_traitBuffer[index], _traits[index]);
                 }
 
                 if (changed)
                 {
-                    // Replace the snapshot so module readers can inspect a changed root without altering an active pass.
-                    _modules = Array.AsReadOnly(_moduleBuffer.ToArray());
+                    // Replace the snapshot so trait readers can inspect a changed root without altering an active pass.
+                    _traits = Array.AsReadOnly(_traitBuffer.ToArray());
                 }
 
-                return _modules;
+                return _traits;
             }
         }
 
@@ -111,13 +111,13 @@ namespace Emas
         }
 
         /// <summary>
-        /// Runs entity-specific behavior after all module readers and before spatial projection.
+        /// Runs entity-specific behavior after all trait readers and before spatial projection.
         /// </summary>
         /// <remarks>
         /// The realm calls this once per Update for each enabled, owned Ghost that is available or awaiting activation.
         /// It may run before the root's first activation. Prepared or disappeared Ghosts do not update.
         /// Startup finalization and view requests do not invoke this hook. Ordering between Ghost hooks is unspecified.
-        /// An exception stops the owning detector and removes its population, as with module update failures.
+        /// An exception stops the owning detector and removes its population, as with trait update failures.
         /// </remarks>
         protected virtual void OnUpdate()
         {

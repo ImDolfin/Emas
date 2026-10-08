@@ -7,7 +7,7 @@ using UnityEngine.TestTools;
 
 namespace Emas.Tests
 {
-    /// <summary>Verifies scene adapters share the code-based detector and module contracts.</summary>
+    /// <summary>Verifies scene adapters share the code-based detector and trait contracts.</summary>
     public sealed class ComponentSetupTests
     {
         private static readonly Kind TestKind = new Kind("components.entity");
@@ -59,14 +59,14 @@ namespace Emas.Tests
 
         /// <summary>Local mapping sees bound Anchor/Realm context before availability, reads updated values, and reconnects the same root to a new source.</summary>
         [Test]
-        public void Initializer_BindsAuthoredModulesAndRebindsSource()
+        public void Initializer_BindsAuthoredTraitsAndRebindsSource()
         {
             Assert.That(_initializer.Anchor, Is.Null);
             Assert.That(_initializer.Realm, Is.Null);
             Assert.That(_source.Anchor, Is.Null);
             Assert.That(_source.Realm, Is.Null);
             string observed = null;
-            using (_setup.Realm.Query().OnAvailable(ghost => observed = ((Ghost)ghost).GetComponent<TextModule>().Value))
+            using (_setup.Realm.Query().OnAvailable(ghost => observed = ((Ghost)ghost).GetComponent<TextTrait>().Value))
             {
                 _source.gameObject.SetActive(true);
                 _setup.Realm.Update();
@@ -78,10 +78,10 @@ namespace Emas.Tests
             Assert.That(_source.Detector.Anchor, Is.SameAs(_source.Anchor));
             Assert.That(_source.Detector.Realm, Is.SameAs(_setup.Realm));
             Presence presence = _source.Current;
-            TextModule module = presence.Root.GetComponent<TextModule>();
+            TextTrait trait = presence.Root.GetComponent<TextTrait>();
             _source.BeforeRead = () => _source.Source.Value = "updated";
             _setup.Realm.Update();
-            Assert.That(module.Value, Is.EqualTo("updated"));
+            Assert.That(trait.Value, Is.EqualTo("updated"));
             Assert.That(_initializer.Calls, Is.EqualTo(1));
 
             _source.BeforeRead = null;
@@ -89,8 +89,8 @@ namespace Emas.Tests
             _source.Publish();
             _setup.Realm.Update();
             Assert.That(_source.Current, Is.SameAs(presence));
-            Assert.That(_source.Current.Root.GetComponent<TextModule>(), Is.SameAs(module));
-            Assert.That(module.Value, Is.EqualTo("replacement"));
+            Assert.That(_source.Current.Root.GetComponent<TextTrait>(), Is.SameAs(trait));
+            Assert.That(trait.Value, Is.EqualTo("replacement"));
             Assert.That(_initializer.Calls, Is.EqualTo(2));
             Assert.That(presence.Source, Is.SameAs(_source.Source));
         }
@@ -100,12 +100,12 @@ namespace Emas.Tests
         public void LocalMapping_DoesNotReplaceRealmRegistration()
         {
             _setup.Realm.RegisterPresenceInitializer<TextGhost>(TestKind,
-                (presence, root) => root.GetComponent<TextModule>().Bind(() => "realm mapping"));
+                (presence, root) => root.GetComponent<TextTrait>().Bind(() => "realm mapping"));
             _source.gameObject.SetActive(true);
             _setup.Realm.GetOrCreateAnchor("code").AddDetector(new CodeDetector());
             Ghost code = (Ghost)_setup.Realm.Query().InAnchor("code").Single();
-            Assert.That(code.GetComponent<TextModule>().Value, Is.EqualTo("realm mapping"));
-            Assert.That(_source.Current.Root.GetComponent<TextModule>().Value, Is.EqualTo("first"));
+            Assert.That(code.GetComponent<TextTrait>().Value, Is.EqualTo("realm mapping"));
+            Assert.That(_source.Current.Root.GetComponent<TextTrait>().Value, Is.EqualTo("first"));
 
             _source.gameObject.SetActive(false);
             Assert.That(_initializer.Anchor, Is.Null);
@@ -114,7 +114,7 @@ namespace Emas.Tests
             Assert.That(_source.Realm, Is.Null);
             _initializer.enabled = false;
             _source.gameObject.SetActive(true);
-            Assert.That(_source.Current.Root.GetComponent<TextModule>().Value, Is.EqualTo("realm mapping"));
+            Assert.That(_source.Current.Root.GetComponent<TextTrait>().Value, Is.EqualTo("realm mapping"));
             Assert.That(_initializer.Calls, Is.EqualTo(1));
             Assert.That(_initializer.Anchor, Is.Null);
             Assert.That(_initializer.Realm, Is.Null);
@@ -136,7 +136,7 @@ namespace Emas.Tests
             _setup.Realm.Update();
             Assert.That(called, Is.EqualTo(2));
             Assert.That(_source.Current, Is.SameAs(original));
-            Assert.That(_source.Current.Root.GetComponent<TextModule>().Value, Is.EqualTo("first"));
+            Assert.That(_source.Current.Root.GetComponent<TextTrait>().Value, Is.EqualTo("first"));
             Assert.That(_source.Starts, Is.EqualTo(2));
             Assert.That(_source.Stops, Is.EqualTo(1));
             Assert.That(_source.OwnedCount, Is.EqualTo(1));
@@ -284,7 +284,7 @@ namespace Emas.Tests
                 {
                     throw new InvalidOperationException("mapping failed");
                 }
-                ghost.GetComponent<TextModule>().Bind(() => ((Reading)presence.Source).Value);
+                ghost.GetComponent<TextTrait>().Bind(() => ((Reading)presence.Source).Value);
             }
         }
 

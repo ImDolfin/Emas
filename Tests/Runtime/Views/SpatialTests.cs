@@ -254,7 +254,7 @@ namespace Emas.Tests
             GameObject rootPrefab = new GameObject("geographic root");
             rootPrefab.SetActive(false);
             Ghost root = rootPrefab.AddComponent<Ghost>();
-            rootPrefab.AddComponent<GeographicModule>();
+            rootPrefab.AddComponent<GeographicTrait>();
             GameObject viewPrefab = new GameObject("geographic view");
             viewPrefab.SetActive(false);
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
@@ -265,7 +265,7 @@ namespace Emas.Tests
             _realm.RegisterManifestationBlueprint(blueprint);
             _realm.RegisterPresenceInitializer<Ghost>(SpatialKind, (presence, ghost) =>
             {
-                ghost.GetComponent<GeographicModule>().Bind(() => ((GeographicReading)presence.Source).Position);
+                ghost.GetComponent<GeographicTrait>().Bind(() => ((GeographicReading)presence.Source).Position);
             });
 
             GeographicSource targets = new GeographicSource();
@@ -963,7 +963,7 @@ namespace Emas.Tests
         }
 
         [RequireComponent(typeof(Spatial))]
-        private sealed class GeographicModule : EntityModule<GeoPosition>
+        private sealed class GeographicTrait : Trait<GeoPosition>
         {
             /// <summary>Applies a bound WGS84 reading through the public geographic channel.</summary>
             public override void Apply(GeoPosition position)

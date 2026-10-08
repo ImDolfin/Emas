@@ -124,7 +124,7 @@ namespace Emas.Tests.Samples
             }
         }
 
-        /// <summary>The bird and its feet follow the moving reference, with module-driven detach preserving the release pose and reattach retaining identities.</summary>
+        /// <summary>The bird and its feet follow the moving reference, with trait-driven detach preserving the release pose and reattach retaining identities.</summary>
         [UnityTest]
         public IEnumerator RelativeWorld_BirdAndFeetMoveTogetherAndDetachToWorldPoses()
         {
@@ -213,14 +213,14 @@ namespace Emas.Tests.Samples
             return null;
         }
 
-        /// <summary>A separately bound velocity module is optional and releases the Spatial guard when its reader returns no velocity.</summary>
+        /// <summary>A separately bound velocity trait is optional and releases the Spatial guard when its reader returns no velocity.</summary>
         [Test]
-        public void GeoVelocityReader_AppliesOptionalVelocityThroughRealmModuleUpdates()
+        public void GeoVelocityReader_AppliesOptionalVelocityThroughRealmTraitUpdates()
         {
             GameObject prefab = new GameObject("optional velocity root");
             prefab.SetActive(false);
             Ghost root = prefab.AddComponent<Ghost>();
-            prefab.AddComponent<Emas.RelativeWorld.GeoVelocityModule>();
+            prefab.AddComponent<Emas.RelativeWorld.GeoVelocityTrait>();
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             try
             {
@@ -231,7 +231,7 @@ namespace Emas.Tests.Samples
                     Double3? velocity = null;
                     realm.RegisterPresenceInitializer<Ghost>(CarKind, (presence, ghost) =>
                     {
-                        ghost.GetRequired<Emas.RelativeWorld.GeoVelocityModule>().Bind(() => velocity);
+                        ghost.GetRequired<Emas.RelativeWorld.GeoVelocityTrait>().Bind(() => velocity);
                     });
                     VelocityDetector detector = new VelocityDetector();
                     realm.GetOrCreateAnchor("sdk", detector);

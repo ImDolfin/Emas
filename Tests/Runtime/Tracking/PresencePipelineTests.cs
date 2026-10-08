@@ -59,19 +59,19 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Ghost-defined modules read the latest mapped values without additional detections,
+        /// Ghost-defined traits read the latest mapped values without additional detections,
         /// and all initial values are ready before query consumers see the entity.
         /// </summary>
         [Test]
-        public void Modules_UpdateFromBoundReadersWithoutDetectorReports()
+        public void Traits_UpdateFromBoundReadersWithoutDetectorReports()
         {
             Reading proxy = new Reading(new Double3(1, 2, 3), 7);
             int initializations = 0;
             _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
                 initializations++;
-                root.GetComponent<PipelinePositionModule>().Bind(() => ((Reading)presence.Source).Position);
-                root.GetComponent<PipelineArticulationModule>().Bind(() => ((Reading)presence.Source).Articulation);
+                root.GetComponent<PipelinePositionTrait>().Bind(() => ((Reading)presence.Source).Position);
+                root.GetComponent<PipelineArticulationTrait>().Bind(() => ((Reading)presence.Source).Articulation);
             });
             Detector detector = new Detector();
             _realm.GetOrCreateAnchor("sdk", detector);
@@ -85,7 +85,7 @@ namespace Emas.Tests
             {
                 Presence presence = detector.Arrive("one", proxy);
                 Ghost root = presence.Root;
-                Assert.That(root.GetComponents<EntityModule>().Length, Is.EqualTo(3));
+                Assert.That(root.GetComponents<Trait>().Length, Is.EqualTo(3));
                 Assert.That(presence.IsAvailable, Is.False);
                 _realm.Update();
                 Assert.That(arrivals, Is.EqualTo(1));
@@ -105,7 +105,7 @@ namespace Emas.Tests
 
         /// <summary>
         /// A presence exposes its supplied proxy or SDK before initialization; changing that
-        /// object reconnects existing modules, while repeated metadata preserves the binding.
+        /// object reconnects existing traits, while repeated metadata preserves the binding.
         /// </summary>
         [Test]
         public void Detect_SourceReplacementReinitializesTheSameGhost()
@@ -114,14 +114,14 @@ namespace Emas.Tests
             _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
                 initializations++;
-                PipelinePositionModule module = root.GetComponent<PipelinePositionModule>();
+                PipelinePositionTrait trait = root.GetComponent<PipelinePositionTrait>();
                 if (presence.Source is Reading)
                 {
-                    module.Bind(() => ((Reading)presence.Source).Position);
+                    trait.Bind(() => ((Reading)presence.Source).Position);
                 }
                 else
                 {
-                    module.Bind(() => ((PositionSdk)presence.Source).Position);
+                    trait.Bind(() => ((PositionSdk)presence.Source).Position);
                 }
             });
             Detector detector = new Detector();
@@ -200,11 +200,11 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A module can be disabled and rebound; a returning presence reconnects its existing
+        /// A trait can be disabled and rebound; a returning presence reconnects its existing
         /// components after grace without reading the departed proxy.
         /// </summary>
         [Test]
-        public void Modules_StopWhileDisabledOrMissingAndRebindOnReturn()
+        public void Traits_StopWhileDisabledOrMissingAndRebindOnReturn()
         {
             int reads = 0;
             int initializations = 0;
@@ -213,7 +213,7 @@ namespace Emas.Tests
             {
                 initializations++;
                 Reading current = (Reading)presence.Source;
-                root.GetComponent<PipelinePositionModule>().Bind(() =>
+                root.GetComponent<PipelinePositionTrait>().Bind(() =>
                 {
                     reads++;
                     return current.Position;
@@ -223,13 +223,13 @@ namespace Emas.Tests
             _realm.GetOrCreateAnchor("sdk", detector);
             Presence presence = detector.Arrive("one", proxy);
             _realm.Update();
-            PipelinePositionModule module = presence.Root.GetComponent<PipelinePositionModule>();
-            Assert.Throws<ArgumentNullException>(() => module.Bind(null));
-            module.enabled = false;
+            PipelinePositionTrait trait = presence.Root.GetComponent<PipelinePositionTrait>();
+            Assert.Throws<ArgumentNullException>(() => trait.Bind(null));
+            trait.enabled = false;
             _realm.Update();
             Assert.That(reads, Is.EqualTo(1));
-            module.enabled = true;
-            module.Bind(() => new Double3(7, 8, 9));
+            trait.enabled = true;
+            trait.Bind(() => new Double3(7, 8, 9));
             _realm.Update();
             Assert.That(presence.Root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(7, 8, 9)));
 
@@ -241,18 +241,18 @@ namespace Emas.Tests
             proxy = new Reading(new Double3(10, 11, 12), 0);
             Assert.That(detector.Arrive("one", proxy), Is.SameAs(presence));
             _realm.Update();
-            Assert.That(presence.Root.GetComponent<PipelinePositionModule>(), Is.SameAs(module));
+            Assert.That(presence.Root.GetComponent<PipelinePositionTrait>(), Is.SameAs(trait));
             Assert.That(presence.Root.GetComponent<Spatial>().Position, Is.EqualTo(proxy.Position));
             Assert.That(initializations, Is.EqualTo(2));
             Assert.That(reads, Is.EqualTo(2));
         }
 
         /// <summary>
-        /// A replacement SDK can bind the same Ghost modules from a different proxy shape,
+        /// A replacement SDK can bind the same Ghost traits from a different proxy shape,
         /// preserving roots and reconnecting their inputs before the new attachment activates.
         /// </summary>
         [Test]
-        public void SourceReplacement_RebindsExistingModulesToAnotherSdk()
+        public void SourceReplacement_RebindsExistingTraitsToAnotherSdk()
         {
             Reading firstProxy = new Reading(new Double3(1, 2, 3), 7);
             PositionSdk secondSdk = new PositionSdk { Position = new Double3(4, 5, 6) };
@@ -260,25 +260,25 @@ namespace Emas.Tests
             _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
                 initializations++;
-                PipelinePositionModule module = root.GetComponent<PipelinePositionModule>();
+                PipelinePositionTrait trait = root.GetComponent<PipelinePositionTrait>();
                 if (presence.Source is PositionSdk)
                 {
-                    module.Bind(() => ((PositionSdk)presence.Source).Position);
+                    trait.Bind(() => ((PositionSdk)presence.Source).Position);
                 }
                 else
                 {
-                    module.Bind(() => ((Reading)presence.Source).Position);
+                    trait.Bind(() => ((Reading)presence.Source).Position);
                 }
             });
             Detector first = new Detector { Starting = detector => detector.Arrive("one", firstProxy) };
             Anchor anchor = _realm.GetOrCreateAnchor("sdk", first);
             Assert.That(_realm.TryGetPresence(new Key("sdk", TrackedKind, "one"), out Presence presence), Is.True);
             Ghost root = presence.Root;
-            PipelinePositionModule originalModule = root.GetComponent<PipelinePositionModule>();
+            PipelinePositionTrait originalTrait = root.GetComponent<PipelinePositionTrait>();
             anchor.ReplaceDetector(first, new Detector { Starting = detector => detector.Arrive("one", secondSdk) });
             Assert.That(presence.Source, Is.SameAs(secondSdk));
             Assert.That(presence.Root, Is.SameAs(root));
-            Assert.That(root.GetComponent<PipelinePositionModule>(), Is.SameAs(originalModule));
+            Assert.That(root.GetComponent<PipelinePositionTrait>(), Is.SameAs(originalTrait));
             Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(4, 5, 6)));
             Assert.That(initializations, Is.EqualTo(2));
             firstProxy.Position = new Double3(90, 90, 90);
@@ -288,10 +288,10 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Changed capability metadata reruns input binding without adding or replacing Ghost modules.
+        /// Changed capability metadata reruns input binding without adding or replacing Ghost traits.
         /// </summary>
         [Test]
-        public void Detect_CapabilityChangesRebindConfiguredModules()
+        public void Detect_CapabilityChangesRebindConfiguredTraits()
         {
             int initializations = 0;
             _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
@@ -299,7 +299,7 @@ namespace Emas.Tests
                 initializations++;
                 if (presence.HasCapability<IArticulationCapability>())
                 {
-                    root.GetComponent<PipelineArticulationModule>().Bind(() => 12);
+                    root.GetComponent<PipelineArticulationTrait>().Bind(() => 12);
                 }
             });
             Detector detector = new Detector();
@@ -310,7 +310,7 @@ namespace Emas.Tests
             Assert.That(detector.PublishMetadata("one", "Renamed", typeof(IArticulationCapability)), Is.SameAs(presence));
             _realm.Update();
             Assert.That(((PipelineGhost)presence.Root).Articulation, Is.EqualTo(12));
-            Assert.That(presence.Root.GetComponents<EntityModule>().Length, Is.EqualTo(3));
+            Assert.That(presence.Root.GetComponents<Trait>().Length, Is.EqualTo(3));
             Assert.That(presence.Name, Is.EqualTo("Renamed"));
             Assert.That(initializations, Is.EqualTo(2));
         }
@@ -356,19 +356,19 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// A failed reader or module removes its detector's population before query notifications
+        /// A failed reader or trait removes its detector's population before query notifications
         /// and retains the original exception for diagnostics.
         /// </summary>
         [TestCase(true)]
         [TestCase(false)]
-        public void ModuleFailure_RemovesDetectorPopulationAndPreservesError(bool failInReader)
+        public void TraitFailure_RemovesDetectorPopulationAndPreservesError(bool failInReader)
         {
             bool rejectData = false;
-            InvalidOperationException failure = new InvalidOperationException("module rejected data");
+            InvalidOperationException failure = new InvalidOperationException("trait rejected data");
             _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
-                PipelineActionModule module = root.GetComponent<PipelineActionModule>();
-                module.Bind(() =>
+                PipelineActionTrait trait = root.GetComponent<PipelineActionTrait>();
+                trait.Bind(() =>
                 {
                     if (rejectData && failInReader)
                     {
@@ -377,7 +377,7 @@ namespace Emas.Tests
 
                     return 42;
                 });
-                module.Applying = () =>
+                trait.Applying = () =>
                 {
                     if (rejectData && !failInReader)
                     {
@@ -392,7 +392,7 @@ namespace Emas.Tests
             Assert.That(previous.IsAvailable, Is.True);
             rejectData = true;
             Presence next = detector.PublishMetadata("next", null);
-            ExpectedErrors.Verify(_realm.Update, "module rejected data");
+            ExpectedErrors.Verify(_realm.Update, "trait rejected data");
             Assert.That(detector.IsActive, Is.False);
             Assert.That(detector.LastError, Is.SameAs(failure));
             Assert.That(previous.IsRemoved, Is.True);
@@ -409,7 +409,7 @@ namespace Emas.Tests
             Detector detector = new Detector();
             _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
-                root.GetComponent<PipelinePositionModule>().Bind(() =>
+                root.GetComponent<PipelinePositionTrait>().Bind(() =>
                 {
                     Assert.Throws<InvalidOperationException>(_realm.Update);
                     detector.Lose(presence.Key.EntityId);
@@ -474,7 +474,7 @@ namespace Emas.Tests
             Assert.That(presence.Root.gameObject.name, Is.EqualTo("silent"));
             Assert.That(presence.Name, Is.EqualTo("Silent object"));
             Assert.That(presence.HasCapability<IPositionCapability>(), Is.False);
-            Assert.That(presence.Root.GetComponents<EntityModule>(), Is.Empty);
+            Assert.That(presence.Root.GetComponents<Trait>(), Is.Empty);
             _realm.Update();
             Assert.That(presence.IsAvailable, Is.True);
             Assert.That(_realm.Query().Single(), Is.SameAs(presence.Root));
@@ -483,19 +483,19 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Plain Ghost prefabs bind reusable modules that resolve their own cloned Ghost before activation,
+        /// Plain Ghost prefabs bind reusable traits that resolve their own cloned Ghost before activation,
         /// project after all readers update the followed reference,
         /// and name roots by entity ID before initialization so Unity can find them once activated.
         /// </summary>
         [Test]
-        public void PlainGhostPrefab_ComposesModulesBeforeRelativePlacement()
+        public void PlainGhostPrefab_ComposesTraitsBeforeRelativePlacement()
         {
             GameObject prefab = new GameObject("composed ghost");
             prefab.SetActive(false);
             Ghost prefabGhost = prefab.AddComponent<Ghost>();
             prefab.AddComponent<Spatial>();
-            PipelinePositionModule prefabModule = prefab.AddComponent<PipelinePositionModule>();
-            Assert.That(prefabModule.Ghost, Is.SameAs(prefabGhost));
+            PipelinePositionTrait prefabTrait = prefab.AddComponent<PipelinePositionTrait>();
+            Assert.That(prefabTrait.Ghost, Is.SameAs(prefabGhost));
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             try
             {
@@ -504,10 +504,10 @@ namespace Emas.Tests
                 _realm.RegisterPresenceInitializer<Ghost>(TrackedKind, (presence, root) =>
                 {
                     Assert.That(root.gameObject.name, Is.EqualTo(presence.Key.EntityId));
-                    PipelinePositionModule module = root.GetRequired<PipelinePositionModule>();
-                    Assert.That(module.Ghost, Is.SameAs(root));
-                    Assert.That(module.Ghost.Key, Is.EqualTo(presence.Key));
-                    module.Bind(() => ((Reading)presence.Source).Position);
+                    PipelinePositionTrait trait = root.GetRequired<PipelinePositionTrait>();
+                    Assert.That(trait.Ghost, Is.SameAs(root));
+                    Assert.That(trait.Ghost.Key, Is.EqualTo(presence.Key));
+                    trait.Bind(() => ((Reading)presence.Source).Position);
                 });
                 _realm.ReferenceFrame = new ReferenceFrame
                 {

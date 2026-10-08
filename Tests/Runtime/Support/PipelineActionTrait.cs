@@ -3,8 +3,8 @@ using UnityEngine;
 
 namespace Emas.Tests
 {
-    /// <summary>Runs consumer behavior used to exercise module failure handling.</summary>
-    public sealed class PipelineActionModule : EntityModule<int>
+    /// <summary>Runs consumer behavior used to exercise trait failure handling.</summary>
+    public sealed class PipelineActionTrait : Trait<int>
     {
         internal Action Applying;
 

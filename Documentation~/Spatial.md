@@ -26,19 +26,19 @@ spatial.SmoothingTime = 0.1f;
 
 `Position` and `Rotation` continue to expose the latest raw input. The smoothed pose supplies both the root and a following reference frame, so the followed entity stays at the configured Unity pose. Changes to reference placement and coordinate conversion apply immediately. Attached parts inherit their parent's projected pose without a second smoothing pass. Source range checks still suppress an entity immediately when its latest input is outside `MaxDistance`; returning to range or re-enabling Spatial starts with a fresh pose.
 
-Velocity is optional. Without it, position and rotation still smooth normally. If your SDK supplies velocity, bind it through a separate `EntityModule`, just like the position channel. Use `SetCartesianVelocity(Double3)` for shared source axes and units per second, or `SetEarthCenteredVelocity(Double3)` for ECEF XYZ metres per second in Geographic space. **Minimum Forward Speed** (default `0.1`) sets the speed at which the guard rejects position corrections opposite the supplied velocity; perpendicular corrections continue to smooth. It follows the velocity direction, independently of the model's heading.
+Velocity is optional. Without it, position and rotation still smooth normally. If your SDK supplies velocity, bind it through a separate `Trait`, just like the position channel. Use `SetCartesianVelocity(Double3)` for shared source axes and units per second, or `SetEarthCenteredVelocity(Double3)` for ECEF XYZ metres per second in Geographic space. **Minimum Forward Speed** (default `0.1`) sets the speed at which the guard rejects position corrections opposite the supplied velocity; perpendicular corrections continue to smooth. It follows the velocity direction, independently of the model's heading.
 
-The Relative World sample includes an optional `GeoVelocityModule : EntityModule<Double3?>`. Add it to a geographic Ghost prefab when your SDK supports velocity. Its reader returns ECEF metres per second or `null` when velocity is unavailable:
+The Relative World sample includes an optional `GeoVelocityTrait : Trait<Double3?>`. Add it to a geographic Ghost prefab when your SDK supports velocity. Its reader returns ECEF metres per second or `null` when velocity is unavailable:
 
 ```csharp
-GeoVelocityModule velocity;
-if (root.TryGet<GeoVelocityModule>(out velocity))
+GeoVelocityTrait velocity;
+if (root.TryGet<GeoVelocityTrait>(out velocity))
 {
     velocity.Bind(() => ReadOptionalEcefVelocity(presence)); // Application SDK mapping: Double3?
 }
 ```
 
-`GeoInitializer` demonstrates the optional binding using `GeoPoseReading.EarthCenteredVelocity`; existing sample prefabs and mock readings do not require velocity. Convert body or local tangent SDK velocity into ECEF before supplying it. A Cartesian module can use the same nullable pattern and call `SetCartesianVelocity` instead.
+`GeoInitializer` demonstrates the optional binding using `GeoPoseReading.EarthCenteredVelocity`; existing sample prefabs and mock readings do not require velocity. Convert body or local tangent SDK velocity into ECEF before supplying it. A Cartesian trait can use the same nullable pattern and call `SetCartesianVelocity` instead.
 
 Publish current velocity whenever the entity stops, turns or reverses. Zero or a speed below `MinimumForwardSpeed` permits corrections in any direction; `ClearVelocity()` releases the guard if the SDK stops supplying velocity. The guard retains its last velocity until updated or cleared and does not predict travel. For a teleport or intentional discontinuity, call `ResetSmoothing()` after supplying the new pose; the next projection snaps to that input while retaining smoothing settings and channels. Changes between source, geographic and ECEF attitude representations restart rotation smoothing rather than blending incompatible quaternions.
 
@@ -66,7 +66,7 @@ Attachment does not require an absolute part position or orientation. The absolu
 
 ## Configure a prefab realm
 
-Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list maps each Kind to its Ghost and views for every anchor in that realm. Add one **Emas > Anchor Setup** for each anchor frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor ID**, a `PresenceDetectorComponent` subclass and optionally a `GhostInitializer` on the same object. The initializer binds the spatial modules authored on the Ghost prefab. Each blueprint covers one Kind and stores a table of named variants, each selecting one view prefab. For example:
+Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list maps each Kind to its Ghost and views for every anchor in that realm. Add one **Emas > Anchor Setup** for each anchor frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor ID**, a `PresenceDetectorComponent` subclass and optionally a `GhostInitializer` on the same object. The initializer binds the spatial traits authored on the Ghost prefab. Each blueprint covers one Kind and stores a table of named variants, each selecting one view prefab. For example:
 
 ```text
 Screen (RealmSetup: manifestation blueprints and reference frame)
@@ -120,7 +120,7 @@ realm.ReferenceFrame = new ReferenceFrame
 
 To present one entity relative to another, detect both in the same Realm and give both Ghost roots an enabled `Spatial`. Their anchors and detectors can differ. The reference frame belongs to the Realm; `FollowedGhost` selects the entity supplying its origin, and every participating entity projects through that frame. Each entity still supplies its absolute WGS84 reading. Do not subtract latitude, longitude or altitude in the SDK reader.
 
-Bind an `EntityModule<GeoPosition>` on each Ghost to its SDK reading; its `Apply` calls `SetGeographicPosition`. The [README integration](../README.md#2-define-reusable-modules-on-the-ghost) shows the complete detector, module and initializer setup. After the modules run, the Realm resolves the followed entity and projects both roots in the same update. Updating either SDK reading needs no new detection call. Isolated Realms need explicit `Update` calls; `Realm.Default` and `RealmSetup` update automatically. Request the target's view with `Manifest`, or use Anchor Setup's automatic views.
+Bind an `Trait<GeoPosition>` on each Ghost to its SDK reading; its `Apply` calls `SetGeographicPosition`. The [README integration](../README.md#2-define-reusable-traits-on-the-ghost) shows the complete detector, trait and initializer setup. After the traits run, the Realm resolves the followed entity and projects both roots in the same update. Updating either SDK reading needs no new detection call. Isolated Realms need explicit `Update` calls; `Realm.Default` and `RealmSetup` update automatically. Request the target's view with `Manifest`, or use Anchor Setup's automatic views.
 
 For example, with reference `(52.520008, 13.404954, 40.125)` and target `(52.520108, 13.405154, 50.125)` in latitude degrees, longitude degrees and ellipsoidal metres, identity Unity placement and `FollowRotation = false` put the reference at `(0, 0, 0)` and the target at approximately `(13.576, 10.000, 11.128)` Unity metres. X is east, Y is up and Z is north at the reference. Moving the reference recomputes the target's Unity position while its stored ECEF position stays unchanged.
 
@@ -230,17 +230,17 @@ frame.Position = new Double3(reference.X, reference.Y, reference.Z);
 
 `Realm.Default` updates automatically. An isolated `new Realm()` needs an application-owned `Update()` call after its incoming data is processed and must be disposed when its owner stops. A `RealmSetup` advances its own isolated realm automatically. Choose a small Unity reference position near the scene origin.
 
-## Apply spatial channels through Ghost modules
+## Apply spatial channels through Ghost traits
 
-Configure independent position and rotation modules on the Ghost prefab, or require them on its class:
+Configure independent position and rotation traits on the Ghost prefab, or require them on its class:
 
 ```csharp
-[RequireComponent(typeof(Spatial), typeof(PositionModule), typeof(RotationModule))]
+[RequireComponent(typeof(Spatial), typeof(PositionTrait), typeof(RotationTrait))]
 public sealed class Car : Ghost
 {
 }
 
-public sealed class PositionModule : EntityModule<Double3>
+public sealed class PositionTrait : Trait<Double3>
 {
     public override void Apply(Double3 position)
     {
@@ -248,7 +248,7 @@ public sealed class PositionModule : EntityModule<Double3>
     }
 }
 
-public sealed class RotationModule : EntityModule<Quaternion>
+public sealed class RotationTrait : Trait<Quaternion>
 {
     public override void Apply(Quaternion rotation)
     {
@@ -257,24 +257,24 @@ public sealed class RotationModule : EntityModule<Quaternion>
 }
 ```
 
-The initializer adapts your SDK to those reusable modules. Here the SDK's axes already match the shared frame:
+The initializer adapts your SDK to those reusable traits. Here the SDK's axes already match the shared frame:
 
 ```csharp
 realm.RegisterPresenceInitializer<Car>(CarKind, (presence, car) =>
 {
     Spatial spatial = car.GetComponent<Spatial>();
-    car.GetRequired<PositionModule>().Bind(() => presence.Source is SdkProxy proxy
+    car.GetRequired<PositionTrait>().Bind(() => presence.Source is SdkProxy proxy
         ? new Double3(proxy.X, proxy.Y, proxy.Z) : spatial.Position);
-    car.GetRequired<RotationModule>().Bind(() =>
+    car.GetRequired<RotationTrait>().Bind(() =>
         (presence.Source as SdkProxy)?.Rotation ?? spatial.Rotation);
 });
 ```
 
-`SdkProxy` is your SDK's concrete proxy type, supplied once with `Detect(id, CarKind, source: proxy)`. `Presence.Source` resolves a weak reference; these readers preserve the last spatial state if it is collected or destroyed. Use `ReferenceFrame.Coordinates` for the common axis and handedness conversion. For WGS84 feeds, use Geographic space and `SetGeographicPosition` as described above. Other datum conversions, unit conversion and SDK rotation decoding belong in these readers or an application helper. If sources use different conventions, first normalize them to the convention selected for this realm. Each module only knows its input type. Bind only channels supplied by the SDK; unbound or disabled modules leave their channel unchanged. `Spatial.HasPosition` and `HasRotation` indicate whether each channel has been supplied. Missing rotation leaves root rotation under application control.
+`SdkProxy` is your SDK's concrete proxy type, supplied once with `Detect(id, CarKind, source: proxy)`. `Presence.Source` resolves a weak reference; these readers preserve the last spatial state if it is collected or destroyed. Use `ReferenceFrame.Coordinates` for the common axis and handedness conversion. For WGS84 feeds, use Geographic space and `SetGeographicPosition` as described above. Other datum conversions, unit conversion and SDK rotation decoding belong in these readers or an application helper. If sources use different conventions, first normalize them to the convention selected for this realm. Each trait only knows its input type. Bind only channels supplied by the SDK; unbound or disabled traits leave their channel unchanged. `Spatial.HasPosition` and `HasRotation` indicate whether each channel has been supplied. Missing rotation leaves root rotation under application control.
 
-The detector calls `Detect(id, CarKind, source: proxy)` on arrival and `Disappear(CarKind, id)` on departure. Data updates require neither another detection nor a report. Each realm update reads and applies the enabled modules, resolves the reference once, and projects all roots using the resulting spatial state. Reference movement also repositions entities whose shared positions stayed unchanged. Sample reference and target data at a common presentation time for interpolated feeds.
+The detector calls `Detect(id, CarKind, source: proxy)` on arrival and `Disappear(CarKind, id)` on departure. Data updates require neither another detection nor a report. Each realm update reads and applies the enabled traits, resolves the reference once, and projects all roots using the resulting spatial state. Reference movement also repositions entities whose shared positions stayed unchanged. Sample reference and target data at a common presentation time for interpolated feeds.
 
-Module reads do not refresh `InactivityTimeout`. Leave it disabled for feeds that only announce arrivals and departures. A presence feed using expiry must independently confirm continued presence with Detect.
+Trait reads do not refresh `InactivityTimeout`. Leave it disabled for feeds that only announce arrivals and departures. A presence feed using expiry must independently confirm continued presence with Detect.
 
 ## Preserve precision before Unity
 
@@ -325,8 +325,8 @@ Check `HasPosition` before inverse-position, rotation-conversion or reference-di
 
 ## Run the example
 
-Import **Relative world**, open `RelativeWorld.unity`, and press Play. Its authored tracking prefab follows the green origin car driving north at 8 m/s. Stationary orange parked cars appear ahead on alternating sides, pass the origin and leave the SDK snapshot behind it. The road markings scroll using the reference frame's actual northward displacement. A white bird circles above the origin, updating both its relative position and heading through the same spatial modules. Its orange feet are separately tracked entities driven by `GeoAttachmentModule`, converting SDK body offsets and resolving the bird by key. In the Geo Source component's context menu, choose **Detach bird feet** to hold their absolute release poses, then **Attach bird feet** to restore their local offsets; code can call `SetBirdFeetAttached(bool)`.
+Import **Relative world**, open `RelativeWorld.unity`, and press Play. Its authored tracking prefab follows the green origin car driving north at 8 m/s. Stationary orange parked cars appear ahead on alternating sides, pass the origin and leave the SDK snapshot behind it. The road markings scroll using the reference frame's actual northward displacement. A white bird circles above the origin, updating both its relative position and heading through the same spatial traits. Its orange feet are separately tracked entities driven by `GeoAttachmentTrait`, converting SDK body offsets and resolving the bird by key. In the Geo Source component's context menu, choose **Detach bird feet** to hold their absolute release poses, then **Attach bird feet** to restore their local offsets; code can call `SetBirdFeetAttached(bool)`.
 
-`GeoSource` detects the current snapshot and explicitly removes missing IDs. `GeoInitializer` supplies `GeoPosition` readings and local attitude to the authored modules. Realm Setup uses Geographic space: the driving car defines the tangent frame directly. A parked car's ECEF position remains constant even though its Unity position moves past the origin. The mock SDK has a starting road location, which is unrelated to reference configuration.
+`GeoSource` detects the current snapshot and explicitly removes missing IDs. `GeoInitializer` supplies `GeoPosition` readings and local attitude to the authored traits. Realm Setup uses Geographic space: the driving car defines the tangent frame directly. A parked car's ECEF position remains constant even though its Unity position moves past the origin. The mock SDK has a starting road location, which is unrelated to reference configuration.
 
 Inspect Realm Setup, the road's `RoadMotion` component and the saved blueprints and variants to change the scene configuration. See the [sample guide](../Samples~/RelativeWorld/README.md) for timings, units and the SDK mapping. Disable and re-enable Tracking to restart.

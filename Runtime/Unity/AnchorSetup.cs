@@ -8,7 +8,7 @@ namespace Emas
     /// <remarks>
     /// Place on the anchor GameObject under a RealmSetup. Add exactly one enabled MonoBehaviour
     /// deriving from PresenceDetectorComponent (or implementing IDetectorProvider) to the same GameObject.
-    /// Add an optional GhostInitializer beside it to map sources to modules. Disabling this component removes its anchor;
+    /// Add an optional GhostInitializer beside it to map sources to traits. Disabling this component removes its anchor;
     /// enabling it again starts a fresh source attachment while its realm is running.
     /// </remarks>
     [DisallowMultipleComponent]

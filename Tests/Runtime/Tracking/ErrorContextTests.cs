@@ -30,30 +30,30 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Module diagnostics identify the anchor, unlabeled detector, operation and entity, retaining the original exception and label.
+        /// Trait diagnostics identify the anchor, unlabeled detector, operation and entity, retaining the original exception and label.
         /// </summary>
         [Test]
-        public void ModuleFailure_IdentifiesOperationAndEntity()
+        public void TraitFailure_IdentifiesOperationAndEntity()
         {
-            Exception failure = new InvalidOperationException("module rejected item");
+            Exception failure = new InvalidOperationException("trait rejected item");
             _realm.RegisterPresenceInitializer<TextGhost>(VehicleKind, (presence, root) =>
-                root.GetComponent<TextModule>().Bind(() =>
+                root.GetComponent<TextTrait>().Bind(() =>
                 {
                     throw failure;
                 }));
             ArrivalDetector source = new ArrivalDetector { Name = " " };
             _realm.GetOrCreateAnchor("vehicles", source);
-            ExpectedErrors.Verify(_realm.Update, "vehicles.*ArrivalDetector.*Update modules.*module rejected item");
+            ExpectedErrors.Verify(_realm.Update, "vehicles.*ArrivalDetector.*Update traits.*trait rejected item");
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.LastErrorContext, Does.Contain("anchor 'vehicles'").And.Contain("source 'ArrivalDetector'"));
-            Assert.That(source.LastErrorContext, Does.Contain("operation 'Update modules'").And.Contain("kind 'car'").And.Contain("entity '42'"));
+            Assert.That(source.LastErrorContext, Does.Contain("operation 'Update traits'").And.Contain("kind 'car'").And.Contain("entity '42'"));
             string recorded = source.LastErrorContext;
             source.Name = "Renamed";
             Assert.That(source.LastErrorContext, Is.EqualTo(recorded));
         }
 
         /// <summary>
-        /// Primary module context survives a second failure during cleanup and clears on restart.
+        /// Primary trait context survives a second failure during cleanup and clears on restart.
         /// </summary>
         [Test]
         public void Cleanup_PreservesPrimaryContextAndRestartClearsIt()
@@ -61,7 +61,7 @@ namespace Emas.Tests
             bool failing = true;
             InvalidOperationException primary = new InvalidOperationException("report failed");
             _realm.RegisterPresenceInitializer<TextGhost>(VehicleKind, (presence, root) =>
-                root.GetComponent<TextModule>().Bind(() =>
+                root.GetComponent<TextTrait>().Bind(() =>
                 {
                     if (failing)
                     {
@@ -82,8 +82,8 @@ namespace Emas.Tests
                 }
             };
             Anchor anchor = _realm.GetOrCreateAnchor("vehicles", source);
-            ExpectedErrors.Verify(_realm.Update, "operation 'Update modules'.*entity '42'.*report failed", "operation 'OnStop'.*cleanup failed");
-            Assert.That(source.LastErrorContext, Does.Contain("Update modules").And.Contain("42"));
+            ExpectedErrors.Verify(_realm.Update, "operation 'Update traits'.*entity '42'.*report failed", "operation 'OnStop'.*cleanup failed");
+            Assert.That(source.LastErrorContext, Does.Contain("Update traits").And.Contain("42"));
             Assert.That(source.LastError, Is.SameAs(primary));
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);

@@ -136,7 +136,7 @@
       "id": "populate",
       "from": "created",
       "to": "initializing",
-      "label": "Read modules",
+      "label": "Read traits",
       "labelDy": 65
     },
     {

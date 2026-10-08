@@ -7,7 +7,7 @@ namespace Emas
     /// Provides stable identity and root-component access for one ghost.
     /// </summary>
     /// <remarks>
-        /// Read on the Unity thread. Emas owns identity and availability; configured modules update application data.
+        /// Read on the Unity thread. Emas owns identity and availability; configured traits update application data.
     /// Consumers use read-only application interfaces and must not assume retained data is current while IsAvailable is false.
     /// </remarks>
     public interface IGhost
@@ -57,14 +57,14 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets a read-only snapshot of all EntityModule components on the Ghost root, including disabled and unbound modules.
+        /// Gets a read-only snapshot of all Trait components on the Ghost root, including disabled and unbound traits.
         /// </summary>
         /// <remarks>
-        /// Each access observes added or removed root modules; previously returned snapshots retain their membership.
-        /// Module instances remain live Unity components and may later be destroyed. Child and view modules are excluded.
-        /// Use TryGet&lt;TModule&gt; or GetRequired&lt;TModule&gt; for typed access to a single root module.
+        /// Each access observes added or removed root traits; previously returned snapshots retain their membership.
+        /// Trait instances remain live Unity components and may later be destroyed. Child and view traits are excluded.
+        /// Use TryGet&lt;TTrait&gt; or GetRequired&lt;TTrait&gt; for typed access to a single root trait.
         /// </remarks>
-        IReadOnlyList<EntityModule> Modules
+        IReadOnlyList<Trait> Traits
         {
             get;
         }

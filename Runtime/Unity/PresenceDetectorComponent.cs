@@ -37,7 +37,7 @@ namespace Emas
         {
         }
 
-        /// <summary>Processes one Realm update before modules read their mapped inputs.</summary>
+        /// <summary>Processes one Realm update before traits read their mapped inputs.</summary>
         protected virtual void OnUpdate()
         {
         }

@@ -74,51 +74,51 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Consumers can enumerate disabled root modules, resolve them by type, and retain an immutable membership
-        /// snapshot while modules are added or removed. Each module resolves its own root Ghost even while inactive;
-        /// a view's child modules do not participate or borrow the parent's Ghost.
+        /// Consumers can enumerate disabled root traits, resolve them by type, and retain an immutable membership
+        /// snapshot while traits are added or removed. Each trait resolves its own root Ghost even while inactive;
+        /// a view's child traits do not participate or borrow the parent's Ghost.
         /// </summary>
         [Test]
-        public void Modules_ExposeRootModulesAsReadOnlyMembershipSnapshots()
+        public void Traits_ExposeRootTraitsAsReadOnlyMembershipSnapshots()
         {
             using (Realm realm = new Realm())
             {
                 Probe source = new Probe();
                 realm.GetOrCreateAnchor("simulation", source);
-                Ghost concrete = source.Publish("modules");
+                Ghost concrete = source.Publish("traits");
                 IGhost ghost = concrete;
-                IReadOnlyList<EntityModule> empty = ghost.Modules;
+                IReadOnlyList<Trait> empty = ghost.Traits;
                 Assert.That(empty, Is.Empty);
 
-                PipelinePositionModule position = concrete.gameObject.AddComponent<PipelinePositionModule>();
+                PipelinePositionTrait position = concrete.gameObject.AddComponent<PipelinePositionTrait>();
                 position.enabled = false;
                 Assert.That(concrete.gameObject.activeSelf, Is.False);
                 Assert.That(position.Ghost, Is.SameAs(concrete));
                 GameObject child = new GameObject("view child");
                 child.transform.SetParent(concrete.transform, false);
-                PipelineArticulationModule childModule = child.AddComponent<PipelineArticulationModule>();
-                Assert.That(childModule.Ghost, Is.Null);
+                PipelineArticulationTrait childTrait = child.AddComponent<PipelineArticulationTrait>();
+                Assert.That(childTrait.Ghost, Is.Null);
                 Ghost childGhost = child.AddComponent<Ghost>();
-                Assert.That(childModule.Ghost, Is.SameAs(childGhost));
+                Assert.That(childTrait.Ghost, Is.SameAs(childGhost));
                 UnityEngine.Object.DestroyImmediate(childGhost);
-                Assert.That(childModule.Ghost, Is.Null);
+                Assert.That(childTrait.Ghost, Is.Null);
                 childGhost = child.AddComponent<Ghost>();
-                Assert.That(childModule.Ghost, Is.SameAs(childGhost));
-                IReadOnlyList<EntityModule> original = ghost.Modules;
-                Assert.That(original, Is.EqualTo(new EntityModule[] { position }));
+                Assert.That(childTrait.Ghost, Is.SameAs(childGhost));
+                IReadOnlyList<Trait> original = ghost.Traits;
+                Assert.That(original, Is.EqualTo(new Trait[] { position }));
                 Assert.That(empty, Is.Empty);
-                Assert.That(ghost.GetRequired<PipelinePositionModule>(), Is.SameAs(position));
-                Assert.Throws<NotSupportedException>(() => ((IList<EntityModule>)original).Clear());
+                Assert.That(ghost.GetRequired<PipelinePositionTrait>(), Is.SameAs(position));
+                Assert.Throws<NotSupportedException>(() => ((IList<Trait>)original).Clear());
 
-                PipelineActionModule action = concrete.gameObject.AddComponent<PipelineActionModule>();
+                PipelineActionTrait action = concrete.gameObject.AddComponent<PipelineActionTrait>();
                 Assert.That(action.Ghost, Is.SameAs(concrete));
-                Assert.That(ghost.Modules, Is.EqualTo(new EntityModule[] { position, action }));
-                Assert.That(original, Is.EqualTo(new EntityModule[] { position }));
+                Assert.That(ghost.Traits, Is.EqualTo(new Trait[] { position, action }));
+                Assert.That(original, Is.EqualTo(new Trait[] { position }));
 
                 UnityEngine.Object.DestroyImmediate(position);
-                Assert.That(ghost.Modules, Is.EqualTo(new EntityModule[] { action }));
+                Assert.That(ghost.Traits, Is.EqualTo(new Trait[] { action }));
                 Assert.That(original.Count, Is.EqualTo(1));
-                Assert.That(ghost.TryGet<PipelinePositionModule>(out PipelinePositionModule removed), Is.False);
+                Assert.That(ghost.TryGet<PipelinePositionTrait>(out PipelinePositionTrait removed), Is.False);
                 Assert.That(removed, Is.Null);
             }
         }

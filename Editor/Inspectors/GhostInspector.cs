@@ -4,12 +4,12 @@ using UnityEngine;
 
 namespace Emas.Editor
 {
-    /// <summary>Shows Ghost identity, spatial presentation and editable root modules in open sections.</summary>
+    /// <summary>Shows Ghost identity, spatial presentation and editable root traits in open sections.</summary>
     [CustomEditor(typeof(Ghost), true)]
     [CanEditMultipleObjects]
     public sealed class GhostInspector : UnityEditor.Editor
     {
-        /// <summary>Draws authored settings, runtime data and root-module settings without section foldouts.</summary>
+        /// <summary>Draws authored settings, runtime data and root-trait settings without section foldouts.</summary>
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
@@ -47,19 +47,19 @@ namespace Emas.Editor
                     DrawSpatial(ghost, spatial);
                 }
 
-                IReadOnlyList<EntityModule> modules = ghost.Modules;
-                using (InspectorLayout.Section("Modules (" + modules.Count + ")",
-                    "Modules authored on this root. Disabled modules remain listed but skip bound reader updates."))
+                IReadOnlyList<Trait> traits = ghost.Traits;
+                using (InspectorLayout.Section("Traits (" + traits.Count + ")",
+                    "Traits authored on this root. Disabled traits remain listed but skip bound reader updates."))
                 {
-                    if (modules.Count == 0)
+                    if (traits.Count == 0)
                     {
-                        EditorGUILayout.LabelField("No modules on this root.", EditorStyles.miniLabel);
+                        EditorGUILayout.LabelField("No traits on this root.", EditorStyles.miniLabel);
                     }
-                    foreach (EntityModule module in modules)
+                    foreach (Trait trait in traits)
                     {
-                        if (module != null)
+                        if (trait != null)
                         {
-                            DrawModule(module);
+                            DrawTrait(trait);
                         }
                     }
                 }
@@ -89,22 +89,22 @@ namespace Emas.Editor
             }
         }
 
-        private static void DrawModule(EntityModule module)
+        private static void DrawTrait(Trait trait)
         {
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
-            using (SerializedObject settings = new SerializedObject(module))
+            using (SerializedObject settings = new SerializedObject(trait))
             {
                 settings.Update();
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     SerializedProperty enabled = settings.FindProperty("m_Enabled");
                     EditorGUILayout.PropertyField(enabled, GUIContent.none, GUILayout.Width(18f));
-                    EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(module.GetType().Name), EditorStyles.boldLabel);
+                    EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(trait.GetType().Name), EditorStyles.boldLabel);
                     GUILayout.Label(enabled.boolValue ? "Enabled" : "Disabled", EditorStyles.miniLabel);
                     if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(48f)))
                     {
-                        Selection.activeObject = module;
-                        EditorGUIUtility.PingObject(module);
+                        Selection.activeObject = trait;
+                        EditorGUIUtility.PingObject(trait);
                     }
                 }
                 DrawPropertiesExcluding(settings, "m_Script", "m_Enabled");

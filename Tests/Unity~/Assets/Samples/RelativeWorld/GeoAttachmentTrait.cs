@@ -4,7 +4,7 @@ namespace Emas.RelativeWorld
 {
     /// <summary>Applies SDK attachment state and converts forward/right/down body offsets into Unity local axes.</summary>
     [RequireComponent(typeof(Ghost), typeof(Spatial))]
-    public sealed class GeoAttachmentModule : EntityModule<GeoPoseReading>
+    public sealed class GeoAttachmentTrait : Trait<GeoPoseReading>
     {
         /// <summary>Attaches by parent identity, including before discovery, or resumes cached absolute placement.</summary>
         /// <param name="value">The latest SDK snapshot, including optional parent identity and local body offset.</param>

@@ -3,9 +3,9 @@ using UnityEngine;
 
 namespace Emas.Tests
 {
-    /// <summary>A Ghost that declares the independent modules used by lifecycle tests.</summary>
+    /// <summary>A Ghost that declares the independent traits used by lifecycle tests.</summary>
     [RequireComponent(typeof(Spatial))]
-    [RequireComponent(typeof(PipelinePositionModule), typeof(PipelineArticulationModule), typeof(PipelineActionModule))]
+    [RequireComponent(typeof(PipelinePositionTrait), typeof(PipelineArticulationTrait), typeof(PipelineActionTrait))]
     public sealed class PipelineGhost : Ghost
     {
         internal int Articulation { get; set; }

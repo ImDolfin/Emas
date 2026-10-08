@@ -264,7 +264,7 @@ namespace Emas
             if (sourceChanged)
             {
                 // Drop readers tied to the previous proxy before binding the replacement source.
-                ClearModuleBindings(root);
+                ClearTraitBindings(root);
             }
 
             bool capabilitiesChanged = presence.SetMetadata(root.Name, root.Variant, capabilitySnapshot);
@@ -557,7 +557,7 @@ namespace Emas
             record.PresenceInitialized = false;
             if (record.Ghost != null)
             {
-                ClearModuleBindings(record.Ghost);
+                ClearTraitBindings(record.Ghost);
             }
 
             // Invalidate in-progress readers and view refreshes even when the root itself is retained.
@@ -578,13 +578,13 @@ namespace Emas
             _subscriptions.Forget(record.Key);
         }
 
-        private static void ClearModuleBindings(Ghost root)
+        private static void ClearTraitBindings(Ghost root)
         {
-            foreach (EntityModule module in root.Modules)
+            foreach (Trait trait in root.Traits)
             {
-                if (module != null)
+                if (trait != null)
                 {
-                    module.ClearBinding();
+                    trait.ClearBinding();
                 }
             }
         }
@@ -609,7 +609,7 @@ namespace Emas
                 && record.Owner.IsRegistration(_realm, record.RegistrationGeneration);
         }
 
-        internal void RefreshModules(List<Record> records, PresenceDetector onlyOwner)
+        internal void RefreshTraits(List<Record> records, PresenceDetector onlyOwner)
         {
             foreach (Record record in records)
             {
@@ -623,7 +623,7 @@ namespace Emas
                 long ownership = record.OwnershipVersion;
                 try
                 {
-                    foreach (EntityModule module in record.Ghost.Modules)
+                    foreach (Trait trait in record.Ghost.Traits)
                     {
                         // A preceding reader can restart the detector or reclaim this root; stop using the old bindings.
                         if (!CanFinalize(record, onlyOwner) || record.Owner != owner
@@ -632,9 +632,9 @@ namespace Emas
                             break;
                         }
 
-                        if (module != null && module.enabled)
+                        if (trait != null && trait.enabled)
                         {
-                            module.Refresh();
+                            trait.Refresh();
                         }
                     }
                 }
@@ -643,7 +643,7 @@ namespace Emas
                     if (owner.IsRegistration(_realm, generation))
                     {
                         owner.HandleFailure(exception, PresenceDetector.DescribeError(owner.CaptureErrorContext(),
-                            "Update modules", record.Key.Kind, record.Key.EntityId));
+                            "Update traits", record.Key.Kind, record.Key.EntityId));
                     }
                     else
                     {
@@ -755,7 +755,7 @@ namespace Emas
             }
 
             /// <summary>
-            /// Applies the registered module setup to this presence.
+            /// Applies the registered trait setup to this presence.
             /// </summary>
             public void Initialize(Presence presence)
             {

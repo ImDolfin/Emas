@@ -2,15 +2,15 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>Maps the SDK source to the modules authored on this Anchor's Ghosts.</summary>
+    /// <summary>Maps the SDK source to the traits authored on this Anchor's Ghosts.</summary>
     public sealed class CarInitializer : GhostInitializer
     {
         /// <inheritdoc />
         protected override void Initialize(Presence presence, Ghost root)
         {
             string id = presence.Key.EntityId;
-            PositionModule position = root.GetRequired<PositionModule>();
-            ArticulationModule articulation = root.GetRequired<ArticulationModule>();
+            PositionTrait position = root.GetRequired<PositionTrait>();
+            ArticulationTrait articulation = root.GetRequired<ArticulationTrait>();
             // Resolve Source on each read so a binding retains the Presence, rather than either SDK feed.
             if (presence.Source is SdkTwoVehicleFeed)
             {

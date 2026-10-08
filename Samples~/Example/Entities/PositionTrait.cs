@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Emas.Sample
 {
     /// <summary>Stores anchor-local position from either SDK for root logic and view consumers.</summary>
-    public sealed class PositionModule : EntityModule<Vector3>, I3DPosition
+    public sealed class PositionTrait : Trait<Vector3>, I3DPosition
     {
         /// <inheritdoc />
         public Vector3 Position { get; private set; }

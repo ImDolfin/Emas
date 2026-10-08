@@ -32,17 +32,17 @@
           "presence",
           "ghost",
           "initializer",
-          "modules",
+          "traits",
           "spatial"
         ],
-        "note": "Initializers bind readers on authored modules. All readers run before Ghost hooks and projection."
+        "note": "Initializers bind readers on authored traits. All readers run before Ghost hooks and projection."
       },
       {
         "id": "projection",
         "label": "Geographic and Cartesian",
         "focus": [
           "realm",
-          "modules",
+          "traits",
           "spatial",
           "reference",
           "view"
@@ -170,7 +170,7 @@
       "id": "ghost",
       "type": "frontend",
       "label": "Ghost root",
-      "sublabel": "Authored modules + behavior",
+      "sublabel": "Authored traits + behavior",
       "pos": [
         960,
         455
@@ -195,9 +195,9 @@
       ]
     },
     {
-      "id": "modules",
+      "id": "traits",
       "type": "backend",
-      "label": "EntityModule<TData>",
+      "label": "Trait<TData>",
       "sublabel": "Read SDK values; Apply state",
       "pos": [
         650,
@@ -209,7 +209,7 @@
       ],
       "sources": [
         {
-          "path": "Runtime/Entities/EntityModuleOfT.cs",
+          "path": "Runtime/Entities/TraitOfT.cs",
           "line": 6,
           "end_line": 58,
           "label": "Bound readers and Apply"
@@ -218,7 +218,7 @@
           "path": "Runtime/Tracking/Population.cs",
           "line": 608,
           "end_line": 646,
-          "label": "Refresh all module inputs"
+          "label": "Refresh all trait inputs"
         }
       ]
     },
@@ -455,15 +455,15 @@
       "variant": "emphasis"
     },
     {
-      "id": "root-modules",
+      "id": "root-traits",
       "from": "ghost",
-      "to": "modules",
+      "to": "traits",
       "label": "Owns components",
       "variant": "emphasis"
     },
     {
       "id": "apply-spatial",
-      "from": "modules",
+      "from": "traits",
       "to": "spatial",
       "label": "Apply pose readings",
       "variant": "emphasis"
@@ -500,9 +500,9 @@
       "label": "Capture reference"
     },
     {
-      "id": "bind-modules",
+      "id": "bind-traits",
       "from": "initializer",
-      "to": "modules",
+      "to": "traits",
       "label": "Bind readers"
     }
   ],

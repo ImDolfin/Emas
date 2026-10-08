@@ -429,7 +429,7 @@ namespace Emas
             _hasPosition = true;
         }
 
-        // Called by the realm after every module has updated and the shared reference is captured.
+        // Called by the realm after every trait has updated and the shared reference is captured.
         internal bool ApplyProjection(ReferenceFrame.Projection projection)
         {
             Vector3 position = default(Vector3);

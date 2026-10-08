@@ -76,7 +76,7 @@ namespace Emas
                 return context + "Check the Manifestation Blueprint for Kind '" + ghost.Key.Kind.Id
                     + "' registered in the owning Realm (Realm Setup > Manifestation Blueprints). Assign its Ghost Prefab "
                     + "field to a prefab containing the required component on the Ghost root. If the blueprint is missing "
-                    + "or its Ghost Prefab is unassigned, no prefab modules are instantiated. A Ghost subclass can also "
+                    + "or its Ghost Prefab is unassigned, no prefab traits are instantiated. A Ghost subclass can also "
                     + "require the component through RequireComponent. Components on the Anchor, parents, children or views "
                     + "are not searched. Attached root MonoBehaviours: " + string.Join(", ", components) + ".";
             }

@@ -492,17 +492,17 @@ namespace Emas
         }
 
         /// <summary>
-        /// Registers a Ghost root type and binds its configured modules to application data.
+        /// Registers a Ghost root type and binds its configured traits to application data.
         /// </summary>
         /// <typeparam name="TGhost">The Ghost component used as the invisible root.</typeparam>
         /// <param name="kind">The kind this initializer handles.</param>
-        /// <param name="initialize">Connects the Ghost's modules to their source-independent value readers.</param>
+        /// <param name="initialize">Connects the Ghost's traits to their source-independent value readers.</param>
         /// <remarks>
         /// Register before attaching detectors. The callback runs after root creation and before SDK data is
         /// read or the Ghost becomes available. Presence.Source is already assigned. It runs again when
         /// the source object or capabilities change, or a retained Ghost is rediscovered or handed to a new detector.
         /// A GhostInitializer on an AnchorSetup overrides this registration for that anchor.
-        /// Define modules on the Ghost or its prefab; use GetComponent to bind their readers here.
+        /// Define traits on the Ghost or its prefab; use GetComponent to bind their readers here.
         /// </remarks>
         /// <exception cref="ArgumentException">The kind is invalid.</exception>
         /// <exception cref="ArgumentNullException">The initializer is null.</exception>
@@ -562,7 +562,7 @@ namespace Emas
         /// <remarks>
         /// Requests made during source mutation or finalization are refreshed after source data is complete.
         /// The request persists while unavailable, awaiting a reference or outside spatial range; a view can appear
-        /// on a later update without another call. Demanifest cancels that request. Module readers are not refreshed by this call.
+        /// on a later update without another call. Demanifest cancels that request. Trait readers are not refreshed by this call.
         /// Null, foreign and removed ghosts return null.
         /// Presentation failures are logged without stopping tracking; call Manifest again after fixing the cause to retry.
         /// </remarks>
@@ -610,11 +610,11 @@ namespace Emas
         }
 
         /// <summary>
-        /// Applies a bounded source batch, refreshes modules and Ghost behavior, projects spatial poses, then finalizes availability, views and queries.
+        /// Applies a bounded source batch, refreshes traits and Ghost behavior, projects spatial poses, then finalizes availability, views and queries.
         /// </summary>
         /// <remarks>
         /// Processes at most 256 queued actions present at update entry, then ticks attached detectors.
-        /// Newly queued actions wait for a later update. Expiry runs after publications, and all module reads finish
+        /// Newly queued actions wait for a later update. Expiry runs after publications, and all trait reads finish
         /// before Ghost.OnUpdate hooks and spatial projection. Availability and views finalize before query notifications.
         /// A disposed realm does nothing.
         /// </remarks>
@@ -862,7 +862,7 @@ namespace Emas
 
             long generation = detector.RegistrationGeneration;
             string sourceContext = detector.CaptureErrorContext();
-            // Initializers must finish binding modules before callbacks can observe or activate their roots.
+            // Initializers must finish binding traits before callbacks can observe or activate their roots.
             _sourceDepth++;
             try
             {
@@ -1060,14 +1060,14 @@ namespace Emas
             {
                 List<Record> records = _identities.Snapshot();
                 // Use one snapshot for the pass; roots created by readers or hooks wait for a later finalization.
-                // Read every root's modules before any Ghost hook can consume another root's data.
-                _population.RefreshModules(records, onlyOwner);
+                // Read every root's traits before any Ghost hook can consume another root's data.
+                _population.RefreshTraits(records, onlyOwner);
                 if (updateGhosts)
                 {
                     _population.UpdateGhosts(records);
                 }
 
-                // Project complete module and Ghost data before activating any roots or views.
+                // Project complete trait and Ghost data before activating any roots or views.
                 _spatial.Project(records, _referenceFrame);
                 _population.ActivateRoots(records, onlyOwner);
                 for (int index = 0; index < records.Count; index++)
