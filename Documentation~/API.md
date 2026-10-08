@@ -161,8 +161,13 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `Spatial.SetCartesianPosition(position)` / `Position` / `HasPosition` | Publish shared Cartesian XYZ in Coordinates axes; Position exposes Cartesian input or ECEF storage after geographic input |
 | `Spatial.SetSourceRotation(rotation)` / `Rotation` / `HasRotation` | Publish a source quaternion in Coordinates axes; Rotation and RotationSpace identify stored attitude; without it root rotation is left alone |
 | `Spatial.IsInRange` | Whether the latest spatial projection can be presented |
-| `Spatial.PositionSmoothingTime` / `RotationSmoothingTime` | Independent unscaled time constants; zero applies that channel directly. Changing one preserves the other's history. The followed Ghost's rotation setting governs shared reference orientation when FollowRotation is enabled |
-| `Spatial.ResetSmoothing()` | Reset both smoothing histories so the next projection uses the latest input pose directly |
+| `Timestamp(seconds, nanoseconds)` / `ElapsedSince(other)` | Shared SDK observation time with integer seconds and nanoseconds; preserve precision before calculating motion intervals |
+| `Spatial.PositionTime` / `RotationTime` | Latest accepted observation times; pose setters accept optional Timestamp, ignoring older/duplicate timed packets per channel |
+| `Smoothing.PositionHalfLife` / `RotationHalfLife` | Optional behavior Trait with independent seconds-to-halve-error controls; defaults 0.08/0, Inspector range 0–0.5 seconds |
+| `Prediction.MaximumExtrapolation` | Optional behavior Trait with a separate sample-age limit (default 0.15 seconds); SDK motion or timestamp-derived velocity supports prediction |
+| `Prediction.SetCartesianVelocity` / `SetEarthCenteredVelocity` / `SetGeographicVelocity` | Optional timestamped velocity in Cartesian, ECEF or explicit-origin ENU axes; matching acceleration setters accept gravity-free linear acceleration |
+| `Smoothing.Reset()` / `Prediction.Reset()` / `Spatial.ResetPresentation()` | Reset filter and/or estimated motion history while retaining input and settings; use after a teleport |
+| `Realm.ResetSpatialTime()` | Restart shared clock alignment and per-channel timestamp ordering before an SDK clock reset/replay |
 | `ReferenceFrame.Coordinates` | Cartesian pose axes or geographic source quaternion axes; named geographic angles and ECEF inputs have explicit conventions |
 | `CoordinateSystem.Unity` / `EastNorthUp` / `NorthEastDown` | Presets for Unity, ENU and NED source coordinates |
 | `new CoordinateSystem(right, up, forward)` | Custom signed source axes mapping to Unity directions; use each of X, Y and Z once via `Axis.PositiveX`, `Axis.NegativeX`, etc. |

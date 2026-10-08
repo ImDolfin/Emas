@@ -138,6 +138,15 @@ namespace Emas
             }
         }
 
+        /// <summary>Resets SDK-to-local spatial clock alignment and sample ordering after the SDK clock restarts.</summary>
+        /// <remarks>Retains raw poses and supplied motion, clears sample timestamps and filter histories.
+        /// Call before publishing samples from the restarted clock. Each Realm requires one shared SDK clock.</remarks>
+        public void ResetSpatialTime()
+        {
+            ThrowIfDisposed();
+            _spatial.ResetTime(_identities.Snapshot());
+        }
+
         internal bool IsDisposed
         {
             get

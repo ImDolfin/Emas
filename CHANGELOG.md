@@ -2,15 +2,17 @@
 
 ## 0.1.0
 
-- Make `Spatial` a component facade over internal `PoseSmoother` and `PresentationSuppression` helpers. Separate raw pose/motion channels and smoothing histories from renderer/collider suppression, retaining the public API, serialized controls, reference following, attachment behavior and lifecycle restoration.
+- Separate plain `Spatial` placement from optional `Smoothing` and `Prediction` behavior Traits on each Ghost root. Replace smoothing time constants with independent position/rotation half-lives (0–0.5 second Inspector ranges and tradeoff tooltips); prediction has its own extrapolation limit. Move motion setters to Prediction. Add seconds/nanoseconds `Timestamp` inputs, per-channel duplicate/stale ordering, shared arrival-based SDK clock alignment, timestamp-derived velocity and `Realm.ResetSpatialTime` recovery. Preserve immediate unsmoothed reference orientation, raw inputs, attachments and suppression. Update Relative World and API documentation for timestamped observation readers.
 
-- Replace velocity direction rejection with motion-assisted position smoothing that accepts corrections in every direction. Remove `MinimumForwardSpeed`. Add optional Cartesian/ECEF acceleration, explicit ENU velocity and acceleration setters, and `GeoPosition.ToEarthCenteredVector` for tangent-vector conversion. Cap prediction at one position smoothing time after the last changed position. Update Relative World's separate optional motion traits to accept ENU observations with their own tangent origin.
+- Keep `Spatial` focused on raw pose storage, reference placement, attachments and presentation suppression. Optional `Smoothing` owns filter history and `Prediction` owns motion observations and estimates, preserving reference following and lifecycle restoration.
 
-- Split Spatial smoothing into independent `PositionSmoothingTime` and `RotationSmoothingTime`, with zero disabling only its own channel. Changing one setting preserves the other's history. The followed Ghost's rotation setting controls reference orientation and scene repositioning, independently of position smoothing and optional motion prediction.
+- Replace velocity direction rejection with motion-assisted position smoothing that accepts corrections in every direction. Remove `MinimumForwardSpeed`. Add optional Cartesian/ECEF acceleration, explicit ENU velocity and acceleration setters, and `GeoPosition.ToEarthCenteredVector` for tangent-vector conversion. Bound prediction independently of smoothing. Update Relative World's separate optional motion traits to accept ENU observations with their own tangent origin.
+
+- Provide independent `Smoothing.PositionHalfLife` and `RotationHalfLife`, with zero disabling only its own channel. Changing one setting preserves the other's history. The followed Ghost's rotation setting controls reference orientation and scene repositioning, independently of position smoothing and optional motion prediction.
 
 - Rename data components to `Trait` / `Trait<TData>` and root membership to `Ghost.Traits` / `IGhost.Traits`. Align concrete sample and test component names, Inspector labels, diagnostics and documentation with Traits, preserving Unity script asset GUIDs.
 
-- Add opt-in `Spatial.PositionSmoothingTime` and `RotationSmoothingTime` for double-precision position and quaternion smoothing before reference projection. Preserve raw pose access, smooth followed references consistently, inherit attachments once, and provide `ResetSmoothing` for teleports. Demonstrate optional motion binding with Relative World's traits.
+- Add opt-in `Smoothing.PositionHalfLife` and `RotationHalfLife` for double-precision position and quaternion smoothing before reference projection. Preserve raw pose access, smooth followed references consistently, inherit attachments once, and provide `ResetPresentation` for teleports. Demonstrate optional motion binding with Relative World's traits.
 
 - Make `Ghost.GetRequired<T>()` failures distinguish missing and duplicate root components, with entity identity, root GameObject, concrete component types, assemblies and instance IDs. Direct missing-component errors to the Kind's Manifestation Blueprint and its Ghost Prefab field, explain missing blueprint/prefab assignments and root-only lookup, and avoid suggesting both failure causes at once.
 

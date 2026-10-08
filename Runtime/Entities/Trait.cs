@@ -7,7 +7,8 @@ namespace Emas
     /// </summary>
     /// <remarks>
     /// Configure traits on the Ghost root prefab or declare them with RequireComponent on its Ghost class.
-    /// Initializers connect trait inputs to application data. Disabled traits do not update.
+    /// Initializers connect input traits to application data. Optional Smoothing and Prediction behavior traits
+    /// require no binding and evaluate after all inputs in the spatial phase. Disabled traits do not update.
     /// Enabled traits can read before the root's first activation, so binding must not depend on OnEnable.
     /// Every trait read finishes before Ghost.OnUpdate hooks. Ordering among individual traits is unspecified.
     /// </remarks>

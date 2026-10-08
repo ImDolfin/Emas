@@ -227,7 +227,7 @@ namespace Emas
         /// </summary>
         /// <remarks>
         /// True by default. False follows position only, while UnityRotation still defines the scene alignment.
-        /// When true and following a Ghost, that Ghost's Spatial.RotationSmoothingTime controls how quickly
+        /// When true and following a Ghost, that Ghost's optional Smoothing.RotationHalfLife controls how quickly
         /// its reference orientation repositions other Ghosts. Zero uses the latest orientation immediately.
         /// </remarks>
         public bool FollowRotation

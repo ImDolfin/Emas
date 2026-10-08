@@ -410,7 +410,7 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Ghost authoring exposes application fields and independent spatial smoothing controls while hiding runtime-owned identity and availability.
+        /// Ghost authoring exposes application fields and optional smoothing/prediction controls while hiding runtime-owned identity and availability.
         /// </summary>
         [Test]
         public void GhostAuthoring_ExposesApplicationFieldsAndHidesRuntimeMetadata()
@@ -437,12 +437,21 @@ namespace Emas.Editor.Tests
             Assert.That(visible, Does.Not.Contain("_isAvailable"));
 
             Spatial spatial = root.AddComponent<Spatial>();
-            SerializedObject spatialSettings = new SerializedObject(spatial);
-            spatialSettings.FindProperty("_positionSmoothingTime").floatValue = 0.15f;
-            spatialSettings.FindProperty("_rotationSmoothingTime").floatValue = 0.03f;
-            spatialSettings.ApplyModifiedPropertiesWithoutUndo();
-            Assert.That(spatial.PositionSmoothingTime, Is.EqualTo(0.15f));
-            Assert.That(spatial.RotationSmoothingTime, Is.EqualTo(0.03f));
+            Smoothing smoothing = root.AddComponent<Smoothing>();
+            Prediction prediction = root.AddComponent<Prediction>();
+            SerializedObject smoothingSettings = new SerializedObject(smoothing);
+            smoothingSettings.FindProperty("_positionHalfLife").floatValue = 0.15f;
+            smoothingSettings.FindProperty("_rotationHalfLife").floatValue = 0.03f;
+            smoothingSettings.ApplyModifiedPropertiesWithoutUndo();
+            SerializedObject predictionSettings = new SerializedObject(prediction);
+            predictionSettings.FindProperty("_maximumExtrapolation").floatValue = 0.2f;
+            predictionSettings.ApplyModifiedPropertiesWithoutUndo();
+            Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.15f));
+            Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.03f));
+            Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.2f));
+            Assert.That(root.GetComponent<Spatial>(), Is.SameAs(spatial));
+            Assert.That(ghost.Traits, Has.Member(smoothing));
+            Assert.That(ghost.Traits, Has.Member(prediction));
         }
 
         private RealmSetup CreateRealm()

@@ -766,27 +766,29 @@ namespace Emas.Tests
         {
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(1e9, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
-            spatial.PositionSmoothingTime = 2;
-            spatial.RotationSmoothingTime = 0.5f;
+            Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 2;
+            smoothing.RotationHalfLife = 0.5f;
             Quaternion initialRotation = Quaternion.Euler(0, 350, 0);
             spatial.SetSourceRotation(initialRotation);
             _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1e9, 0, 0) };
             _realm.Update();
             AssertPosition(ghost.transform.position, Vector3.zero);
             AssertRotation(ghost.transform.rotation, initialRotation);
-            Assert.That(spatial.HasVelocity, Is.False);
-            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.PositionSmoothingTime = float.NaN);
-            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.PositionSmoothingTime = -1);
-            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = float.PositiveInfinity);
-            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = float.NaN);
-            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.RotationSmoothingTime = -1);
-            Assert.That(spatial.PositionSmoothingTime, Is.EqualTo(2));
-            Assert.That(spatial.RotationSmoothingTime, Is.EqualTo(0.5f));
+            Assert.That(ghost.GetComponent<Prediction>(), Is.Null);
+            Assert.Throws<ArgumentOutOfRangeException>(() => smoothing.PositionHalfLife = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => smoothing.PositionHalfLife = -1);
+            Assert.Throws<ArgumentOutOfRangeException>(() => smoothing.RotationHalfLife = float.PositiveInfinity);
+            Assert.Throws<ArgumentOutOfRangeException>(() => smoothing.RotationHalfLife = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => smoothing.RotationHalfLife = -1);
+            Assert.That(smoothing.PositionHalfLife, Is.EqualTo(2));
+            Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.5f));
 
             float timeScale = Time.timeScale;
             try
             {
                 Time.timeScale = 0;
+                double positionStarted = Time.realtimeSinceStartupAsDouble;
                 Double3 input = new Double3(1e9 + 10, 2, 0);
                 Quaternion targetRotation = Quaternion.Euler(0, 10, 0);
                 spatial.SetCartesianPosition(input);
@@ -798,33 +800,37 @@ namespace Emas.Tests
                 Assert.That(Quaternion.Angle(initialRotation, ghost.transform.rotation), Is.GreaterThan(0).And.LessThan(20));
                 Assert.That(ghost.transform.eulerAngles.y, Is.GreaterThan(350).Or.LessThan(10), "Rotation crosses zero along the shortest arc.");
                 double positionProgress = ghost.transform.position.x / 10d;
+                double expectedPositionProgress = 1d - Math.Pow(0.5d,
+                    (Time.realtimeSinceStartupAsDouble - positionStarted) / smoothing.PositionHalfLife);
+                Assert.That(positionProgress, Is.EqualTo(expectedPositionProgress).Within(0.002),
+                    "Half-life halves the remaining correction error independently of game time.");
                 double expectedRotationProgress = 1d - Math.Pow(1d - positionProgress,
-                    spatial.PositionSmoothingTime / spatial.RotationSmoothingTime);
+                    smoothing.PositionHalfLife / smoothing.RotationHalfLife);
                 Assert.That(Quaternion.Angle(initialRotation, ghost.transform.rotation),
                     Is.EqualTo(20d * expectedRotationProgress).Within(0.05), "Each channel uses its own time constant.");
                 Assert.That(spatial.Position, Is.EqualTo(input));
                 AssertRotation(spatial.Rotation, targetRotation);
 
-                spatial.RotationSmoothingTime = 0;
+                smoothing.RotationHalfLife = 0;
                 _realm.Update();
                 AssertRotation(ghost.transform.rotation, targetRotation);
                 Assert.That(ghost.transform.position.x, Is.LessThan(10), "Changing rotation smoothing keeps position history.");
-                spatial.RotationSmoothingTime = 2;
+                smoothing.RotationHalfLife = 2;
                 _realm.Update();
                 Quaternion nextRotation = Quaternion.Euler(0, 90, 0);
                 spatial.SetSourceRotation(nextRotation);
-                spatial.PositionSmoothingTime = 0;
+                smoothing.PositionHalfLife = 0;
                 yield return AdvanceSmoothing(0.04);
                 AssertPosition(ghost.transform.position, new Vector3(10, 2, 0));
                 Assert.That(Quaternion.Angle(targetRotation, ghost.transform.rotation), Is.GreaterThan(0).And.LessThan(80),
                     "Disabling position smoothing keeps rotation smoothing active.");
 
-                spatial.ResetSmoothing();
+                spatial.ResetPresentation();
                 _realm.Update();
                 AssertPosition(ghost.transform.position, new Vector3(10, 2, 0));
                 AssertRotation(ghost.transform.rotation, nextRotation);
                 spatial.SetCartesianPosition(new Double3(1e9 + 20, 2, 0));
-                spatial.PositionSmoothingTime = 0;
+                smoothing.PositionHalfLife = 0;
                 _realm.Update();
                 AssertPosition(ghost.transform.position, new Vector3(20, 2, 0));
             }
@@ -841,25 +847,28 @@ namespace Emas.Tests
             _realm.ReferenceFrame = new ReferenceFrame { Coordinates = CoordinateSystem.NorthEastDown, Position = default(Double3) };
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(10, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
-            spatial.PositionSmoothingTime = 0.1f;
-            spatial.SetCartesianVelocity(new Double3(8, 0, 0));
+            Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 0.2f;
+            Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.1f;
+            prediction.SetCartesianVelocity(new Double3(8, 0, 0));
             _realm.Update();
-            AssertPosition(ghost.transform.position, new Vector3(0, 0, 10));
+            AssertPosition(ghost.transform.position, new Vector3(0, 0, 10), 0.02f);
             spatial.SetCartesianPosition(new Double3(-10, 2, 0));
             yield return AdvanceSmoothing(0.04);
             Assert.That(ghost.transform.position.z, Is.LessThan(10), "A correction opposite strong velocity is accepted.");
             Assert.That(ghost.transform.position.x, Is.GreaterThan(0));
             Assert.That(spatial.Position, Is.EqualTo(new Double3(-10, 2, 0)));
-            Assert.That(spatial.HasVelocity, Is.True);
-            Assert.That(spatial.Velocity, Is.EqualTo(new Double3(8, 0, 0)));
+            Assert.That(prediction.HasVelocity, Is.True);
+            Assert.That(prediction.Velocity, Is.EqualTo(new Double3(8, 0, 0)));
 
-            spatial.ResetSmoothing();
+            spatial.ResetPresentation();
             spatial.SetCartesianPosition(default(Double3));
-            spatial.SetCartesianVelocity(new Double3(8, 0, 0));
-            spatial.SetCartesianAcceleration(new Double3(4, 0, 0));
+            prediction.SetCartesianVelocity(new Double3(8, 0, 0));
+            prediction.SetCartesianAcceleration(new Double3(4, 0, 0));
             _realm.Update();
             yield return AdvanceSmoothing(0.3);
-            Assert.That(ghost.transform.position.z, Is.EqualTo(0.82f).Within(0.02f), "Prediction is capped at one smoothing time, including acceleration.");
+            Assert.That(ghost.transform.position.z, Is.EqualTo(0.82f).Within(0.02f), "Prediction is capped independently of smoothing, including acceleration.");
             float stoppedPrediction = ghost.transform.position.z;
             double cachedUntil = Time.realtimeSinceStartupAsDouble + 0.08;
             do
@@ -871,19 +880,20 @@ namespace Emas.Tests
             while (Time.realtimeSinceStartupAsDouble < cachedUntil);
             Assert.That(ghost.transform.position.z, Is.EqualTo(stoppedPrediction).Within(0.01f));
             Assert.That(spatial.Position, Is.EqualTo(default(Double3)), "Prediction never changes the SDK input.");
-            Assert.That(spatial.HasAcceleration, Is.True);
-            Assert.That(spatial.Acceleration, Is.EqualTo(new Double3(4, 0, 0)));
-            spatial.ClearVelocity();
+            Assert.That(prediction.HasAcceleration, Is.True);
+            Assert.That(prediction.Acceleration, Is.EqualTo(new Double3(4, 0, 0)));
+            prediction.ClearVelocity();
             yield return AdvanceSmoothing(0.04);
             Assert.That(ghost.transform.position.z, Is.LessThan(stoppedPrediction), "Acceleration alone does not predict travel.");
-            spatial.ClearAcceleration();
-            Assert.That(spatial.HasAcceleration, Is.False);
-            spatial.SetCartesianVelocity(new Double3(8, 0, 0));
+            prediction.ClearAcceleration();
+            Assert.That(prediction.HasAcceleration, Is.False);
+            prediction.SetCartesianVelocity(new Double3(8, 0, 0));
 
             TestGhost unassisted = _source.PublishPosition("unassisted", default(Double3));
             Spatial other = unassisted.GetComponent<Spatial>();
-            other.PositionSmoothingTime = spatial.PositionSmoothingTime;
-            spatial.ResetSmoothing();
+            Smoothing otherSmoothing = unassisted.gameObject.AddComponent<Smoothing>();
+            otherSmoothing.PositionHalfLife = smoothing.PositionHalfLife;
+            spatial.ResetPresentation();
             spatial.SetCartesianPosition(default(Double3));
             _realm.Update();
             double started = Time.realtimeSinceStartupAsDouble;
@@ -900,14 +910,15 @@ namespace Emas.Tests
             Assert.That(Math.Abs(ghost.transform.position.z - spatial.Position.X),
                 Is.LessThan(Math.Abs(unassisted.transform.position.z - other.Position.X)), "Velocity reduces lag on a moving stream.");
 
-            spatial.ClearVelocity();
+            prediction.ClearVelocity();
             float before = ghost.transform.position.z;
             spatial.SetCartesianPosition(new Double3(-8, 0, 0));
             yield return AdvanceSmoothing(0.04);
-            Assert.That(spatial.HasVelocity, Is.False);
+            Assert.That(prediction.HasVelocity, Is.False);
             Assert.That(ghost.transform.position.z, Is.LessThan(before));
-            spatial.SetCartesianVelocity(new Double3(8, 0, 0));
-            spatial.PositionSmoothingTime = 0;
+            prediction.SetCartesianVelocity(new Double3(8, 0, 0));
+            smoothing.enabled = false;
+            prediction.enabled = false;
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(0, 0, -8));
         }
@@ -925,16 +936,18 @@ namespace Emas.Tests
             _realm.ReferenceFrame = frame;
             TestGhost reference = _source.PublishEarthCenteredPosition("reference", origin.ToEarthCentered());
             Spatial spatial = reference.GetComponent<Spatial>();
-            spatial.PositionSmoothingTime = 2;
-            spatial.RotationSmoothingTime = 2;
+            Smoothing smoothing = reference.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 2;
+            smoothing.RotationHalfLife = 2;
             spatial.SetGeographicRotation(0, 0, 0);
-            spatial.SetEarthCenteredVelocity(new Double3(0, 0, 0));
+            reference.gameObject.AddComponent<Prediction>().SetEarthCenteredVelocity(new Double3(0, 0, 0));
             TestGhost target = _source.PublishEarthCenteredPosition("target", new GeoPosition(52.520108, 13.404954, 40).ToEarthCentered());
-            target.GetComponent<Spatial>().PositionSmoothingTime = 2;
+            target.gameObject.AddComponent<Smoothing>().PositionHalfLife = 2;
             TestGhost part = _source.Publish("part");
             Spatial partSpatial = part.gameObject.AddComponent<Spatial>();
-            partSpatial.PositionSmoothingTime = 2;
-            partSpatial.RotationSmoothingTime = 2;
+            Smoothing partSmoothing = part.gameObject.AddComponent<Smoothing>();
+            partSmoothing.PositionHalfLife = 2;
+            partSmoothing.RotationHalfLife = 2;
             Vector3 offset = new Vector3(2, 0, 0);
             partSpatial.Attach(reference.Key, offset);
             _realm.Update();
@@ -953,7 +966,7 @@ namespace Emas.Tests
             AssertPosition(target.transform.position, targetPosition);
             AssertPosition(part.transform.position, reference.transform.position + reference.transform.rotation * offset);
 
-            spatial.RotationSmoothingTime = 0;
+            smoothing.RotationHalfLife = 0;
             spatial.SetGeographicRotation(180, 0, 0);
             _realm.Update();
             AssertRotation(frame.Rotation, spatial.Rotation);
@@ -963,7 +976,7 @@ namespace Emas.Tests
             AssertPosition(part.transform.position, reference.transform.position + reference.transform.rotation * offset);
 
             frame.FollowRotation = false;
-            spatial.RotationSmoothingTime = 2;
+            smoothing.RotationHalfLife = 2;
             _realm.Update();
             spatial.SetGeographicRotation(270, 0, 0);
             yield return AdvanceSmoothing(0.04);
@@ -994,7 +1007,8 @@ namespace Emas.Tests
             _realm.ReferenceFrame = frame;
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(5, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
-            spatial.PositionSmoothingTime = 10;
+            Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 10;
             _realm.Update();
             spatial.SetCartesianPosition(new Double3(100, 0, 0));
             _realm.Update();
@@ -1012,6 +1026,95 @@ namespace Emas.Tests
             spatial.enabled = true;
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(8, 0, 0));
+        }
+
+        /// <summary>Timestamped entities use one estimated source clock, reject older pose/motion packets and refresh stationary sample age; behavior traits can be disabled independently.</summary>
+        [Test]
+        public void TimestampedPrediction_AlignsPacketAgesAndRejectsOlderChannels()
+        {
+            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1e9, 0, 0) };
+            Timestamp older = new Timestamp(1700000000L, 250000000U);
+            Timestamp latest = new Timestamp(1700000000L, 900000000U);
+            TestGhost delayed = _source.Publish("delayed");
+            Spatial spatial = delayed.gameObject.AddComponent<Spatial>();
+            Prediction prediction = delayed.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.4f;
+            spatial.SetCartesianPosition(new Double3(1e9 + 10, 0, 0), older);
+            spatial.SetSourceRotation(Quaternion.identity, older);
+            prediction.SetCartesianVelocity(new Double3(8, 0, 0), older);
+            prediction.SetCartesianAcceleration(new Double3(4, 0, 0), older);
+            TestGhost current = _source.Publish("current");
+            Spatial currentSpatial = current.gameObject.AddComponent<Spatial>();
+            currentSpatial.SetCartesianPosition(new Double3(1e9 + 100, 0, 0), latest);
+            _realm.Update();
+            AssertPosition(delayed.transform.position, new Vector3(13.52f, 0, 0), 0.001f);
+            AssertPosition(current.transform.position, new Vector3(100, 0, 0));
+            Assert.That(spatial.Position, Is.EqualTo(new Double3(1e9 + 10, 0, 0)));
+            Assert.That(delayed.Traits, Does.Contain(prediction));
+
+            Timestamp stale = new Timestamp(1700000000L, 100000000U);
+            spatial.SetCartesianPosition(new Double3(1e9 - 100, 0, 0), stale);
+            spatial.SetSourceRotation(Quaternion.Euler(0, 90, 0), stale);
+            prediction.SetCartesianVelocity(new Double3(-80, 0, 0), stale);
+            prediction.SetCartesianAcceleration(new Double3(-40, 0, 0), stale);
+            spatial.SetCartesianPosition(new Double3(1e9 - 100, 0, 0), older);
+            _realm.Update();
+            AssertPosition(delayed.transform.position, new Vector3(13.52f, 0, 0), 0.001f);
+            AssertRotation(delayed.transform.rotation, Quaternion.identity);
+            Assert.That(spatial.PositionTime, Is.EqualTo(older));
+            Assert.That(spatial.RotationTime, Is.EqualTo(older));
+            Assert.That(prediction.Velocity, Is.EqualTo(new Double3(8, 0, 0)));
+
+            spatial.SetCartesianPosition(spatial.Position, latest);
+            _realm.Update();
+            Assert.That(spatial.PositionTime, Is.EqualTo(latest));
+            Assert.That(delayed.transform.position.x, Is.EqualTo(10).Within(0.1), "A fresh stationary observation refreshes age.");
+            prediction.enabled = false;
+            _realm.Update();
+            AssertPosition(delayed.transform.position, new Vector3(10, 0, 0));
+            Smoothing smoothing = delayed.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 0;
+            spatial.SetCartesianPosition(new Double3(1e9 + 20, 0, 0), new Timestamp(1700000001L, 0));
+            _realm.Update();
+            AssertPosition(delayed.transform.position, new Vector3(20, 0, 0));
+            smoothing.enabled = false;
+            spatial.SetCartesianPosition(new Double3(1e9 + 30, 0, 0), new Timestamp(1700000001L, 100000000U));
+            _realm.Update();
+            AssertPosition(delayed.transform.position, new Vector3(30, 0, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => prediction.MaximumExtrapolation = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => prediction.MaximumExtrapolation = -1);
+        }
+
+        /// <summary>Prediction derives velocity from timed position intervals, uses the same predicted reference for every root, and clock reset accepts restarted SDK timestamps without stale estimates.</summary>
+        [Test]
+        public void TimestampedPrediction_EstimatesMotionAndRecoversFromClockRestart()
+        {
+            ReferenceFrame frame = new ReferenceFrame { FollowedGhost = new Key("simulation", SpatialKind, "reference") };
+            _realm.ReferenceFrame = frame;
+            TestGhost reference = _source.Publish("reference");
+            Spatial spatial = reference.gameObject.AddComponent<Spatial>();
+            Prediction prediction = reference.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.25f;
+            spatial.SetCartesianPosition(new Double3(1e9, 0, 0), new Timestamp(1000, 0));
+            TestGhost target = _source.Publish("target");
+            Spatial targetSpatial = target.gameObject.AddComponent<Spatial>();
+            targetSpatial.SetCartesianPosition(new Double3(1e9 + 20, 0, 0), new Timestamp(1002, 0));
+            _realm.Update();
+            spatial.SetCartesianPosition(new Double3(1e9 + 10, 0, 0), new Timestamp(1001, 0));
+            _realm.Update();
+            Assert.That(prediction.HasVelocity, Is.False, "SDK velocity is optional.");
+            Assert.That(frame.Position.X, Is.EqualTo(1e9 + 12.5).Within(0.001));
+            AssertPosition(reference.transform.position, Vector3.zero);
+            AssertPosition(target.transform.position, new Vector3(7.5f, 0, 0), 0.001f);
+
+            _realm.ResetSpatialTime();
+            spatial.SetCartesianPosition(new Double3(1e9 + 4, 0, 0), new Timestamp(0, 0));
+            targetSpatial.SetCartesianPosition(new Double3(1e9 + 20, 0, 0), new Timestamp(0, 0));
+            _realm.Update();
+            Assert.That(spatial.PositionTime, Is.EqualTo(new Timestamp(0, 0)));
+            Assert.That(frame.Position.X, Is.EqualTo(1e9 + 4).Within(0.001));
+            AssertPosition(reference.transform.position, Vector3.zero);
+            AssertPosition(target.transform.position, new Vector3(16, 0, 0), 0.001f);
         }
 
         private IEnumerator AdvanceSmoothing(double seconds)

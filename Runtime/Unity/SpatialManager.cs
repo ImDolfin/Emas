@@ -11,6 +11,7 @@ namespace Emas
         private readonly IdentityMap _identities;
         private readonly HashSet<Record> _projected = new HashSet<Record>();
         private readonly HashSet<Record> _visiting = new HashSet<Record>();
+        private readonly SpatialClock _clock = new SpatialClock();
         private readonly List<Record> _chain = new List<Record>();
 
         internal SpatialManager(Realm realm, IdentityMap identities)
@@ -32,7 +33,7 @@ namespace Emas
 
                 if (spatial != null)
                 {
-                    spatial.PrepareSmoothing(timestamp);
+                    spatial.PreparePresentation(_clock, timestamp);
                 }
 
                 frame.UpdateFollowedPose(spatial);
@@ -46,6 +47,7 @@ namespace Emas
         internal void Project(List<Record> records, ReferenceFrame frame)
         {
             double timestamp = Time.realtimeSinceStartupAsDouble;
+            ObserveTimes(records);
             ReferenceFrame.Projection projection = Capture(frame, timestamp);
             try
             {
@@ -65,6 +67,8 @@ namespace Emas
             try
             {
                 double timestamp = Time.realtimeSinceStartupAsDouble;
+                // Include the followed reference and other anchors in clock alignment even for one-root requests.
+                ObserveTimes(_identities.Snapshot());
                 ProjectChain(record, Capture(frame, timestamp), timestamp);
             }
             finally
@@ -73,14 +77,46 @@ namespace Emas
             }
         }
 
-        private void PrepareSmoothing(Record record, double timestamp)
+        private void PreparePresentation(Record record, double timestamp)
         {
             if (CanProject(record))
             {
                 Spatial spatial = record.Ghost.GetComponent<Spatial>();
                 if (spatial != null)
                 {
-                    spatial.PrepareSmoothing(timestamp);
+                    spatial.PreparePresentation(_clock, timestamp);
+                }
+            }
+        }
+
+        private void ObserveTimes(List<Record> records)
+        {
+            foreach (Record record in records)
+            {
+                if (CanProject(record))
+                {
+                    Spatial spatial = record.Ghost.GetComponent<Spatial>();
+                    if (spatial != null && spatial.enabled && spatial.PositionTime.HasValue)
+                    {
+                        _clock.Observe(spatial.PositionTime.Value, spatial.PositionReceivedTime);
+                    }
+                }
+            }
+        }
+
+        internal void ResetTime(List<Record> records)
+        {
+            _clock.Reset();
+            double timestamp = Time.realtimeSinceStartupAsDouble;
+            foreach (Record record in records)
+            {
+                if (record.Ghost != null)
+                {
+                    Spatial spatial = record.Ghost.GetComponent<Spatial>();
+                    if (spatial != null)
+                    {
+                        spatial.ResetTime(timestamp);
+                    }
                 }
             }
         }
@@ -113,7 +149,7 @@ namespace Emas
             for (int index = _chain.Count - 1; index >= 0 && !_realm.IsDisposed; index--)
             {
                 Record item = _chain[index];
-                PrepareSmoothing(item, timestamp);
+                PreparePresentation(item, timestamp);
                 Project(item, projection);
                 _projected.Add(item);
             }

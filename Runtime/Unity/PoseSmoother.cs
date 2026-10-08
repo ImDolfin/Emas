@@ -3,80 +3,59 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Owns source pose channels and independent smoothing histories before reference projection.
+    // Filters presentation error independently of input storage and optional motion prediction.
     internal sealed class PoseSmoother
     {
-        private Double3 _smoothedPosition;
-        private Quaternion _smoothedRotation = Quaternion.identity;
-        private bool _hasSmoothedPosition;
-        private bool _hasSmoothedRotation;
-        private double _positionTimestamp;
-        private double _smoothingTimestamp;
+        private const double LogTwo = 0.6931471805599453;
+        private Double3 _position;
+        private Quaternion _rotation = Quaternion.identity;
+        private bool _hasPosition;
+        private bool _hasRotation;
+        private double _timestamp;
+        private double _elapsed;
 
-        internal Double3 Position { get; private set; }
-        internal Quaternion Rotation { get; private set; } = Quaternion.identity;
-        internal Double3 Velocity { get; private set; }
-        internal Double3 Acceleration { get; private set; }
-        internal bool HasPosition { get; private set; }
-        internal bool HasRotation { get; private set; }
-        internal bool HasVelocity { get; private set; }
-        internal bool HasAcceleration { get; private set; }
-        internal Double3 PresentationPosition => _hasSmoothedPosition ? _smoothedPosition : Position;
-        internal Quaternion PresentationRotation => _hasSmoothedRotation ? _smoothedRotation : Rotation;
-
-        internal void SetPosition(Double3 position, double timestamp)
+        internal void Prepare(double timestamp)
         {
-            ReferenceFrame.ValidatePosition(position, nameof(position));
-            if (!HasPosition || Position != position)
+            _elapsed = Math.Max(0d, timestamp - _timestamp);
+            _timestamp = timestamp;
+        }
+
+        internal Double3 Position(Double3 target, float halfLife, Double3 motion)
+        {
+            if (!_hasPosition || !SpatialMath.IsFinite(halfLife) || halfLife <= 0)
             {
-                _positionTimestamp = timestamp;
+                _position = target;
+            }
+            else
+            {
+                double weight = 1d - Math.Exp(-LogTwo * _elapsed / halfLife);
+                double x = Coordinate(target.X, _position.X + motion.X, weight);
+                double y = Coordinate(target.Y, _position.Y + motion.Y, weight);
+                double z = Coordinate(target.Z, _position.Z + motion.Z, weight);
+                _position = SpatialMath.IsFinite(x) && SpatialMath.IsFinite(y) && SpatialMath.IsFinite(z)
+                    ? new Double3(x, y, z) : target;
             }
 
-            Position = position;
-            HasPosition = true;
+            _hasPosition = true;
+            return _position;
         }
 
-        // Spatial normalizes input and resets history when the attitude representation changes.
-        internal void SetRotation(Quaternion rotation)
+        internal Quaternion Rotation(Quaternion target, float halfLife)
         {
-            Rotation = rotation;
-            HasRotation = true;
-        }
-
-        internal void SetVelocity(Double3 velocity)
-        {
-            ReferenceFrame.ValidatePosition(velocity, nameof(velocity));
-            Velocity = velocity;
-            HasVelocity = true;
-        }
-
-        internal void ClearVelocity()
-        {
-            HasVelocity = false;
-            Velocity = default(Double3);
-        }
-
-        internal void SetAcceleration(Double3 acceleration)
-        {
-            ReferenceFrame.ValidatePosition(acceleration, nameof(acceleration));
-            Acceleration = acceleration;
-            HasAcceleration = true;
-        }
-
-        internal void ClearAcceleration()
-        {
-            HasAcceleration = false;
-            Acceleration = default(Double3);
+            _rotation = _hasRotation && SpatialMath.IsFinite(halfLife) && halfLife > 0
+                ? Quaternion.Slerp(_rotation, target, (float)(1d - Math.Exp(-LogTwo * _elapsed / halfLife))) : target;
+            _hasRotation = true;
+            return _rotation;
         }
 
         internal void ResetPosition()
         {
-            _hasSmoothedPosition = false;
+            _hasPosition = false;
         }
 
         internal void ResetRotation()
         {
-            _hasSmoothedRotation = false;
+            _hasRotation = false;
         }
 
         internal void Reset()
@@ -85,71 +64,10 @@ namespace Emas
             ResetRotation();
         }
 
-        internal void Prepare(float positionSmoothingTime, float rotationSmoothingTime, double timestamp)
+        private static double Coordinate(double target, double predicted, double weight)
         {
-            double elapsed = Math.Max(0d, timestamp - _smoothingTimestamp);
-            if (HasPosition && SpatialMath.IsFinite(positionSmoothingTime) && positionSmoothingTime > 0)
-            {
-                double weight = 1d - Math.Exp(-elapsed / positionSmoothingTime);
-                _smoothedPosition = _hasSmoothedPosition
-                    ? SmoothPosition(positionSmoothingTime, weight, elapsed, timestamp) : Position;
-                _hasSmoothedPosition = true;
-            }
-            else
-            {
-                ResetPosition();
-            }
-
-            if (HasRotation && SpatialMath.IsFinite(rotationSmoothingTime) && rotationSmoothingTime > 0)
-            {
-                double weight = 1d - Math.Exp(-elapsed / rotationSmoothingTime);
-                _smoothedRotation = _hasSmoothedRotation
-                    ? Quaternion.Slerp(_smoothedRotation, Rotation, (float)weight) : Rotation;
-                _hasSmoothedRotation = true;
-            }
-            else
-            {
-                ResetRotation();
-            }
-
-            _smoothingTimestamp = timestamp;
-        }
-
-        private Double3 SmoothPosition(float smoothingTime, double weight, double elapsed, double timestamp)
-        {
-            // Integrate supplied motion, then blend its error against the latest observation in every direction.
-            // Cap prediction age so a stopped SDK cannot drive the presentation indefinitely.
-            double age = Math.Max(0d, timestamp - _positionTimestamp);
-            double predictionAge = HasVelocity ? Math.Min(age, smoothingTime) : 0d;
-            double step = HasVelocity
-                ? Math.Min(elapsed, Math.Max(0d, smoothingTime - Math.Max(0d, age - elapsed))) : 0d;
-            double accelerationAge = HasAcceleration ? 0.5d * predictionAge * predictionAge : 0d;
-            // A fresh packet's velocity is at its observation time; integrate acceleration backward
-            // over the preceding part of this step, then forward over any packet age.
-            double accelerationStep = HasAcceleration
-                ? step * (predictionAge - 0.5d * step) : 0d;
-            double x = SmoothCoordinate(Position.X, _smoothedPosition.X, Velocity.X, Acceleration.X,
-                predictionAge, step, accelerationAge, accelerationStep, weight);
-            double y = SmoothCoordinate(Position.Y, _smoothedPosition.Y, Velocity.Y, Acceleration.Y,
-                predictionAge, step, accelerationAge, accelerationStep, weight);
-            double z = SmoothCoordinate(Position.Z, _smoothedPosition.Z, Velocity.Z, Acceleration.Z,
-                predictionAge, step, accelerationAge, accelerationStep, weight);
-            return SpatialMath.IsFinite(x) && SpatialMath.IsFinite(y) && SpatialMath.IsFinite(z)
-                ? new Double3(x, y, z) : Position;
-        }
-
-        private static double SmoothCoordinate(double position, double smoothed, double velocity, double acceleration,
-            double age, double step, double accelerationAge, double accelerationStep, double weight)
-        {
-            double predicted = smoothed + velocity * step + acceleration * accelerationStep;
-            double target = position + velocity * age + acceleration * accelerationAge;
             double correction = target - predicted;
-            if (!SpatialMath.IsFinite(correction))
-            {
-                return double.NaN;
-            }
-
-            return predicted + correction * weight;
+            return SpatialMath.IsFinite(correction) ? predicted + correction * weight : double.NaN;
         }
     }
 }

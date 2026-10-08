@@ -242,30 +242,31 @@ namespace Emas.Tests.Samples
                     Spatial spatial = ghost.GetRequired<Spatial>();
                     GeoPosition position = new GeoPosition(52, 13, 40);
                     spatial.SetGeographicPosition(position);
-                    spatial.PositionSmoothingTime = 0.1f;
+                    ghost.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.1f;
+                    Prediction prediction = ghost.GetRequired<Prediction>();
                     realm.ReferenceFrame = new ReferenceFrame
                     {
                         Space = ReferenceSpace.Geographic,
                         FollowedGhost = ghost.Key
                     };
                     realm.Update();
-                    Assert.That(spatial.HasVelocity, Is.False);
-                    Assert.That(spatial.HasAcceleration, Is.False);
+                    Assert.That(prediction.HasVelocity, Is.False);
+                    Assert.That(prediction.HasAcceleration, Is.False);
                     reading = new Emas.RelativeWorld.GeoPoseReading("optional", "Optional motion", CarKind,
                         default, 0, 90, 40, 0, 0, 0, eastNorthUpVelocity: new Double3(1, 2, 3),
                         eastNorthUpAcceleration: new Double3(4, 5, 6));
                     realm.Update();
-                    Assert.That(spatial.HasVelocity, Is.True);
-                    Assert.That(Double3.Distance(spatial.Velocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12));
-                    Assert.That(spatial.HasAcceleration, Is.True);
-                    Assert.That(Double3.Distance(spatial.Acceleration, new Double3(-4, 6, 5)), Is.LessThan(1e-12));
+                    Assert.That(prediction.HasVelocity, Is.True);
+                    Assert.That(Double3.Distance(prediction.Velocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12));
+                    Assert.That(prediction.HasAcceleration, Is.True);
+                    Assert.That(Double3.Distance(prediction.Acceleration, new Double3(-4, 6, 5)), Is.LessThan(1e-12));
                     Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()), "Motion traits do not overwrite pose or use its location implicitly.");
-                    spatial.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
-                    Assert.That(spatial.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
+                    prediction.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
+                    Assert.That(prediction.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
                     reading = null;
                     realm.Update();
-                    Assert.That(spatial.HasVelocity, Is.False);
-                    Assert.That(spatial.HasAcceleration, Is.False);
+                    Assert.That(prediction.HasVelocity, Is.False);
+                    Assert.That(prediction.HasAcceleration, Is.False);
                     Assert.That(spatial.IsInRange, Is.True);
                     AssertOriginPose(ghost);
                 }

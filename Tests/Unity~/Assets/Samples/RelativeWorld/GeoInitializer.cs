@@ -8,11 +8,7 @@ namespace Emas.RelativeWorld
         {
             string id = presence.Key.EntityId;
             // Capture identity and Presence, then resolve the latest SDK snapshot without retaining the SDK itself.
-            root.GetRequired<GeoPositionTrait>().Bind(() =>
-            {
-                GeoPoseReading reading = ((SimulatedGeoSdk)presence.Source).Current[id];
-                return new GeoPosition(reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters);
-            });
+            root.GetRequired<GeoPositionTrait>().Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
             root.GetRequired<GeoOrientationTrait>().Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
             GeoVelocityTrait velocity;
             if (root.TryGet<GeoVelocityTrait>(out velocity))

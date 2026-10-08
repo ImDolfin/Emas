@@ -15,41 +15,80 @@ Configure a reference frame for a realm to project shared Cartesian or geographi
 
 Position and attitude arrive independently. Setters store data; the Realm applies it after all readers run. `Position` contains source Cartesian coordinates or ECEF metres, never latitude/longitude. `Rotation` contains a normalized quaternion; `RotationSpace` identifies `Source`, `Geographic` (east/up/north), or `EarthCentered`. Read them after `HasPosition` or `HasRotation` becomes true. Each rotation setter replaces the previous representation.
 
-## Smooth SDK poses
+## Choose spatial behavior per Ghost
 
-On the Ghost's **Spatial** component, configure **Position Smoothing Time** and **Rotation Smoothing Time** independently, in seconds. Both default to `0`, which applies that channel directly. Start position smoothing around `0.1` and tune rotation separately for your SDK. Position uses exponential smoothing in double-precision source coordinates and rotation follows the shortest quaternion arc. Larger values reduce jitter and increase lag. Smoothing uses Unity's unscaled clock and advances on realm projection even between SDK packets. Optional velocity and acceleration assist position smoothing with bounded prediction.
+Author these components on the **same Ghost root**, not on child transforms. `Spatial` applies raw poses through the reference frame and owns attachments and range suppression. It has no smoothing or prediction controls. Add either or both optional behavior Traits:
+
+| Root components | Result |
+| --- | --- |
+| `Spatial` | Direct reference-relative placement |
+| `Spatial` + `Smoothing` | Reduce positional/angular jitter without extrapolation |
+| `Spatial` + `Prediction` | Extrapolate motion to the shared estimated presentation time, within a separate limit |
+| All three | Predict motion and smooth correction errors |
+
+`Smoothing` and `Prediction` are built-in Traits without SDK readers; the Realm evaluates them after every data Trait and Ghost hook has run. They appear in `Ghost.Traits` and the Ghost Inspector. Disabling either behavior bypasses it on the next projection. Adding a behavior component requires `Spatial` automatically. Attached parts inherit their parent's processed world pose and bypass their own filters, avoiding a second smoothing pass.
+
+## Supply SDK sample times
+
+Supply the SDK's **seconds and nanoseconds separately** so a large Unix-style epoch does not lose its fractional precision:
 
 ```csharp
+Timestamp time = new Timestamp(sdkSeconds, sdkNanoseconds);
 Spatial spatial = ghost.GetRequired<Spatial>();
-spatial.PositionSmoothingTime = 0.15f;
-spatial.RotationSmoothingTime = 0f; // Apply heading changes immediately.
+spatial.SetGeographicPosition(location, time);
+spatial.SetGeographicRotation(yaw, pitch, roll, time);
+
+Prediction prediction;
+if (ghost.TryGet<Prediction>(out prediction))
+{
+    prediction.SetGeographicVelocity(enuVelocity, tangentOrigin, time);
+    prediction.SetGeographicAcceleration(enuAcceleration, tangentOrigin, time);
+}
 ```
 
-`Position` and `Rotation` continue to expose the latest raw input. The smoothed pose supplies both the root and a following reference frame, so the followed entity stays at the configured Unity pose. Changes to reference placement and coordinate conversion apply immediately. Attached parts inherit their parent's projected pose without a second smoothing pass. Source range checks still suppress an entity immediately when its latest input is outside `MaxDistance`; returning to range or re-enabling Spatial starts with a fresh pose.
+`Timestamp.Seconds` is a signed 64-bit integer and `Nanoseconds` is an unsigned fraction below one billion. No epoch is assumed. Use one shared SDK clock per Realm, advancing at approximately real-time seconds. `Timestamp.ElapsedSince` subtracts whole seconds before converting to doubles. `Timestamp.FromSeconds(double)` is available for clocks already supplied as floating-point seconds; use the two-part constructor when the SDK supplies both parts.
 
-When `ReferenceFrame.FollowRotation` is enabled, the followed Ghost's `RotationSmoothingTime` determines how quickly the shared reference orientation changes and therefore repositions every other Ghost. Set it to `0` for immediate scene repositioning while smoothing the reference position independently. Other Ghosts' position smoothing applies to their own source movement; it does not add lag to reference rotation changes. With `FollowRotation` disabled, the followed Ghost's rotation does not affect their positions. Changing either smoothing setting resets only that channel's history; changing rotation smoothing preserves in-progress position smoothing, and vice versa.
+Each position, orientation, velocity and acceleration channel ignores older and duplicate timed packets. A newer timestamp refreshes a stationary position's age even when coordinates are unchanged. Optional timestamps let existing arrival-timed readers continue working: identical untimed cached positions do not refresh age. Switching a channel to untimed input clears its previous timestamp ordering guard. `Spatial.PositionTime` and `RotationTime` expose accepted sample times; `Position` and `Rotation` remain raw input.
 
-Velocity is optional. Without it, position and rotation still smooth normally. If your SDK supplies velocity, bind it through a separate `Trait`, just like position. The smoother advances its estimate using velocity, then blends toward the latest observation with an exponential correction. Corrections remain accepted in every direction, including opposite the supplied velocity. There is no speed threshold or backward-motion rejection.
+When the SDK cannot provide its current time, the Realm estimates a source-to-Unity clock alignment from received observations. It retains the arrival with the smallest observed relative delay, then advances using Unity's unscaled clock. Every root and the followed reference use the same captured presentation time per spatial pass. Older packets therefore have more prediction age than newer packets, even when both were read in the same Unity frame. This estimates relative packet age; **absolute transport latency is unknown** and is not automatically recovered. Prediction is an estimate, not guaranteed current truth.
 
-Use `SetCartesianVelocity(Double3)` for shared source axes and units per second, or `SetEarthCenteredVelocity(Double3)` for ECEF XYZ metres per second. For SDK **ENU** input, use `SetGeographicVelocity(Double3, GeoPosition)`: X is east, Y north, Z up. The second argument is the SDK's tangent origin. Use the entity's WGS84 location for entity-local ENU, or the SDK's fixed origin if all vectors share one ENU frame. This origin is independent of the Realm reference; changing the presentation reference must not change the meaning of SDK motion.
+If the SDK clock restarts or a replay changes its time origin, call `realm.ResetSpatialTime()` **before** supplying samples from the new clock. This clears clock alignment, sample ordering and filter/estimated-motion history while retaining raw poses, supplied motion and component settings. Use separate Realms or application-side clock conversion for unrelated SDK clocks.
 
-```csharp
-GeoPosition tangentOrigin = new GeoPosition(latitude, longitude, height);
-spatial.SetGeographicVelocity(new Double3(eastSpeed, northSpeed, upSpeed), tangentOrigin);
-spatial.SetGeographicAcceleration(new Double3(eastAcceleration, northAcceleration, upAcceleration), tangentOrigin);
+## Tune smoothing in half-lives
 
-// Equivalent when an integration needs the ECEF vector explicitly:
-Double3 ecefVelocity = tangentOrigin.ToEarthCenteredVector(new Double3(eastSpeed, northSpeed, upSpeed));
-spatial.SetEarthCenteredVelocity(ecefVelocity);
-```
+`Smoothing.PositionHalfLife` and `RotationHalfLife` mean **seconds to halve the remaining correction error**. For a stationary target, after one half-life 50% of the error remains, after two 25%, and after three 12.5%. A value of `0.2` means half the correction remains after 0.2 seconds; `1` means that takes a full second and will feel much slower. This is not a fixed delay or a time to finish moving.
 
-Optional acceleration assists prediction only when velocity is available. Use `SetCartesianAcceleration`, `SetEarthCenteredAcceleration`, or `SetGeographicAcceleration` with units per second squared. Supply linear kinematic acceleration with gravity already removed; raw accelerometer specific force is not a position derivative. The ENU conversion rotates vectors without translating them or applying the Realm's axis preset. `Velocity` and `Acceleration` expose the stored Cartesian/ECEF vectors after `HasVelocity` and `HasAcceleration` become true; `Position` stays unchanged.
+| Half-life | Starting-point tradeoff |
+| --- | --- |
+| `0` | Apply that channel immediately |
+| `0.02–0.05 s` | Responsive; removes mild jitter |
+| `0.05–0.15 s` | Balanced filtering and response; position defaults to `0.08 s` |
+| `0.15–0.5 s` | Stronger filtering with more visible lag |
 
-Prediction uses `velocity * age + acceleration * age² / 2`, capped at one `PositionSmoothingTime` after the last changed position input. Reapplying an identical cached position does not extend that window. This reduces lag and bridges short packet gaps without unlimited travel when the SDK stalls. Publish matching position, velocity and acceleration observations together, and update motion when stopping, turning or reversing. `ClearVelocity()` disables prediction while retaining position smoothing; `ClearAcceleration()` leaves velocity prediction active. Setting position smoothing to zero applies raw positions immediately and bypasses prediction. For a teleport, call `ResetSmoothing()` after supplying the new pose; the next projection snaps to that input while retaining settings and channels.
+The Inspector sliders offer `0–0.5 s` with these tradeoffs in their tooltips. Larger finite values remain supported in code if a deliberately slow response is useful. Position filtering stays in double-precision source coordinates; rotation uses the shortest quaternion arc. Both advance in unscaled time even between packets. Changing one half-life resets only its own history. `Smoothing.Reset()` discards both histories.
 
-The Relative World sample includes optional `GeoVelocityTrait` and `GeoAccelerationTrait`, each bound independently by `GeoInitializer` when authored on the Ghost prefab. Both read `GeoPoseReading`; `EastNorthUpVelocity` and `EastNorthUpAcceleration` are nullable `Double3` fields using the reading's location as their tangent origin. Each trait clears its own channel when its vector is unavailable. Including the origin in the same reading avoids relying on position-trait update order. Existing sample prefabs do not require either trait. A Cartesian integration can use separate nullable readers and the Cartesian setters instead.
+**Rotation half-life defaults to zero.** When `ReferenceFrame.FollowRotation` is enabled, the followed Ghost's rotation filter also determines how quickly reference orientation repositions every other Ghost. Leave it at zero for immediate scene repositioning while smoothing reference position independently. Other Ghosts' position filters process their own source motion and add no lag to reference changes. With FollowRotation disabled, the reference Ghost's rotation does not affect their positions.
 
-Changes between source, geographic and ECEF attitude representations restart rotation smoothing rather than blending incompatible quaternions.
+## Predict motion independently
+
+`Prediction.MaximumExtrapolation` is the **maximum sample age used to project motion forward**. It defaults to `0.15 s` and is independent of either smoothing half-life. Prediction alone works without Smoothing. With both enabled, the smoother follows predicted motion and blends correction error in every direction; there is no direction rejection or minimum speed.
+
+| Maximum extrapolation | Starting-point tradeoff |
+| --- | --- |
+| `0` | Bypass prediction |
+| `0.05–0.1 s` | Conservative correction for small gaps |
+| `0.1–0.25 s` | Bridge short packet gaps; default `0.15 s` |
+| `0.25–0.5 s` | Bridge longer gaps, with more overshoot risk when entities stop or turn |
+
+The estimate uses `position + velocity × age + acceleration × age² / 2`, with age capped by the prediction limit. If SDK velocity is missing, consecutive timestamped positions observed during projection estimate velocity. Without either source of velocity, presentation holds the supplied position; acceleration alone does not invent an initial velocity. After a gap reaches the limit, the predicted destination stops advancing rather than drifting indefinitely. Disabling Prediction applies the raw position, or allows Smoothing alone to settle toward it.
+
+Supply Cartesian motion in shared source axes/units through `Prediction.SetCartesianVelocity` and `SetCartesianAcceleration`. Geographic integrations can use ECEF XYZ metres through the EarthCentered setters, or **ENU** (X east, Y north, Z up) through the Geographic setters. The explicit `GeoPosition tangentOrigin` is the entity location for entity-local ENU, or your SDK's fixed origin for a shared ENU frame; it is independent of the presentation reference. `GeoPosition.ToEarthCenteredVector(enu)` performs the same vector rotation without translation. Supply gravity-free linear acceleration in metres per second squared. Publish matching motion and pose times together; a separately timed velocity is advanced to the position's time when acceleration is available.
+
+`Prediction.Velocity`, `Acceleration`, `HasVelocity` and `HasAcceleration` expose supplied SDK channels. `ClearVelocity()` releases that supplied channel; timestamp-derived velocity may still be available. `ClearAcceleration()` retains velocity. `Prediction.Reset()` clears estimated motion after a discontinuity, retaining supplied motion. For a teleport, supply the new pose with a fresh timestamp (or untimed override), update motion and call `spatial.ResetPresentation()` to reset both optional behaviors. Raw/source range checks still suppress distant input immediately; recovery or re-enabling Spatial restarts presentation history.
+
+The Relative World sample reads a nullable `GeoPoseReading.SampleTime` with pose and motion from the same observation. Its optional `GeoVelocityTrait` and `GeoAccelerationTrait` require Prediction and supply nullable ENU vectors at that reading's location, independently of reader order. They clear their supplied channel when a vector is unavailable. Existing sample prefabs use Spatial directly; add Smoothing and/or Prediction to select behavior per entity kind or root.
+
+This implementation uses timestamp-aware kinematic prediction and exponential correction smoothing. A Kalman filter would additionally need suitable process and measurement noise models, ideally SDK accuracy estimates; timestamps alone do not provide those. See [Welch and Bishop's introduction](https://www.cs.unc.edu/~welch/media/pdf/kalman_intro.pdf).
 
 ## Attach and detach entities
 

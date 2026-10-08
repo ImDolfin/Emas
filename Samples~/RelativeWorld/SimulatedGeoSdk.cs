@@ -36,7 +36,7 @@ namespace Emas.RelativeWorld
                         // Release from the current SDK pose, preserving the same identities and absolute channels.
                         _releasedFeet.Add(reading.Id, new GeoPoseReading(reading.Id, reading.Label, reading.Kind,
                             reading.Variant, reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters,
-                            reading.YawDegrees, reading.PitchDegrees, reading.RollDegrees));
+                            reading.YawDegrees, reading.PitchDegrees, reading.RollDegrees, sampleTime: reading.SampleTime));
                     }
                 }
             }
@@ -115,10 +115,11 @@ namespace Emas.RelativeWorld
                 new GeoPosition(bird.LatitudeDegrees, bird.LongitudeDegrees, bird.AltitudeMeters).ToEarthCentered() + offset);
             _current.Add(id, new GeoPoseReading(id, label, GeoSource.BirdFootKind, new Variant("foot"),
                 position.LatitudeDegrees, position.LongitudeDegrees, position.HeightMeters,
-                bird.YawDegrees, bird.PitchDegrees, bird.RollDegrees, bird.Id, bird.Kind, bodyOffset));
+                bird.YawDegrees, bird.PitchDegrees, bird.RollDegrees, bird.Id, bird.Kind, bodyOffset,
+                sampleTime: bird.SampleTime));
         }
 
-        private static GeoPoseReading CreateReading(string id, string label, Kind kind, Variant variant,
+        private GeoPoseReading CreateReading(string id, string label, Kind kind, Variant variant,
             double east, double north, double yaw, double up = 0.0, double roll = 0.0)
         {
             // Only the mock SDK needs a starting road location. Emas has no fixed geographic origin.
@@ -139,7 +140,8 @@ namespace Emas.RelativeWorld
             double longitude = startLongitude + east / ((radius + roadHeight)
                 * Math.Cos(latitude * radiansPerDegree)) / radiansPerDegree;
             double altitude = roadHeight + up;
-            return new GeoPoseReading(id, label, kind, variant, latitude, longitude, altitude, yaw, 0.0, roll);
+            return new GeoPoseReading(id, label, kind, variant, latitude, longitude, altitude, yaw, 0.0, roll,
+                sampleTime: Timestamp.FromSeconds(_elapsed));
         }
     }
 }

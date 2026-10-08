@@ -30,10 +30,11 @@ namespace Emas.RelativeWorld
         /// <param name="bodyOffset">Parent-local metres in SDK axes: X forward, Y right and Z down.</param>
         /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for smoothing.</param>
         /// <param name="eastNorthUpAcceleration">Optional local ENU linear acceleration in metres per second squared, with gravity removed.</param>
+        /// <param name="sampleTime">Optional observation time in the SDK's shared seconds/nanoseconds clock.</param>
         public GeoPoseReading(string id, string label, Kind kind, Variant variant, double latitudeDegrees,
             double longitudeDegrees, double altitudeMeters, double yawDegrees, double pitchDegrees,
             double rollDegrees, string parentId = null, Kind parentKind = default, Vector3 bodyOffset = default,
-            Double3? eastNorthUpVelocity = null, Double3? eastNorthUpAcceleration = null)
+            Double3? eastNorthUpVelocity = null, Double3? eastNorthUpAcceleration = null, Timestamp? sampleTime = null)
         {
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -69,6 +70,7 @@ namespace Emas.RelativeWorld
             BodyOffset = bodyOffset;
             EastNorthUpVelocity = eastNorthUpVelocity;
             EastNorthUpAcceleration = eastNorthUpAcceleration;
+            SampleTime = sampleTime;
         }
 
         /// <summary>Gets the stable SDK entity ID.</summary>
@@ -115,6 +117,9 @@ namespace Emas.RelativeWorld
 
         /// <summary>Gets optional X-east, Y-north, Z-up linear acceleration in metres per second squared, with gravity removed.</summary>
         public Double3? EastNorthUpAcceleration { get; }
+
+        /// <summary>Gets the SDK sample time shared by pose and motion channels, or null when unavailable.</summary>
+        public Timestamp? SampleTime { get; }
 
         private static void ValidateRange(double value, double minimum, double maximum, string parameter)
         {
