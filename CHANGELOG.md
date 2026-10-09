@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Make the Ghost Inspector the sole authoring surface for root traits, including Smoothing and Prediction. Hide duplicate component cards and enable toggles, retain serialized Undo/prefab editing, and expose trait removal from each row.
+
 - Complete XML API documentation across runtime, editor, samples and tests; explain non-obvious spatial and lifecycle behavior, and split large population, notification, view, diagnostics and sample-packet routines into focused helpers.
 
 - Run Relative World at a configurable 360 km/h by default with up to 2 m of horizontal observation noise. Preserve travelled distance and captured packet velocities when changing speed.

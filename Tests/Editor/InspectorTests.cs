@@ -415,48 +415,247 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Ghost authoring exposes application fields and optional smoothing/prediction controls while hiding runtime-owned identity and availability.
+        /// Ghost authoring owns trait visibility while serialized settings and enabled states remain editable with Undo.
         /// </summary>
-        [Test]
-        public void GhostAuthoring_ExposesApplicationFieldsAndHidesRuntimeMetadata()
+        /// <returns>An iterator that waits for delayed editor visibility updates after component changes.</returns>
+        [UnityTest]
+        public IEnumerator GhostAuthoring_HidesOwnedTraitsAndKeepsSettingsEditable()
         {
             GameObject root = new GameObject("ghost authoring");
             _objects.Add(root);
-            InspectorGhost ghost = root.AddComponent<InspectorGhost>();
-            SerializedObject serialized = new SerializedObject(ghost);
-            List<string> visible = new List<string>();
-            SerializedProperty property = serialized.GetIterator();
-            bool enterChildren = true;
-            while (property.NextVisible(enterChildren))
-            {
-                visible.Add(property.propertyPath);
-                enterChildren = false;
-            }
-
-            Assert.That(visible, Does.Contain("_customValue"));
-            Assert.That(visible, Does.Not.Contain("_anchorId"));
-            Assert.That(visible, Does.Not.Contain("_entityId"));
-            Assert.That(visible, Does.Not.Contain("_kindId"));
-            Assert.That(visible, Does.Not.Contain("_name"));
-            Assert.That(visible, Does.Not.Contain("_variant"));
-            Assert.That(visible, Does.Not.Contain("_isAvailable"));
-
+            root.SetActive(false);
             Spatial spatial = root.AddComponent<Spatial>();
             Smoothing smoothing = root.AddComponent<Smoothing>();
             Prediction prediction = root.AddComponent<Prediction>();
-            SerializedObject smoothingSettings = new SerializedObject(smoothing);
-            smoothingSettings.FindProperty("_positionHalfLife").floatValue = 0.15f;
-            smoothingSettings.FindProperty("_rotationHalfLife").floatValue = 0.03f;
-            smoothingSettings.ApplyModifiedPropertiesWithoutUndo();
-            SerializedObject predictionSettings = new SerializedObject(prediction);
-            predictionSettings.FindProperty("_maximumExtrapolation").floatValue = 0.2f;
-            predictionSettings.ApplyModifiedPropertiesWithoutUndo();
-            Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.15f));
-            Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.03f));
-            Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.2f));
-            Assert.That(root.GetComponent<Spatial>(), Is.SameAs(spatial));
-            Assert.That(ghost.Traits, Has.Member(smoothing));
-            Assert.That(ghost.Traits, Has.Member(prediction));
+            InspectorTrait custom = root.AddComponent<InspectorTrait>();
+            smoothing.enabled = false;
+            prediction.enabled = false;
+            custom.enabled = false;
+            smoothing.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            yield return WaitForTraitVisibility(root, false);
+
+            InspectorGhost ghost = root.AddComponent<InspectorGhost>();
+            UnityEditor.Editor inspector = null;
+            try
+            {
+                inspector = UnityEditor.Editor.CreateEditor(ghost);
+                AssertGhostAuthoringMetadata(ghost);
+                yield return WaitForTraitVisibility(root, true);
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction, custom }));
+                Assert.That(spatial.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.None));
+                Assert.That(smoothing.hideFlags & HideFlags.DontUnloadUnusedAsset, Is.EqualTo(HideFlags.DontUnloadUnusedAsset));
+                AssertTraitSettingsSupportUndo(smoothing, prediction, custom);
+
+                Undo.DestroyObjectImmediate(custom);
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction }));
+                custom = Undo.AddComponent<InspectorTrait>(root);
+                custom.enabled = false;
+                yield return WaitForTraitVisibility(root, true);
+                Assert.That(ghost.Traits, Has.Member(custom));
+                Assert.That(custom.enabled, Is.False);
+
+                UnityEngine.Object.DestroyImmediate(inspector);
+                inspector = null;
+                Undo.DestroyObjectImmediate(ghost);
+                yield return WaitForTraitVisibility(root, false);
+                Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset));
+
+                ghost = Undo.AddComponent<InspectorGhost>(root);
+                yield return WaitForTraitVisibility(root, true);
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction, custom }));
+                Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset | HideFlags.HideInInspector));
+                Assert.That(spatial.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.None));
+                Assert.That(smoothing.enabled, Is.True);
+                Assert.That(prediction.enabled, Is.True);
+                Assert.That(custom.enabled, Is.False);
+            }
+            finally
+            {
+                if (inspector != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(inspector);
+                }
+
+                Undo.ClearUndo(root);
+                foreach (Component component in root.GetComponents<Component>())
+                {
+                    Undo.ClearUndo(component);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Hidden built-in traits retain serialized settings and enabled states when an authored Ghost prefab is saved and reopened.
+        /// </summary>
+        [Test]
+        public void GhostAuthoring_PersistsTraitSettingsInPrefabs()
+        {
+            GameObject root = new GameObject("ghost trait prefab");
+            _objects.Add(root);
+            root.SetActive(false);
+            Ghost ghost = root.AddComponent<Ghost>();
+            Smoothing smoothing = root.AddComponent<Smoothing>();
+            Prediction prediction = root.AddComponent<Prediction>();
+            string path = AssetDatabase.GenerateUniqueAssetPath("Assets/EmasTraitAuthoring.prefab");
+            GameObject contents = null;
+            UnityEditor.Editor inspector = null;
+            try
+            {
+                inspector = UnityEditor.Editor.CreateEditor(ghost);
+                SetSerializedTraitSettings(smoothing, prediction, false);
+                Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
+                UnityEngine.Object.DestroyImmediate(inspector);
+                inspector = null;
+
+                contents = PrefabUtility.LoadPrefabContents(path);
+                Ghost restored = contents.GetComponent<Ghost>();
+                Smoothing restoredSmoothing = contents.GetComponent<Smoothing>();
+                Prediction restoredPrediction = contents.GetComponent<Prediction>();
+                inspector = UnityEditor.Editor.CreateEditor(restored);
+                Assert.That(restored.Traits, Is.EquivalentTo(new Trait[] { restoredSmoothing, restoredPrediction }));
+                Assert.That(restoredSmoothing.PositionHalfLife, Is.EqualTo(0.15f));
+                Assert.That(restoredSmoothing.RotationHalfLife, Is.EqualTo(0.03f));
+                Assert.That(restoredPrediction.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(restoredSmoothing.enabled, Is.False);
+                Assert.That(restoredPrediction.enabled, Is.False);
+                Assert.That(restoredSmoothing.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
+                Assert.That(restoredPrediction.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
+            }
+            finally
+            {
+                if (inspector != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(inspector);
+                }
+
+                if (contents != null)
+                {
+                    PrefabUtility.UnloadPrefabContents(contents);
+                }
+
+                Undo.ClearUndo(smoothing);
+                Undo.ClearUndo(prediction);
+                AssetDatabase.DeleteAsset(path);
+            }
+        }
+
+        /// <summary>Waits for Unity's delayed editor callbacks to apply the observable component visibility policy.</summary>
+        /// <param name="root">The GameObject whose trait cards are checked.</param>
+        /// <param name="hidden">Whether every trait should be hidden from the ordinary component Inspector.</param>
+        /// <returns>An iterator that fails if visibility does not settle within five seconds.</returns>
+        private static IEnumerator WaitForTraitVisibility(GameObject root, bool hidden)
+        {
+            double deadline = EditorApplication.timeSinceStartup + 5.0;
+            while (true)
+            {
+                bool ready = true;
+                foreach (Trait trait in root.GetComponents<Trait>())
+                {
+                    ready &= ((trait.hideFlags & HideFlags.HideInInspector) != 0) == hidden;
+                }
+
+                if (ready)
+                {
+                    yield break;
+                }
+
+                Assert.That(EditorApplication.timeSinceStartup, Is.LessThan(deadline),
+                    "Trait component visibility did not follow its current Ghost ownership.");
+                yield return null;
+            }
+        }
+
+        /// <summary>Checks that authored Ghost fields remain visible while runtime-owned metadata stays hidden.</summary>
+        /// <param name="ghost">The application-defined Ghost inspected through Unity serialization.</param>
+        private static void AssertGhostAuthoringMetadata(Ghost ghost)
+        {
+            using (SerializedObject serialized = new SerializedObject(ghost))
+            {
+                List<string> visible = new List<string>();
+                SerializedProperty property = serialized.GetIterator();
+                bool enterChildren = true;
+                while (property.NextVisible(enterChildren))
+                {
+                    visible.Add(property.propertyPath);
+                    enterChildren = false;
+                }
+
+                Assert.That(visible, Does.Contain("_customValue"));
+                Assert.That(visible, Does.Not.Contain("_anchorId"));
+                Assert.That(visible, Does.Not.Contain("_entityId"));
+                Assert.That(visible, Does.Not.Contain("_kindId"));
+                Assert.That(visible, Does.Not.Contain("_name"));
+                Assert.That(visible, Does.Not.Contain("_variant"));
+                Assert.That(visible, Does.Not.Contain("_isAvailable"));
+            }
+        }
+
+        /// <summary>Edits hidden traits through the same serialized controls used by the Ghost Inspector.</summary>
+        /// <param name="smoothing">The trait receiving position and rotation half-lives.</param>
+        /// <param name="prediction">The trait receiving its extrapolation horizon.</param>
+        /// <param name="enabled">The enabled state authored for both traits.</param>
+        private static void SetSerializedTraitSettings(Smoothing smoothing, Prediction prediction, bool enabled)
+        {
+            using (SerializedObject settings = new SerializedObject(smoothing))
+            {
+                settings.FindProperty("_positionHalfLife").floatValue = 0.15f;
+                settings.FindProperty("_rotationHalfLife").floatValue = 0.03f;
+                settings.FindProperty("m_Enabled").boolValue = enabled;
+                settings.ApplyModifiedProperties();
+            }
+
+            using (SerializedObject settings = new SerializedObject(prediction))
+            {
+                settings.FindProperty("_maximumExtrapolation").floatValue = 0.2f;
+                settings.FindProperty("m_Enabled").boolValue = enabled;
+                settings.ApplyModifiedProperties();
+            }
+        }
+
+        /// <summary>Verifies that one serialized edit group restores built-in and application trait settings and toggles.</summary>
+        /// <param name="smoothing">The initially disabled smoothing trait with default settings.</param>
+        /// <param name="prediction">The initially disabled prediction trait with default settings.</param>
+        /// <param name="custom">The initially disabled application trait with its default value.</param>
+        private static void AssertTraitSettingsSupportUndo(Smoothing smoothing, Prediction prediction, InspectorTrait custom)
+        {
+            Undo.IncrementCurrentGroup();
+            int group = Undo.GetCurrentGroup();
+            try
+            {
+                SetSerializedTraitSettings(smoothing, prediction, true);
+                using (SerializedObject settings = new SerializedObject(custom))
+                {
+                    settings.FindProperty("_customValue").intValue = 23;
+                    settings.FindProperty("m_Enabled").boolValue = true;
+                    settings.ApplyModifiedProperties();
+                }
+
+                Undo.FlushUndoRecordObjects();
+                Undo.CollapseUndoOperations(group);
+                Undo.PerformUndo();
+                Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.08f));
+                Assert.That(smoothing.RotationHalfLife, Is.Zero);
+                Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.15f));
+                Assert.That(custom.Value, Is.EqualTo(7));
+                Assert.That(smoothing.enabled, Is.False);
+                Assert.That(prediction.enabled, Is.False);
+                Assert.That(custom.enabled, Is.False);
+
+                Undo.PerformRedo();
+                Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.15f));
+                Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.03f));
+                Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(custom.Value, Is.EqualTo(23));
+                Assert.That(smoothing.enabled, Is.True);
+                Assert.That(prediction.enabled, Is.True);
+                Assert.That(custom.enabled, Is.True);
+            }
+            finally
+            {
+                Undo.ClearUndo(smoothing);
+                Undo.ClearUndo(prediction);
+                Undo.ClearUndo(custom);
+            }
         }
 
         private RealmSetup CreateRealm()
@@ -534,6 +733,24 @@ namespace Emas.Editor.Tests
         {
             [SerializeField]
             private int _customValue = 7;
+        }
+
+        /// <summary>Represents an application-owned trait with an ordinary serialized setting.</summary>
+        private sealed class InspectorTrait : Trait<int>
+        {
+            [SerializeField]
+            private int _customValue = 7;
+
+            /// <summary>Gets the setting authored through Unity serialization.</summary>
+            /// <value>The application value retained independently of the trait's enabled state.</value>
+            public int Value => _customValue;
+
+            /// <summary>Applies an application value without depending on editor visibility.</summary>
+            /// <param name="data">The new application value.</param>
+            public override void Apply(int data)
+            {
+                _customValue = data;
+            }
         }
 
         private sealed class PublishingDetector : PresenceDetector

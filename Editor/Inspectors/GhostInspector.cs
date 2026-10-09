@@ -9,6 +9,24 @@ namespace Emas.Editor
     [CanEditMultipleObjects]
     public sealed class GhostInspector : UnityEditor.Editor
     {
+        private void OnEnable()
+        {
+            foreach (Object value in targets)
+            {
+                Ghost ghost = value as Ghost;
+                if (ghost != null)
+                {
+                    TraitInspectorVisibility.Synchronize(ghost.gameObject);
+                }
+            }
+        }
+
+        private void OnDisable()
+        {
+            // Removing the owner must make any surviving trait components inspectable again.
+            TraitInspectorVisibility.QueueRefresh();
+        }
+
         /// <summary>Draws authored settings, runtime data and root-trait settings without section foldouts.</summary>
         public override void OnInspectorGUI()
         {
@@ -48,8 +66,9 @@ namespace Emas.Editor
                 }
 
                 IReadOnlyList<Trait> traits = ghost.Traits;
+                TraitInspectorVisibility.Synchronize(traits, true);
                 using (InspectorLayout.Section("Traits (" + traits.Count + ")",
-                    "Traits authored on this root. Disabled traits remain listed but skip bound reader updates."))
+                    "Edit and enable root traits here. Disabled traits remain listed but skip bound reader updates."))
                 {
                     if (traits.Count == 0)
                     {
@@ -103,10 +122,9 @@ namespace Emas.Editor
                         EditorGUILayout.PropertyField(enabled, GUIContent.none, GUILayout.Width(18f));
                         EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(trait.GetType().Name), EditorStyles.boldLabel);
                         GUILayout.Label(enabled.boolValue ? "Enabled" : "Disabled", EditorStyles.miniLabel);
-                        if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(48f)))
+                        if (GUILayout.Button(new GUIContent("...", "Trait actions"), EditorStyles.miniButton, GUILayout.Width(24f)))
                         {
-                            Selection.activeObject = trait;
-                            EditorGUIUtility.PingObject(trait);
+                            ShowTraitMenu(trait);
                         }
                     }
 
@@ -114,6 +132,30 @@ namespace Emas.Editor
                     settings.ApplyModifiedProperties();
                 }
             }
+        }
+
+        private static void ShowTraitMenu(Trait trait)
+        {
+            GenericMenu menu = new GenericMenu();
+            MonoScript script = MonoScript.FromMonoBehaviour(trait);
+            if (script != null)
+            {
+                menu.AddItem(new GUIContent("Edit Script"), false, () => AssetDatabase.OpenAsset(script));
+            }
+            else
+            {
+                menu.AddDisabledItem(new GUIContent("Edit Script"));
+            }
+
+            menu.AddSeparator(string.Empty);
+            menu.AddItem(new GUIContent("Remove Trait"), false, () =>
+            {
+                if (trait != null)
+                {
+                    Undo.DestroyObjectImmediate(trait);
+                }
+            });
+            menu.ShowAsContext();
         }
 
         /// <summary>Refreshes live identity, pose and trait state while the application is playing.</summary>
