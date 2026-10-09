@@ -336,6 +336,120 @@ namespace Emas.Tests.Samples
                 "Restarting just the source resets its clock; the origin must not immediately extrapolate by the full horizon.");
         }
 
+        /// <summary>Strong smoothing keeps a noisy 100 m/s bird near its moving reference with prediction disabled, and a held packet only settles its existing correction.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
+        [UnityTest]
+        public IEnumerator RelativeWorld_DisabledBirdPredictionSmoothsWithoutDriftingOrExtrapolatingHeldPackets()
+        {
+            yield return Load(true, true);
+            Realm realm = Find<RealmSetup>().Realm;
+            Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+            Assert.That(source.AutomaticAdvance, Is.True);
+            Assert.That(source.SimulateJitterAndDelay, Is.True);
+            Assert.That(source.SpeedKilometersPerHour, Is.EqualTo(360));
+            Key birdKey = new Key("relative-world", Emas.RelativeWorld.GeoSource.BirdKind, "bird");
+            double startupDeadline = Time.realtimeSinceStartupAsDouble + 5;
+            IGhost entity;
+            while (!realm.TryGetGhost(birdKey, out entity) && Time.realtimeSinceStartupAsDouble < startupDeadline)
+            {
+                yield return null;
+            }
+            Assert.That(entity, Is.Not.Null, "The automatic feed must deliver its first delayed observation.");
+            Ghost bird = (Ghost)entity;
+            Ghost origin = Car(realm, "origin");
+            Assert.That(origin.GetRequired<Prediction>().enabled, Is.True);
+            bird.GetRequired<Prediction>().enabled = false;
+            bird.GetRequired<Smoothing>().PositionHalfLife = 0.5f;
+            yield return AssertMovingBirdRemainsNearReference(realm, bird, origin);
+            yield return AssertHeldBirdPacketOnlySettles(realm, source, bird);
+        }
+
+        private static IEnumerator AssertMovingBirdRemainsNearReference(Realm realm, Ghost bird, Ghost origin)
+        {
+            Spatial spatial = bird.GetRequired<Spatial>();
+            Prediction prediction = bird.GetRequired<Prediction>();
+            View view = bird.GetComponentInChildren<View>();
+            Assert.That(view, Is.Not.Null);
+            Double3 initialObservation = spatial.Position;
+            Timestamp previousSample = spatial.PositionTime.Value;
+            int freshObservations = 0;
+            bool sawFilteredObservation = false;
+            int suppressedFrames = 0;
+            float maximumDistance = 0;
+            bool retainedView = true;
+            double deadline = Time.realtimeSinceStartupAsDouble + 2.1;
+            do
+            {
+                yield return null;
+                if (!spatial.IsInRange)
+                {
+                    suppressedFrames++;
+                }
+                maximumDistance = Mathf.Max(maximumDistance, bird.transform.position.magnitude);
+                Assert.That(realm.TryGetGhost(bird.Key, out IGhost entity), Is.True);
+                Assert.That(entity, Is.SameAs(bird));
+                retainedView &= object.ReferenceEquals(bird.GetComponentInChildren<View>(), view);
+                Assert.That(prediction.enabled, Is.False);
+                Assert.That(prediction.HasVelocity, Is.True, "Disabling prediction retains supplied SDK motion for observation smoothing.");
+                Assert.That(origin.GetRequired<Prediction>().enabled, Is.True);
+                Timestamp sample = spatial.PositionTime.Value;
+                Assert.That(sample.CompareTo(previousSample), Is.GreaterThanOrEqualTo(0));
+                if (sample.CompareTo(previousSample) > 0)
+                {
+                    freshObservations++;
+                    previousSample = sample;
+                }
+                Assert.That(realm.ReferenceFrame.TryToUnityPosition(spatial.Position, out Vector3 rawPosition), Is.True);
+                sawFilteredObservation |= Vector3.Distance(rawPosition, bird.transform.position) > 0.01f;
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+
+            TestContext.WriteLine("Disabled prediction sample: maximum distance=" + maximumDistance
+                + " m; suppressed frames=" + suppressedFrames + "; fresh observations=" + freshObservations);
+            Assert.That(maximumDistance, Is.LessThan(25),
+                "Smoothing must not add tens of metres of lag to shared 100 m/s travel. Suppressed frames: " + suppressedFrames);
+            Assert.That(suppressedFrames, Is.Zero, "Disabling prediction must not cause repeated range suppression and filter resets.");
+            Assert.That(retainedView, Is.True, "The bird keeps its original visible View throughout live tuning.");
+            Assert.That(freshObservations, Is.GreaterThan(2));
+            Assert.That(Double3.Distance(initialObservation, spatial.Position), Is.GreaterThan(150));
+            Assert.That(sawFilteredObservation, Is.True, "The authored two-metre observation noise must still pass through the smoothing filter.");
+        }
+
+        private static IEnumerator AssertHeldBirdPacketOnlySettles(Realm realm, Emas.RelativeWorld.GeoSource source, Ghost bird)
+        {
+            Spatial spatial = bird.GetRequired<Spatial>();
+            // Entering manual mode rebases the sample clock and clears presentation history. Deliver one more
+            // noisy observation to establish a correction, then hold that exact SDK packet without advancing it.
+            source.AutomaticAdvance = false;
+            realm.Update();
+            Timestamp beforeManualPacket = spatial.PositionTime.Value;
+            source.Advance(0.2);
+            realm.Update();
+            Timestamp heldSample = spatial.PositionTime.Value;
+            Double3 heldObservation = spatial.Position;
+            Assert.That(heldSample.CompareTo(beforeManualPacket), Is.GreaterThan(0));
+            double initialError = Double3.Distance(heldObservation,
+                realm.ReferenceFrame.ToSimulationPosition(bird.transform.position));
+            double previousError = initialError;
+            double deadline = Time.realtimeSinceStartupAsDouble + 0.6;
+            do
+            {
+                yield return null;
+                Assert.That(spatial.PositionTime.Value, Is.EqualTo(heldSample));
+                Assert.That(spatial.Position, Is.EqualTo(heldObservation));
+                Assert.That(spatial.IsInRange, Is.True);
+                // Compare in ECEF so the origin's independent prediction cannot disguise invented bird motion.
+                double error = Double3.Distance(heldObservation,
+                    realm.ReferenceFrame.ToSimulationPosition(bird.transform.position));
+                Assert.That(error, Is.LessThanOrEqualTo(previousError + 0.001),
+                    "Without a new packet or enabled prediction, only the existing smoothing correction may settle.");
+                previousError = error;
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+            Assert.That(previousError, Is.LessThanOrEqualTo(initialError * 0.65 + 0.001),
+                "A held noisy observation must converge instead of continuing to integrate the SDK velocity.");
+        }
+
         /// <summary>Automatic SDK timestamps follow real elapsed time across a stalled frame, so changing the prediction cap does not introduce a large reference offset.</summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]

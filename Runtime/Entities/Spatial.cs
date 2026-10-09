@@ -394,8 +394,15 @@ namespace Emas
         {
             Vector3 position = default(Vector3);
             // A predicted or smoothed pose must not bring an out-of-range raw observation back into presentation.
-            bool visible = HasPosition && projection.TryToUnityPosition(Position, out position)
-                && projection.TryToUnityPosition(PresentationPosition, out position);
+            bool observationVisible = HasPosition && projection.TryToUnityPosition(Position, out position);
+            bool visible = observationVisible && projection.TryToUnityPosition(PresentationPosition, out position);
+            if (!observationVisible)
+            {
+                // A missing or out-of-range observation invalidates history. A valid observation whose
+                // filtered presentation is outside range must keep settling, without a reset-and-snap loop.
+                ResetPresentation();
+            }
+
             if (visible)
             {
                 // Assign world pose so anchor transforms do not introduce a second offset.
@@ -438,11 +445,6 @@ namespace Emas
 
         internal void SetInRange(bool value)
         {
-            if (!value)
-            {
-                ResetPresentation();
-            }
-
             _suppression.SetInRange(this, value);
         }
 

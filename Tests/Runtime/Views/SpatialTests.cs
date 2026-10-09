@@ -846,7 +846,7 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Optional SDK motion reduces position lag, accepts opposite corrections and bounds stale prediction; clearing channels and disabling smoothing restore pose-only handling.</summary>
+        /// <summary>SDK motion avoids smoothing lag on new observations even with prediction disabled; held samples never extrapolate and opposite corrections remain filtered.</summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Smoothing_VelocityPredictsMotionWithoutRejectingCorrections()
@@ -894,28 +894,7 @@ namespace Emas.Tests
             Assert.That(ghost.transform.position.z, Is.LessThan(stoppedPrediction), "Acceleration alone does not predict travel.");
             prediction.ClearAcceleration();
             Assert.That(prediction.HasAcceleration, Is.False);
-            prediction.SetCartesianVelocity(new Double3(8, 0, 0));
-
-            TestGhost unassisted = _source.PublishPosition("unassisted", default(Double3));
-            Spatial other = unassisted.GetComponent<Spatial>();
-            Smoothing otherSmoothing = unassisted.gameObject.AddComponent<Smoothing>();
-            otherSmoothing.PositionHalfLife = smoothing.PositionHalfLife;
-            spatial.ResetPresentation();
-            spatial.SetCartesianPosition(default(Double3));
-            _realm.Update();
-            double started = Time.realtimeSinceStartupAsDouble;
-            double deadline = started + 0.12;
-            do
-            {
-                yield return null;
-                Double3 position = new Double3(8 * (Time.realtimeSinceStartupAsDouble - started), 0, 0);
-                spatial.SetCartesianPosition(position);
-                other.SetCartesianPosition(position);
-                _realm.Update();
-            }
-            while (Time.realtimeSinceStartupAsDouble < deadline);
-            Assert.That(Math.Abs(ghost.transform.position.z - spatial.Position.X),
-                Is.LessThan(Math.Abs(unassisted.transform.position.z - other.Position.X)), "Velocity reduces lag on a moving stream.");
+            yield return AssertMotionWithoutExtrapolation(ghost, spatial, smoothing, prediction);
 
             prediction.ClearVelocity();
             float before = ghost.transform.position.z;
@@ -1083,7 +1062,7 @@ namespace Emas.Tests
             AssertPosition(parent.transform.position, immediatePosition);
         }
 
-        /// <summary>Visibility uses current source range and recovered or re-enabled roots snap to fresh inputs.</summary>
+        /// <summary>Presentation-only range culling retains filter history; out-of-range source observations and re-enabled roots recover from fresh inputs.</summary>
         [Test]
         public void Smoothing_RangeRecoveryAndReenableDiscardOldHistory()
         {
@@ -1094,6 +1073,24 @@ namespace Emas.Tests
             Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
             smoothing.PositionHalfLife = 10;
             _realm.Update();
+
+            frame.Position = new Double3(20, 0, 0);
+            spatial.SetCartesianPosition(new Double3(20, 0, 0));
+            _realm.Update();
+            Assert.That(spatial.IsInRange, Is.False,
+                "The raw observation is eligible while the slower presentation remains outside the new frame's range.");
+            _realm.Update();
+            Assert.That(spatial.IsInRange, Is.False,
+                "Culling only the filtered pose must not reset history and snap it into range on the next update.");
+            frame.MaxDistance = 100;
+            _realm.Update();
+            Assert.That(spatial.IsInRange, Is.True);
+            Assert.That(ghost.transform.position.x, Is.LessThan(-10),
+                "Widening the range must reveal the retained filtered pose, not a reset at the latest raw position.");
+            Assert.That(spatial.Position, Is.EqualTo(new Double3(20, 0, 0)));
+
+            frame.Position = default(Double3);
+            frame.MaxDistance = 10;
             spatial.SetCartesianPosition(new Double3(100, 0, 0));
             _realm.Update();
             Assert.That(spatial.IsInRange, Is.False);
@@ -1397,6 +1394,68 @@ namespace Emas.Tests
                         "Prediction must continue advancing between source observations in both smoothing configurations.");
                 }
             }
+        }
+
+        /// <summary>Compares timestamped motion support with ordinary smoothing, then holds and corrects the supplied observation.</summary>
+        /// <param name="ghost">The moving root with supplied SDK velocity.</param>
+        /// <param name="spatial">The root's raw observation and presentation contract.</param>
+        /// <param name="smoothing">The filter configured identically to the unassisted comparison root.</param>
+        /// <param name="prediction">The motion provider disabled for this phase so held observations cannot extrapolate.</param>
+        /// <returns>An iterator that advances the moving stream, held sample and opposite correction.</returns>
+        private IEnumerator AssertMotionWithoutExtrapolation(TestGhost ghost, Spatial spatial, Smoothing smoothing, Prediction prediction)
+        {
+            TestGhost unassisted = _source.PublishPosition("unassisted", default(Double3));
+            Spatial other = unassisted.GetComponent<Spatial>();
+            Smoothing otherSmoothing = unassisted.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 0.5f;
+            otherSmoothing.PositionHalfLife = 0.5f;
+            prediction.enabled = false;
+            Timestamp sampleTime = Timestamp.FromSeconds(0);
+            spatial.SetCartesianPosition(default(Double3), sampleTime);
+            other.SetCartesianPosition(default(Double3), sampleTime);
+            prediction.SetCartesianVelocity(new Double3(100, 0, 0), sampleTime);
+            spatial.ResetPresentation();
+            other.ResetPresentation();
+            _realm.Update();
+            double started = Time.realtimeSinceStartupAsDouble;
+            double deadline = started + 0.8;
+            double elapsed;
+            do
+            {
+                yield return null;
+                elapsed = Time.realtimeSinceStartupAsDouble - started;
+                sampleTime = Timestamp.FromSeconds(elapsed);
+                Double3 position = new Double3(100 * elapsed, 0, 0);
+                spatial.SetCartesianPosition(position, sampleTime);
+                other.SetCartesianPosition(position, sampleTime);
+                prediction.SetCartesianVelocity(new Double3(100, 0, 0), sampleTime);
+                _realm.Update();
+                Assert.That(ghost.transform.position.z, Is.EqualTo(position.X).Within(0.05),
+                    "Disabling extrapolation must retain SDK motion support between new timestamped observations.");
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+            Assert.That(Math.Abs(unassisted.transform.position.z - other.Position.X), Is.GreaterThan(20),
+                "A Ghost without supplied motion must retain ordinary low-pass smoothing.");
+            Assert.That(unassisted.GetComponent<Prediction>(), Is.Null);
+            Assert.That(prediction.enabled, Is.False);
+
+            Double3 heldPosition = spatial.Position;
+            yield return AdvanceSmoothing(0.12);
+            Assert.That(ghost.transform.position.z, Is.EqualTo(heldPosition.X).Within(0.05),
+                "Supplied velocity must not advance a held observation while prediction is disabled.");
+            Assert.That(spatial.Position, Is.EqualTo(heldPosition));
+            Assert.That(spatial.PositionTime, Is.EqualTo(sampleTime));
+            Assert.That(prediction.Velocity, Is.EqualTo(new Double3(100, 0, 0)));
+
+            Double3 corrected = heldPosition - new Double3(10, 0, 0);
+            Timestamp correctionTime = Timestamp.FromSeconds(elapsed + 0.001);
+            spatial.SetCartesianPosition(corrected, correctionTime);
+            prediction.SetCartesianVelocity(new Double3(100, 0, 0), correctionTime);
+            yield return AdvanceSmoothing(0.08);
+            Assert.That(ghost.transform.position.z, Is.LessThan(heldPosition.X).And.GreaterThan(corrected.X + 1),
+                "Motion support must filter a correction against travel instead of rejecting it or snapping to it.");
+            Assert.That(spatial.Position, Is.EqualTo(corrected));
+            Assert.That(spatial.PositionTime, Is.EqualTo(correctionTime));
         }
 
         private IEnumerator AdvanceSmoothing(double seconds)

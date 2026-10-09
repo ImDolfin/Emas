@@ -5,7 +5,9 @@ namespace Emas
 {
     /// <summary>Optional Ghost trait that predicts position using timestamped observations and optional SDK motion.</summary>
     /// <remarks>Author beside Spatial; Smoothing is independently optional. ENU vectors use an explicit SDK tangent origin.
-    /// Without SDK velocity, consecutive timestamped positions estimate it. No SDK binding is needed on this behavior trait.</remarks>
+    /// Without SDK velocity, consecutive timestamped positions estimate it. No SDK binding is needed on this behavior trait.
+    /// Disabling extrapolation retains supplied SDK motion for Smoothing between newly accepted timed observations;
+    /// held observations do not advance from that motion while prediction is disabled.</remarks>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Spatial))]
     [AddComponentMenu("Emas/Prediction")]
@@ -27,9 +29,10 @@ namespace Emas
         private bool _hasEstimatedVelocity;
         private double? _projectionTime;
         private double _elapsed;
+        private Double3 _observationMotion;
 
         /// <summary>Gets or sets the maximum extrapolated sample age in seconds; defaults to 0.15, independently of smoothing.</summary>
-        /// <value>A finite, nonnegative horizon in seconds. Zero disables extrapolation.</value>
+        /// <value>A finite, nonnegative horizon in seconds. Zero disables extrapolation, retaining SDK motion assistance for smoothing new observations.</value>
         /// <remarks>Live edits blend the setting-induced displacement over 0.25 seconds of real time, including zero
         /// and enabled changes, with or without Smoothing. Filter history, raw input, timestamps and motion remain intact.
         /// During that transition presentation can retain some of the previous limit's lead.</remarks>
@@ -44,7 +47,7 @@ namespace Emas
             }
         }
 
-        /// <summary>Gets the last supplied Cartesian velocity or ECEF metres per second.</summary>
+        /// <summary>Gets the last supplied Cartesian velocity or ECEF metres per second, also available to Smoothing with extrapolation disabled.</summary>
         /// <value>The accepted SDK velocity, meaningful while <see cref="HasVelocity"/> is true; estimated velocity is not exposed here.</value>
         public Double3 Velocity => _velocity;
 
@@ -142,10 +145,12 @@ namespace Emas
             _previousTime = null;
             _hasEstimatedVelocity = false;
             _projectionTime = null;
+            _observationMotion = default(Double3);
         }
 
         internal void Prepare(Spatial spatial, double timestamp)
         {
+            _observationMotion = default(Double3);
             ObservePosition(spatial);
             _elapsed = _projectionTime.HasValue ? Math.Max(0d, timestamp - _projectionTime.Value) : 0d;
             _projectionTime = timestamp;
@@ -156,8 +161,20 @@ namespace Emas
         {
             // Old and new tuning settings use identical observations and elapsed time without advancing history twice.
             motion = default(Double3);
-            if (!spatial.HasPosition || !_hasVelocity && !_hasEstimatedVelocity
-                || maximumExtrapolation <= 0)
+            if (!spatial.HasPosition)
+            {
+                return spatial.Position;
+            }
+
+            if (maximumExtrapolation <= 0)
+            {
+                // Advect only the correction filter across an observed packet interval. The target remains
+                // the actual observation; duplicate/held packets contribute zero motion and never extrapolate.
+                motion = _observationMotion;
+                return spatial.Position;
+            }
+
+            if (!_hasVelocity && !_hasEstimatedVelocity)
             {
                 return spatial.Position;
             }
@@ -172,9 +189,9 @@ namespace Emas
             try
             {
                 // Reconcile a separately timed velocity with the position observation's time.
-                if (_hasVelocity && _hasAcceleration && spatial.PositionTime.HasValue && _velocityTime.HasValue)
+                if (_hasVelocity)
                 {
-                    velocity += acceleration * spatial.PositionTime.Value.ElapsedSince(_velocityTime.Value);
+                    velocity = VelocityAtObservation(spatial, acceleration);
                 }
 
                 Double3 predicted = spatial.Position + velocity * horizon + acceleration * (0.5d * horizon * horizon);
@@ -209,6 +226,7 @@ namespace Emas
                 double elapsed = spatial.PositionTime.Value.ElapsedSince(_previousTime.Value);
                 if (elapsed > 0)
                 {
+                    _observationMotion = ObservationMotion(spatial, elapsed);
                     try
                     {
                         _estimatedVelocity = (spatial.Position - _previousPosition) * (1d / elapsed);
@@ -224,6 +242,34 @@ namespace Emas
             _positionVersion = spatial.PositionVersion;
             _previousPosition = spatial.Position;
             _previousTime = spatial.PositionTime;
+        }
+
+        private Double3 ObservationMotion(Spatial spatial, double elapsed)
+        {
+            if (!_hasVelocity)
+            {
+                // Position-derived velocity would copy observation noise straight into the filter's motion step.
+                return default(Double3);
+            }
+
+            try
+            {
+                Double3 acceleration = _hasAcceleration ? _acceleration : default(Double3);
+                Double3 velocity = VelocityAtObservation(spatial, acceleration);
+                // The supplied velocity belongs to the NEW sample. Integrate backwards over the interval
+                // between observations, rather than projecting either observation into the future.
+                return velocity * elapsed - acceleration * (0.5d * elapsed * elapsed);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return default(Double3);
+            }
+        }
+
+        private Double3 VelocityAtObservation(Spatial spatial, Double3 acceleration)
+        {
+            return _hasAcceleration && spatial.PositionTime.HasValue && _velocityTime.HasValue
+                ? _velocity + acceleration * spatial.PositionTime.Value.ElapsedSince(_velocityTime.Value) : _velocity;
         }
 
         private void StoreVelocity(Double3 velocity, Timestamp? sampleTime)

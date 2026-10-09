@@ -5,7 +5,9 @@ namespace Emas
 {
     /// <summary>Optional Ghost trait that smooths source pose presentation before reference projection.</summary>
     /// <remarks>Author beside Spatial on the same root. Position and rotation have independent half-lives;
-    /// no SDK binding is needed. With Prediction present, smooth its result and use its motion estimate to reduce lag.</remarks>
+    /// no SDK binding is needed. Filters raw observations independently of Prediction. Supplied SDK velocity can
+    /// compensate motion between timed observations even with extrapolation disabled. With prediction enabled,
+    /// also smooths its extrapolated result and advances between packets within its configured horizon.</remarks>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Spatial))]
     [AddComponentMenu("Emas/Smoothing")]
@@ -23,6 +25,8 @@ namespace Emas
         /// <value>A finite, nonnegative half-life in seconds; the default is 0.08 seconds.</value>
         /// <remarks>Defaults to 0.08. After one half-life, 50% of a stationary correction remains; after three, 12.5% remains.
         /// The Inspector offers 0-0.5 seconds; larger finite values are supported in code and create stronger lag.
+        /// Supplied SDK velocity in Prediction reduces motion lag even when Prediction is disabled; without it,
+        /// ordinary position filtering produces speed-dependent lag. Raw input and timestamps are retained.
         /// Live edits retain history and blend the setting-induced displacement over 0.25 seconds of real time,
         /// including changes to zero and the enabled toggle. Inspector edits and property assignments behave identically.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned half-life is negative, NaN or infinite.</exception>

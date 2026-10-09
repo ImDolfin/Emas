@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Keep SDK motion assistance available to Smoothing when Prediction is disabled or its horizon is zero. Compensate only the interval between accepted timestamped observations, leaving held packets without extrapolation. Prevent presentation-only range culling from resetting filter history and producing repeated drift-and-snap cycles. Cover the noisy 360 km/h bird sample with prediction disabled.
+
 - Make live prediction and smoothing tuning continuous through both the Ghost Inspector and code. Retain filter history and blend setting-induced position/rotation differences over 0.25 seconds, including zero values and enabled toggles. Preserve forward motion during repeated edits and use one shared presentation pose for followed references and attachments. Explicit presentation resets still apply immediately.
 
 - Keep Relative World's automatic SDK clock aligned with real time across slow Editor frames, with explicit manual stepping support.
