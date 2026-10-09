@@ -817,6 +817,7 @@ namespace Emas.Tests
 
                 smoothing.RotationHalfLife = 0;
                 _realm.Update();
+                yield return AdvanceSmoothing(0.3);
                 AssertRotation(ghost.transform.rotation, targetRotation);
                 Assert.That(ghost.transform.position.x, Is.LessThan(10), "Changing rotation smoothing keeps position history.");
                 smoothing.RotationHalfLife = 2;
@@ -824,7 +825,8 @@ namespace Emas.Tests
                 Quaternion nextRotation = Quaternion.Euler(0, 90, 0);
                 spatial.SetSourceRotation(nextRotation);
                 smoothing.PositionHalfLife = 0;
-                yield return AdvanceSmoothing(0.04);
+                _realm.Update();
+                yield return AdvanceSmoothing(0.3);
                 AssertPosition(ghost.transform.position, new Vector3(10, 2, 0));
                 Assert.That(Quaternion.Angle(targetRotation, ghost.transform.rotation), Is.GreaterThan(0).And.LessThan(80),
                     "Disabling position smoothing keeps rotation smoothing active.");
@@ -925,10 +927,11 @@ namespace Emas.Tests
             smoothing.enabled = false;
             prediction.enabled = false;
             _realm.Update();
+            yield return AdvanceSmoothing(0.3);
             AssertPosition(ghost.transform.position, new Vector3(0, 0, -8));
         }
 
-        /// <summary>A geographic reference shares independently smoothed channels with its root; unsmoothed reference rotation repositions smoothed targets and attached parts immediately.</summary>
+        /// <summary>A geographic reference shares independently smoothed channels with its root; changing reference rotation treatment preserves coherent targets and attached parts through its transition.</summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Smoothing_GeographicReferenceAndAttachmentsSharePresentationPose()
@@ -975,6 +978,7 @@ namespace Emas.Tests
             smoothing.RotationHalfLife = 0;
             spatial.SetGeographicRotation(180, 0, 0);
             _realm.Update();
+            yield return AdvanceSmoothing(0.3);
             AssertRotation(frame.Rotation, spatial.Rotation);
             Assert.That(Double3.Distance(frame.Position, input), Is.GreaterThan(0), "Changing reference rotation keeps position smoothing history.");
             Assert.That(frame.TryToUnityPosition(target.GetComponent<Spatial>().Position, out targetPosition), Is.True);
@@ -1073,6 +1077,7 @@ namespace Emas.Tests
             parent.GetComponent<Smoothing>().enabled = false;
             Spatial parentSpatial = parent.GetComponent<Spatial>();
             parentSpatial.SetCartesianPosition(new Double3(1020, 0, 0));
+            parentSpatial.ResetPresentation(); // This standalone request deliberately teleports to the fresh pose.
             Assert.That(_realm.Manifest(parent), Is.SameAs(existingView));
             Assert.That(frame.TryToUnityPosition(parentSpatial.Position, out Vector3 immediatePosition), Is.True);
             AssertPosition(parent.transform.position, immediatePosition);
@@ -1149,6 +1154,7 @@ namespace Emas.Tests
             Assert.That(spatial.PositionTime, Is.EqualTo(latest));
             Assert.That(delayed.transform.position.x, Is.EqualTo(10).Within(0.1), "A fresh stationary observation refreshes age.");
             prediction.enabled = false;
+            spatial.ResetPresentation(); // Establish immediate raw-pose handling for the remaining timestamp checks.
             _realm.Update();
             AssertPosition(delayed.transform.position, new Vector3(10, 0, 0));
             Smoothing smoothing = delayed.gameObject.AddComponent<Smoothing>();
@@ -1162,6 +1168,104 @@ namespace Emas.Tests
             AssertPosition(delayed.transform.position, new Vector3(30, 0, 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => prediction.MaximumExtrapolation = float.NaN);
             Assert.Throws<ArgumentOutOfRangeException>(() => prediction.MaximumExtrapolation = -1);
+        }
+
+        /// <summary>Prediction-only live tuning preserves the displayed pose, settles to the new bounded estimate and keeps a moving stream advancing through repeated edits without changing raw observations.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
+        [UnityTest]
+        public IEnumerator TimestampedPrediction_LiveTuningRemainsContinuousWithoutSmoothing()
+        {
+            const double origin = 1e9;
+            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(origin, 0, 0) };
+            TestGhost ghost = _source.Publish("tuned");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.15f;
+            Timestamp observationTime = new Timestamp(1000, 0);
+            Double3 observation = new Double3(origin, 0, 0);
+            spatial.SetCartesianPosition(observation, observationTime);
+            prediction.SetCartesianVelocity(new Double3(100, 0, 0), observationTime);
+            TestGhost clock = _source.Publish("current-clock");
+            Spatial clockSpatial = clock.gameObject.AddComponent<Spatial>();
+            clockSpatial.SetCartesianPosition(observation, new Timestamp(1001, 0));
+            _realm.Update();
+            Assert.That(ghost.GetComponent<Smoothing>(), Is.Null);
+            AssertPosition(ghost.transform.position, new Vector3(15, 0, 0), 0.001f);
+
+            void ChangeAndAssertContinuity(Action change)
+            {
+                float before = ghost.transform.position.x;
+                change();
+                _realm.Update();
+                Assert.That(ghost.transform.position.x, Is.EqualTo(before).Within(0.05),
+                    "Changing treatment of the same observation must not introduce a position jump.");
+            }
+
+            ChangeAndAssertContinuity(() => prediction.MaximumExtrapolation = 0.03f);
+            yield return AdvanceSmoothing(0.3);
+            AssertPosition(ghost.transform.position, new Vector3(3, 0, 0), 0.001f);
+            ChangeAndAssertContinuity(() => prediction.MaximumExtrapolation = 0);
+            yield return AdvanceSmoothing(0.3);
+            AssertPosition(ghost.transform.position, Vector3.zero);
+
+            ChangeAndAssertContinuity(() => prediction.MaximumExtrapolation = 0.15f);
+            yield return AdvanceSmoothing(0.08);
+            Assert.That(ghost.transform.position.x, Is.GreaterThan(0).And.LessThan(15));
+            ChangeAndAssertContinuity(() => prediction.MaximumExtrapolation = 0.03f);
+            yield return AdvanceSmoothing(0.04);
+            ChangeAndAssertContinuity(() => prediction.MaximumExtrapolation = 0.09f);
+            yield return AdvanceSmoothing(0.3);
+            AssertPosition(ghost.transform.position, new Vector3(9, 0, 0), 0.001f);
+            ChangeAndAssertContinuity(() => prediction.enabled = false);
+            yield return AdvanceSmoothing(0.3);
+            AssertPosition(ghost.transform.position, Vector3.zero);
+            ChangeAndAssertContinuity(() => prediction.enabled = true);
+            yield return AdvanceSmoothing(0.3);
+            AssertPosition(ghost.transform.position, new Vector3(9, 0, 0), 0.001f);
+            Assert.That(spatial.Position, Is.EqualTo(observation));
+            Assert.That(spatial.PositionTime, Is.EqualTo(observationTime));
+            Assert.That(prediction.Velocity, Is.EqualTo(new Double3(100, 0, 0)));
+
+            _realm.ResetSpatialTime();
+            void PublishMovingObservation(double seconds)
+            {
+                Timestamp sampleTime = Timestamp.FromSeconds(1002 + seconds);
+                spatial.SetCartesianPosition(new Double3(origin + 100 * seconds, 0, 0), sampleTime);
+                prediction.SetCartesianVelocity(new Double3(100, 0, 0), sampleTime);
+                // A second source observation establishes that this entity's packets are 200 ms old.
+                clockSpatial.SetCartesianPosition(observation, Timestamp.FromSeconds(1002.2 + seconds));
+            }
+
+            PublishMovingObservation(0);
+            _realm.Update();
+            double started = Time.realtimeSinceStartupAsDouble;
+            float initialPresentation = ghost.transform.position.x;
+            double elapsed;
+            float[] horizons = { 0.03f, 0.15f, 0.06f };
+            int edit = 0;
+            do
+            {
+                yield return null;
+                elapsed = Time.realtimeSinceStartupAsDouble - started;
+                PublishMovingObservation(elapsed);
+                _realm.Update();
+                float horizon = horizons[edit % horizons.Length];
+                ChangeAndAssertContinuity(() => prediction.MaximumExtrapolation = horizon);
+                edit++;
+            }
+            while (elapsed < 0.35);
+
+            Assert.That(ghost.transform.position.x - initialPresentation,
+                Is.InRange(100 * elapsed - 16, 100 * elapsed + 16),
+                "Repeated slider edits must not freeze motion or accumulate error beyond the bounded prediction range.");
+            Double3 lastObservation = spatial.Position;
+            Timestamp? lastObservationTime = spatial.PositionTime;
+            ChangeAndAssertContinuity(() => prediction.MaximumExtrapolation = 0.03f);
+            yield return AdvanceSmoothing(0.3);
+            Assert.That(ghost.transform.position.x, Is.EqualTo(lastObservation.X - origin + 3).Within(0.001),
+                "The transition fully settles to the new estimate without a residual tuning offset.");
+            Assert.That(spatial.Position, Is.EqualTo(lastObservation));
+            Assert.That(spatial.PositionTime, Is.EqualTo(lastObservationTime));
         }
 
         /// <summary>Prediction derives velocity from timed position intervals, uses the same predicted reference for every root, and clock reset accepts restarted SDK timestamps without stale estimates.</summary>

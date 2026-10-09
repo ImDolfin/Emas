@@ -29,6 +29,7 @@ namespace Emas
         private Double3 _presentationPosition;
         private Quaternion _presentationRotation = Quaternion.identity;
         private bool _hasPresentation;
+        private readonly PresentationTuning _tuning = new PresentationTuning();
         private readonly PresentationSuppression _suppression = new PresentationSuppression();
         private RotationSpace _rotationSpace;
         private CoordinateSystem? _earthCenteredBodyAxes;
@@ -44,11 +45,12 @@ namespace Emas
         /// <value>The original SDK timestamp for the stored rotation; null before timed input or after a spatial clock reset.</value>
         public Timestamp? RotationTime => _data.RotationTime;
 
-        /// <summary>Resets optional smoothing and estimated prediction history after an intentional discontinuity.</summary>
+        /// <summary>Resets smoothing, estimated prediction and live-tuning transitions after an intentional discontinuity.</summary>
         /// <remarks>Retains raw pose, supplied motion and component settings. Supply the new pose before calling this.</remarks>
         public void ResetPresentation()
         {
             _hasPresentation = false;
+            ResetTuning();
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)
             {
@@ -67,6 +69,11 @@ namespace Emas
         internal Double3 PresentationPosition => _hasPresentation ? _presentationPosition : Position;
         internal Quaternion PresentationRotation => _hasPresentation ? _presentationRotation : Rotation;
 
+        internal void ResetTuning()
+        {
+            _tuning.Reset();
+        }
+
         // Compose optional behavior only after all SDK readers, before capturing the shared reference.
         internal void PreparePresentation(SpatialClock clock, double timestamp)
         {
@@ -76,26 +83,37 @@ namespace Emas
                 return;
             }
 
-            Double3 position = Position;
-            Double3 motion = default(Double3);
             Prediction prediction = GetComponent<Prediction>();
-            if (prediction != null && prediction.enabled)
-            {
-                position = prediction.Prepare(this, clock, timestamp);
-                motion = prediction.Motion;
-            }
-
-            Quaternion rotation = Rotation;
             Smoothing smoothing = GetComponent<Smoothing>();
-            if (smoothing != null && smoothing.enabled)
+            PresentationSettings settings = new PresentationSettings(prediction, smoothing);
+            if (prediction != null)
             {
-                position = smoothing.Prepare(this, position, timestamp, motion);
-                rotation = smoothing.PresentationRotation;
+                prediction.Prepare(this, timestamp);
             }
 
-            _presentationPosition = position;
-            _presentationRotation = rotation;
+            PresentationPose previous = default(PresentationPose);
+            if (_tuning.Changed(settings))
+            {
+                previous = PreparePose(clock, timestamp, prediction, smoothing, _tuning.Settings, true);
+            }
+
+            PresentationPose current = PreparePose(clock, timestamp, prediction, smoothing, settings, false);
+            current = _tuning.Apply(previous, current, settings, timestamp);
+            _presentationPosition = current.Position;
+            _presentationRotation = current.Rotation;
             _hasPresentation = true;
+        }
+
+        private PresentationPose PreparePose(SpatialClock clock, double timestamp, Prediction prediction,
+            Smoothing smoothing, PresentationSettings settings, bool preview)
+        {
+            Double3 motion = default(Double3);
+            Double3 position = prediction != null
+                ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, out motion) : Position;
+            PresentationPose pose = new PresentationPose(position, Rotation);
+
+            // Keep direct (disabled) channels current too, so enabling a trait has fresh filter history.
+            return smoothing != null ? smoothing.Prepare(this, pose, timestamp, motion, settings, preview) : pose;
         }
 
         internal void ResetTime(double timestamp)
@@ -111,6 +129,8 @@ namespace Emas
 
         private void ResetRotationSmoothing()
         {
+            // Corrections expressed in the former attitude basis cannot be reused in the new one.
+            _tuning.ResetRotation();
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)
             {

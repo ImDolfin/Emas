@@ -16,7 +16,7 @@ namespace Emas.Tests.Samples
         private float _timeScale;
 
         /// <summary>
-        /// Leaves sample advancement under test control.
+        /// Pauses scaled scene time while each scenario chooses automatic or manual SDK advancement.
         /// </summary>
         [SetUp]
         public void SetUp()
@@ -336,21 +336,109 @@ namespace Emas.Tests.Samples
                 "Restarting just the source resets its clock; the origin must not immediately extrapolate by the full horizon.");
         }
 
-        private IEnumerator Load(bool withImpairments = false)
+        /// <summary>Automatic SDK timestamps follow real elapsed time across a stalled frame, so changing the prediction cap does not introduce a large reference offset.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
+        [UnityTest]
+        public IEnumerator RelativeWorld_AutomaticClockTracksRealtimeAcrossAStalledFrame()
+        {
+            float maximumDeltaTime = Time.maximumDeltaTime;
+            try
+            {
+                Time.timeScale = 1f;
+                yield return Load(true, true);
+                Realm realm = Find<RealmSetup>().Realm;
+                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+                Assert.That(source.AutomaticAdvance, Is.True);
+                source.SimulateJitterAndDelay = false;
+                source.enabled = false;
+                source.enabled = true;
+                yield return null;
+                Ghost origin = Car(realm, "origin");
+                Spatial spatial = origin.GetRequired<Spatial>();
+                Prediction prediction = origin.GetRequired<Prediction>();
+                origin.GetRequired<Smoothing>().enabled = false;
+                prediction.MaximumExtrapolation = 0.15f;
+                spatial.ResetPresentation(); // Establish prediction-only setup before measuring the independent SDK clock.
+                yield return null;
+
+                Timestamp beforeSample = spatial.PositionTime.Value;
+                double beforeStall = Time.realtimeSinceStartupAsDouble;
+                Time.maximumDeltaTime = 0.02f;
+                // An editor stall must delay delivery without slowing the independent SDK observation clock.
+                System.Threading.Thread.Sleep(120);
+                yield return null;
+                double elapsed = Time.realtimeSinceStartupAsDouble - beforeStall;
+                double sourceElapsed = spatial.PositionTime.Value.ElapsedSince(beforeSample);
+                Assert.That(sourceElapsed, Is.EqualTo(elapsed).Within(0.04),
+                    "A clamped Unity frame duration must not leave fresh source packets permanently behind the prediction clock.");
+
+                prediction.MaximumExtrapolation = 0.5f;
+                yield return null;
+                Assert.That(Double3.Distance(realm.ReferenceFrame.Position, spatial.Position), Is.LessThan(5),
+                    "Fresh 100 m/s observations must not jump toward a larger cap when changing it from 0.15 s to 0.5 s.");
+                AssertOriginPose(origin);
+
+                Time.timeScale = 0f;
+                Timestamp beforeScaledPause = spatial.PositionTime.Value;
+                double scaledPauseStarted = Time.realtimeSinceStartupAsDouble;
+                yield return null;
+                yield return null;
+                double scaledPauseElapsed = Time.realtimeSinceStartupAsDouble - scaledPauseStarted;
+                Assert.That(spatial.PositionTime.Value.ElapsedSince(beforeScaledPause), Is.GreaterThan(0));
+                Assert.That(spatial.PositionTime.Value.ElapsedSince(beforeScaledPause),
+                    Is.EqualTo(scaledPauseElapsed).Within(0.04), "The independent SDK clock continues when scaled scene time is paused.");
+
+                source.AutomaticAdvance = false;
+                realm.Update();
+                Timestamp heldSample = spatial.PositionTime.Value;
+                Double3 heldPosition = spatial.Position;
+                yield return null;
+                yield return null;
+                Assert.That(spatial.PositionTime.Value, Is.EqualTo(heldSample), "Manual mode holds the last SDK observation.");
+                source.Advance(1.0);
+                realm.Update();
+                Assert.That(Double3.Distance(spatial.Position, heldPosition), Is.EqualTo(100).Within(0.001));
+                Double3 manuallyAdvancedPosition = spatial.Position;
+                source.AutomaticAdvance = true;
+                realm.Update();
+                Assert.That(Double3.Distance(spatial.Position, manuallyAdvancedPosition), Is.LessThan(1),
+                    "Resuming automatic mode preserves distance travelled instead of restarting the SDK.");
+                Assert.That(Double3.Distance(realm.ReferenceFrame.Position, spatial.Position), Is.LessThan(5),
+                    "Changing source clock modes rebases the Realm clock without predicting through the manual pause or jump.");
+            }
+            finally
+            {
+                Time.maximumDeltaTime = maximumDeltaTime;
+            }
+        }
+
+        private IEnumerator Load(bool withImpairments = false, bool automaticAdvance = false)
         {
             const string path = "Assets/Samples/RelativeWorld/RelativeWorld.unity";
             yield return SceneManager.LoadSceneAsync(path, LoadSceneMode.Additive);
             _scene = SceneManager.GetSceneByPath(path);
-            yield return null;
-            yield return null;
+            Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+            source.AutomaticAdvance = automaticAdvance;
             if (!withImpairments)
             {
-                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
                 source.SpeedKilometersPerHour = 28.8f;
                 source.SimulateJitterAndDelay = false;
-                UseDirectPresentation(Find<RealmSetup>().Realm);
-                yield return null; // Let RoadMotion capture the initial reference before manually advancing the SDK.
             }
+
+            // Loading can consume real time before this coroutine resumes. Restart configured tracking so manual
+            // scenarios start at SDK time zero and RoadMotion also receives a fresh reference-frame baseline.
+            RealmSetup setup = Find<RealmSetup>();
+            setup.gameObject.SetActive(false);
+            setup.gameObject.SetActive(true);
+            setup.StartRealm();
+            if (!withImpairments)
+            {
+                // Disable filters before RoadMotion can observe this frame: even a short prediction lead would
+                // otherwise become travelled distance when these exact mapping scenarios switch to raw poses.
+                UseDirectPresentation(setup.Realm);
+            }
+            yield return null;
+            yield return null; // Let RoadMotion capture the initial reference before manually advancing the SDK.
         }
 
         private static void UseDirectPresentation(Realm realm)
@@ -361,6 +449,7 @@ namespace Emas.Tests.Samples
                 Ghost ghost = (Ghost)entity;
                 ghost.GetRequired<Prediction>().enabled = false;
                 ghost.GetRequired<Smoothing>().enabled = false;
+                ghost.GetRequired<Spatial>().ResetPresentation(); // Exact mapping setup deliberately bypasses live-tuning transitions.
             }
             realm.Update();
         }

@@ -415,6 +415,267 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
+        /// Live serialized tuning preserves continuous presentation, matches public setters and converges without changing SDK observations or attachments.
+        /// </summary>
+        /// <returns>An iterator that advances moving geographic observations and held prediction samples in Play Mode.</returns>
+        [UnityTest]
+        public IEnumerator SerializedLiveTuning_MatchesPropertyEditsAndPreservesSharedPresentation()
+        {
+            yield return new EnterPlayMode();
+            using (Realm realm = new Realm())
+            {
+                LiveTuningDetector source = new LiveTuningDetector();
+                realm.ReferenceFrame = new ReferenceFrame
+                {
+                    Space = ReferenceSpace.Geographic,
+                    FollowedGhost = new Key("live tuning", TestKind, "serialized"),
+                    UnityPosition = new Vector3(7, 2, -3),
+                    UnityRotation = Quaternion.Euler(0, 15, 0)
+                };
+                realm.GetOrCreateAnchor("live tuning", source);
+                double started = Time.realtimeSinceStartupAsDouble;
+                for (int index = 0; index < 3; index++)
+                {
+                    yield return null;
+                    source.Publish(Time.realtimeSinceStartupAsDouble - started);
+                    AssertLiveTuningUpdate(realm, source, "Moving before tuning");
+                }
+
+                // Hold a corrected sample past its cap so normal motion cannot disguise a configuration jump.
+                source.Publish(Time.realtimeSinceStartupAsDouble - started, 8, 45);
+                AssertLiveTuningUpdate(realm, source, "Corrected observation");
+                yield return HoldLiveTuningSample(realm, source, 0.18);
+                AssertContinuousLiveTuning(realm, source, () =>
+                {
+                    EditLiveTuning(source, "_positionHalfLife", 0.1f);
+                    EditLiveTuning(source, "_positionHalfLife", 0.4f);
+                }, "Coalescing edits restored before projection");
+                AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_positionHalfLife", 0.08f),
+                    "Changing positive position half-life");
+                yield return HoldLiveTuningSample(realm, source, 0.25 + 8 * 0.08);
+                AssertLiveTuningTarget(realm, source, 0.15f, false);
+
+                AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_maximumExtrapolation", 0.03f),
+                    "Reducing the capped prediction horizon");
+                yield return HoldLiveTuningSample(realm, source, 0.25 + 8 * 0.08);
+                AssertLiveTuningTarget(realm, source, 0.03f, false);
+                AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_rotationHalfLife", 0.06f),
+                    "Changing positive rotation half-life");
+                yield return HoldLiveTuningSample(realm, source, 0.25 + 8 * 0.06);
+                AssertLiveTuningTarget(realm, source, 0.03f);
+
+                // A later corrected packet restores independent position and rotation error before testing direct modes.
+                source.Publish(source.ObservedTime.ElapsedSince(default(Timestamp)) + 0.01, 16, 90);
+                AssertLiveTuningUpdate(realm, source, "Fresh correction before direct modes");
+                AssertContinuousLiveTuning(realm, source, () =>
+                {
+                    EditLiveTuning(source, "_positionHalfLife", 0);
+                    EditLiveTuning(source, "_rotationHalfLife", 0);
+                }, "Zero half-lives preserve the displayed pose before settling");
+                yield return HoldLiveTuningSample(realm, source, 0.35);
+                AssertLiveTuningTarget(realm, source, 0.03f);
+                AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_maximumExtrapolation", 0),
+                    "Zero prediction horizon");
+                yield return HoldLiveTuningSample(realm, source, 0.35);
+                AssertLiveTuningTarget(realm, source, 0);
+
+                AssertContinuousLiveTuning(realm, source, () =>
+                {
+                    EditLiveTuning(source, "_positionHalfLife", 0.4f);
+                    EditLiveTuning(source, "_rotationHalfLife", 0.4f);
+                    EditLiveTuning(source, "_maximumExtrapolation", 0.25f);
+                }, "Restoring positive settings");
+                yield return HoldLiveTuningSample(realm, source, 0.3);
+                AssertContinuousLiveTuning(realm, source, () => SetLiveTuningEnabled(source, false, false),
+                    "Disabling smoothing with correction history");
+                yield return HoldLiveTuningSample(realm, source, 0.35);
+                AssertLiveTuningTarget(realm, source, 0.25f);
+                AssertContinuousLiveTuning(realm, source, () => SetLiveTuningEnabled(source, true, false),
+                    "Disabling prediction");
+                yield return HoldLiveTuningSample(realm, source, 0.35);
+                AssertLiveTuningTarget(realm, source, 0);
+                AssertContinuousLiveTuning(realm, source, () => SetLiveTuningEnabled(source, true, true),
+                    "Re-enabling prediction");
+                yield return HoldLiveTuningSample(realm, source, 0.35);
+                AssertLiveTuningTarget(realm, source, 0.25f);
+
+                yield return DragLiveTuningWhileMoving(realm, source);
+                yield return HoldLiveTuningSample(realm, source, 0.35);
+                AssertLiveTuningTarget(realm, source, source.Control.GetComponent<Prediction>().MaximumExtrapolation);
+                AssertContinuousLiveTuning(realm, source, () => SetLiveTuningEnabled(source, false, true),
+                    "Re-enabling smoothing");
+                yield return HoldLiveTuningSample(realm, source, 0.35);
+                AssertLiveTuningTarget(realm, source, source.Control.GetComponent<Prediction>().MaximumExtrapolation);
+            }
+        }
+
+        /// <summary>Rejects tuning jumps while allowing the old filter's ordinary progress during the elapsed projection interval.</summary>
+        /// <param name="realm">The realm whose followed reference exposes absolute presentation.</param>
+        /// <param name="source">The paired source holding an observation past its previous prediction cap.</param>
+        /// <param name="edit">The equivalent serialized and public configuration edits.</param>
+        /// <param name="context">The configuration change described by assertion failures.</param>
+        private static void AssertContinuousLiveTuning(Realm realm, LiveTuningDetector source, Action edit, string context)
+        {
+            ReferenceFrame frame = realm.ReferenceFrame;
+            Double3 position = frame.Position;
+            Quaternion rotation = frame.Rotation;
+            double previousProjection = source.LastProjectionStarted;
+            Smoothing smoothing = source.Control.GetComponent<Smoothing>();
+            Prediction prediction = source.Control.GetComponent<Prediction>();
+            float positionHalfLife = smoothing.enabled ? smoothing.PositionHalfLife : 0;
+            float rotationHalfLife = smoothing.enabled ? smoothing.RotationHalfLife : 0;
+            Double3 target = source.ObservedPosition + source.ObservedVelocity * (prediction.enabled ? prediction.MaximumExtrapolation : 0);
+            double positionError = Double3.Distance(position, target);
+            double rotationError = Quaternion.Angle(rotation, source.ObservedRotation);
+
+            edit();
+            AssertLiveTuningUpdate(realm, source, context);
+            double elapsed = Time.realtimeSinceStartupAsDouble - previousProjection;
+            // Exponential decay cannot advance farther than its initial error times its initial decay rate.
+            double positionProgress = positionHalfLife > 0 ? positionError * Math.Log(2) * elapsed / positionHalfLife : 0;
+            double rotationProgress = rotationHalfLife > 0 ? rotationError * Math.Log(2) * elapsed / rotationHalfLife : 0;
+            Assert.That(Double3.Distance(frame.Position, position), Is.LessThanOrEqualTo(0.01 + positionProgress),
+                context + " must not jump the absolute displayed position.");
+            Assert.That(Quaternion.Angle(frame.Rotation, rotation), Is.LessThanOrEqualTo(0.1 + rotationProgress),
+                context + " must not jump the absolute displayed rotation.");
+        }
+
+        /// <summary>Checks convergence to the held observation's requested cap after filter and tuning-transition time has elapsed.</summary>
+        /// <param name="realm">The realm whose followed reference exposes absolute presentation.</param>
+        /// <param name="source">The source whose original observation remains unchanged.</param>
+        /// <param name="horizon">The expected capped prediction age, or zero for disabled prediction.</param>
+        /// <param name="checkRotation">Whether the independent rotation channel has also been allowed to settle.</param>
+        private static void AssertLiveTuningTarget(Realm realm, LiveTuningDetector source, float horizon, bool checkRotation = true)
+        {
+            Double3 target = source.ObservedPosition + source.ObservedVelocity * horizon;
+            Assert.That(Double3.Distance(realm.ReferenceFrame.Position, target), Is.LessThan(0.1),
+                "Live settings must converge to their new prediction behavior instead of retaining the previous offset.");
+            if (checkRotation)
+            {
+                Assert.That(Quaternion.Angle(realm.ReferenceFrame.Rotation, source.ObservedRotation), Is.LessThan(0.1),
+                    "Live rotation settings must converge without retaining a permanent presentation offset.");
+            }
+        }
+
+        /// <summary>Checks that repeated horizon edits cannot freeze a reference receiving fresh 100 metre-per-second observations.</summary>
+        /// <param name="realm">The isolated realm advanced once for each new observation.</param>
+        /// <param name="source">The paired moving roots with smoothing disabled for this part of the scenario.</param>
+        /// <returns>An iterator that keeps the slider moving across at least 120 milliseconds of source motion.</returns>
+        private static IEnumerator DragLiveTuningWhileMoving(Realm realm, LiveTuningDetector source)
+        {
+            double started = Time.realtimeSinceStartupAsDouble;
+            double sampleStarted = source.ObservedTime.ElapsedSince(default(Timestamp));
+            Double3 position = realm.ReferenceFrame.Position;
+            Double3 observed = source.ObservedPosition;
+            int index = 0;
+            do
+            {
+                yield return null;
+                source.Publish(sampleStarted + Time.realtimeSinceStartupAsDouble - started, 16, 90);
+                EditLiveTuning(source, "_maximumExtrapolation", index++ % 2 == 0 ? 0.24f : 0.25f);
+                AssertLiveTuningUpdate(realm, source, "Continuously dragging the horizon while moving");
+            }
+            while (Time.realtimeSinceStartupAsDouble - started < 0.12);
+
+            Assert.That(Double3.Distance(realm.ReferenceFrame.Position, position),
+                Is.GreaterThan(Double3.Distance(source.ObservedPosition, observed) * 0.5),
+                "Repeated configuration edits must preserve ordinary movement instead of pinning each update to its previous pose.");
+        }
+
+        /// <summary>Compares serialized float controls with their corresponding public property setters.</summary>
+        /// <param name="source">The paired ghosts receiving identical timestamped observations.</param>
+        /// <param name="property">The serialized position, rotation or prediction setting to change.</param>
+        /// <param name="value">The new setting applied to both authoring paths.</param>
+        private static void EditLiveTuning(LiveTuningDetector source, string property, float value)
+        {
+            bool prediction = property == "_maximumExtrapolation";
+            Trait edited = prediction ? (Trait)source.Edited.GetComponent<Prediction>() : source.Edited.GetComponent<Smoothing>();
+            using (SerializedObject settings = new SerializedObject(edited))
+            {
+                settings.FindProperty(property).floatValue = value;
+                settings.ApplyModifiedProperties();
+            }
+
+            if (prediction)
+            {
+                source.Control.GetComponent<Prediction>().MaximumExtrapolation = value;
+            }
+            else if (property == "_positionHalfLife")
+            {
+                source.Control.GetComponent<Smoothing>().PositionHalfLife = value;
+            }
+            else
+            {
+                source.Control.GetComponent<Smoothing>().RotationHalfLife = value;
+            }
+        }
+
+        /// <summary>Compares the Inspector enabled toggle with the equivalent public component toggle.</summary>
+        /// <param name="source">The paired ghosts being tuned.</param>
+        /// <param name="prediction">True for Prediction; false for Smoothing.</param>
+        /// <param name="enabled">The enabled state applied to both traits.</param>
+        private static void SetLiveTuningEnabled(LiveTuningDetector source, bool prediction, bool enabled)
+        {
+            Trait edited = prediction ? (Trait)source.Edited.GetComponent<Prediction>() : source.Edited.GetComponent<Smoothing>();
+            Trait control = prediction ? (Trait)source.Control.GetComponent<Prediction>() : source.Control.GetComponent<Smoothing>();
+            using (SerializedObject settings = new SerializedObject(edited))
+            {
+                settings.FindProperty("m_Enabled").boolValue = enabled;
+                settings.ApplyModifiedProperties();
+            }
+
+            control.enabled = enabled;
+        }
+
+        /// <summary>Advances one shared projection and checks parity, raw observation preservation and attachment coherence.</summary>
+        /// <param name="realm">The isolated realm providing one projection timestamp for both ghosts.</param>
+        /// <param name="source">The geographic source and its paired presentation roots.</param>
+        /// <param name="context">The consumer action described if an assertion fails.</param>
+        private static void AssertLiveTuningUpdate(Realm realm, LiveTuningDetector source, string context)
+        {
+            source.LastProjectionStarted = Time.realtimeSinceStartupAsDouble;
+            realm.Update();
+            foreach (Ghost ghost in new[] { source.Edited, source.Control })
+            {
+                Spatial spatial = ghost.GetComponent<Spatial>();
+                Prediction prediction = ghost.GetComponent<Prediction>();
+                Assert.That(spatial.Position, Is.EqualTo(source.ObservedPosition), context);
+                Assert.That(spatial.Rotation, Is.EqualTo(source.ObservedRotation), context);
+                Assert.That(spatial.PositionTime, Is.EqualTo(source.ObservedTime), context);
+                Assert.That(spatial.RotationTime, Is.EqualTo(source.ObservedTime), context);
+                Assert.That(prediction.Velocity, Is.EqualTo(source.ObservedVelocity), context);
+                Assert.That(prediction.HasVelocity, Is.True, context);
+            }
+
+            ReferenceFrame frame = realm.ReferenceFrame;
+            Assert.That(frame.IsReferenceAvailable, Is.True, context);
+            Assert.That(Vector3.Distance(source.Edited.transform.position, frame.UnityPosition), Is.LessThan(0.001f), context);
+            Assert.That(Quaternion.Angle(source.Edited.transform.rotation, frame.UnityRotation), Is.LessThan(0.05f), context);
+            Assert.That(Double3.Distance(frame.Position, source.ObservedPosition), Is.LessThan(50), context);
+            Vector3 attachment = source.Edited.transform.position + source.Edited.transform.rotation * LiveTuningDetector.AttachmentOffset;
+            Assert.That(Vector3.Distance(source.Attachment.transform.position, attachment), Is.LessThan(0.001f), context);
+            Assert.That(Quaternion.Angle(source.Attachment.transform.rotation, source.Edited.transform.rotation), Is.LessThan(0.05f), context);
+            Assert.That(Vector3.Distance(source.Control.transform.position, source.Edited.transform.position), Is.LessThan(0.001f), context);
+            Assert.That(Quaternion.Angle(source.Control.transform.rotation, source.Edited.transform.rotation), Is.LessThan(0.05f), context);
+        }
+
+        /// <summary>Checks bounded presentation while the SDK holds an unchanged timestamped sample.</summary>
+        /// <param name="realm">The isolated realm to advance.</param>
+        /// <param name="source">The source whose latest observation remains unchanged.</param>
+        /// <param name="seconds">The minimum elapsed real time to let prediction reach its cap.</param>
+        /// <returns>An iterator that advances public Realm updates across Unity frames.</returns>
+        private static IEnumerator HoldLiveTuningSample(Realm realm, LiveTuningDetector source, double seconds)
+        {
+            double deadline = Time.realtimeSinceStartupAsDouble + seconds;
+            do
+            {
+                yield return null;
+                AssertLiveTuningUpdate(realm, source, "Holding a timestamped observation");
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+        }
+
+        /// <summary>
         /// Ghost authoring owns trait visibility while serialized settings and enabled states remain editable with Undo.
         /// </summary>
         /// <returns>An iterator that waits for delayed editor visibility updates after component changes.</returns>
@@ -771,6 +1032,67 @@ namespace Emas.Editor.Tests
                 ego.GetComponent<Spatial>().SetCartesianPosition(new Double3(1000000000.125, 0.0, 1000000000.375));
                 SpatialGhost traffic = GetOrCreate<SpatialGhost>("traffic", TestKind);
                 traffic.GetComponent<Spatial>().SetCartesianPosition(new Double3(1000000020.375, 0.0, 1000000000.375));
+            }
+        }
+
+        /// <summary>Publishes coincident geographic roots so serialized and property tuning share one projection clock.</summary>
+        private sealed class LiveTuningDetector : PresenceDetector
+        {
+            internal static readonly Vector3 AttachmentOffset = new Vector3(2, 0.5f, -1);
+            internal Ghost Edited;
+            internal Ghost Control;
+            internal Ghost Attachment;
+            internal Double3 ObservedPosition;
+            internal Double3 ObservedVelocity;
+            internal Quaternion ObservedRotation;
+            internal Timestamp ObservedTime;
+            internal double LastProjectionStarted;
+            private double _sampleSeconds = -1;
+
+            /// <summary>Creates the edited origin, its property-controlled twin and a parent-local attached part.</summary>
+            protected override void OnStart()
+            {
+                Edited = CreateMovingGhost("serialized");
+                Control = CreateMovingGhost("property");
+                Attachment = GetOrCreate<Ghost>("attachment", TestKind);
+                Attachment.gameObject.AddComponent<Spatial>().Attach(Edited.Key, AttachmentOffset);
+                Publish(0);
+            }
+
+            /// <summary>Supplies identical WGS84 observations travelling east at 100 metres per second.</summary>
+            /// <param name="seconds">Elapsed SDK time, advanced by at least one microsecond for each new sample.</param>
+            /// <param name="correction">An optional positional observation correction in metres.</param>
+            /// <param name="headingCorrection">An optional heading correction in degrees.</param>
+            internal void Publish(double seconds, double correction = 0, double headingCorrection = 0)
+            {
+                _sampleSeconds = Math.Max(seconds, _sampleSeconds + 0.000001);
+                GeoPosition position = new GeoPosition(0, (100 * _sampleSeconds + correction) / 6378137.0 * 180.0 / Math.PI, 0);
+                ObservedPosition = position.ToEarthCentered();
+                ObservedTime = Timestamp.FromSeconds(_sampleSeconds);
+                foreach (Ghost ghost in new[] { Edited, Control })
+                {
+                    Spatial spatial = ghost.GetComponent<Spatial>();
+                    spatial.SetGeographicPosition(position, ObservedTime);
+                    spatial.SetGeographicRotation(30 * _sampleSeconds + headingCorrection, 0, 0, ObservedTime);
+                    ghost.GetComponent<Prediction>().SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
+                }
+
+                ObservedRotation = Edited.GetComponent<Spatial>().Rotation;
+                ObservedVelocity = Edited.GetComponent<Prediction>().Velocity;
+            }
+
+            /// <summary>Authors the same independent position and rotation filters on each comparison root.</summary>
+            /// <param name="id">The identity owned by this detector.</param>
+            /// <returns>The newly authored moving Ghost.</returns>
+            private Ghost CreateMovingGhost(string id)
+            {
+                Ghost ghost = GetOrCreate<Ghost>(id, TestKind);
+                ghost.gameObject.AddComponent<Spatial>();
+                Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+                smoothing.PositionHalfLife = 0.4f;
+                smoothing.RotationHalfLife = 0.4f;
+                ghost.gameObject.AddComponent<Prediction>();
+                return ghost;
             }
         }
 

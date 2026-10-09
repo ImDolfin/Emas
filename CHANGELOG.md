@@ -2,6 +2,10 @@
 
 ## 0.1.0
 
+- Make live prediction and smoothing tuning continuous through both the Ghost Inspector and code. Retain filter history and blend setting-induced position/rotation differences over 0.25 seconds, including zero values and enabled toggles. Preserve forward motion during repeated edits and use one shared presentation pose for followed references and attachments. Explicit presentation resets still apply immediately.
+
+- Keep Relative World's automatic SDK clock aligned with real time across slow Editor frames, with explicit manual stepping support.
+
 - Make the Ghost Inspector the sole authoring surface for root traits, including Smoothing and Prediction. Hide duplicate component cards and enable toggles, retain serialized Undo/prefab editing, and expose trait removal from each row.
 
 - Complete XML API documentation across runtime, editor, samples and tests; explain non-obvious spatial and lifecycle behavior, and split large population, notification, view, diagnostics and sample-packet routines into focused helpers.

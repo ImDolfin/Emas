@@ -4,11 +4,11 @@ using UnityEngine;
 namespace Emas
 {
     // Filters presentation error independently of input storage and optional motion prediction.
-    internal sealed class PoseSmoother
+    internal struct PoseSmoother
     {
         private const double LogTwo = 0.6931471805599453;
         private Double3 _position;
-        private Quaternion _rotation = Quaternion.identity;
+        private Quaternion _rotation;
         private bool _hasPosition;
         private bool _hasRotation;
         private double _timestamp;

@@ -26,9 +26,13 @@ namespace Emas
         private Double3 _estimatedVelocity;
         private bool _hasEstimatedVelocity;
         private double? _projectionTime;
+        private double _elapsed;
 
         /// <summary>Gets or sets the maximum extrapolated sample age in seconds; defaults to 0.15, independently of smoothing.</summary>
         /// <value>A finite, nonnegative horizon in seconds. Zero disables extrapolation.</value>
+        /// <remarks>Live edits blend the setting-induced displacement over 0.25 seconds of real time, including zero
+        /// and enabled changes, with or without Smoothing. Filter history, raw input, timestamps and motion remain intact.
+        /// During that transition presentation can retain some of the previous limit's lead.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned horizon is negative, NaN or infinite.</exception>
         public float MaximumExtrapolation
         {
@@ -140,25 +144,29 @@ namespace Emas
             _projectionTime = null;
         }
 
-        internal Double3 Motion { get; private set; }
-
-        internal Double3 Prepare(Spatial spatial, SpatialClock clock, double timestamp)
+        internal void Prepare(Spatial spatial, double timestamp)
         {
             ObservePosition(spatial);
-            Motion = default(Double3);
-            double elapsed = _projectionTime.HasValue ? Math.Max(0d, timestamp - _projectionTime.Value) : 0d;
+            _elapsed = _projectionTime.HasValue ? Math.Max(0d, timestamp - _projectionTime.Value) : 0d;
             _projectionTime = timestamp;
+        }
+
+        internal Double3 Project(Spatial spatial, SpatialClock clock, double timestamp,
+            float maximumExtrapolation, out Double3 motion)
+        {
+            // Old and new tuning settings use identical observations and elapsed time without advancing history twice.
+            motion = default(Double3);
             if (!spatial.HasPosition || !_hasVelocity && !_hasEstimatedVelocity
-                || !SpatialMath.IsFinite(_maximumExtrapolation) || _maximumExtrapolation <= 0)
+                || maximumExtrapolation <= 0)
             {
                 return spatial.Position;
             }
 
             double age = clock.Age(spatial.PositionTime, spatial.PositionReceivedTime, timestamp);
-            double horizon = Math.Min(age, _maximumExtrapolation);
+            double horizon = Math.Min(age, maximumExtrapolation);
             // Feed smoothing only the portion of this update that remains inside the prediction horizon.
             // Once an unchanged sample reaches the cap, its presentation must stop advancing from motion alone.
-            double step = Math.Min(elapsed, Math.Max(0d, _maximumExtrapolation - Math.Max(0d, age - elapsed)));
+            double step = Math.Min(_elapsed, Math.Max(0d, maximumExtrapolation - Math.Max(0d, age - _elapsed)));
             Double3 velocity = _hasVelocity ? _velocity : _estimatedVelocity;
             Double3 acceleration = _hasAcceleration ? _acceleration : default(Double3);
             try
@@ -170,13 +178,13 @@ namespace Emas
                 }
 
                 Double3 predicted = spatial.Position + velocity * horizon + acceleration * (0.5d * horizon * horizon);
-                Motion = velocity * step + acceleration * (step * (horizon - 0.5d * step));
+                motion = velocity * step + acceleration * (step * (horizon - 0.5d * step));
                 return predicted;
             }
             catch (ArgumentOutOfRangeException)
             {
                 // Extreme finite motion must not poison the raw pose or transform.
-                Motion = default(Double3);
+                motion = default(Double3);
                 return spatial.Position;
             }
         }
@@ -252,9 +260,5 @@ namespace Emas
             Reset();
         }
 
-        private void OnDisable()
-        {
-            Reset();
-        }
     }
 }

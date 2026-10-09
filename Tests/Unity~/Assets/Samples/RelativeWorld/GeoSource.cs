@@ -19,6 +19,8 @@ namespace Emas.RelativeWorld
         /// <summary>The bird's independently tracked, attachable feet.</summary>
         public static readonly Kind BirdFootKind = new Kind("relative.bird-foot");
 
+        [Tooltip("Advance the mock SDK using real elapsed time, independently of Unity time scale and frame-duration clamping. Disable for manual Advance calls.")]
+        [SerializeField] private bool _automaticAdvance = true;
         [Tooltip("Simulate noisy observations and delayed packets. Disable to compare immediate, clean SDK input.")]
         [SerializeField] private bool _simulateJitterAndDelay = true;
         [Tooltip("Northward travel speed in kilometres per hour. Changing speed preserves the current position; subsequent observations use the new velocity.")]
@@ -40,6 +42,29 @@ namespace Emas.RelativeWorld
         [Range(0, 5)]
         [SerializeField] private float _yawJitter = 1f;
         private SimulatedGeoSdk _sdk;
+        private bool _appliedAutomaticAdvance;
+        private double _lastArrivalTime;
+
+        /// <summary>Gets or sets whether Realm updates advance the mock SDK using real elapsed time.</summary>
+        /// <value>True by default; false leaves simulated time under explicit <see cref="Advance"/> calls.</value>
+        /// <remarks>
+        /// Automatic time is independent of Unity time scale and frame-duration clamping. Changing modes preserves
+        /// SDK positions and queued observation timestamps, but rebases this sample's shared Realm clock so a manual
+        /// pause or jump cannot leave resumed packets permanently older than the prediction clock.
+        /// </remarks>
+        public bool AutomaticAdvance
+        {
+            get => _automaticAdvance;
+            set
+            {
+                _automaticAdvance = value;
+                if (_sdk != null && Realm != null)
+                {
+                    SynchronizeClockMode(Time.realtimeSinceStartupAsDouble);
+                    Advance(0.0);
+                }
+            }
+        }
 
         /// <summary>Enables deterministic observation noise and packet delay; disabling immediately restores clean input.</summary>
         /// <value>True for packet simulation, or false for immediate clean observations; defaults to true.</value>
@@ -77,6 +102,8 @@ namespace Emas.RelativeWorld
         {
             // This sample owns the Realm's shared SDK clock, which restarts when the source starts again.
             Realm.ResetSpatialTime();
+            _appliedAutomaticAdvance = _automaticAdvance;
+            _lastArrivalTime = Time.realtimeSinceStartupAsDouble;
             _sdk = new SimulatedGeoSdk();
             Advance(0.0);
         }
@@ -85,7 +112,10 @@ namespace Emas.RelativeWorld
         /// Advances the simulation and delivers due packets; the next realm update reads the latest delivered snapshot.
         /// </summary>
         /// <param name="seconds">Additional simulated time in seconds.</param>
-        /// <remarks>Does nothing before attachment. Large jumps discard missed captures instead of replaying an unbounded backlog.</remarks>
+        /// <remarks>
+        /// Disable <see cref="AutomaticAdvance"/> for deterministic manual stepping. Does nothing before attachment.
+        /// Large jumps discard missed captures instead of replaying an unbounded backlog.
+        /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">An attached source receives a negative or non-finite time step.</exception>
         public void Advance(double seconds)
         {
@@ -144,10 +174,27 @@ namespace Emas.RelativeWorld
                 _packetDelayJitter, _positionJitter, _yawJitter);
         }
 
-        /// <summary>Advances source capture and packet delivery using Unity's scaled frame duration before trait readers run.</summary>
+        private void SynchronizeClockMode(double arrivalTime)
+        {
+            if (_appliedAutomaticAdvance != _automaticAdvance)
+            {
+                _appliedAutomaticAdvance = _automaticAdvance;
+                _lastArrivalTime = arrivalTime;
+                // Mode changes intentionally change the source clock's rate. Spatial tuning does not reset it.
+                Realm.ResetSpatialTime();
+            }
+        }
+
+        /// <summary>Advances source capture and packet delivery with real elapsed time, or applies configuration without advancing in manual mode.</summary>
         protected override void OnUpdate()
         {
-            Advance(Time.deltaTime);
+            double arrivalTime = Time.realtimeSinceStartupAsDouble;
+            // Serialized Inspector edits bypass property setters, so reconcile the clock mode here as well.
+            SynchronizeClockMode(arrivalTime);
+            double seconds = _automaticAdvance ? arrivalTime - _lastArrivalTime : 0.0;
+            _lastArrivalTime = arrivalTime;
+            // deltaTime is scaled and capped after long frames; SDK observations must share the Realm's real-time rate.
+            Advance(seconds);
         }
 
     }

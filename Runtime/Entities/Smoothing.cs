@@ -17,12 +17,14 @@ namespace Emas
         [Tooltip("Seconds to halve the remaining angular error. 0: immediate (default). 0.02-0.05: light filtering; 0.05-0.15: balanced; 0.15-0.5: stronger filtering with lag. On a followed Ghost this also delays scene repositioning when Follow Rotation is on.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _rotationHalfLife;
-        private readonly PoseSmoother _smoother = new PoseSmoother();
+        private PoseSmoother _smoother;
 
         /// <summary>Gets or sets seconds to halve position error; zero applies the incoming presentation position directly.</summary>
         /// <value>A finite, nonnegative half-life in seconds; the default is 0.08 seconds.</value>
         /// <remarks>Defaults to 0.08. After one half-life, 50% of a stationary correction remains; after three, 12.5% remains.
-        /// The Inspector offers 0-0.5 seconds; larger finite values are supported in code and create stronger lag.</remarks>
+        /// The Inspector offers 0-0.5 seconds; larger finite values are supported in code and create stronger lag.
+        /// Live edits retain history and blend the setting-induced displacement over 0.25 seconds of real time,
+        /// including changes to zero and the enabled toggle. Inspector edits and property assignments behave identically.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned half-life is negative, NaN or infinite.</exception>
         public float PositionHalfLife
         {
@@ -30,18 +32,15 @@ namespace Emas
             set
             {
                 ValidateTime(value, nameof(value));
-                if (_positionHalfLife != value)
-                {
-                    _positionHalfLife = value;
-                    _smoother.ResetPosition();
-                }
+                _positionHalfLife = value;
             }
         }
 
         /// <summary>Gets or sets seconds to halve angular error; zero applies orientation immediately (the default).</summary>
         /// <value>A finite, nonnegative rotation half-life in seconds.</value>
         /// <remarks>Controls reference orientation and scene repositioning when this Ghost is followed with FollowRotation enabled.
-        /// Changing this setting preserves position history.</remarks>
+        /// Live edits retain history and blend the setting-induced rotation over 0.25 seconds of real time,
+        /// independently of position. Zero applies orientation directly after this transition.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned half-life is negative, NaN or infinite.</exception>
         public float RotationHalfLife
         {
@@ -49,32 +48,45 @@ namespace Emas
             set
             {
                 ValidateTime(value, nameof(value));
-                if (_rotationHalfLife != value)
-                {
-                    _rotationHalfLife = value;
-                    _smoother.ResetRotation();
-                }
+                _rotationHalfLife = value;
             }
         }
 
         /// <summary>Discards both filter histories so the next projection uses the current input directly.</summary>
-        /// <remarks>Retains half-life settings, raw Spatial input and any separate Prediction history.</remarks>
+        /// <remarks>Also clears any live-tuning transition. Retains settings, raw Spatial input and separate Prediction history.</remarks>
         public void Reset()
         {
             _smoother.Reset();
+            Spatial spatial = GetComponent<Spatial>();
+            if (spatial != null)
+            {
+                spatial.ResetTuning();
+            }
         }
 
-        internal Quaternion PresentationRotation { get; private set; } = Quaternion.identity;
-
-        internal Double3 Prepare(Spatial spatial, Double3 position, double timestamp, Double3 motion)
+        internal PresentationPose Prepare(Spatial spatial, PresentationPose pose, double timestamp,
+            Double3 motion, PresentationSettings settings, bool preview)
         {
-            _smoother.Prepare(timestamp);
+            // A value copy previews the old settings at the same time and from the same history.
+            // Only the new settings commit a step; the presentation transition never feeds back into this filter.
+            PoseSmoother smoother = _smoother;
+            smoother.Prepare(timestamp);
             if (spatial.HasRotation)
             {
-                PresentationRotation = _smoother.Rotation(spatial.Rotation, _rotationHalfLife);
+                pose.Rotation = smoother.Rotation(pose.Rotation, settings.RotationHalfLife);
             }
 
-            return spatial.HasPosition ? _smoother.Position(position, _positionHalfLife, motion) : position;
+            if (spatial.HasPosition)
+            {
+                pose.Position = smoother.Position(pose.Position, settings.PositionHalfLife, motion);
+            }
+
+            if (!preview)
+            {
+                _smoother = smoother;
+            }
+
+            return pose;
         }
 
         internal void ResetRotation()
@@ -88,11 +100,6 @@ namespace Emas
         }
 
         internal override void ClearBinding()
-        {
-            Reset();
-        }
-
-        private void OnDisable()
         {
             Reset();
         }
