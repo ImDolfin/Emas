@@ -336,6 +336,158 @@ namespace Emas.Tests.Samples
                 "Restarting just the source resets its clock; the origin must not immediately extrapolate by the full horizon.");
         }
 
+        /// <summary>The authored shared buffer reduces packet stepping and observation noise at 100 m/s while keeping the bird aligned through abrupt stops and restarts.</summary>
+        /// <returns>An iterator that measures the actual sample at its requested presentation rate.</returns>
+        [UnityTest]
+        public IEnumerator RelativeWorld_BufferedPresentationFiltersNoiseAndPacketTiming()
+        {
+            int targetFrameRate = Application.targetFrameRate;
+            int verticalSync = QualitySettings.vSyncCount;
+            try
+            {
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = 90;
+                yield return Load(true, true);
+                Realm realm = Find<RealmSetup>().Realm;
+                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+                Assert.That(realm.InterpolationDelay, Is.EqualTo(0.1f));
+                Assert.That(source.SpeedKilometersPerHour, Is.EqualTo(360));
+                Assert.That(source.SimulateJitterAndDelay, Is.True);
+                SampleMotionMetrics immediate = new SampleMotionMetrics();
+                SampleMotionMetrics buffered = new SampleMotionMetrics();
+                yield return MeasureSampleMotion(realm, source, 0, immediate);
+                yield return MeasureSampleMotion(realm, source, 0.1f, buffered);
+                immediate.WriteReport("Immediate timeline");
+                buffered.WriteReport("100 ms shared buffer");
+                Assert.That(buffered.VelocityError, Is.LessThan(immediate.VelocityError * 0.5),
+                    "A shared playback timeline must substantially reduce visible packet-cadence ripple.");
+                Assert.That(buffered.DistanceError, Is.LessThan(buffered.RawDistanceError * 0.7),
+                    "Residual smoothing must reduce positional measurement error, independently of packet stepping.");
+                Assert.That(buffered.MaximumRelativeDistance, Is.LessThan(25));
+                yield return AssertBufferedStopAndRestart(realm, source);
+            }
+            finally
+            {
+                Application.targetFrameRate = targetFrameRate;
+                QualitySettings.vSyncCount = verticalSync;
+            }
+        }
+
+        private static IEnumerator MeasureSampleMotion(Realm realm, Emas.RelativeWorld.GeoSource source,
+            float interpolationDelay, SampleMotionMetrics metrics)
+        {
+            realm.InterpolationDelay = interpolationDelay;
+            source.enabled = false;
+            source.enabled = true;
+            Key birdKey = new Key("relative-world", Emas.RelativeWorld.GeoSource.BirdKind, "bird");
+            double deadline = Time.realtimeSinceStartupAsDouble + 5;
+            IGhost entity;
+            while (!realm.TryGetGhost(birdKey, out entity) && Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                yield return null;
+            }
+            Assert.That(entity, Is.Not.Null);
+            Ghost bird = (Ghost)entity;
+            Ghost origin = Car(realm, "origin");
+            Prediction prediction = bird.GetRequired<Prediction>();
+            Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.05f));
+            prediction.enabled = false;
+            Spatial spatial = bird.GetRequired<Spatial>();
+            Spatial originSpatial = origin.GetRequired<Spatial>();
+            deadline = Time.realtimeSinceStartupAsDouble + 0.6;
+            do
+            {
+                yield return null;
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+
+            Vector3 previous = bird.transform.position - origin.transform.position;
+            double previousTime = Time.realtimeSinceStartupAsDouble;
+            deadline = previousTime + 2;
+            do
+            {
+                yield return null;
+                double now = Time.realtimeSinceStartupAsDouble;
+                Vector3 current = bird.transform.position - origin.transform.position;
+                Assert.That(spatial.IsInRange, Is.True);
+                Assert.That(originSpatial.IsInRange, Is.True);
+                Assert.That(spatial.PositionTime, Is.EqualTo(originSpatial.PositionTime),
+                    "The feed publishes each complete observation frame with one shared timestamp.");
+                double step = now - previousTime;
+                if (step > 0)
+                {
+                    metrics.Record(previous, current, step, Double3.Distance(spatial.Position, originSpatial.Position));
+                }
+                previous = current;
+                previousTime = now;
+            }
+            while (previousTime < deadline);
+        }
+
+        private static IEnumerator AssertBufferedStopAndRestart(Realm realm, Emas.RelativeWorld.GeoSource source)
+        {
+            Ghost origin = Car(realm, "origin");
+            Ghost bird = (Ghost)realm.Query().OfKind(Emas.RelativeWorld.GeoSource.BirdKind).FirstOrDefault();
+            Spatial spatial = bird.GetRequired<Spatial>();
+            foreach (float speed in new[] { 0f, 360f })
+            {
+                source.SpeedKilometersPerHour = speed;
+                double deadline = Time.realtimeSinceStartupAsDouble + 0.6;
+                do
+                {
+                    yield return null;
+                    Assert.That(spatial.IsInRange, Is.True);
+                    Assert.That(origin.GetRequired<Spatial>().IsInRange, Is.True);
+                    Assert.That(Vector3.Distance(bird.transform.position, origin.transform.position), Is.LessThan(25),
+                        "Shared motion must remain aligned while delayed packets describe an abrupt stop or restart.");
+                    AssertOriginPose(origin);
+                }
+                while (Time.realtimeSinceStartupAsDouble < deadline);
+                Assert.That(Double3.Distance(origin.GetRequired<Prediction>().Velocity, default(Double3)),
+                    Is.EqualTo(speed / 3.6).Within(0.001));
+            }
+        }
+
+        private sealed class SampleMotionMetrics
+        {
+            private double _duration;
+            private int _frames;
+            private double _velocityErrorSquared;
+            private double _distanceErrorSquared;
+            private double _rawDistanceErrorSquared;
+            private float _maximumFrameDistance;
+
+            internal float MaximumRelativeDistance { get; private set; }
+            internal double VelocityError => System.Math.Sqrt(_velocityErrorSquared / _duration);
+            internal double DistanceError => System.Math.Sqrt(_distanceErrorSquared / _duration);
+            internal double RawDistanceError => System.Math.Sqrt(_rawDistanceErrorSquared / _duration);
+
+            internal void Record(Vector3 previous, Vector3 current, double seconds, double rawDistance)
+            {
+                Vector3 midpoint = (previous + current) * 0.5f;
+                Vector3 expectedVelocity = new Vector3(-midpoint.z, 0, midpoint.x) * (Mathf.PI / 4f);
+                Vector3 velocityError = (current - previous) / (float)seconds - expectedVelocity;
+                double orbitDistance = System.Math.Sqrt(4 * 4 + 3.2 * 3.2);
+                double distanceError = current.magnitude - orbitDistance;
+                double rawError = rawDistance - orbitDistance;
+                _duration += seconds;
+                _frames++;
+                _velocityErrorSquared += velocityError.sqrMagnitude * seconds;
+                _distanceErrorSquared += distanceError * distanceError * seconds;
+                _rawDistanceErrorSquared += rawError * rawError * seconds;
+                _maximumFrameDistance = Mathf.Max(_maximumFrameDistance, Vector3.Distance(previous, current));
+                MaximumRelativeDistance = Mathf.Max(MaximumRelativeDistance, current.magnitude);
+            }
+
+            internal void WriteReport(string label)
+            {
+                TestContext.WriteLine(label + ": observed updates=" + (_frames / _duration)
+                    + " Hz; velocity ripple RMS=" + VelocityError + " m/s; orbit distance error RMS=" + DistanceError
+                    + " m; raw distance error RMS=" + RawDistanceError + " m; largest frame displacement="
+                    + _maximumFrameDistance + " m; maximum relative distance=" + MaximumRelativeDistance + " m");
+            }
+        }
+
         /// <summary>Strong smoothing keeps a noisy 100 m/s bird near its moving reference with prediction disabled, and a held packet only settles its existing correction.</summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
@@ -461,6 +613,7 @@ namespace Emas.Tests.Samples
                 Time.timeScale = 1f;
                 yield return Load(true, true);
                 Realm realm = Find<RealmSetup>().Realm;
+                realm.InterpolationDelay = 0;
                 Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
                 Assert.That(source.AutomaticAdvance, Is.True);
                 source.SimulateJitterAndDelay = false;
@@ -558,6 +711,7 @@ namespace Emas.Tests.Samples
         private static void UseDirectPresentation(Realm realm)
         {
             // These exact mapping scenarios advance SDK time in jumps rather than at the presentation clock's rate.
+            realm.InterpolationDelay = 0;
             foreach (IGhost entity in realm.Ghosts)
             {
                 Ghost ghost = (Ghost)entity;

@@ -1167,7 +1167,270 @@ namespace Emas.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => prediction.MaximumExtrapolation = -1);
         }
 
-        /// <summary>Prediction-only live tuning preserves the displayed pose, settles to the new bounded estimate and keeps a moving stream advancing through repeated edits without changing raw observations.</summary>
+        /// <summary>Accepted burst observations interpolate pose and preserve supplied maneuver motion with smoothing active; gap motion uses the latest pose's timeline, stale packets are ignored and restarted clocks discard history.</summary>
+        /// <returns>An iterator that crosses buffered velocity observations and independently timed motion inside a prediction gap.</returns>
+        [UnityTest]
+        public IEnumerator BufferedTimeline_InterpolatesBurstChannelsAndResetsWithTheSdkClock()
+        {
+            Assert.That(_realm.InterpolationDelay, Is.Zero);
+            Assert.Throws<ArgumentOutOfRangeException>(() => _realm.InterpolationDelay = -0.01f);
+            Assert.Throws<ArgumentOutOfRangeException>(() => _realm.InterpolationDelay = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => _realm.InterpolationDelay = float.PositiveInfinity);
+            _realm.InterpolationDelay = 5;
+            _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1e9, 0, 0) };
+            TestGhost ghost = _source.Publish("buffered");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            ghost.gameObject.AddComponent<Prediction>().enabled = false;
+            Timestamp first = new Timestamp(1000, 0);
+            Timestamp latest = new Timestamp(1010, 0);
+            Quaternion firstRotation = Quaternion.Euler(0, 350, 0);
+            Quaternion latestRotation = Quaternion.Euler(0, 10, 0);
+            spatial.SetCartesianPosition(new Double3(1e9, 0, 0), first);
+            spatial.SetSourceRotation(firstRotation, first);
+            double publishedAt = Time.realtimeSinceStartupAsDouble;
+            spatial.SetCartesianPosition(new Double3(1e9 + 1000, 0, 0), latest);
+            spatial.SetSourceRotation(latestRotation, latest);
+            _realm.Update();
+            AssertBufferedCartesianPose(spatial, 500, publishedAt);
+            Assert.That(spatial.Position, Is.EqualTo(new Double3(1e9 + 1000, 0, 0)));
+            AssertRotation(spatial.Rotation, latestRotation);
+
+            spatial.SetCartesianPosition(new Double3(1e9 - 1000, 0, 0), new Timestamp(1005, 0));
+            spatial.SetSourceRotation(Quaternion.Euler(0, 180, 0), latest);
+            TestGhost clock = _source.Publish("clock");
+            Spatial clockSpatial = clock.gameObject.AddComponent<Spatial>();
+            publishedAt = Time.realtimeSinceStartupAsDouble;
+            clockSpatial.SetCartesianPosition(new Double3(1e9, 0, 0), new Timestamp(1012, 0));
+            _realm.Update();
+            AssertBufferedCartesianPose(spatial, 700, publishedAt);
+            Assert.That(spatial.Position, Is.EqualTo(new Double3(1e9 + 1000, 0, 0)));
+            Assert.That(spatial.PositionTime, Is.EqualTo(latest));
+            Assert.That(spatial.RotationTime, Is.EqualTo(latest));
+            AssertRotation(spatial.Rotation, latestRotation);
+
+            _realm.ResetSpatialTime();
+            Timestamp restarted = new Timestamp(0, 0);
+            spatial.SetCartesianPosition(new Double3(1e9 + 50, 0, 0), restarted);
+            spatial.SetSourceRotation(Quaternion.Euler(0, 90, 0), restarted);
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(50, 0, 0));
+            AssertRotation(ghost.transform.rotation, Quaternion.Euler(0, 90, 0));
+            Assert.That(spatial.PositionTime, Is.EqualTo(restarted));
+            Assert.That(spatial.RotationTime, Is.EqualTo(restarted));
+            yield return AssertBufferedManeuverPreservesMotion();
+            yield return AssertBufferedAccelerationPreservesVelocityTimeline();
+        }
+
+        /// <summary>A moving geographic reference, independent peer and attached part share buffered time; exhausted buffers hold or extrapolate both pose channels only to the configured prediction limit.</summary>
+        [Test]
+        public void BufferedTimeline_GeographicPeersShareTimeAndGapsRespectPredictionLimits()
+        {
+            _realm.InterpolationDelay = 1;
+            TestGhost reference = _source.Publish("reference");
+            Spatial referenceSpatial = reference.gameObject.AddComponent<Spatial>();
+            Prediction prediction = reference.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.05f;
+            TestGhost peer = _source.Publish("peer");
+            Spatial peerSpatial = peer.gameObject.AddComponent<Spatial>();
+            peer.gameObject.AddComponent<Prediction>().enabled = false;
+            TestGhost part = _source.Publish("part");
+            Spatial partSpatial = part.gameObject.AddComponent<Spatial>();
+            Vector3 peerOffset = new Vector3(8, 0, 3);
+            Vector3 partOffset = new Vector3(-1, 0.5f, 2);
+            partSpatial.Attach(reference.Key, partOffset);
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Space = ReferenceSpace.Geographic,
+                FollowedGhost = reference.Key,
+                UnityPosition = new Vector3(7, 2, -3),
+                UnityRotation = Quaternion.Euler(0, 15, 0),
+                MaxDistance = 30
+            };
+            _realm.ReferenceFrame = frame;
+            GeoPosition first = new GeoPosition(0, 0, 40);
+            GeoPosition latest = new GeoPosition(0, 200.0 / (6378137.0 + 40) * 180 / Math.PI, 40);
+            PublishBufferedGeographicPair(referenceSpatial, peerSpatial, first, 0, peerOffset, new Timestamp(1000, 0));
+            PublishBufferedGeographicPair(referenceSpatial, peerSpatial, latest, 2, peerOffset, new Timestamp(1002, 0));
+            Double3 velocity = new Double3(100, 0, 0);
+            prediction.SetGeographicVelocity(velocity, latest, new Timestamp(1002, 0));
+            prediction.SetGeographicAcceleration(new Double3(4000, 0, 0), latest, new Timestamp(1003, 0));
+            _realm.Update();
+            AssertPosition(reference.transform.position, frame.UnityPosition);
+            AssertRotation(reference.transform.rotation, frame.UnityRotation);
+            // The independent peer traces a short chord; a 2-degree turn contributes less than 2 mm of offset error.
+            AssertPosition(peer.transform.position, frame.UnityPosition + frame.UnityRotation * peerOffset, 0.01f);
+            AssertRotation(peer.transform.rotation, frame.UnityRotation);
+            AssertPosition(part.transform.position, reference.transform.position + reference.transform.rotation * partOffset);
+            Assert.That(referenceSpatial.IsInRange, Is.True,
+                "The buffered origin must stay visible when travel since its playback time exceeds the range limit.");
+            Assert.That(peerSpatial.IsInRange, Is.True);
+            Assert.That(Double3.Distance(frame.Position, first.ToEarthCentered()), Is.InRange(90, 150));
+            Assert.That(Quaternion.Angle(Quaternion.identity, frame.Rotation), Is.InRange(0.9f, 1.5f));
+
+            TestGhost clock = _source.Publish("newer-clock");
+            clock.gameObject.AddComponent<Spatial>().SetGeographicPosition(latest, new Timestamp(1010, 0));
+            _realm.Update();
+            Double3 capped = latest.ToEarthCentered() + latest.ToEarthCenteredVector(velocity) * prediction.MaximumExtrapolation;
+            Assert.That(Double3.Distance(frame.Position, capped), Is.LessThan(0.001));
+            Assert.That(prediction.HasAcceleration, Is.True,
+                "Accepted future acceleration must remain raw input without changing an earlier capped playback pose.");
+            AssertRotation(frame.Rotation, Quaternion.Euler(0, 2.05f, 0));
+            Assert.That(frame.TryToUnityPosition(peerSpatial.Position, out Vector3 heldPeer), Is.True);
+            AssertPosition(peer.transform.position, heldPeer, 0.001f);
+            AssertPosition(reference.transform.position, frame.UnityPosition);
+            AssertPosition(part.transform.position, reference.transform.position + reference.transform.rotation * partOffset);
+            Assert.That(referenceSpatial.Position, Is.EqualTo(latest.ToEarthCentered()));
+            Assert.That(referenceSpatial.PositionTime, Is.EqualTo(new Timestamp(1002, 0)));
+            Assert.That(referenceSpatial.RotationTime, Is.EqualTo(new Timestamp(1002, 0)));
+        }
+
+        /// <summary>Checks a 100 metre-per-second Cartesian bracket with one shared interpolation fraction for position and rotation.</summary>
+        /// <param name="spatial">The buffered root projected relative to its billion-metre origin.</param>
+        /// <param name="minimumPosition">The playback position when the clock-witness observation was received.</param>
+        /// <param name="publishedAt">Local time immediately before the observation anchoring the current SDK clock.</param>
+        private static void AssertBufferedCartesianPose(Spatial spatial, double minimumPosition, double publishedAt)
+        {
+            double elapsed = Time.realtimeSinceStartupAsDouble - publishedAt;
+            float position = spatial.transform.position.x;
+            Assert.That(position, Is.InRange(minimumPosition - 0.01, minimumPosition + 100 * elapsed + 0.01));
+            Assert.That(position, Is.LessThan(1000), "The delayed pose must interpolate instead of displaying the latest raw endpoint.");
+            Quaternion expected = Quaternion.Slerp(Quaternion.Euler(0, 350, 0), Quaternion.Euler(0, 10, 0), position / 1000);
+            AssertRotation(spatial.transform.rotation, expected);
+        }
+
+        /// <summary>Crosses a forward-and-reverse SDK maneuver in one projection interval while both endpoint velocities are zero and a later velocity remains buffered.</summary>
+        /// <returns>An iterator that holds rendering until the full maneuver reaches playback time.</returns>
+        private IEnumerator AssertBufferedManeuverPreservesMotion()
+        {
+            _realm.ResetSpatialTime();
+            _realm.InterpolationDelay = 1.05f;
+            TestGhost ghost = _source.Publish("buffered maneuver");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+            prediction.enabled = false;
+            Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 0.5f;
+            double[] times = { 0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.2, 0.9, 1 };
+            double[] positions = { 0, 0, 2, 6, 8, 6.5, 5, 5, 5, 5 };
+            double[] velocities = { 0, 0, 200, 200, 0, -150, 0, 0, 0, 1000 };
+            for (int index = 0; index < times.Length; index++)
+            {
+                Timestamp sampleTime = Timestamp.FromSeconds(2000 + times[index]);
+                spatial.SetCartesianPosition(new Double3(1e9 + positions[index], 0, 0), sampleTime);
+                prediction.SetCartesianVelocity(new Double3(velocities[index], 0, 0), sampleTime);
+            }
+
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+            double deadline = Time.realtimeSinceStartupAsDouble + 0.22;
+            do
+            {
+                yield return null;
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(5, 0, 0), 0.02f);
+            Assert.That(smoothing.enabled, Is.True);
+            Assert.That(prediction.enabled, Is.False);
+            Assert.That(spatial.Position, Is.EqualTo(new Double3(1e9 + 5, 0, 0)));
+            Assert.That(spatial.PositionTime, Is.EqualTo(new Timestamp(2001, 0)));
+            Assert.That(prediction.Velocity, Is.EqualTo(new Double3(1000, 0, 0)),
+                "The accepted future velocity must not replace earlier buffered motion.");
+            yield return AdvanceSmoothing(0.06);
+            AssertPosition(ghost.transform.position, new Vector3(5, 0, 0), 0.02f);
+        }
+
+        /// <summary>Keeps a stationary smoothed pose stationary when independently timed acceleration starts during its prediction gap or recorded playback.</summary>
+        /// <returns>An iterator that crosses an acceleration timestamp while the accepted velocity remains zero.</returns>
+        private IEnumerator AssertBufferedAccelerationPreservesVelocityTimeline()
+        {
+            _realm.ResetSpatialTime();
+            _realm.InterpolationDelay = 0.01f;
+            TestGhost ghost = _source.Publish("buffered gap");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.05f;
+            Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 0.5f;
+            Double3 position = new Double3(1e9, 0, 0);
+            Timestamp positionTime = new Timestamp(2, 0);
+            Double3 acceleration = new Double3(4000, 0, 0);
+            spatial.SetCartesianPosition(position, positionTime);
+            prediction.SetCartesianVelocity(default(Double3), new Timestamp(1, 0));
+            prediction.SetCartesianAcceleration(acceleration, new Timestamp(2, 10000000));
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+
+            // Initialize the filter before the gap, then cross the acceleration timestamp in one step.
+            // A longer render interval remains valid because prediction freezes at the same zero pose.
+            double deadline = Time.realtimeSinceStartupAsDouble + 0.03;
+            do
+            {
+                yield return null;
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+
+            TestGhost clock = _source.Publish("gap clock");
+            clock.gameObject.AddComponent<Spatial>().SetCartesianPosition(position, new Timestamp(2, 25000000));
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+            Assert.That(spatial.IsInRange, Is.True);
+            Assert.That(spatial.Position, Is.EqualTo(position));
+            Assert.That(spatial.PositionTime, Is.EqualTo(positionTime));
+            Assert.That(prediction.HasAcceleration, Is.True);
+            Assert.That(prediction.Acceleration, Is.EqualTo(acceleration),
+                "Later acceleration stays accepted input without advancing an earlier pose's gap model or smoothing motion.");
+
+            _realm.ResetSpatialTime();
+            _realm.InterpolationDelay = 1.05f;
+            prediction.enabled = false;
+            spatial.SetCartesianPosition(position, positionTime);
+            spatial.SetCartesianPosition(position, new Timestamp(3, 0));
+            prediction.SetCartesianVelocity(default(Double3), new Timestamp(1, 0));
+            prediction.SetCartesianAcceleration(acceleration, new Timestamp(2, 10000000));
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+
+            // Recorded playback follows supplied velocity, independently of acceleration used for gap prediction.
+            // Cross the acceleration timestamp while the position buffer still brackets the stationary target.
+            deadline = Time.realtimeSinceStartupAsDouble + 0.1;
+            do
+            {
+                yield return null;
+            }
+            while (Time.realtimeSinceStartupAsDouble < deadline);
+
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+            Assert.That(spatial.IsInRange, Is.True);
+            Assert.That(prediction.enabled, Is.False);
+            Assert.That(smoothing.enabled, Is.True);
+            Assert.That(spatial.Position, Is.EqualTo(position));
+            Assert.That(spatial.PositionTime, Is.EqualTo(new Timestamp(3, 0)));
+            Assert.That(prediction.Acceleration, Is.EqualTo(acceleration),
+                "Recorded motion assistance must integrate SDK velocity without applying later acceleration retroactively.");
+        }
+
+        /// <summary>Publishes a geographic origin and an independently observed peer at one timestamp with a fixed body offset.</summary>
+        /// <param name="reference">The followed origin's independent pose channels.</param>
+        /// <param name="peer">The peer whose absolute observation is derived from the source body offset.</param>
+        /// <param name="position">The origin's WGS84 location.</param>
+        /// <param name="yaw">The source heading in degrees.</param>
+        /// <param name="offset">The peer's offset in the reference body's Unity axes.</param>
+        /// <param name="sampleTime">The original SDK observation time shared by the channels.</param>
+        private static void PublishBufferedGeographicPair(Spatial reference, Spatial peer, GeoPosition position,
+            double yaw, Vector3 offset, Timestamp sampleTime)
+        {
+            ReferenceFrame source = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = position };
+            source.SetGeographicRotation(yaw, 0, 0);
+            reference.SetGeographicPosition(position, sampleTime);
+            reference.SetGeographicRotation(yaw, 0, 0, sampleTime);
+            peer.SetGeographicPosition(source.ToGeographicPosition(offset), sampleTime);
+            peer.SetGeographicRotation(yaw, 0, 0, sampleTime);
+        }
+
+        /// <summary>Prediction and shared-delay tuning preserve the displayed pose, settle to the new timeline and keep a moving stream advancing through repeated edits without changing raw observations.</summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator TimestampedPrediction_LiveTuningRemainsContinuousWithoutSmoothing()
@@ -1261,6 +1524,19 @@ namespace Emas.Tests
             yield return AdvanceSmoothing(0.3);
             Assert.That(ghost.transform.position.x, Is.EqualTo(lastObservation.X - origin + 3).Within(0.001),
                 "The transition fully settles to the new estimate without a residual tuning offset.");
+            Assert.That(spatial.Position, Is.EqualTo(lastObservation));
+            Assert.That(spatial.PositionTime, Is.EqualTo(lastObservationTime));
+
+            // Seed a known playback observation independently of how much earlier motion remains buffered.
+            spatial.ResetPresentation();
+            _realm.Update();
+            Assert.That(ghost.transform.position.x, Is.EqualTo(lastObservation.X - origin + 3).Within(0.001));
+            ChangeAndAssertContinuity(() => _realm.InterpolationDelay = 2);
+            yield return AdvanceSmoothing(0.3);
+            Assert.That(ghost.transform.position.x, Is.EqualTo(lastObservation.X - origin).Within(0.001));
+            ChangeAndAssertContinuity(() => _realm.InterpolationDelay = 0);
+            yield return AdvanceSmoothing(0.3);
+            Assert.That(ghost.transform.position.x, Is.EqualTo(lastObservation.X - origin + 3).Within(0.001));
             Assert.That(spatial.Position, Is.EqualTo(lastObservation));
             Assert.That(spatial.PositionTime, Is.EqualTo(lastObservationTime));
         }

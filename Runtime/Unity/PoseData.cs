@@ -12,14 +12,15 @@ namespace Emas
         internal Timestamp? PositionTime { get; private set; }
         internal Timestamp? RotationTime { get; private set; }
         internal double PositionReceivedTime { get; private set; }
+        internal double RotationReceivedTime { get; private set; }
         internal long PositionVersion { get; private set; }
 
-        internal void SetPosition(Double3 position, Timestamp? sampleTime, double receivedTime)
+        internal bool SetPosition(Double3 position, Timestamp? sampleTime, double receivedTime)
         {
             ReferenceFrame.ValidatePosition(position, nameof(position));
             if (!Accepts(PositionTime, sampleTime))
             {
-                return;
+                return false;
             }
 
             // Fresh stationary observations refresh prediction age. Re-reading an unchanged untimed cache does not.
@@ -32,9 +33,10 @@ namespace Emas
             Position = position;
             PositionTime = sampleTime;
             HasPosition = true;
+            return true;
         }
 
-        internal bool SetRotation(Quaternion rotation, Timestamp? sampleTime)
+        internal bool SetRotation(Quaternion rotation, Timestamp? sampleTime, double receivedTime)
         {
             if (!Accepts(RotationTime, sampleTime))
             {
@@ -44,6 +46,7 @@ namespace Emas
             Rotation = rotation;
             RotationTime = sampleTime;
             HasRotation = true;
+            RotationReceivedTime = receivedTime;
             return true;
         }
 
@@ -52,6 +55,7 @@ namespace Emas
             PositionTime = null;
             RotationTime = null;
             PositionReceivedTime = receivedTime;
+            RotationReceivedTime = receivedTime;
             PositionVersion++;
         }
 

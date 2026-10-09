@@ -49,6 +49,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 83648be90a5608b4f87ea6563d3e5cc8, type: 2}
   - {fileID: 11400000, guid: 1a9ba993957a03b45841edd0f919856c, type: 2}
   - {fileID: 11400000, guid: 6999361f77e84af6a7279bde620b6b5e, type: 2}
+  _interpolationDelay: 0.1
   _useReferenceFrame: 1
   _referenceSpace: 1
   _coordinates:

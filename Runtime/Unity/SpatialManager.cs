@@ -20,7 +20,7 @@ namespace Emas
             _identities = identities;
         }
 
-        private ReferenceFrame.Projection Capture(ReferenceFrame frame, double timestamp)
+        private ReferenceFrame.Projection Capture(ReferenceFrame frame, double timestamp, float interpolationDelay)
         {
             if (frame != null && frame.FollowedGhost.HasValue)
             {
@@ -33,7 +33,7 @@ namespace Emas
 
                 if (spatial != null)
                 {
-                    spatial.PreparePresentation(_clock, timestamp);
+                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay);
                 }
 
                 frame.UpdateFollowedPose(spatial);
@@ -47,14 +47,15 @@ namespace Emas
         internal void Project(List<Record> records, ReferenceFrame frame)
         {
             double timestamp = Time.realtimeSinceStartupAsDouble;
+            float interpolationDelay = _realm.InterpolationDelay;
             // Align the shared SDK clock before predicting the followed origin or any other root.
             ObserveTimes(records);
-            ReferenceFrame.Projection projection = Capture(frame, timestamp);
+            ReferenceFrame.Projection projection = Capture(frame, timestamp, interpolationDelay);
             try
             {
                 for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
                 {
-                    ProjectChain(records[index], projection, timestamp);
+                    ProjectChain(records[index], projection, timestamp, interpolationDelay);
                 }
             }
             finally
@@ -68,9 +69,10 @@ namespace Emas
             try
             {
                 double timestamp = Time.realtimeSinceStartupAsDouble;
+                float interpolationDelay = _realm.InterpolationDelay;
                 // Include the followed reference and other anchors in clock alignment even for one-root requests.
                 ObserveTimes(_identities.Snapshot());
-                ProjectChain(record, Capture(frame, timestamp), timestamp);
+                ProjectChain(record, Capture(frame, timestamp, interpolationDelay), timestamp, interpolationDelay);
             }
             finally
             {
@@ -78,14 +80,14 @@ namespace Emas
             }
         }
 
-        private void PreparePresentation(Record record, double timestamp)
+        private void PreparePresentation(Record record, double timestamp, float interpolationDelay)
         {
             if (CanProject(record))
             {
                 Spatial spatial = record.Ghost.GetComponent<Spatial>();
                 if (spatial != null)
                 {
-                    spatial.PreparePresentation(_clock, timestamp);
+                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay);
                 }
             }
         }
@@ -97,9 +99,17 @@ namespace Emas
                 if (CanProject(record))
                 {
                     Spatial spatial = record.Ghost.GetComponent<Spatial>();
-                    if (spatial != null && spatial.enabled && spatial.PositionTime.HasValue)
+                    if (spatial != null && spatial.enabled)
                     {
-                        _clock.Observe(spatial.PositionTime.Value, spatial.PositionReceivedTime);
+                        if (spatial.PositionTime.HasValue)
+                        {
+                            _clock.Observe(spatial.PositionTime.Value, spatial.PositionReceivedTime);
+                        }
+
+                        if (spatial.RotationTime.HasValue)
+                        {
+                            _clock.Observe(spatial.RotationTime.Value, spatial.RotationReceivedTime);
+                        }
                     }
                 }
             }
@@ -129,7 +139,7 @@ namespace Emas
             _chain.Clear();
         }
 
-        private void ProjectChain(Record record, ReferenceFrame.Projection projection, double timestamp)
+        private void ProjectChain(Record record, ReferenceFrame.Projection projection, double timestamp, float interpolationDelay)
         {
             _chain.Clear();
             _visiting.Clear();
@@ -150,7 +160,7 @@ namespace Emas
             for (int index = _chain.Count - 1; index >= 0 && !_realm.IsDisposed; index--)
             {
                 Record item = _chain[index];
-                PreparePresentation(item, timestamp);
+                PreparePresentation(item, timestamp, interpolationDelay);
                 Project(item, projection);
                 _projected.Add(item);
             }

@@ -105,7 +105,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 268940c08f6542c2bb7b11b7119f1d4e, type: 3}
   m_Name:
   m_EditorClassIdentifier:
-  _maximumExtrapolation: 0.15
+  _maximumExtrapolation: 0.05
 --- !u!114 &800000000000008003
 MonoBehaviour:
   m_ObjectHideFlags: 0

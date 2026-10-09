@@ -390,7 +390,7 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Authored visibility radii reject nonpositive or nonfinite values before any Realm starts.
+        /// Authored visibility radii and playback delays reject invalid values before startup and pass valid shared timing to the Realm.
         /// </summary>
         [Test]
         public void SerializedVisibilityRange_RequiresPositiveFiniteSharedUnits()
@@ -412,6 +412,22 @@ namespace Emas.Editor.Tests
             Assert.That(Assert.Throws<InvalidOperationException>(() => setup.StartRealm()).Message,
                 Does.Contain("positive and finite"));
             Assert.That(setup.Realm, Is.Null);
+
+            settings.Update();
+            settings.FindProperty("_maxDistance").doubleValue = 100;
+            foreach (float invalidDelay in new[] { -0.1f, float.NaN })
+            {
+                settings.FindProperty("_interpolationDelay").floatValue = invalidDelay;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+                Assert.That(Assert.Throws<InvalidOperationException>(() => setup.StartRealm()).Message,
+                    Does.Contain("interpolation delay"));
+                Assert.That(setup.Realm, Is.Null);
+            }
+
+            settings.FindProperty("_interpolationDelay").floatValue = 0.1f;
+            settings.ApplyModifiedPropertiesWithoutUndo();
+            setup.StartRealm();
+            Assert.That(setup.Realm.InterpolationDelay, Is.EqualTo(0.1f));
         }
 
         /// <summary>

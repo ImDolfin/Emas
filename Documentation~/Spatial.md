@@ -26,6 +26,9 @@ Author these components on the **same Ghost root**, not on child transforms. `Sp
 | `Spatial` + `Prediction` | Extrapolate motion to the shared estimated presentation time, within a separate limit |
 | All three | Predict motion and smooth correction errors |
 
+A positive `realm.InterpolationDelay` changes timestamped channels to buffered playback before these optional
+traits run. It applies to the whole Realm, including the followed reference; the default is zero.
+
 `Smoothing` and `Prediction` are built-in Traits without SDK readers; the Realm evaluates them after every data Trait and Ghost hook has run. They appear in `Ghost.Traits` and the Ghost Inspector. Disabling either behavior bypasses it on the next projection. Adding a behavior component requires `Spatial` automatically. Attached parts inherit their parent's processed world pose and bypass their own filters, avoiding a second smoothing pass.
 
 Views requested from the Realm update's query notifications use that update's already projected pose. Creating a view does not advance one predicted entity or attachment parent beyond the rest of that frame. Standalone view requests outside those notifications still apply current spatial input immediately.
@@ -55,6 +58,55 @@ Each position, orientation, velocity and acceleration channel ignores older and 
 When the SDK cannot provide its current time, the Realm estimates a source-to-Unity clock alignment from received observations. It retains the arrival with the smallest observed relative delay, then advances using Unity's unscaled clock. Every root and the followed reference use the same captured presentation time per spatial pass. Older packets therefore have more prediction age than newer packets, even when both were read in the same Unity frame. This estimates relative packet age; **absolute transport latency is unknown** and is not automatically recovered. Prediction is an estimate, not guaranteed current truth.
 
 If the SDK clock restarts or a replay changes its time origin, call `realm.ResetSpatialTime()` **before** supplying samples from the new clock. This clears clock alignment, sample ordering and filter/estimated-motion history while retaining raw poses, supplied motion and component settings. Use separate Realms or application-side clock conversion for unrelated SDK clocks.
+
+## Buffer packet timing before filtering noise
+
+For high-speed motion with variable delivery times, start with a shared 100 ms playback buffer:
+
+```csharp
+realm.InterpolationDelay = 0.1f;
+```
+
+The Realm samples every root's position, rotation and supplied SDK motion at **estimated SDK time minus the
+shared delay**. Position uses double-precision linear interpolation; rotation follows the shortest quaternion
+arc. Original timestamps are retained, including multiple observations supplied between Realm updates.
+At 60 Hz input and 90 Hz presentation, the intermediate updates therefore advance along the recorded motion
+instead of holding and jumping at each packet. The moving reference is sampled before projection at the same
+time as its peers, even when their Prediction toggles differ. Attached parts inherit their parent's result.
+
+This adds the configured playback latency to the existing transport latency. It does not recover unknown
+absolute latency. Choose enough delay to cover packet delivery variation, while keeping it acceptable for
+your application. The Relative World sample uses `0.1` seconds with 60 Hz observations, 80 ms delivery delay
+and up to 40 ms of delivery jitter. **Playback > Interpolation delay** on Realm Setup configures its next startup;
+`Realm.InterpolationDelay` can be changed directly while running and blends the resulting pose difference over
+0.25 seconds.
+
+If playback reaches the newest available pose, enabled Prediction extrapolates for at most its
+`MaximumExtrapolation` **beyond that observation**, rather than predicting through the buffer. Supplied velocity
+and optional acceleration predict position; the last two timed rotations provide a short angular extrapolation.
+Prediction off or a zero horizon holds the newest pose. Before enough history arrives, playback holds the
+oldest available pose. Each channel stores at most 128 observations (about 2.1 seconds at 60 Hz); excessive
+buffer delays hold the oldest retained observation. Untimed channels continue using arrival-time behavior.
+
+Range eligibility uses the unfiltered observation at playback time, before prediction and smoothing. It
+therefore compares a buffered entity with its buffered reference, rather than culling the origin because
+its newest raw packet has already travelled beyond the configured radius.
+
+Smoothing then filters the remaining measurement error separately. With supplied SDK velocity, it advances
+the position filter using velocity from the **buffered playback time**, including through turns and stops, even
+when Prediction is off. It never uses a noisy position difference as this motion step. A held pose after the
+gap horizon contributes no further motion. Rotation half-life still adds angular response lag; use matching,
+small values on the reference and peers when their relative attitude matters. Without SDK velocity, position
+smoothing retains the usual low-pass motion lag described below.
+
+Recorded motion integrates each supplied velocity segment, including across a long render frame. Gap
+prediction freezes velocity and acceleration at the newest position's timestamp, and its filter assistance
+uses that same model. Independently timed later motion samples cannot push the filter along a different gap
+trajectory. Acceleration is used for gap extrapolation, rather than applied retroactively over recorded motion.
+
+A buffer cannot reconstruct a maneuver that has not arrived, and a long prediction horizon can still overshoot
+a stop or turn during a sustained outage. Start with a short gap horizon such as `0.05` seconds. Call
+`Spatial.ResetPresentation()` after a teleport; it clears pose playback history and seeds the new pose.
 
 ## Tune smoothing in half-lives
 
@@ -100,7 +152,9 @@ Supply Cartesian motion in shared source axes/units through `Prediction.SetCarte
 
 The Relative World sample reads a nullable `GeoPoseReading.SampleTime` with pose and motion from the same observation. Its `GeoVelocityTrait` and optional `GeoAccelerationTrait` require Prediction and supply nullable ENU vectors at that reading's location, independently of reader order. They clear their supplied channel when a vector is unavailable. The saved sample Ghost prefabs enable Prediction and Smoothing, with analytical SDK velocity and configurable observation noise and delivery delay. The Geo Source Inspector can disable those input impairments for comparison; see the [sample controls and correction troubleshooting](../Samples~/RelativeWorld/README.md#try-noisy-and-delayed-packets).
 
-This implementation uses timestamp-aware kinematic prediction and exponential correction smoothing. A Kalman filter would additionally need suitable process and measurement noise models, ideally SDK accuracy estimates; timestamps alone do not provide those. See [Welch and Bishop's introduction](https://www.cs.unc.edu/~welch/media/pdf/kalman_intro.pdf).
+This implementation uses shared buffered pose interpolation, bounded kinematic/angular prediction and
+exponential correction smoothing. A Kalman filter would additionally need suitable process and measurement
+noise models, ideally SDK accuracy estimates; timestamps alone do not provide those.
 
 ## Attach and detach entities
 

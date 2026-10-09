@@ -30,6 +30,13 @@ namespace Emas
             return Math.Max(0d, age);
         }
 
+        internal double OffsetFrom(Timestamp sampleTime, double localTime, double delay)
+        {
+            // Preserve negative offsets: buffered playback usually lies BEFORE the newest observation.
+            // Subtract timestamp parts before using doubles so large SDK epochs retain sub-frame precision.
+            return (_hasAnchor ? (localTime - _localAnchor) - sampleTime.ElapsedSince(_sourceAnchor) : 0d) - delay;
+        }
+
         internal void Reset()
         {
             _hasAnchor = false;

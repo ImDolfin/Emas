@@ -90,6 +90,7 @@ namespace Emas
         private readonly ViewManager _views;
         private readonly SpatialManager _spatial;
         private ReferenceFrame _referenceFrame;
+        private float _interpolationDelay;
         private readonly SceneChangeQueue _sceneChanges = new SceneChangeQueue();
         private readonly CommandQueue<DispatchCommand> _dispatch;
         private const int MaxDispatchActionsPerUpdate = 256;
@@ -140,6 +141,28 @@ namespace Emas
             {
                 ThrowIfDisposed();
                 _referenceFrame = value;
+            }
+        }
+
+        /// <summary>Gets or sets the shared playback delay for timestamped positions and orientations.</summary>
+        /// <value>A finite, nonnegative delay in seconds; zero, the default, uses immediate presentation.</value>
+        /// <remarks>
+        /// A positive delay interpolates recorded observations at one SDK time for every root and the followed
+        /// reference. Choose enough delay to cover relative packet jitter. Prediction only extrapolates beyond
+        /// the newest buffered observation, within its own limit; disabled prediction holds that observation.
+        /// Untimed channels retain immediate behavior. Absolute transport latency is additional and unknown.
+        /// Live changes blend presentation differences over 0.25 seconds. Attached parts inherit their parent's pose.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN or infinite.</exception>
+        /// <exception cref="ObjectDisposedException">This realm has been disposed.</exception>
+        public float InterpolationDelay
+        {
+            get => _interpolationDelay;
+            set
+            {
+                ThrowIfDisposed();
+                Smoothing.ValidateTime(value, nameof(value));
+                _interpolationDelay = value;
             }
         }
 

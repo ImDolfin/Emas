@@ -17,6 +17,7 @@ namespace Emas
     /// Supply channels on Unity's main thread; setters store input for the next realm projection.
     /// Add optional Smoothing and Prediction traits on the same Ghost root to modify presentation.
     /// Timed inputs share one SDK clock; duplicate or older timestamps are ignored per channel.
+    /// A positive Realm.InterpolationDelay buffers accepted timed poses for shared position/rotation playback.
     /// Timestamped stationary updates refresh sample age; untimed identical cached positions do not.
     /// Attach selects a same-realm parent by Key, including before discovery. Local attachment poses use Unity axes
     /// and units; absolute inputs remain cached for Detach. Roots retain their Anchor parents and independent lifetimes.
@@ -26,7 +27,9 @@ namespace Emas
     public sealed class Spatial : MonoBehaviour
     {
         private readonly PoseData _data = new PoseData();
+        private readonly PoseHistory _history = new PoseHistory();
         private Double3 _presentationPosition;
+        private Double3 _presentationObservation;
         private Quaternion _presentationRotation = Quaternion.identity;
         private bool _hasPresentation;
         private readonly PresentationTuning _tuning = new PresentationTuning();
@@ -46,10 +49,12 @@ namespace Emas
         public Timestamp? RotationTime => _data.RotationTime;
 
         /// <summary>Resets smoothing, estimated prediction and live-tuning transitions after an intentional discontinuity.</summary>
-        /// <remarks>Retains raw pose, supplied motion and component settings. Supply the new pose before calling this.</remarks>
+        /// <remarks>Retains raw pose, supplied motion and component settings. Clears pose playback history and seeds
+        /// it with the current observation. Supply the new pose before calling this.</remarks>
         public void ResetPresentation()
         {
             _hasPresentation = false;
+            ResetPoseHistory();
             ResetTuning();
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)
@@ -65,6 +70,8 @@ namespace Emas
         }
 
         internal double PositionReceivedTime => _data.PositionReceivedTime;
+        internal double RotationReceivedTime => _data.RotationReceivedTime;
+        internal PoseHistory History => _history;
         internal long PositionVersion => _data.PositionVersion;
         internal Double3 PresentationPosition => _hasPresentation ? _presentationPosition : Position;
         internal Quaternion PresentationRotation => _hasPresentation ? _presentationRotation : Rotation;
@@ -75,7 +82,7 @@ namespace Emas
         }
 
         // Compose optional behavior only after all SDK readers, before capturing the shared reference.
-        internal void PreparePresentation(SpatialClock clock, double timestamp)
+        internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay)
         {
             if (!enabled || AttachedTo.HasValue)
             {
@@ -85,7 +92,7 @@ namespace Emas
 
             Prediction prediction = GetComponent<Prediction>();
             Smoothing smoothing = GetComponent<Smoothing>();
-            PresentationSettings settings = new PresentationSettings(prediction, smoothing);
+            PresentationSettings settings = new PresentationSettings(prediction, smoothing, interpolationDelay);
             if (prediction != null)
             {
                 prediction.Prepare(this, timestamp);
@@ -94,10 +101,10 @@ namespace Emas
             PresentationPose previous = default(PresentationPose);
             if (_tuning.Changed(settings))
             {
-                previous = PreparePose(clock, timestamp, prediction, smoothing, _tuning.Settings, true);
+                previous = PreparePose(clock, timestamp, prediction, smoothing, _tuning.Settings, true, out _);
             }
 
-            PresentationPose current = PreparePose(clock, timestamp, prediction, smoothing, settings, false);
+            PresentationPose current = PreparePose(clock, timestamp, prediction, smoothing, settings, false, out _presentationObservation);
             current = _tuning.Apply(previous, current, settings, timestamp);
             _presentationPosition = current.Position;
             _presentationRotation = current.Rotation;
@@ -105,20 +112,77 @@ namespace Emas
         }
 
         private PresentationPose PreparePose(SpatialClock clock, double timestamp, Prediction prediction,
-            Smoothing smoothing, PresentationSettings settings, bool preview)
+            Smoothing smoothing, PresentationSettings settings, bool preview, out Double3 observation)
         {
             Double3 motion = default(Double3);
-            Double3 position = prediction != null
-                ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, out motion) : Position;
-            PresentationPose pose = new PresentationPose(position, Rotation);
+            observation = Position;
+            PresentationPose pose;
+            if (settings.InterpolationDelay > 0)
+            {
+                pose = BufferedPose(clock, timestamp, prediction, settings, out motion, out observation);
+            }
+            else
+            {
+                Double3 position = prediction != null
+                    ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, out motion) : Position;
+                pose = new PresentationPose(position, Rotation);
+            }
 
             // Keep direct (disabled) channels current too, so enabling a trait has fresh filter history.
             return smoothing != null ? smoothing.Prepare(this, pose, timestamp, motion, settings, preview) : pose;
         }
 
+        private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Prediction prediction,
+            PresentationSettings settings, out Double3 motion, out Double3 observation)
+        {
+            Double3 position = Position;
+            Quaternion rotation = Rotation;
+            observation = Position;
+            motion = default(Double3);
+            if (_history.NewestPositionTime.HasValue)
+            {
+                double offset = clock.OffsetFrom(_history.NewestPositionTime.Value, timestamp, settings.InterpolationDelay);
+                _history.SamplePosition(offset, out position);
+                observation = position;
+                if (prediction != null)
+                {
+                    position = prediction.ProjectBuffered(this, clock, timestamp, settings, position, offset, out motion);
+                }
+            }
+            else if (prediction != null)
+            {
+                // An untimed channel has no SDK history to interpolate; preserve its arrival-timed behavior.
+                position = prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, out motion);
+            }
+
+            if (_history.NewestRotationTime.HasValue)
+            {
+                double offset = clock.OffsetFrom(_history.NewestRotationTime.Value, timestamp, settings.InterpolationDelay);
+                _history.SampleRotation(offset, settings.MaximumExtrapolation, out rotation);
+            }
+
+            return new PresentationPose(position, rotation);
+        }
+
+        private void ResetPoseHistory()
+        {
+            _history.ClearPosition();
+            _history.ClearRotation();
+            if (PositionTime.HasValue)
+            {
+                _history.AddPosition(Position, PositionTime.Value);
+            }
+
+            if (RotationTime.HasValue)
+            {
+                _history.AddRotation(Rotation, RotationTime.Value);
+            }
+        }
+
         internal void ResetTime(double timestamp)
         {
             _data.ResetTime(timestamp);
+            _history.Clear();
             ResetPresentation();
             Prediction prediction = GetComponent<Prediction>();
             if (prediction != null)
@@ -131,6 +195,7 @@ namespace Emas
         {
             // Corrections expressed in the former attitude basis cannot be reused in the new one.
             _tuning.ResetRotation();
+            _history.ClearRotation();
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)
             {
@@ -317,7 +382,7 @@ namespace Emas
         public void SetSourceRotation(Quaternion rotation, Timestamp? sampleTime = null)
         {
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
-            if (!_data.SetRotation(normalized, sampleTime))
+            if (!_data.SetRotation(normalized, sampleTime, Time.realtimeSinceStartupAsDouble))
             {
                 return;
             }
@@ -329,6 +394,7 @@ namespace Emas
 
             _rotationSpace = Emas.RotationSpace.Source;
             _earthCenteredBodyAxes = null;
+            StoreRotationHistory(sampleTime);
         }
 
         /// <summary>Supplies local geographic yaw, pitch and roll in degrees for a Geographic reference.</summary>
@@ -345,7 +411,7 @@ namespace Emas
         public void SetGeographicRotation(double yawDegrees, double pitchDegrees, double rollDegrees, Timestamp? sampleTime = null)
         {
             Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
-            if (!_data.SetRotation(rotation, sampleTime))
+            if (!_data.SetRotation(rotation, sampleTime, Time.realtimeSinceStartupAsDouble))
             {
                 return;
             }
@@ -357,6 +423,7 @@ namespace Emas
 
             _rotationSpace = Emas.RotationSpace.Geographic;
             _earthCenteredBodyAxes = null;
+            StoreRotationHistory(sampleTime);
         }
 
         /// <summary>Supplies a body-to-ECEF quaternion for a Geographic reference, independently of position.</summary>
@@ -370,7 +437,7 @@ namespace Emas
         {
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
-            if (!_data.SetRotation(normalized, sampleTime))
+            if (!_data.SetRotation(normalized, sampleTime, Time.realtimeSinceStartupAsDouble))
             {
                 return;
             }
@@ -382,19 +449,47 @@ namespace Emas
 
             _rotationSpace = Emas.RotationSpace.EarthCentered;
             _earthCenteredBodyAxes = axes;
+            StoreRotationHistory(sampleTime);
         }
 
         private void StorePosition(Double3 position, Timestamp? sampleTime)
         {
-            _data.SetPosition(position, sampleTime, Time.realtimeSinceStartupAsDouble);
+            if (!_data.SetPosition(position, sampleTime, Time.realtimeSinceStartupAsDouble))
+            {
+                return;
+            }
+
+            if (sampleTime.HasValue)
+            {
+                _history.AddPosition(position, sampleTime.Value);
+            }
+            else
+            {
+                _history.ClearPosition();
+            }
+        }
+
+        private void StoreRotationHistory(Timestamp? sampleTime)
+        {
+            if (sampleTime.HasValue)
+            {
+                _history.AddRotation(Rotation, sampleTime.Value);
+            }
+            else
+            {
+                _history.ClearRotation();
+            }
         }
 
         // Called by the realm after every trait has updated and the shared reference is captured.
         internal bool ApplyProjection(ReferenceFrame.Projection projection)
         {
             Vector3 position = default(Vector3);
-            // A predicted or smoothed pose must not bring an out-of-range raw observation back into presentation.
-            bool observationVisible = HasPosition && projection.TryToUnityPosition(Position, out position);
+            // Check the unfiltered observation at playback time. Comparing the latest packet with a delayed
+            // reference can cull even the origin when speed times buffer delay exceeds the range limit.
+            // Prediction and smoothing still cannot bring an out-of-range observation into presentation.
+            Double3 observation = _hasPresentation ? _presentationObservation : Position;
+            bool observationVisible = HasPosition && projection.TryToUnityPosition(observation, out position);
             bool visible = observationVisible && projection.TryToUnityPosition(PresentationPosition, out position);
             if (!observationVisible)
             {

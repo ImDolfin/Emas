@@ -25,6 +25,12 @@ namespace Emas.Editor
                 {
                     InspectorLayout.Field(serializedObject, "_blueprints", "Kind mappings");
                 }
+
+                using (InspectorLayout.Section("Playback", "One timestamped position and orientation timeline for every entity and the followed reference."))
+                {
+                    InspectorLayout.Field(serializedObject, "_interpolationDelay", "Interpolation delay (s)");
+                }
+
                 DrawReference();
             }
             serializedObject.ApplyModifiedProperties();
@@ -128,6 +134,7 @@ namespace Emas.Editor
             {
                 InspectorLayout.ReadOnly("Anchors", realm.Anchors.Count.ToString());
                 InspectorLayout.ReadOnly("Available entities", realm.Query().Count.ToString());
+                InspectorLayout.ReadOnly("Interpolation delay (s)", realm.InterpolationDelay.ToString("G"));
                 ReferenceFrame frame = realm.ReferenceFrame;
                 InspectorLayout.ReadOnly("Reference", frame == null ? "Identity / world coordinates" : frame.IsReferenceAvailable ? "Available" : frame.HasPosition ? "Last known pose" : frame.FollowedGhost.HasValue ? "Waiting for position" : "Waiting for reference");
                 if (frame != null)

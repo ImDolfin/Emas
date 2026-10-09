@@ -61,6 +61,10 @@ namespace Emas.Tests.Samples
                     "The configured tracking setup should be reusable as a prefab.");
                 Assert.That(AssetDatabase.GetAssetPath(PrefabUtility.GetCorrespondingObjectFromSource(setup)),
                     Does.StartWith(directory));
+                SerializedObject serializedSetup = new SerializedObject(setup);
+                Assert.That(serializedSetup.FindProperty("_interpolationDelay").floatValue,
+                    Is.EqualTo(sample == "RelativeWorld" ? 0.1f : 0f),
+                    "RelativeWorld authors a shared playback buffer; the introductory samples retain the immediate default.");
 
                 AnchorSetup[] anchors = setup.GetComponentsInChildren<AnchorSetup>(true);
                 Assert.That(anchors, Is.Not.Empty);
@@ -73,7 +77,7 @@ namespace Emas.Tests.Samples
                     Assert.That(new SerializedObject(anchor).FindProperty("_automaticViews").boolValue, Is.True);
                 }
 
-                SerializedProperty blueprints = new SerializedObject(setup).FindProperty("_blueprints");
+                SerializedProperty blueprints = serializedSetup.FindProperty("_blueprints");
                 Assert.That(blueprints.arraySize, Is.GreaterThan(0));
                 for (int index = 0; index < blueprints.arraySize; index++)
                 {
@@ -94,7 +98,7 @@ namespace Emas.Tests.Samples
                         Prediction prediction = blueprint.GhostPrefab.GetRequired<Prediction>();
                         Smoothing smoothing = blueprint.GhostPrefab.GetRequired<Smoothing>();
                         Assert.That(prediction.enabled, Is.True);
-                        Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.15f));
+                        Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.05f));
                         Assert.That(smoothing.enabled, Is.True);
                         Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.08f));
                         Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.04f));

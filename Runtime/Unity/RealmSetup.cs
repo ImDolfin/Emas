@@ -22,6 +22,11 @@ namespace Emas
         [SerializeField]
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
+        [Tooltip("Shared playback delay in seconds for timestamped position and rotation. 0: immediate. Start at 0.1 for noisy 60 Hz packets. Prediction only fills gaps beyond buffered observations; all roots and the reference use the same time.")]
+        [Min(0)]
+        [SerializeField]
+        private float _interpolationDelay;
+
         [Tooltip("Project Spatial Ghosts relative to a manual or followed reference point. When off, spatial poses map directly to Unity world space.")]
         [SerializeField]
         private bool _useReferenceFrame;
@@ -122,6 +127,7 @@ namespace Emas
             try
             {
                 realm.ReferenceFrame = frame;
+                realm.InterpolationDelay = _interpolationDelay;
                 _realmViewKinds.Clear();
                 foreach (ManifestationBlueprint blueprint in Blueprints)
                 {
@@ -201,6 +207,11 @@ namespace Emas
 
         internal string GetConfigurationError()
         {
+            if (!SpatialMath.IsFinite(_interpolationDelay) || _interpolationDelay < 0)
+            {
+                return "RealmSetup interpolation delay must be finite and nonnegative.";
+            }
+
             HashSet<Kind> blueprintKinds = new HashSet<Kind>();
             ManifestationBlueprint[] blueprints = Blueprints;
             for (int index = 0; index < blueprints.Length; index++)
