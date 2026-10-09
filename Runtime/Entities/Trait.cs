@@ -17,6 +17,7 @@ namespace Emas
         private Ghost _ghost;
 
         /// <summary>Gets the Ghost on this trait's GameObject, or null when none is present.</summary>
+        /// <value>The live Ghost on the same root, including when the root or trait is inactive.</value>
         /// <remarks>
         /// Resolves lazily, including while the root is inactive or this trait is disabled, without depending on Awake or OnEnable.
         /// Does not search parents or children. A missing or destroyed Ghost is resolved again on the next access.

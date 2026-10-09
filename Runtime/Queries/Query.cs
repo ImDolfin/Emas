@@ -60,7 +60,7 @@ namespace Emas
         /// The required kind.
         /// </param>
         /// <returns>
-        /// A query containing the added filter.
+        /// A new query with this kind selector and all other filters retained.
         /// </returns>
         /// <exception cref="ArgumentException">
         /// The kind is invalid.
@@ -98,6 +98,10 @@ namespace Emas
         /// <returns>
         /// A query containing the added filter.
         /// </returns>
+        /// <remarks>
+        /// Requires exactly one matching live component on the Ghost root. Disabled components remain eligible;
+        /// child views do not supply contracts. Repeated calls add requirements without changing the original query.
+        /// </remarks>
         public Query With<T>() where T : class
         {
             List<Func<IGhost, bool>> parts = new List<Func<IGhost, bool>>(_parts);
@@ -212,6 +216,7 @@ namespace Emas
         /// <returns>
         /// The first match, or null when no match exists.
         /// </returns>
+        /// <remarks>No result ordering is guaranteed. A scoped query whose realm is disposed returns null.</remarks>
         public IGhost FirstOrDefault()
         {
             if (_realm != null)
@@ -248,6 +253,8 @@ namespace Emas
         /// <remarks>
         /// Current matches may notify synchronously. Each ghost notifies once while it remains a match; recovery can notify again.
         /// Dispose the returned subscription when the consumer stops. Callback exceptions are logged and isolated.
+        /// Within each realm, initial notifications are deferred while that realm is processing a source callback,
+        /// finalizing changes or notifying another subscription.
         /// </remarks>
         /// <exception cref="ArgumentNullException">
         /// The callback is null.
@@ -360,7 +367,8 @@ namespace Emas
             return Evaluate().GetEnumerator();
         }
 
-        /// <inheritdoc />
+        /// <summary>Enumerates the same copied membership snapshot through the nongeneric collection interface.</summary>
+        /// <returns>An enumerator over the matching Ghost handles captured for this enumeration.</returns>
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();

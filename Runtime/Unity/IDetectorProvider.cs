@@ -13,6 +13,10 @@ namespace Emas
         /// Returns a new or detached detector for this anchor's next attachment.
         /// </summary>
         /// <returns>A non-null detector that is not currently attached to an anchor.</returns>
+        /// <remarks>
+        /// Called on Unity's main thread whenever the anchor starts. A detached detector may be reused.
+        /// The setup manages attachment and cleanup; it does not take ownership of application SDK clients.
+        /// </remarks>
         PresenceDetector CreateDetector();
     }
 }

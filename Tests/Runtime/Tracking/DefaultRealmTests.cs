@@ -31,6 +31,7 @@ namespace Emas.Tests
         /// <summary>
         /// Unity advances a source without a manual realm update.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Default_UpdatesAutomatically()
         {
@@ -54,6 +55,7 @@ namespace Emas.Tests
         {
             internal int Updates;
 
+            /// <summary>Counts the automatic updates delivered by the default Realm.</summary>
             protected override void OnUpdate()
             {
                 Updates++;

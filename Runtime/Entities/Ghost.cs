@@ -7,7 +7,6 @@ namespace Emas
     /// <summary>
     /// Identifies an entity root and exposes contracts provided by its components.
     /// </summary>
-
     /// <remarks>
     /// Use this component directly on an authored prefab with reusable Trait components.
     /// Derive a custom Ghost only when the entity needs additional behavior; subclasses can use RequireComponent.
@@ -35,7 +34,8 @@ namespace Emas
         private List<Trait> _traitBuffer;
         private IReadOnlyList<Trait> _traits = Array.AsReadOnly(Array.Empty<Trait>());
 
-        /// <inheritdoc />
+        /// <summary>Gets the identity assigned by the owning realm.</summary>
+        /// <value>The anchor, kind and entity IDs; the identity is incomplete before realm initialization.</value>
         public Key Key
         {
             get
@@ -45,7 +45,8 @@ namespace Emas
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Gets the display name supplied by the source.</summary>
+        /// <value>The source label, defaulting to the entity ID when the source supplies no name.</value>
         public string Name
         {
             get
@@ -54,7 +55,8 @@ namespace Emas
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Gets the source-selected appearance used to resolve a manifestation prefab.</summary>
+        /// <value>The current appearance, or <see cref="Variant.None"/> when unspecified.</value>
         public Variant Variant
         {
             get
@@ -63,7 +65,8 @@ namespace Emas
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Gets whether initialized source data is currently available to queries.</summary>
+        /// <value>True while the source publication is available, independently of spatial visibility or view requests.</value>
         public bool IsAvailable
         {
             get
@@ -72,7 +75,9 @@ namespace Emas
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Gets a read-only snapshot of the root's current trait components.</summary>
+        /// <value>All root traits, including disabled and unbound traits, without child or view traits.</value>
+        /// <remarks>Each access observes added or removed components. Previously returned snapshots retain their membership.</remarks>
         public IReadOnlyList<Trait> Traits
         {
             get
@@ -99,7 +104,11 @@ namespace Emas
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Resolves a single root component that implements the requested contract.</summary>
+        /// <typeparam name="T">The interface or MonoBehaviour class to resolve.</typeparam>
+        /// <param name="part">The matching component, or null when no unique match exists.</param>
+        /// <returns>True when exactly one root MonoBehaviour matches, including disabled components and the Ghost itself.</returns>
+        /// <remarks>Does not search children or create components. Multiple matches log a contextual ambiguity error.</remarks>
         public bool TryGet<T>(out T part) where T : class
         {
             if (_partResolver == null)

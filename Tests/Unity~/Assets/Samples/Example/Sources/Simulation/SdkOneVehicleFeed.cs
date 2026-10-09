@@ -13,6 +13,7 @@ namespace Emas.Sample
         private readonly Dictionary<string, SdkOneVehicleProxy> _current = new Dictionary<string, SdkOneVehicleProxy>();
 
         /// <summary>Gets the live read-only dictionary updated by ReadVehicles, keyed by stable entity ID.</summary>
+        /// <value>A live population view whose proxy entries are replaced on each call to <see cref="ReadVehicles"/>.</value>
         public IReadOnlyDictionary<string, SdkOneVehicleProxy> Current => _current;
 
         /// <summary>
@@ -24,6 +25,7 @@ namespace Emas.Sample
         /// <returns>
         /// The current SDK One proxies.
         /// </returns>
+        /// <remarks>Refreshes the live dictionary immediately. Enumerate the returned values before calling this method again.</remarks>
         public IEnumerable<SdkOneVehicleProxy> ReadVehicles(float elapsedSeconds)
         {
             for (int index = 0; index < SampleMotion.CarCount; index++)
@@ -38,6 +40,7 @@ namespace Emas.Sample
                     steering: SampleMotion.GetCarSteering(index, elapsedSeconds));
                 _current[proxy.Identifier] = proxy;
             }
+
             return _current.Values;
         }
     }

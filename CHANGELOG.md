@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Complete XML API documentation across runtime, editor, samples and tests; explain non-obvious spatial and lifecycle behavior, and split large population, notification, view, diagnostics and sample-packet routines into focused helpers.
+
 - Run Relative World at a configurable 360 km/h by default with up to 2 m of horizontal observation noise. Preserve travelled distance and captured packet velocities when changing speed.
 
 - Keep views requested by update observers on the Realm's completed shared projection, preventing prediction from advancing a reference or attachment parent separately from its children during automatic view creation.

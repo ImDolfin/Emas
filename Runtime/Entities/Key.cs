@@ -66,7 +66,9 @@ namespace Emas
             private set;
         }
 
-        /// <inheritdoc />
+        /// <summary>Compares the anchor, kind and entity identifiers using ordinal equality.</summary>
+        /// <param name="other">The complete identity to compare.</param>
+        /// <returns>True when all three identity fields match, independently of their owning realms.</returns>
         public bool Equals(Key other)
         {
             return string.Equals(AnchorId, other.AnchorId, StringComparison.Ordinal)
@@ -74,13 +76,16 @@ namespace Emas
                 && string.Equals(EntityId, other.EntityId, StringComparison.Ordinal);
         }
 
-        /// <inheritdoc />
+        /// <summary>Compares another object with this complete identity.</summary>
+        /// <param name="obj">The object to compare, including null.</param>
+        /// <returns>True when the object is a key with equal anchor, kind and entity identifiers.</returns>
         public override bool Equals(object obj)
         {
             return obj is Key && Equals((Key)obj);
         }
 
-        /// <inheritdoc />
+        /// <summary>Combines the ordinal hashes of all three identity fields.</summary>
+        /// <returns>A hash consistent with key equality.</returns>
         public override int GetHashCode()
         {
             unchecked
@@ -125,7 +130,9 @@ namespace Emas
             return !left.Equals(right);
         }
 
-        /// <inheritdoc />
+        /// <summary>Formats the identity for diagnostics.</summary>
+        /// <returns>The anchor ID, kind ID and entity ID separated by colons.</returns>
+        /// <remarks>The result does not escape identifiers and is not a serialization format.</remarks>
         public override string ToString()
         {
             return AnchorId + ":" + Kind + ":" + EntityId;

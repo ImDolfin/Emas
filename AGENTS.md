@@ -31,7 +31,9 @@ Runtime entry point: `Realm.Default`. Keep short role names in namespace `Emas`;
 
 - Use **C# 8.0** features only. Do not use records, target-typed new, init accessors, relational patterns, static lambdas, global usings or file-scoped namespaces. Use Allman braces and braces for every control-flow body.
 - Follow **Unity naming conventions**: `PascalCase` for public members, `_camelCase` for private fields.
-- All public classes and methods must have XML doc comments (`<summary>`).
+- Document every public API and protected extension point with Visual Studio/Doxygen-compatible XML comments: meaningful `<summary>`, `<param>`, `<typeparam>`, `<returns>` and `<value>` tags where applicable. Include units, ownership, timing, validation and lifecycle constraints when they affect callers. Document interface members and enum values too.
+- Explain non-obvious algorithms, coordinate conversions and lifecycle ordering with focused code comments. Avoid comments that merely repeat the statement below them.
+- Keep methods focused, separate logical blocks with blank lines, and use explicit multi-line braces for control flow; do not write one-line `if` or loop bodies. Use regions only when they make a substantial group of related members easier to navigate.
 - Prefer `SerializeField` on private fields over making fields public.
 - Use `#if UNITY_EDITOR` guards sparingly; prefer putting editor code in the Editor assembly instead.
 

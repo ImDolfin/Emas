@@ -18,6 +18,7 @@ namespace Emas
         /// <summary>
         /// Gets the ghost represented by this view.
         /// </summary>
+        /// <value>The bound root handle, or null before binding and on an authored prefab.</value>
         public IGhost Ghost
         {
             get

@@ -100,78 +100,98 @@ namespace Emas
             HashSet<Key> keys = subscription.MatchKeys;
             try
             {
-                _realm.Evaluate(subscription.Query, matches);
-                keys.Clear();
-                for (int index = 0; index < matches.Count; index++)
+                RefreshMatches(subscription, matches, keys);
+                if (!NotifyDepartures(subscription, departures))
                 {
-                    keys.Add(matches[index].Key);
+                    return;
                 }
 
-                // Collect departures before invoking consumers, which may mutate the realm again.
-                foreach (Key key in subscription.Seen)
-                {
-                    if (!keys.Contains(key) && subscription.OnLeave != null)
-                    {
-                        subscription.Departures.Add(key);
-                    }
-                }
-
-                subscription.Seen.IntersectWith(keys);
-                // Drain departures before arrivals so loss and recovery of the same Key remain observable.
-                departures.Clear();
-                departures.AddRange(subscription.Departures);
-                // Departures queued by these callbacks stay in Departures for the next notification pass.
-                subscription.Departures.Clear();
-                for (int index = 0; index < departures.Count; index++)
-                {
-                    if (subscription.Disposed || _realm.IsDisposed)
-                    {
-                        return;
-                    }
-
-                    Key key = departures[index];
-                    try
-                    {
-                        subscription.OnLeave(key);
-                    }
-                    catch (Exception exception)
-                    {
-                        PresenceDetector.LogError(exception, "query departure for " + key);
-                    }
-                }
-
-                for (int index = 0; index < matches.Count; index++)
-                {
-                    if (subscription.Disposed || _realm.IsDisposed)
-                    {
-                        break;
-                    }
-
-                    IGhost ghost = matches[index];
-                    // A preceding callback can remove or invalidate another match in this snapshot.
-                    if (!_realm.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
-                    {
-                        continue;
-                    }
-
-                    if (subscription.Seen.Add(ghost.Key))
-                    {
-                        try
-                        {
-                            subscription.Callback(ghost);
-                        }
-                        catch (Exception exception)
-                        {
-                            PresenceDetector.LogError(exception, "query arrival for " + ghost.Key);
-                        }
-                    }
-                }
+                NotifyArrivals(subscription, matches);
             }
             finally
             {
                 matches.Clear();
                 departures.Clear();
                 keys.Clear();
+            }
+        }
+
+        private void RefreshMatches(Subscription subscription, List<IGhost> matches, HashSet<Key> keys)
+        {
+            _realm.Evaluate(subscription.Query, matches);
+            keys.Clear();
+            for (int index = 0; index < matches.Count; index++)
+            {
+                keys.Add(matches[index].Key);
+            }
+
+            // Collect departures before invoking consumers, which may mutate the realm again.
+            foreach (Key key in subscription.Seen)
+            {
+                if (!keys.Contains(key) && subscription.OnLeave != null)
+                {
+                    subscription.Departures.Add(key);
+                }
+            }
+
+            subscription.Seen.IntersectWith(keys);
+        }
+
+        private bool NotifyDepartures(Subscription subscription, List<Key> departures)
+        {
+            // Drain departures before arrivals so loss and recovery of the same Key remain observable.
+            departures.Clear();
+            departures.AddRange(subscription.Departures);
+            // Departures queued by these callbacks stay in Departures for the next notification pass.
+            subscription.Departures.Clear();
+            for (int index = 0; index < departures.Count; index++)
+            {
+                if (subscription.Disposed || _realm.IsDisposed)
+                {
+                    return false;
+                }
+
+                Key key = departures[index];
+                try
+                {
+                    subscription.OnLeave(key);
+                }
+                catch (Exception exception)
+                {
+                    PresenceDetector.LogError(exception, "query departure for " + key);
+                }
+            }
+
+            return true;
+        }
+
+        private void NotifyArrivals(Subscription subscription, List<IGhost> matches)
+        {
+            for (int index = 0; index < matches.Count; index++)
+            {
+                if (subscription.Disposed || _realm.IsDisposed)
+                {
+                    break;
+                }
+
+                IGhost ghost = matches[index];
+                // A preceding callback can remove or invalidate another match in this snapshot.
+                if (!_realm.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
+                {
+                    continue;
+                }
+
+                if (subscription.Seen.Add(ghost.Key))
+                {
+                    try
+                    {
+                        subscription.Callback(ghost);
+                    }
+                    catch (Exception exception)
+                    {
+                        PresenceDetector.LogError(exception, "query arrival for " + ghost.Key);
+                    }
+                }
             }
         }
 

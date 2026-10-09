@@ -47,6 +47,7 @@ namespace Emas
         internal void Project(List<Record> records, ReferenceFrame frame)
         {
             double timestamp = Time.realtimeSinceStartupAsDouble;
+            // Align the shared SDK clock before predicting the followed origin or any other root.
             ObserveTimes(records);
             ReferenceFrame.Projection projection = Capture(frame, timestamp);
             try
@@ -228,6 +229,7 @@ namespace Emas
 
         private bool CanProject(Record record)
         {
+            // Scene callbacks can remove roots or transfer detector ownership during the same pass.
             return !_realm.IsDisposed && _identities.Contains(record) && record.Ghost != null && record.Owner != null
                 && record.Owner.IsRegistration(_realm, record.RegistrationGeneration)
                 && (record.Ghost.IsAvailable || record.PendingActivation);

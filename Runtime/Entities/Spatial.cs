@@ -37,9 +37,11 @@ namespace Emas
         private Quaternion _attachmentRotation = Quaternion.identity;
 
         /// <summary>Gets the latest accepted position sample time, or null for arrival-timed input.</summary>
+        /// <value>The original SDK timestamp for the stored position; null before timed input or after a spatial clock reset.</value>
         public Timestamp? PositionTime => _data.PositionTime;
 
         /// <summary>Gets the latest accepted orientation sample time, or null for untimestamped input.</summary>
+        /// <value>The original SDK timestamp for the stored rotation; null before timed input or after a spatial clock reset.</value>
         public Timestamp? RotationTime => _data.RotationTime;
 
         /// <summary>Resets optional smoothing and estimated prediction history after an intentional discontinuity.</summary>
@@ -119,6 +121,7 @@ namespace Emas
         /// <summary>
         /// Gets the last Cartesian source position or absolute ECEF metres after geographic/ECEF input; valid after HasPosition is true.
         /// </summary>
+        /// <value>The raw accepted position, unaffected by prediction, smoothing or the projected Unity transform.</value>
         public Double3 Position
         {
             get
@@ -130,6 +133,7 @@ namespace Emas
         /// <summary>
         /// Gets the last normalized quaternion in RotationSpace; meaningful after HasRotation becomes true.
         /// </summary>
+        /// <value>The raw accepted orientation, unaffected by smoothing or reference-frame alignment.</value>
         public Quaternion Rotation
         {
             get
@@ -139,6 +143,7 @@ namespace Emas
         }
 
         /// <summary>Gets the basis of Rotation: configured source axes, local east/up/north, or body-to-ECEF.</summary>
+        /// <value>The representation selected by the last accepted rotation setter.</value>
         public RotationSpace RotationSpace => _rotationSpace;
 
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
@@ -146,6 +151,7 @@ namespace Emas
         /// <summary>
         /// Gets whether a Cartesian or geographic position has been supplied.
         /// </summary>
+        /// <value>True after the first accepted position input; remains true while attached or temporarily unavailable.</value>
         public bool HasPosition
         {
             get
@@ -157,6 +163,7 @@ namespace Emas
         /// <summary>
         /// Gets whether absolute source orientation has been supplied; when detached, missing orientation leaves the root's rotation alone.
         /// </summary>
+        /// <value>True after the first accepted rotation input, independently of position availability.</value>
         public bool HasRotation
         {
             get
@@ -168,6 +175,7 @@ namespace Emas
         /// <summary>
         /// Gets whether the last projection permits presentation, independently of source availability.
         /// </summary>
+        /// <value>True when spatial presentation is permitted; initially true until the first projection evaluates this root.</value>
         /// <remarks>
         /// Outside range or before the first position/reference, renderers and colliders are suppressed while
         /// the ghost remains active and queryable. Originally enabled components are restored on return.
@@ -182,12 +190,15 @@ namespace Emas
         }
 
         /// <summary>Gets the requested attachment parent, including while it is missing or cannot be presented.</summary>
+        /// <value>The same-realm parent identity, or null when absolute pose projection is selected.</value>
         public Key? AttachedTo => _attachedTo;
 
         /// <summary>Attaches to a same-realm entity at a Unity-local position offset with no relative rotation.</summary>
         /// <param name="parent">The complete parent identity; the entity may be discovered later.</param>
         /// <param name="localPosition">Finite offset in Unity units: X right, Y up and Z forward.</param>
         /// <remarks>Equivalent to Attach(parent, localPosition, Quaternion.identity).</remarks>
+        /// <exception cref="ArgumentException">The parent identity is incomplete or identifies this Ghost.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An offset coordinate is not finite.</exception>
         public void Attach(Key parent, Vector3 localPosition)
         {
             Attach(parent, localPosition, Quaternion.identity);
@@ -203,7 +214,7 @@ namespace Emas
         /// Parent arrival or recovery resolves the attachment automatically. Absolute setters continue caching data for Detach.
         /// </remarks>
         /// <exception cref="ArgumentException">The parent identity is incomplete or identifies this Ghost.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">An offset is nonfinite or the relative quaternion has zero length.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An offset or quaternion component is nonfinite, or the relative quaternion has zero length.</exception>
         public void Attach(Key parent, Vector3 localPosition, Quaternion localRotation)
         {
             if (string.IsNullOrEmpty(parent.AnchorId) || !parent.Kind.IsValid || string.IsNullOrEmpty(parent.EntityId))
@@ -269,6 +280,7 @@ namespace Emas
         /// <param name="position">The WGS84 position with ellipsoidal height in metres.</param>
         /// <param name="sampleTime">Optional SDK observation time; duplicate or older timed positions are ignored.</param>
         /// <remarks>Requires Geographic projection. Retains attitude; local geographic attitude follows the new tangent plane.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The geographic input is invalid or conversion produces nonfinite ECEF coordinates.</exception>
         public void SetGeographicPosition(GeoPosition position, Timestamp? sampleTime = null)
         {
             StorePosition(position.ToEarthCentered(), sampleTime);
@@ -289,10 +301,12 @@ namespace Emas
             {
                 return;
             }
+
             if (_rotationSpace != Emas.RotationSpace.Source)
             {
                 ResetRotationSmoothing();
             }
+
             _rotationSpace = Emas.RotationSpace.Source;
             _earthCenteredBodyAxes = null;
         }
@@ -315,10 +329,12 @@ namespace Emas
             {
                 return;
             }
+
             if (_rotationSpace != Emas.RotationSpace.Geographic)
             {
                 ResetRotationSmoothing();
             }
+
             _rotationSpace = Emas.RotationSpace.Geographic;
             _earthCenteredBodyAxes = null;
         }
@@ -338,10 +354,12 @@ namespace Emas
             {
                 return;
             }
+
             if (_rotationSpace != Emas.RotationSpace.EarthCentered || !_earthCenteredBodyAxes.Equals(axes))
             {
                 ResetRotationSmoothing();
             }
+
             _rotationSpace = Emas.RotationSpace.EarthCentered;
             _earthCenteredBodyAxes = axes;
         }
@@ -355,6 +373,7 @@ namespace Emas
         internal bool ApplyProjection(ReferenceFrame.Projection projection)
         {
             Vector3 position = default(Vector3);
+            // A predicted or smoothed pose must not bring an out-of-range raw observation back into presentation.
             bool visible = HasPosition && projection.TryToUnityPosition(Position, out position)
                 && projection.TryToUnityPosition(PresentationPosition, out position);
             if (visible)

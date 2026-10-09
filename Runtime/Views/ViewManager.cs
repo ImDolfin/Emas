@@ -68,6 +68,7 @@ namespace Emas
                     {
                         Debug.LogWarning("No Emas view prefab resolves for ghost " + record.Key + " with variant '" + record.Ghost.Variant + "'.");
                     }
+
                     return;
                 }
 
@@ -91,66 +92,7 @@ namespace Emas
                     return;
                 }
 
-                // Bind the ghost before activation lets view components consume its data.
-                GameObject staging = null;
-                GameObject instance = null;
-                try
-                {
-                    staging = new GameObject("[Emas View Staging]");
-                    staging.SetActive(false);
-                    staging.transform.SetParent(record.Ghost.transform, false);
-                    instance = Object.Instantiate(prefab, staging.transform, false);
-                    instance.SetActive(false);
-                    View view = instance.GetComponent<View>();
-                    if (view == null)
-                    {
-                        view = instance.AddComponent<View>();
-                    }
-
-                    view.Bind(record.Ghost);
-                    instance.name = prefab.name;
-                    instance.transform.SetParent(record.Ghost.transform, false);
-                    if (!CanContinue(record, version))
-                    {
-                        Object.Destroy(instance);
-                        return;
-                    }
-
-                    record.ViewPrefab = prefab;
-                    record.View = view;
-                    if (record.Ghost.gameObject.activeInHierarchy)
-                    {
-                        _sceneChanges.SetActive(instance, true);
-                    }
-
-                    // OnEnable may remove the record, destroy the view or change the request.
-                    if (!_identities.Contains(record) && instance != null)
-                    {
-                        _sceneChanges.Destroy(instance);
-                    }
-                }
-                catch
-                {
-                    if (record.View != null && record.View.gameObject == instance)
-                    {
-                        record.View = null;
-                        record.ViewPrefab = null;
-                    }
-
-                    if (instance != null)
-                    {
-                        _sceneChanges.Destroy(instance);
-                    }
-
-                    throw;
-                }
-                finally
-                {
-                    if (staging != null)
-                    {
-                        Object.Destroy(staging);
-                    }
-                }
+                CreateView(record, prefab, version);
             }
             catch (System.Exception exception)
             {
@@ -162,6 +104,71 @@ namespace Emas
             finally
             {
                 record.RefreshingView = false;
+            }
+        }
+
+        private void CreateView(Record record, GameObject prefab, long version)
+        {
+            // Inactive staging keeps OnEnable from running before the view is bound to its Ghost.
+            // Refresh keeps the record guarded while this method handles partial-instance cleanup.
+            GameObject staging = null;
+            GameObject instance = null;
+            try
+            {
+                staging = new GameObject("[Emas View Staging]");
+                staging.SetActive(false);
+                staging.transform.SetParent(record.Ghost.transform, false);
+                instance = Object.Instantiate(prefab, staging.transform, false);
+                instance.SetActive(false);
+                View view = instance.GetComponent<View>();
+                if (view == null)
+                {
+                    view = instance.AddComponent<View>();
+                }
+
+                view.Bind(record.Ghost);
+                instance.name = prefab.name;
+                instance.transform.SetParent(record.Ghost.transform, false);
+                if (!CanContinue(record, version))
+                {
+                    Object.Destroy(instance);
+                    return;
+                }
+
+                record.ViewPrefab = prefab;
+                record.View = view;
+                if (record.Ghost.gameObject.activeInHierarchy)
+                {
+                    _sceneChanges.SetActive(instance, true);
+                }
+
+                // OnEnable may remove the record, destroy the view or change the request.
+                if (!_identities.Contains(record) && instance != null)
+                {
+                    _sceneChanges.Destroy(instance);
+                }
+            }
+            catch
+            {
+                if (record.View != null && record.View.gameObject == instance)
+                {
+                    record.View = null;
+                    record.ViewPrefab = null;
+                }
+
+                if (instance != null)
+                {
+                    _sceneChanges.Destroy(instance);
+                }
+
+                throw;
+            }
+            finally
+            {
+                if (staging != null)
+                {
+                    Object.Destroy(staging);
+                }
             }
         }
 

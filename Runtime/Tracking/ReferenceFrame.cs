@@ -28,6 +28,7 @@ namespace Emas
         private bool _isReferenceAvailable;
 
         /// <summary>Gets or sets Cartesian or WGS84 geographic projection; defaults to Cartesian.</summary>
+        /// <value>The coordinate space used to interpret stored positions and construct the local frame.</value>
         /// <remarks>
         /// Geographic positions are stored as ECEF metres. Geographic rotations accept local tangent or body-to-ECEF input.
         /// Changing space reinterprets stored positions without converting them. Assign Rotation to clear geographic/ECEF attitude mode
@@ -46,17 +47,21 @@ namespace Emas
                 {
                     throw new ArgumentOutOfRangeException(nameof(value), "Unknown reference space.");
                 }
+
                 if (value == ReferenceSpace.Geographic && _hasPosition)
                 {
                     GeoPosition.FromEarthCentered(_position);
                 }
+
                 _space = value;
             }
         }
 
         /// <summary>Gets or sets the reference's WGS84 position in Geographic space.</summary>
+        /// <value>The cached geodetic latitude, longitude and ellipsoidal height of the reference.</value>
         /// <remarks>A followed Ghost replaces it on the next update. Position exposes the same point in ECEF metres.</remarks>
         /// <exception cref="InvalidOperationException">The space is not Geographic, or the getter has no reference position yet.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The supplied position is invalid, overflows ECEF coordinates, or cannot define a geographic tangent frame.</exception>
         public GeoPosition GeographicPosition
         {
             get
@@ -75,6 +80,7 @@ namespace Emas
         /// <summary>
         /// Gets or sets the axes and handedness for Cartesian poses or geographic local attitudes; defaults to Unity.
         /// </summary>
+        /// <value>A valid signed permutation of the source X, Y and Z axes.</value>
         /// <remarks>
         /// Cartesian poses use this convention. In Geographic space it describes local attitude axes:
         /// Unity means east/up/north; ENU and NED have their geographic meanings. ECEF positions,
@@ -104,6 +110,7 @@ namespace Emas
         /// <summary>
         /// Gets or sets the shared Cartesian position mapped to UnityPosition; Geographic space uses ECEF metres.
         /// </summary>
+        /// <value>The cached Cartesian or ECEF position in doubles; zero before a position has been supplied.</value>
         /// <remarks>
         /// Setting this supplies a usable reference immediately but does not clear FollowedGhost.
         /// A followed ghost overwrites it during realm projection. The getter returns zero before HasPosition becomes true.
@@ -122,6 +129,7 @@ namespace Emas
                 {
                     GeoPosition.FromEarthCentered(value);
                 }
+
                 _position = value;
                 _hasPosition = true;
                 _isReferenceAvailable = true;
@@ -132,6 +140,7 @@ namespace Emas
         /// Gets the cached reference quaternion, or sets local/source attitude with RotationSpace.Source.
         /// Use RotationSpace to identify the cached representation.
         /// </summary>
+        /// <value>The normalized reference orientation; assigning this property selects source-axis rotation.</value>
         /// <remarks>Local geographic attitude uses Coordinates at the reference location. Finite nonzero quaternions are normalized.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">A component is not finite or the quaternion has zero length.</exception>
         public Quaternion Rotation
@@ -149,6 +158,7 @@ namespace Emas
         }
 
         /// <summary>Gets the source, local east/up/north, or body-to-ECEF basis of the cached Rotation.</summary>
+        /// <value>The representation selected by the latest manual attitude input or followed Ghost.</value>
         public RotationSpace RotationSpace => _rotationSpace;
 
         /// <summary>Sets manual geographic reference attitude from yaw, pitch and roll in degrees.</summary>
@@ -190,6 +200,8 @@ namespace Emas
         /// <summary>
         /// Gets or sets the desired Unity world position of the reference, normally near zero.
         /// </summary>
+        /// <value>A finite Unity world position; zero by default.</value>
+        /// <exception cref="ArgumentOutOfRangeException">An assigned position component is NaN or infinite.</exception>
         public Vector3 UnityPosition
         {
             get
@@ -210,6 +222,8 @@ namespace Emas
         /// <summary>
         /// Gets or sets the desired Unity world orientation of the reference.
         /// </summary>
+        /// <value>A normalized scene-alignment quaternion; identity by default.</value>
+        /// <exception cref="ArgumentOutOfRangeException">An assigned quaternion component is nonfinite, or the quaternion has zero length.</exception>
         public Quaternion UnityRotation
         {
             get
@@ -225,6 +239,7 @@ namespace Emas
         /// <summary>
         /// Gets or sets whether the reference rotation is cancelled, keeping its Unity heading fixed.
         /// </summary>
+        /// <value>True to cancel reference attitude before scene alignment; false to follow only position.</value>
         /// <remarks>
         /// True by default. False follows position only, while UnityRotation still defines the scene alignment.
         /// When true and following a Ghost, that Ghost's optional Smoothing.RotationHalfLife controls how quickly
@@ -239,6 +254,7 @@ namespace Emas
         /// <summary>
         /// Gets or sets the maximum presentation distance in shared coordinate units, or null for no distance limit.
         /// </summary>
+        /// <value>A positive finite distance, or null to disable distance-based suppression.</value>
         /// <remarks>
         /// A configured limit must be positive and finite. Geographic space measures ECEF chord distance in metres.
         /// Outside it, ghosts remain available and their views
@@ -266,12 +282,14 @@ namespace Emas
         /// <summary>
         /// Gets or sets the spatial ghost to follow in the owning realm, or null for manual reference updates.
         /// </summary>
+        /// <value>A complete same-realm identity, or null to retain manual control of the cached pose.</value>
         /// <remarks>
         /// Assign or replace the key when the target identity becomes known at runtime.
         /// The key is resolved again on each projection, including after source replacement or entity recreation.
         /// Loss freezes the last valid pose and sets IsReferenceAvailable to false. Before the first reference
         /// position arrives, spatial presentation is suppressed. Clearing this key keeps the last pose as a manual reference.
         /// </remarks>
+        /// <exception cref="ArgumentException">The assigned key has an empty anchor or entity ID, or an invalid kind.</exception>
         public Key? FollowedGhost
         {
             get
@@ -294,6 +312,7 @@ namespace Emas
         /// <summary>
         /// Gets whether any valid reference position has been supplied, including a frozen last-known position.
         /// </summary>
+        /// <value>True after a manual or followed position has defined this reference, even if its source later disappears.</value>
         public bool HasPosition
         {
             get
@@ -305,6 +324,7 @@ namespace Emas
         /// <summary>
         /// Gets whether the manual reference is defined or the followed ghost was available at the last projection.
         /// </summary>
+        /// <value>True for a defined manual reference or a currently usable followed Spatial pose; false while a followed identity is unresolved.</value>
         public bool IsReferenceAvailable
         {
             get
@@ -489,6 +509,7 @@ namespace Emas
                     _isReferenceAvailable = false;
                 }
             }
+
             if (!_isReferenceAvailable)
             {
                 return;
@@ -496,6 +517,7 @@ namespace Emas
 
             _position = spatial.PresentationPosition;
             _hasPosition = true;
+
             // Position-only updates retain the previous attitude and its local/ECEF representation.
             if (spatial.HasRotation)
             {
@@ -513,6 +535,7 @@ namespace Emas
             {
                 RequireGeographic();
             }
+
             if (_earthCenteredBodyAxes.HasValue)
             {
                 RequireGeographic();
@@ -521,6 +544,7 @@ namespace Emas
                         .ToLocalEarthCenteredRotation(_rotation, _earthCenteredBodyAxes.Value)
                     : Quaternion.identity;
             }
+
             // Cancel the reference's converted attitude before applying the desired Unity scene alignment.
             Quaternion alignment = _unityRotation * (FollowRotation ? Quaternion.Inverse(referenceRotation) : Quaternion.identity);
             return new Projection(_hasPosition, _position, _unityPosition,
@@ -640,6 +664,7 @@ namespace Emas
                 {
                     throw new InvalidOperationException("Geographic yaw/pitch/roll requires a Geographic reference frame.");
                 }
+
                 // Named angles are already in east/up/north; only tangent orientation and scene alignment remain.
                 return SpatialMath.NormalizeRotation(Alignment
                     * _geographicBasis.RotationFrom(GeoPosition.FromEarthCentered(position)) * rotation, nameof(rotation));
@@ -651,6 +676,7 @@ namespace Emas
                 {
                     throw new InvalidOperationException("ECEF attitudes require a Geographic reference frame.");
                 }
+
                 return SpatialMath.NormalizeRotation(Alignment
                     * _geographicBasis.ToLocalEarthCenteredRotation(rotation, bodyAxes), nameof(rotation));
             }

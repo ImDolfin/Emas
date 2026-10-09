@@ -16,6 +16,7 @@ namespace Emas.Editor
 
         private void OnEnable()
         {
+            // Recreate callbacks whenever Unity recreates this editor; the list edits the selected serialized assets.
             _variants = new ReorderableList(serializedObject, serializedObject.FindProperty("_variants"),
                 true, true, true, true);
             _variants.elementHeight = EditorGUIUtility.singleLineHeight + 6f;

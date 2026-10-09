@@ -11,6 +11,7 @@ namespace Emas.Editor
         /// <summary>Draws grouped configuration, units, dependent controls and runtime diagnostics.</summary>
         public override void OnInspectorGUI()
         {
+            // Authoring changes use Unity serialization; an existing Realm retains its startup configuration.
             serializedObject.Update();
             bool running = false;
             foreach (Object value in targets)
@@ -139,7 +140,8 @@ namespace Emas.Editor
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Keeps the live Realm summary current while the application is playing.</summary>
+        /// <returns>True in Play Mode; otherwise false.</returns>
         public override bool RequiresConstantRepaint()
         {
             return Application.isPlaying;

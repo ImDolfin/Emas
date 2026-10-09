@@ -3,7 +3,9 @@ namespace Emas.RelativeWorld
     /// <summary>Maps the SDK source to the traits authored on this Anchor's Ghosts.</summary>
     public sealed class GeoInitializer : GhostInitializer
     {
-        /// <inheritdoc />
+        /// <summary>Binds the required pose traits and any authored motion or attachment traits to the latest delivered SDK packet.</summary>
+        /// <param name="presence">The entity identity and simulated SDK source supplying complete observation snapshots.</param>
+        /// <param name="root">The authored Ghost whose readers are configured for this identity.</param>
         protected override void Initialize(Presence presence, Ghost root)
         {
             string id = presence.Key.EntityId;

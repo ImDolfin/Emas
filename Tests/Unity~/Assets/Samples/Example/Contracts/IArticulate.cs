@@ -8,6 +8,7 @@ namespace Emas.Sample
         /// <summary>
         /// Gets the normalized steering value, from -1 to 1.
         /// </summary>
+        /// <value>The current steering input; zero represents straight steering.</value>
         float Steering
         {
             get;

@@ -70,6 +70,7 @@ namespace Emas.Tests
                 _id = id;
             }
 
+            /// <summary>Counts startup and publishes the configured entity for the integration scenario.</summary>
             protected override void OnStart()
             {
                 Starts++;

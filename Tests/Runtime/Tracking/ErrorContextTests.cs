@@ -99,11 +99,13 @@ namespace Emas.Tests
         {
             internal Action Stopping;
 
+            /// <summary>Publishes the vehicle used to test error context during initialization.</summary>
             protected override void OnUpdate()
             {
                 Detect("42", VehicleKind);
             }
 
+            /// <summary>Runs the cleanup action whose failure must retain detector context.</summary>
             protected override void OnStop()
             {
                 Stopping?.Invoke();

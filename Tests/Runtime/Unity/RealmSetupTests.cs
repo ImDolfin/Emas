@@ -167,6 +167,7 @@ namespace Emas.Tests
         /// <summary>
         /// Enabling a prefab starts and updates its detector without manual calls; disabling releases its population.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator EnabledPrefab_AutomaticallyStartsUpdatesAndStops()
         {
@@ -192,6 +193,7 @@ namespace Emas.Tests
         /// <summary>
         /// An explicit stop cancels pending automatic startup while preserving the configuration for a later manual start.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator StopBeforeFirstUpdate_CancelsAutomaticStart()
         {
@@ -242,6 +244,7 @@ namespace Emas.Tests
             /// <summary>
             /// Creates the detector selected by the application scenario.
             /// </summary>
+            /// <returns>The detector created by the configured test factory.</returns>
             public PresenceDetector CreateDetector()
             {
                 return Factory();
@@ -255,6 +258,7 @@ namespace Emas.Tests
             /// <summary>
             /// Registers a typed root and trait before the detector publishes data.
             /// </summary>
+            /// <param name="realm">The Realm being configured before its detectors start.</param>
             public void ConfigureRealm(Realm realm)
             {
                 Calls++;
@@ -265,6 +269,7 @@ namespace Emas.Tests
 
         private sealed class PublishingDetector : PresenceDetector
         {
+            /// <summary>Publishes the typed root used to verify authored Realm configuration.</summary>
             protected override void OnStart()
             {
                 GetOrCreate<TextGhost>("one", TestKind);
@@ -273,6 +278,7 @@ namespace Emas.Tests
 
         private sealed class ReadingDetector : PresenceDetector
         {
+            /// <summary>Detects the entity whose source reading is mapped by the configured initializer.</summary>
             protected override void OnStart()
             {
                 Detect("one", TestKind);
@@ -289,11 +295,13 @@ namespace Emas.Tests
                 _readId = readId;
             }
 
+            /// <summary>Publishes the currently selected source entity during startup.</summary>
             protected override void OnStart()
             {
                 OnUpdate();
             }
 
+            /// <summary>Retires a changed source identity and detects the current entity.</summary>
             protected override void OnUpdate()
             {
                 string id = _readId();
@@ -309,6 +317,9 @@ namespace Emas.Tests
 
         private sealed class ContextInitializer : GhostInitializer
         {
+            /// <summary>Accepts initialization without bindings so the scenario can inspect the initializer context.</summary>
+            /// <param name="presence">The detected presence being initialized.</param>
+            /// <param name="ghost">The root created for the detected presence.</param>
             protected override void Initialize(Presence presence, Ghost ghost)
             {
             }
@@ -316,6 +327,7 @@ namespace Emas.Tests
 
         private sealed class FailingDetector : PresenceDetector
         {
+            /// <summary>Raises a startup failure to verify authored setup cleanup and error reporting.</summary>
             protected override void OnStart()
             {
                 throw new InvalidOperationException("source startup failed");

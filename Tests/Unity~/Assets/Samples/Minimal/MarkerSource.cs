@@ -8,7 +8,7 @@ namespace Emas.Minimal
         /// <summary>The entity category configured by this sample.</summary>
         public static readonly Kind Kind = new Kind("minimal.marker");
 
-        /// <inheritdoc />
+        /// <summary>Publishes the permanent marker when this detector attaches to its Anchor.</summary>
         protected override void OnStart()
         {
             Detect("one", Kind, variant: new Variant("marker"), source: this);

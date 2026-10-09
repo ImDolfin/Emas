@@ -5,7 +5,9 @@ namespace Emas.Sample
     /// <summary>Maps the SDK source to the traits authored on this Anchor's Ghosts.</summary>
     public sealed class CarInitializer : GhostInitializer
     {
-        /// <inheritdoc />
+        /// <summary>Binds the authored position and articulation traits to the currently selected SDK's proxy shape.</summary>
+        /// <param name="presence">The stable entity identity and SDK feed selected by its detector.</param>
+        /// <param name="root">The retained car Ghost whose readers are replaced during source handover.</param>
         protected override void Initialize(Presence presence, Ghost root)
         {
             string id = presence.Key.EntityId;

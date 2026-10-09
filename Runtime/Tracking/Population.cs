@@ -140,60 +140,74 @@ namespace Emas
             Record record;
             if (_identities.TryGetValue(key, out record))
             {
-                TGhost existingTyped = RequireGhost<TGhost>(record.Ghost);
-                if (owner != null && record.Owner != null && record.Owner != owner)
-                {
-                    throw new InvalidOperationException("The ghost is owned by another source.");
-                }
+                return ReuseRoot<TGhost>(record, owner, variant, nameValue, blueprint);
+            }
 
-                if (!ReferenceEquals(record.ManifestationBlueprint, blueprint))
-                {
-                    record.ManifestationBlueprint = blueprint;
-                    if (record.ViewRequested)
-                    {
-                        record.ViewVersion++;
-                        record.ViewDirty = true;
-                    }
-                }
+            return CreateRoot<TGhost>(owner, key, variant, nameValue, anchorTransform, blueprint);
+        }
 
-                bool variantChanged = variant.HasValue && record.Ghost.Variant != variant.Value;
-                record.Owner = owner ?? record.Owner;
-                if (owner != null)
-                {
-                    record.HandoverUpdate = 0;
-                    record.RegistrationGeneration = owner.RegistrationGeneration;
-                    record.LastPublishedAt = _elapsedSeconds();
-                    record.IsMissing = false;
-                    record.MissingUntil = 0;
-                }
+        private TGhost ReuseRoot<TGhost>(Record record, PresenceDetector owner, Variant? variant,
+            string nameValue, ManifestationBlueprintSnapshot blueprint) where TGhost : Ghost
+        {
+            TGhost existingTyped = RequireGhost<TGhost>(record.Ghost);
+            if (owner != null && record.Owner != null && record.Owner != owner)
+            {
+                throw new InvalidOperationException("The ghost is owned by another source.");
+            }
 
-                record.Ghost.SetMetadata(nameValue, variant);
-                if (variantChanged)
+            if (!ReferenceEquals(record.ManifestationBlueprint, blueprint))
+            {
+                record.ManifestationBlueprint = blueprint;
+                if (record.ViewRequested)
                 {
                     record.ViewVersion++;
                     record.ViewDirty = true;
                 }
-
-                if (owner != null)
-                {
-                    if (!record.Ghost.IsAvailable)
-                    {
-                        record.Ghost.SetAvailable(false);
-                        record.PendingActivation = true;
-                    }
-                }
-
-                if (record.Presence != null)
-                {
-                    EnsurePresence(record);
-                }
-                return existingTyped;
             }
 
+            // Reclaim ownership before readers run; publication refreshes expiry but activation waits for finalization.
+            bool variantChanged = variant.HasValue && record.Ghost.Variant != variant.Value;
+            record.Owner = owner ?? record.Owner;
+            if (owner != null)
+            {
+                record.HandoverUpdate = 0;
+                record.RegistrationGeneration = owner.RegistrationGeneration;
+                record.LastPublishedAt = _elapsedSeconds();
+                record.IsMissing = false;
+                record.MissingUntil = 0;
+            }
+
+            record.Ghost.SetMetadata(nameValue, variant);
+            if (variantChanged)
+            {
+                record.ViewVersion++;
+                record.ViewDirty = true;
+            }
+
+            if (owner != null)
+            {
+                if (!record.Ghost.IsAvailable)
+                {
+                    record.Ghost.SetAvailable(false);
+                    record.PendingActivation = true;
+                }
+            }
+
+            if (record.Presence != null)
+            {
+                EnsurePresence(record);
+            }
+
+            return existingTyped;
+        }
+
+        private TGhost CreateRoot<TGhost>(PresenceDetector owner, Key key, Variant? variant, string nameValue,
+            Transform anchorTransform, ManifestationBlueprintSnapshot blueprint) where TGhost : Ghost
+        {
             Ghost prefab = blueprint == null ? null : blueprint.GhostPrefab;
             if (anchorTransform == null)
             {
-                throw new InvalidOperationException("The anchor '" + anchorId + "' does not exist.");
+                throw new InvalidOperationException("The anchor '" + key.AnchorId + "' does not exist.");
             }
 
             // Keep the root inactive until its identity and initial data are ready.
@@ -206,7 +220,7 @@ namespace Emas
             {
                 if (prefab == null)
                 {
-                    GameObject gameObject = new GameObject(entityId);
+                    GameObject gameObject = new GameObject(key.EntityId);
                     gameObject.transform.SetParent(staging.transform, false);
                     typed = gameObject.AddComponent<TGhost>();
                 }
@@ -216,13 +230,13 @@ namespace Emas
                     typed = clone.GetComponent<TGhost>();
                     if (typed == null)
                     {
-                        throw new InvalidOperationException("ManifestationBlueprint for kind " + kind.Id + " prefab " + prefab.name + " does not contain required component " + typeof(TGhost).FullName + ".");
+                        throw new InvalidOperationException("ManifestationBlueprint for kind " + key.Kind.Id + " prefab " + prefab.name + " does not contain required component " + typeof(TGhost).FullName + ".");
                     }
                 }
 
-                typed.gameObject.name = entityId;
+                typed.gameObject.name = key.EntityId;
                 typed.gameObject.SetActive(false);
-                typed.Initialize(key, nameValue ?? entityId, variant ?? Variant.None);
+                typed.Initialize(key, nameValue ?? key.EntityId, variant ?? Variant.None);
                 typed.transform.SetParent(anchorTransform, false);
                 typed.gameObject.SetActive(false);
             }
@@ -234,6 +248,7 @@ namespace Emas
 
             UnityEngine.Object.Destroy(staging);
             typed.SetAvailable(false);
+            // Register only a fully initialized root; startup rollback uses this record to restore the prior population.
             Record newRecord = new Record(typed, owner, blueprint);
             newRecord.LastPublishedAt = owner == null ? 0 : _elapsedSeconds();
             newRecord.PendingActivation = owner != null;
@@ -731,9 +746,20 @@ namespace Emas
 
         private interface IPresenceInitializer
         {
+            /// <summary>Resolves or creates the root type selected by this registered initializer.</summary>
+            /// <param name="population">The population that owns identity lookup and root creation.</param>
+            /// <param name="detector">The source claiming the identity.</param>
+            /// <param name="key">The full anchor, kind and entity identity.</param>
+            /// <param name="variant">The requested appearance, or null to retain the existing value.</param>
+            /// <param name="name">The display name, or null to retain the existing value.</param>
+            /// <param name="anchorTransform">The scene parent for a newly created root.</param>
+            /// <param name="blueprint">The captured root and view configuration, or null when none is registered.</param>
+            /// <returns>The compatible root currently assigned to this identity.</returns>
             Ghost GetOrCreate(Population population, PresenceDetector detector, Key key, Variant? variant,
                 string name, Transform anchorTransform, ManifestationBlueprintSnapshot blueprint);
 
+            /// <summary>Binds the configured root's traits to the detected source.</summary>
+            /// <param name="presence">The presence whose root and weak source are ready for binding.</param>
             void Initialize(Presence presence);
         }
 
@@ -749,6 +775,14 @@ namespace Emas
             /// <summary>
             /// Resolves the root type selected by this initializer.
             /// </summary>
+            /// <param name="population">The population that owns identity lookup and root creation.</param>
+            /// <param name="detector">The source claiming the identity.</param>
+            /// <param name="key">The full anchor, kind and entity identity.</param>
+            /// <param name="variant">The requested appearance, or null to retain the existing value.</param>
+            /// <param name="name">The display name, or null to retain the existing value.</param>
+            /// <param name="anchorTransform">The scene parent for a newly created root.</param>
+            /// <param name="blueprint">The captured root and view configuration, or null when none is registered.</param>
+            /// <returns>The compatible root currently assigned to this identity.</returns>
             public Ghost GetOrCreate(Population population, PresenceDetector detector, Key key, Variant? variant,
                 string name, Transform anchorTransform, ManifestationBlueprintSnapshot blueprint)
             {
@@ -759,6 +793,7 @@ namespace Emas
             /// <summary>
             /// Applies the registered trait setup to this presence.
             /// </summary>
+            /// <param name="presence">The presence whose root is of the registered Ghost type.</param>
             public void Initialize(Presence presence)
             {
                 _initialize(presence, (TGhost)presence.Root);

@@ -5,6 +5,7 @@ namespace Emas
     {
         /// <summary>Shared Cartesian positions with configurable source axes.</summary>
         Cartesian,
+
         /// <summary>WGS84 Earth-centered positions projected into the reference's moving local tangent frame.</summary>
         Geographic
     }

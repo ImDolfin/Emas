@@ -34,6 +34,7 @@ namespace Emas
         /// <summary>
         /// Gets the stable anchor, kind and entity identity.
         /// </summary>
+        /// <value>The identity retained for this handle's lifetime, including after removal.</value>
         public Key Key
         {
             get
@@ -45,6 +46,7 @@ namespace Emas
         /// <summary>
         /// Gets the application source supplied by Detect, held through a weak reference.
         /// </summary>
+        /// <value>The live application source, or null when it is absent, released, collected or destroyed.</value>
         /// <remarks>
         /// May be a proxy, SDK client or another application object. Returns null when unassigned,
         /// collected, destroyed as a Unity object, or released on disappearance, handover or removal.
@@ -73,6 +75,7 @@ namespace Emas
         /// <summary>
         /// Gets the detector's label for this entity.
         /// </summary>
+        /// <value>The latest source label, defaulting to the entity ID when no label was supplied.</value>
         public string Name
         {
             get
@@ -84,6 +87,7 @@ namespace Emas
         /// <summary>
         /// Gets the detected appearance used to select a view.
         /// </summary>
+        /// <value>The latest detected variant, or <see cref="Variant.None"/> when unspecified.</value>
         public Variant Variant
         {
             get
@@ -95,6 +99,7 @@ namespace Emas
         /// <summary>
         /// Gets whether the detector currently reports this entity as present and initialized.
         /// </summary>
+        /// <value>True while the publication is available; false during disappearance, handover or removal.</value>
         public bool IsAvailable
         {
             get
@@ -106,6 +111,7 @@ namespace Emas
         /// <summary>
         /// Gets whether this presence has been removed from its realm.
         /// </summary>
+        /// <value>True after permanent removal; later detection of the same key creates a different handle.</value>
         public bool IsRemoved
         {
             get
@@ -117,6 +123,7 @@ namespace Emas
         /// <summary>
         /// Gets the realm-initialized Ghost root, or null before initialization or after removal.
         /// </summary>
+        /// <value>The retained root, including during temporary unavailability, or null when no root is bound.</value>
         public Ghost Root
         {
             get
@@ -128,6 +135,7 @@ namespace Emas
         /// <summary>
         /// Gets a snapshot of capability interfaces reported by the detector.
         /// </summary>
+        /// <value>A new read-only snapshot of the advertised interface types, with no duplicate entries.</value>
         public IReadOnlyList<Type> Capabilities
         {
             get
@@ -185,6 +193,7 @@ namespace Emas
 
             if (capabilities != null)
             {
+                // Validate the replacement before changing the advertised set so malformed metadata cannot partially replace it.
                 List<Type> next = new List<Type>();
                 foreach (Type capability in capabilities)
                 {

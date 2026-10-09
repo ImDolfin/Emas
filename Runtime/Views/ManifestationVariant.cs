@@ -21,7 +21,7 @@ namespace Emas
         /// </summary>
         /// <param name="name">The non-empty, case-sensitive appearance name.</param>
         /// <param name="prefab">The view prefab.</param>
-        /// <exception cref="ArgumentException">The name is empty or whitespace.</exception>
+        /// <exception cref="ArgumentException">The name is null, empty or whitespace.</exception>
         /// <exception cref="ArgumentNullException">The prefab is null.</exception>
         public ManifestationVariant(string name, GameObject prefab)
         {
@@ -37,6 +37,7 @@ namespace Emas
         /// <summary>
         /// Gets the appearance name used by this blueprint row.
         /// </summary>
+        /// <value>The case-sensitive appearance name, or an empty string for an unconfigured row.</value>
         public string Name
         {
             get
@@ -48,6 +49,8 @@ namespace Emas
         /// <summary>
         /// Gets the runtime appearance identifier for this blueprint row.
         /// </summary>
+        /// <value>The identifier constructed from the configured appearance name.</value>
+        /// <exception cref="ArgumentException">The row is unconfigured or its serialized name is blank.</exception>
         public Variant Variant
         {
             get
@@ -59,6 +62,7 @@ namespace Emas
         /// <summary>
         /// Gets the view prefab selected for this appearance.
         /// </summary>
+        /// <value>The authored view prefab, or null for an unconfigured or missing asset reference.</value>
         public GameObject Prefab
         {
             get

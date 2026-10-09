@@ -41,6 +41,7 @@ namespace Emas
 
         /// <summary>Gets the attached Anchor's Realm, or null while detached.</summary>
         /// <remarks>Available before OnStart and through OnStop, including while an attached registration is stopped after failure.</remarks>
+        /// <value>The owning realm for the current attachment, or null when detached.</value>
         public Realm Realm
         {
             get
@@ -66,6 +67,7 @@ namespace Emas
         /// <summary>
         /// Gets a snapshot of presences monitored by this detector, including unavailable ones.
         /// </summary>
+        /// <value>A copied membership list of owned presences, or an empty list while detached.</value>
         protected IReadOnlyList<Presence> OwnedPresences
         {
             get
@@ -73,6 +75,7 @@ namespace Emas
                 return _anchor == null ? new List<Presence>() : _anchor.Realm.GetOwnedPresences(this);
             }
         }
+
         /// <summary>
         /// Starts one attachment; acquire presence subscriptions and detect existing entities here.
         /// </summary>
@@ -270,6 +273,7 @@ namespace Emas
         /// <remarks>
         /// Unknown IDs and inactive registrations are ignored. The Realm hides the presence immediately and removes it after DisappearanceGracePeriod.
         /// </remarks>
+        /// <exception cref="ObjectDisposedException">The active attachment's anchor or realm has been disposed.</exception>
         protected void Disappear(Kind kind, string entityId)
         {
             if (_anchor != null && _started)
@@ -385,6 +389,7 @@ namespace Emas
         /// Zero, the default, removes immediately. A later report during the grace period reuses the same
         /// Presence and Ghost root. Configure while detached on Unity's main thread.
         /// </remarks>
+        /// <value>A nonnegative period of unavailability before removal; zero removes immediately.</value>
         /// <exception cref="ArgumentOutOfRangeException">The grace period is negative.</exception>
         /// <exception cref="InvalidOperationException">The detector is attached or running a lifecycle callback.</exception>
         public TimeSpan DisappearanceGracePeriod
@@ -408,12 +413,14 @@ namespace Emas
                 _disappearanceGracePeriod = value;
             }
         }
+
         /// <summary>
         /// Gets whether this registration is starting or accepting updates.
         /// </summary>
         /// <remarks>
         /// False after failure or detachment. Failure leaves the source attached for retry but removes its ghosts.
         /// </remarks>
+        /// <value>True while the current attachment accepts publications and update callbacks.</value>
         public bool IsActive
         {
             get
@@ -425,6 +432,7 @@ namespace Emas
         /// <summary>
         /// Gets whether an anchor currently owns this source, including a failed registration.
         /// </summary>
+        /// <value>True while an anchor retains this detector, even if the attachment has stopped after failure.</value>
         public bool IsAttached
         {
             get
@@ -440,6 +448,7 @@ namespace Emas
         /// Cleared before OnStart. Retained after stopping or detachment; cleanup errors do not replace a primary error.
         /// Errors from superseded registrations cannot change this value.
         /// </remarks>
+        /// <value>The primary lifecycle or source-processing exception, or null when none has been recorded.</value>
         public Exception LastError
         {
             get
@@ -455,6 +464,7 @@ namespace Emas
         /// Null, empty or whitespace labels use the source type name. Labels do not affect identity or ownership.
         /// Change this value only on Unity's main thread; recorded failure context retains its original label.
         /// </remarks>
+        /// <value>The application label, or the detector's type name when no nonblank label is assigned.</value>
         public string Name
         {
             get
@@ -475,6 +485,7 @@ namespace Emas
         /// Emas includes the kind and entity ID when known. Captured with the primary error and cleared
         /// before each attachment attempt; cleanup and stale registrations cannot replace that context.
         /// </remarks>
+        /// <value>The captured diagnostic context for <see cref="LastError"/>, or null when no error is recorded.</value>
         public string LastErrorContext
         {
             get

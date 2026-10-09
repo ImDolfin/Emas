@@ -10,6 +10,7 @@ namespace Emas.Sample
         /// <summary>
         /// Gets the position in the owning anchor's local coordinate frame.
         /// </summary>
+        /// <value>A position in local Unity units, using X right, Y up and Z forward.</value>
         Vector3 Position
         {
             get;

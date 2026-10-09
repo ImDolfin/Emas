@@ -15,8 +15,10 @@ namespace Emas
     {
         /// <summary>Unity coordinates: X right, Y up and Z forward.</summary>
         public static readonly CoordinateSystem Unity = new CoordinateSystem(Axis.PositiveX, Axis.PositiveY, Axis.PositiveZ);
+
         /// <summary>Geographic coordinates: X east, Y north and Z up.</summary>
         public static readonly CoordinateSystem EastNorthUp = new CoordinateSystem(Axis.PositiveX, Axis.PositiveZ, Axis.PositiveY);
+
         /// <summary>Geographic coordinates: X north, Y east and Z down.</summary>
         public static readonly CoordinateSystem NorthEastDown = new CoordinateSystem(Axis.PositiveY, Axis.NegativeZ, Axis.PositiveX);
 
@@ -47,6 +49,7 @@ namespace Emas
         }
 
         /// <summary>Gets the source axis mapped to Unity right.</summary>
+        /// <value>The signed source axis that produces Unity positive X.</value>
         public Axis Right
         {
             get
@@ -56,6 +59,7 @@ namespace Emas
         }
 
         /// <summary>Gets the source axis mapped to Unity up.</summary>
+        /// <value>The signed source axis that produces Unity positive Y.</value>
         public Axis Up
         {
             get
@@ -65,6 +69,7 @@ namespace Emas
         }
 
         /// <summary>Gets the source axis mapped to Unity forward.</summary>
+        /// <value>The signed source axis that produces Unity positive Z.</value>
         public Axis Forward
         {
             get
@@ -121,11 +126,13 @@ namespace Emas
             {
                 throw new ArgumentException(error, nameof(bodyAxes));
             }
+
             // A right-handed source mapped into Unity's left-handed directions requires a reflection.
             if (value.Determinant != -1)
             {
                 throw new ArgumentException("ECEF attitudes require right-handed body axes. Use ENU, NED or a right-handed custom mapping.", nameof(bodyAxes));
             }
+
             return value;
         }
 

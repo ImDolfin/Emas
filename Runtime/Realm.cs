@@ -34,6 +34,7 @@ namespace Emas
         /// Read on the Unity thread. Earlier snapshots do not change; disposed realms return an empty snapshot.
         /// The referenced anchors retain their own lifetimes. No ordering is guaranteed.
         /// </remarks>
+        /// <value>A membership snapshot of the live anchors, or an empty snapshot after disposal.</value>
         public IReadOnlyList<Anchor> Anchors
         {
             get
@@ -58,6 +59,7 @@ namespace Emas
         /// Removed or destroyed roots are excluded from new snapshots. Disposed realms return an empty snapshot.
         /// Read on Unity's main thread. No ordering is guaranteed.
         /// </remarks>
+        /// <value>A membership snapshot of live roots, regardless of availability or view state.</value>
         public IReadOnlyList<IGhost> Ghosts
         {
             get
@@ -117,7 +119,7 @@ namespace Emas
         }
 
         /// <summary>
-        /// Gets or sets the optional reference for projecting shared double-precision Cartesian coordinates into Unity world space.
+        /// Gets or sets the optional Cartesian or geographic reference used to project source poses into Unity world space.
         /// </summary>
         /// <remarks>
         /// Null, the default, uses an identity frame: spatial positions and rotations map directly to Unity world space.
@@ -126,6 +128,8 @@ namespace Emas
         /// Projection runs after source processing and before root/view activation, and does not change data, source activity or query membership.
         /// Anchor parenting is retained; its transform is compensated when assigning the projected world pose.
         /// </remarks>
+        /// <value>The reference frame, or null for identity Cartesian projection.</value>
+        /// <exception cref="ObjectDisposedException">A value is assigned after this realm has been disposed.</exception>
         public ReferenceFrame ReferenceFrame
         {
             get
@@ -142,6 +146,7 @@ namespace Emas
         /// <summary>Resets SDK-to-local spatial clock alignment and sample ordering after the SDK clock restarts.</summary>
         /// <remarks>Retains raw poses and supplied motion, clears sample timestamps and filter histories.
         /// Call before publishing samples from the restarted clock. Each Realm requires one shared SDK clock.</remarks>
+        /// <exception cref="ObjectDisposedException">This realm has been disposed.</exception>
         public void ResetSpatialTime()
         {
             ThrowIfDisposed();
@@ -491,7 +496,7 @@ namespace Emas
         /// The kind or entity ID is invalid.
         /// </exception>
         /// <exception cref="InvalidOperationException">
-        /// The anchor does not exist.
+        /// The anchor does not exist, another detector owns the identity, or the existing or authored root cannot provide TGhost.
         /// </exception>
         /// <exception cref="ObjectDisposedException">
         /// The realm was disposed.
@@ -540,7 +545,7 @@ namespace Emas
         /// <summary>
         /// Requests a manifestation for a detected presence.
         /// </summary>
-        /// <param name="presence">The presence to manifest.</param>
+        /// <param name="presence">A presence owned by this realm; null, foreign and removed handles are ignored.</param>
         /// <returns>The current view, or null while no view can be shown.</returns>
         /// <remarks>Uses the same request lifetime and deferred refresh behavior as <see cref="Manifest(IGhost)"/>.</remarks>
         /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
@@ -564,7 +569,7 @@ namespace Emas
         /// Requests or refreshes the view selected by the ghost's variant.
         /// </summary>
         /// <param name="ghost">
-        /// The ghost.
+        /// A tracked root owned by this realm; null, foreign and removed roots are ignored.
         /// </param>
         /// <returns>
         /// The view component, or null when no view can be created yet.

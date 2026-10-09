@@ -60,25 +60,32 @@ namespace Emas
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Compares category identifiers using case-sensitive ordinal equality.</summary>
+        /// <param name="other">The category to compare.</param>
+        /// <returns>True when both stored identifiers match, including two default values.</returns>
         public bool Equals(Kind other)
         {
             return string.Equals(_id, other._id, StringComparison.Ordinal);
         }
 
-        /// <inheritdoc />
+        /// <summary>Orders categories by their case-sensitive identifiers.</summary>
+        /// <param name="other">The category to compare.</param>
+        /// <returns>A negative value, zero, or a positive value when this identifier sorts before, equals, or sorts after the other.</returns>
         public int CompareTo(Kind other)
         {
             return string.Compare(_id, other._id, StringComparison.Ordinal);
         }
 
-        /// <inheritdoc />
+        /// <summary>Compares another object with this category identifier.</summary>
+        /// <param name="obj">The object to compare, including null.</param>
+        /// <returns>True when the object is a kind with the same ordinal identifier.</returns>
         public override bool Equals(object obj)
         {
             return obj is Kind && Equals((Kind)obj);
         }
 
-        /// <inheritdoc />
+        /// <summary>Hashes the category identifier using ordinal comparison rules.</summary>
+        /// <returns>The identifier's ordinal hash, or zero for a default kind.</returns>
         public override int GetHashCode()
         {
             return _id == null ? 0 : StringComparer.Ordinal.GetHashCode(_id);
@@ -186,7 +193,8 @@ namespace Emas
             return left.CompareTo(right) >= 0;
         }
 
-        /// <inheritdoc />
+        /// <summary>Formats the category as its application-defined identifier.</summary>
+        /// <returns>The identifier, or an empty string for a default kind.</returns>
         public override string ToString()
         {
             return _id ?? string.Empty;

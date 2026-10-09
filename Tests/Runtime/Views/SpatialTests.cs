@@ -471,6 +471,7 @@ namespace Emas.Tests
         /// <summary>
         /// Rotation arriving before position cannot create a visual at an invented location.
         /// </summary>
+        /// <param name="useReference">Whether to begin with an explicit reference frame.</param>
         [TestCase(false)]
         [TestCase(true)]
         public void MissingFirstPosition_DefersRequestedViewUntilPositionArrives(bool useReference)
@@ -498,6 +499,7 @@ namespace Emas.Tests
         /// <summary>
         /// Range suppresses presentation while preserving identity, availability and subscriptions.
         /// </summary>
+        /// <param name="cancelWhileFar">Whether to cancel the view request while the entity is outside the presentation range.</param>
         [TestCase(false)]
         [TestCase(true)]
         public void RangeChanges_PreserveMembershipAndRespectPresentationRequests(bool cancelWhileFar)
@@ -553,6 +555,7 @@ namespace Emas.Tests
         /// <summary>
         /// A distant entity remains tracked without writing enormous coordinates into its Transform.
         /// </summary>
+        /// <param name="useReference">Whether to begin with an explicit reference frame.</param>
         [TestCase(false)]
         [TestCase(true)]
         public void FarEntity_RetainsFiniteNearbyTransformUntilInRange(bool useReference)
@@ -761,6 +764,7 @@ namespace Emas.Tests
         }
 
         /// <summary>Position and rotation smooth at independent rates without velocity or game time, and changing either control preserves the other channel's history.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Smoothing_WithoutVelocityFiltersIndependentChannelsAndCanBeResetOrDisabled()
         {
@@ -841,6 +845,7 @@ namespace Emas.Tests
         }
 
         /// <summary>Optional SDK motion reduces position lag, accepts opposite corrections and bounds stale prediction; clearing channels and disabling smoothing restore pose-only handling.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Smoothing_VelocityPredictsMotionWithoutRejectingCorrections()
         {
@@ -924,6 +929,7 @@ namespace Emas.Tests
         }
 
         /// <summary>A geographic reference shares independently smoothed channels with its root; unsmoothed reference rotation repositions smoothed targets and attached parts immediately.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Smoothing_GeographicReferenceAndAttachmentsSharePresentationPose()
         {
@@ -1191,6 +1197,7 @@ namespace Emas.Tests
         }
 
         /// <summary>Coherent timestamped motion stays continuous through delayed, held and reordered packets, with or without smoothing, while a followed origin preserves relative placement.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator TimestampedPrediction_DelayedStreamPreservesMotionAndRelativePlacement()
         {
@@ -1357,6 +1364,7 @@ namespace Emas.Tests
         private sealed class GeographicTrait : Trait<GeoPosition>
         {
             /// <summary>Applies a bound WGS84 reading through the public geographic channel.</summary>
+            /// <param name="position">The absolute WGS84 observation supplied by the bound reader.</param>
             public override void Apply(GeoPosition position)
             {
                 GetComponent<Spatial>().SetGeographicPosition(position);
@@ -1411,6 +1419,7 @@ namespace Emas.Tests
                 Disappear(SpatialKind, entityId);
             }
 
+            /// <summary>Consumes the queued action once so the scenario can publish changes during a Realm update.</summary>
             protected override void OnUpdate()
             {
                 Action update = NextUpdate;

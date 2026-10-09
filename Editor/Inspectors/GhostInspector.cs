@@ -91,28 +91,33 @@ namespace Emas.Editor
 
         private static void DrawTrait(Trait trait)
         {
+            // Each trait owns separate serialized state; commit its edits through Unity's Undo/prefab pipeline.
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
-            using (SerializedObject settings = new SerializedObject(trait))
             {
-                settings.Update();
-                using (new EditorGUILayout.HorizontalScope())
+                using (SerializedObject settings = new SerializedObject(trait))
                 {
-                    SerializedProperty enabled = settings.FindProperty("m_Enabled");
-                    EditorGUILayout.PropertyField(enabled, GUIContent.none, GUILayout.Width(18f));
-                    EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(trait.GetType().Name), EditorStyles.boldLabel);
-                    GUILayout.Label(enabled.boolValue ? "Enabled" : "Disabled", EditorStyles.miniLabel);
-                    if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(48f)))
+                    settings.Update();
+                    using (new EditorGUILayout.HorizontalScope())
                     {
-                        Selection.activeObject = trait;
-                        EditorGUIUtility.PingObject(trait);
+                        SerializedProperty enabled = settings.FindProperty("m_Enabled");
+                        EditorGUILayout.PropertyField(enabled, GUIContent.none, GUILayout.Width(18f));
+                        EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(trait.GetType().Name), EditorStyles.boldLabel);
+                        GUILayout.Label(enabled.boolValue ? "Enabled" : "Disabled", EditorStyles.miniLabel);
+                        if (GUILayout.Button("Select", EditorStyles.miniButton, GUILayout.Width(48f)))
+                        {
+                            Selection.activeObject = trait;
+                            EditorGUIUtility.PingObject(trait);
+                        }
                     }
+
+                    DrawPropertiesExcluding(settings, "m_Script", "m_Enabled");
+                    settings.ApplyModifiedProperties();
                 }
-                DrawPropertiesExcluding(settings, "m_Script", "m_Enabled");
-                settings.ApplyModifiedProperties();
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Refreshes live identity, pose and trait state while the application is playing.</summary>
+        /// <returns>True in Play Mode; otherwise false.</returns>
         public override bool RequiresConstantRepaint()
         {
             return Application.isPlaying;

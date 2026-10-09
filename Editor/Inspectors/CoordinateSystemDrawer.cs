@@ -32,6 +32,9 @@ namespace Emas.Editor
         };
 
         /// <summary>Reserves additional rows only while custom axes are being edited.</summary>
+        /// <param name="property">The serialized coordinate-system value, including its expanded editing state.</param>
+        /// <param name="label">The label supplied by the containing Inspector.</param>
+        /// <returns>The height of the preset row and, when visible, its three custom-axis rows.</returns>
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
             return EditorGUIUtility.singleLineHeight
@@ -39,6 +42,9 @@ namespace Emas.Editor
         }
 
         /// <summary>Draws the preset and, for Custom, its source axes using Unity serialized editing.</summary>
+        /// <param name="position">The rectangle allocated for the complete coordinate-system control.</param>
+        /// <param name="property">The serialized coordinate-system value to edit.</param>
+        /// <param name="label">The label displayed beside the preset selector.</param>
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
             using (new EditorGUI.PropertyScope(position, label, property))
@@ -47,6 +53,7 @@ namespace Emas.Editor
                 row.height = EditorGUIUtility.singleLineHeight;
                 // Keep Custom selected while editing, even if the current axes happen to match a preset.
                 int preset = property.isExpanded ? 3 : PresetIndex(property);
+                // Mixed-value display is global editor state; restore it before drawing another property.
                 bool mixed = EditorGUI.showMixedValue;
                 EditorGUI.showMixedValue = property.hasMultipleDifferentValues;
                 EditorGUI.BeginChangeCheck();

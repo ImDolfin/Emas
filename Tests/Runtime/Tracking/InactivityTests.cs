@@ -57,6 +57,7 @@ namespace Emas.Tests
         /// Pausing Unity game time does not retain stale SDK data. A detector without an inactivity timeout
         /// keeps its population while a timed detector's silent entity is removed.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Inactivity_UsesUnscaledTimeAndLeavesUntimedEntitiesAvailable()
         {
@@ -88,6 +89,7 @@ namespace Emas.Tests
         /// Applications updating a cached root can resume it during grace without replacing its identity.
         /// Observers receive a departure followed by a new arrival with the updated application data.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator CachedPublication_RestoresPresenceDuringGrace()
         {
@@ -123,6 +125,7 @@ namespace Emas.Tests
         /// A disappearing entity remains addressable during grace and can be detected again with the same handle.
         /// If it stays missing, the public lookup and handle eventually report final removal.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator DisappearanceGrace_AllowsRediscoveryThenRemovesUnreportedEntity()
         {

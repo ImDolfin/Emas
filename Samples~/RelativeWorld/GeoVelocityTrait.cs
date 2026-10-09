@@ -7,7 +7,8 @@ namespace Emas.RelativeWorld
     public sealed class GeoVelocityTrait : Trait<GeoPoseReading>
     {
         /// <summary>Converts optional ENU metres per second at the reading's location, or clears unavailable velocity.</summary>
-        /// <param name="value">The SDK observation, including its tangent origin and optional ENU velocity.</param>
+        /// <param name="value">The SDK observation, including its tangent origin and optional ENU velocity; null clears supplied velocity.</param>
+        /// <remarks>The observation carries its own geographic basis, so velocity conversion does not depend on position-trait order.</remarks>
         public override void Apply(GeoPoseReading value)
         {
             Prediction prediction = Ghost.GetRequired<Prediction>();

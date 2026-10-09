@@ -466,6 +466,7 @@ namespace Emas.Tests
         /// <summary>
         /// Scene unload removes both published and prepared roots and permits identity reuse.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator SceneUnload_RemovesAnchorAndAllItsRecords()
         {
@@ -490,6 +491,7 @@ namespace Emas.Tests
         /// <summary>
         /// Dispatched source failure removes and destroys its partially populated ghost.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator DispatchFailure_RemovesPartialPublication()
         {
@@ -586,6 +588,7 @@ namespace Emas.Tests
                 Dispatch(action);
             }
 
+            /// <summary>Runs the optional startup action, allowing lifecycle callbacks to reenter the Realm.</summary>
             protected override void OnStart()
             {
                 if (Starting != null)
@@ -594,6 +597,7 @@ namespace Emas.Tests
                 }
             }
 
+            /// <summary>Counts updates and runs the optional update action.</summary>
             protected override void OnUpdate()
             {
                 UpdateCount++;
@@ -603,6 +607,7 @@ namespace Emas.Tests
                 }
             }
 
+            /// <summary>Counts completed shutdown callbacks.</summary>
             protected override void OnStop()
             {
                 StopCount++;

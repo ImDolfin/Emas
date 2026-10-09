@@ -30,6 +30,7 @@ namespace Emas
         /// <summary>
         /// Gets the configured ghost kind.
         /// </summary>
+        /// <value>The configured kind, or an invalid default value when the asset has not been configured.</value>
         public Kind Kind
         {
             get
@@ -41,6 +42,7 @@ namespace Emas
         /// <summary>
         /// Gets the optional ghost root prefab.
         /// </summary>
+        /// <value>The authored root prefab, or null to create a root of the requested Ghost type.</value>
         public Ghost GhostPrefab
         {
             get
@@ -52,6 +54,7 @@ namespace Emas
         /// <summary>
         /// Gets the fallback view prefab.
         /// </summary>
+        /// <value>The prefab used for unspecified or unknown appearances, or null for no fallback view.</value>
         public GameObject FallbackViewPrefab
         {
             get

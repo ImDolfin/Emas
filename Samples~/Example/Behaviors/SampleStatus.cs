@@ -28,6 +28,7 @@ namespace Emas.Sample
                 return;
             }
 
+            // A restarted setup owns a different Realm. Dispose the old paired subscription before replaying the new one.
             StopObserving();
             _observedRealm = realm;
             if (realm != null)

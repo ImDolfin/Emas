@@ -20,6 +20,9 @@ namespace Emas
         /// <summary>
         /// Creates a position or offset with finite coordinates.
         /// </summary>
+        /// <param name="x">The finite X coordinate in the caller's coordinate system.</param>
+        /// <param name="y">The finite Y coordinate in the same units as X.</param>
+        /// <param name="z">The finite Z coordinate in the same units as X.</param>
         /// <exception cref="ArgumentOutOfRangeException">
         /// A coordinate is NaN or infinite.
         /// </exception>
@@ -48,21 +51,28 @@ namespace Emas
         /// <summary>
         /// Gets the X coordinate.
         /// </summary>
+        /// <value>The first coordinate without a change of units or precision.</value>
         public double X => _x;
 
         /// <summary>
         /// Gets the Y coordinate.
         /// </summary>
+        /// <value>The second coordinate without a change of units or precision.</value>
         public double Y => _y;
 
         /// <summary>
         /// Gets the Z coordinate.
         /// </summary>
+        /// <value>The third coordinate without a change of units or precision.</value>
         public double Z => _z;
 
         /// <summary>
         /// Adds two positions or offsets without converting to float precision.
         /// </summary>
+        /// <param name="left">The first vector in a shared coordinate system.</param>
+        /// <param name="right">The vector to add, in the same units and axes.</param>
+        /// <returns>The component-wise sum.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">A resulting coordinate is not finite.</exception>
         public static Double3 operator +(Double3 left, Double3 right)
         {
             return new Double3(left._x + right._x, left._y + right._y, left._z + right._z);
@@ -71,6 +81,10 @@ namespace Emas
         /// <summary>
         /// Subtracts two positions or offsets without converting to float precision.
         /// </summary>
+        /// <param name="left">The position or offset from which to subtract.</param>
+        /// <param name="right">The position or offset to subtract, in the same units and axes.</param>
+        /// <returns>The component-wise difference.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">A resulting coordinate is not finite.</exception>
         public static Double3 operator -(Double3 left, Double3 right)
         {
             return new Double3(left._x - right._x, left._y - right._y, left._z - right._z);
@@ -79,6 +93,10 @@ namespace Emas
         /// <summary>
         /// Scales a position or offset by a finite scalar.
         /// </summary>
+        /// <param name="value">The position or offset to scale.</param>
+        /// <param name="scalar">The finite multiplier applied to every coordinate.</param>
+        /// <returns>The scaled vector.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The scalar or a resulting coordinate is not finite.</exception>
         public static Double3 operator *(Double3 value, double scalar)
         {
             return new Double3(value._x * scalar, value._y * scalar, value._z * scalar);
@@ -87,6 +105,10 @@ namespace Emas
         /// <summary>
         /// Scales a position or offset by a finite scalar.
         /// </summary>
+        /// <param name="scalar">The finite multiplier applied to every coordinate.</param>
+        /// <param name="value">The position or offset to scale.</param>
+        /// <returns>The scaled vector.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The scalar or a resulting coordinate is not finite.</exception>
         public static Double3 operator *(double scalar, Double3 value)
         {
             return value * scalar;
@@ -96,6 +118,9 @@ namespace Emas
         /// Calculates distance in coordinate units without converting to float precision.
         /// Returns positive infinity if the distance exceeds the capacity of a double.
         /// </summary>
+        /// <param name="left">The first point in a shared coordinate system.</param>
+        /// <param name="right">The second point in the same units and axes.</param>
+        /// <returns>The nonnegative Euclidean distance, or positive infinity when it exceeds double range.</returns>
         public static double Distance(Double3 left, Double3 right)
         {
             double x = Math.Abs(left._x - right._x);
@@ -117,6 +142,8 @@ namespace Emas
         /// <summary>
         /// Compares coordinates exactly.
         /// </summary>
+        /// <param name="other">The position or offset to compare.</param>
+        /// <returns>True when each corresponding double has the same value; no distance tolerance is applied.</returns>
         public bool Equals(Double3 other)
         {
             return _x.Equals(other._x) && _y.Equals(other._y) && _z.Equals(other._z);
@@ -125,6 +152,8 @@ namespace Emas
         /// <summary>
         /// Compares this value with another double-precision position or offset.
         /// </summary>
+        /// <param name="obj">The object to compare, including null.</param>
+        /// <returns>True when the object is a <see cref="Double3"/> with exactly equal coordinates.</returns>
         public override bool Equals(object obj)
         {
             return obj is Double3 && Equals((Double3)obj);
@@ -133,6 +162,7 @@ namespace Emas
         /// <summary>
         /// Returns a hash based on all three coordinates.
         /// </summary>
+        /// <returns>A hash consistent with exact coordinate equality.</returns>
         public override int GetHashCode()
         {
             unchecked
@@ -146,6 +176,9 @@ namespace Emas
         /// <summary>
         /// Returns whether all coordinates are equal.
         /// </summary>
+        /// <param name="left">The first position or offset.</param>
+        /// <param name="right">The second position or offset.</param>
+        /// <returns>True when all corresponding coordinates compare exactly equal.</returns>
         public static bool operator ==(Double3 left, Double3 right)
         {
             return left.Equals(right);
@@ -154,6 +187,9 @@ namespace Emas
         /// <summary>
         /// Returns whether any coordinate differs.
         /// </summary>
+        /// <param name="left">The first position or offset.</param>
+        /// <param name="right">The second position or offset.</param>
+        /// <returns>True when at least one corresponding coordinate differs.</returns>
         public static bool operator !=(Double3 left, Double3 right)
         {
             return !left.Equals(right);
@@ -162,6 +198,7 @@ namespace Emas
         /// <summary>
         /// Formats all coordinates using invariant culture and round-trip precision.
         /// </summary>
+        /// <returns>The coordinates formatted as a parenthesized X, Y, Z triple.</returns>
         public override string ToString()
         {
             return string.Format(CultureInfo.InvariantCulture, "({0:R}, {1:R}, {2:R})", _x, _y, _z);

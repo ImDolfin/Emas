@@ -27,6 +27,7 @@ namespace Emas
         /// <summary>
         /// Gets the configured anchor ID.
         /// </summary>
+        /// <value>The serialized identifier, which must be unique within the owning realm.</value>
         public string Id
         {
             get
@@ -38,6 +39,7 @@ namespace Emas
         /// <summary>
         /// Gets the live anchor, or null while this setup is stopped.
         /// </summary>
+        /// <value>The current runtime attachment; disabling and re-enabling creates a new anchor.</value>
         public Anchor Anchor
         {
             get

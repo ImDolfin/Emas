@@ -7,7 +7,7 @@ namespace Emas
     /// Provides stable identity and root-component access for one ghost.
     /// </summary>
     /// <remarks>
-        /// Read on the Unity thread. Emas owns identity and availability; configured traits update application data.
+    /// Read on the Unity thread. Emas owns identity and availability; configured traits update application data.
     /// Consumers use read-only application interfaces and must not assume retained data is current while IsAvailable is false.
     /// </remarks>
     public interface IGhost
@@ -59,6 +59,7 @@ namespace Emas
         /// <summary>
         /// Gets a read-only snapshot of all Trait components on the Ghost root, including disabled and unbound traits.
         /// </summary>
+        /// <value>The current root traits; empty when the root has no traits.</value>
         /// <remarks>
         /// Each access observes added or removed root traits; previously returned snapshots retain their membership.
         /// Trait instances remain live Unity components and may later be destroyed. Child and view traits are excluded.

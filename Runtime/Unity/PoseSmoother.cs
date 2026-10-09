@@ -28,6 +28,8 @@ namespace Emas
             }
             else
             {
+                // Advance by the predicted motion first, then decay the remaining error toward the observed target.
+                // Keep the correction signed: legitimate source corrections may oppose the previous direction of travel.
                 double weight = 1d - Math.Exp(-LogTwo * _elapsed / halfLife);
                 double x = Coordinate(target.X, _position.X + motion.X, weight);
                 double y = Coordinate(target.Y, _position.Y + motion.Y, weight);
@@ -42,6 +44,7 @@ namespace Emas
 
         internal Quaternion Rotation(Quaternion target, float halfLife)
         {
+            // Exponential weighting preserves the half-life across varying update intervals; Slerp follows the shortest arc.
             _rotation = _hasRotation && SpatialMath.IsFinite(halfLife) && halfLife > 0
                 ? Quaternion.Slerp(_rotation, target, (float)(1d - Math.Exp(-LogTwo * _elapsed / halfLife))) : target;
             _hasRotation = true;

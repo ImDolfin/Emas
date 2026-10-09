@@ -29,6 +29,7 @@ namespace Emas.Tests.Samples
         /// <summary>
         /// Unloads the sample and releases its owned scene objects after each scenario.
         /// </summary>
+        /// <returns>An iterator that waits for Unity to finish releasing the scenario assets.</returns>
         [UnityTearDown]
         public IEnumerator TearDown()
         {
@@ -44,6 +45,7 @@ namespace Emas.Tests.Samples
         /// <summary>
         /// The minimal prefab starts without application orchestration and recreates its visible population after reactivation.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator MinimalPrefab_AutomaticallyStartsAndRestarts()
         {
@@ -67,6 +69,7 @@ namespace Emas.Tests.Samples
         /// <summary>
         /// Switching the example's SDK source keeps entity identities and the position/articulation contracts used by its views.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Example_SourceReplacementPreservesConsumerContracts()
         {

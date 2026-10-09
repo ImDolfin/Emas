@@ -19,6 +19,8 @@ namespace Emas
             double cosLatitude = Math.Cos(latitude);
             double sinLongitude = Math.Sin(longitude);
             double cosLongitude = Math.Cos(longitude);
+
+            // Up is the geodetic ellipsoid normal, not the radial direction from Earth's center.
             _east = new Double3(-sinLongitude, cosLongitude, 0);
             _up = new Double3(cosLatitude * cosLongitude, cosLatitude * sinLongitude, sinLatitude);
             _north = new Double3(-sinLatitude * cosLongitude, -sinLatitude * sinLongitude, cosLatitude);

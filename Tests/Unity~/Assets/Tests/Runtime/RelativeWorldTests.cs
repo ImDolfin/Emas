@@ -28,6 +28,7 @@ namespace Emas.Tests.Samples
         /// <summary>
         /// Unloads the sample and its owned realm after the scenario.
         /// </summary>
+        /// <returns>An iterator that waits for Unity to finish releasing the scenario assets.</returns>
         [UnityTearDown]
         public IEnumerator TearDown()
         {
@@ -42,6 +43,7 @@ namespace Emas.Tests.Samples
         /// <summary>
         /// Stationary roadside cars pass on alternating sides; changing driving speed preserves distance and supplies matching velocity.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator RelativeWorld_PassesStationaryCarsOnBothSides()
         {
@@ -118,6 +120,7 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>Road markings follow actual reference travel, and large time jumps keep a bounded, level population.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator RelativeWorld_RoadTracksTravelWithoutAccumulatingPassedCars()
         {
@@ -144,6 +147,7 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>The bird and its feet follow the moving reference, with trait-driven detach preserving the release pose and reattach retaining identities.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator RelativeWorld_BirdAndFeetMoveTogetherAndDetachToWorldPoses()
         {
@@ -210,6 +214,7 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>Authored prediction and smoothing handle metre-scale noise at 360 km/h, preserve source identity through packet gaps and recover from control changes.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator RelativeWorld_PredictsAndSmoothsDelayedNoisyPackets()
         {

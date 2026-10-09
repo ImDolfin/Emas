@@ -5,7 +5,8 @@ namespace Emas.Sample
     /// <summary>Stores anchor-local position from either SDK for root logic and view consumers.</summary>
     public sealed class PositionTrait : Trait<Vector3>, I3DPosition
     {
-        /// <inheritdoc />
+        /// <summary>Gets the last supplied position in the owning Anchor's local Unity coordinate frame.</summary>
+        /// <value>The mapped source position, or the zero vector before the first reading.</value>
         public Vector3 Position { get; private set; }
 
         /// <summary>Replaces the stored position; ApplyPosition moves the root from this contract in LateUpdate.</summary>

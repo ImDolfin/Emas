@@ -17,6 +17,7 @@ namespace Emas.Tests.Samples
         /// <summary>
         /// Every imported sample file matches the package, including scene and prefab metadata.
         /// </summary>
+        /// <param name="sample">The directory name of the sample under the package and imported sample roots.</param>
         [TestCase("Minimal")]
         [TestCase("Example")]
         [TestCase("RelativeWorld")]
@@ -41,6 +42,8 @@ namespace Emas.Tests.Samples
         /// <summary>
         /// Each sample opens with a reusable tracking prefab and persistent blueprint, root and variant view assets.
         /// </summary>
+        /// <param name="sample">The directory name of the sample under the package and imported sample roots.</param>
+        /// <param name="sceneFile">The scene path relative to the sample directory.</param>
         [TestCase("Minimal", "QuickStart.unity")]
         [TestCase("Example", "Scenes/Example.unity")]
         [TestCase("RelativeWorld", "RelativeWorld.unity")]

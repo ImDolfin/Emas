@@ -19,6 +19,7 @@ namespace Emas.Editor.Tests
         /// <summary>
         /// Releases authored objects and returns to Edit Mode even when a runtime assertion fails.
         /// </summary>
+        /// <returns>An iterator that waits for Unity to finish releasing the scenario assets.</returns>
         [UnityTearDown]
         public IEnumerator TearDown()
         {
@@ -137,6 +138,7 @@ namespace Emas.Editor.Tests
         /// <summary>
         /// Authored anchors use the realm blueprint, while automatic view requests remain optional per anchor.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator SerializedRealmBlueprint_AppliesAcrossAnchors()
         {
@@ -226,6 +228,7 @@ namespace Emas.Editor.Tests
         /// <summary>
         /// A followed reference authored on the prefab projects distant double coordinates near the Unity origin.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator SerializedReferenceFrame_FollowsConfiguredGhost()
         {
@@ -257,6 +260,7 @@ namespace Emas.Editor.Tests
         /// <summary>
         /// An empty authored target waits for runtime selection and preserves frame settings and views when the target changes.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator SerializedReferenceFrame_WaitsForRuntimeTarget()
         {
@@ -345,6 +349,7 @@ namespace Emas.Editor.Tests
         /// <summary>
         /// Opening diagnostics and the overlay does not advance an explicitly managed Realm or construct scene objects.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator DiagnosticsAndOverlay_ObserveWithoutAdvancingTracking()
         {
@@ -518,6 +523,7 @@ namespace Emas.Editor.Tests
             /// <summary>
             /// Creates the detector used by the authored prefab.
             /// </summary>
+            /// <returns>The detector created by the configured test factory.</returns>
             public PresenceDetector CreateDetector()
             {
                 return Factory();

@@ -9,6 +9,7 @@ namespace Emas.Tests
         internal Action Applying;
 
         /// <summary>Runs the behavior selected by the consumer test.</summary>
+        /// <param name="data">The reader value; this probe runs its configured action independently of the value.</param>
         public override void Apply(int data)
         {
             Applying?.Invoke();

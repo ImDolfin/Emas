@@ -14,6 +14,10 @@ namespace Emas
         /// Adds per-kind presence initializers to the owning realm before detection.
         /// </summary>
         /// <param name="realm">The realm that is about to attach detectors.</param>
+        /// <remarks>
+        /// Runs on Unity's main thread once for this component in each realm lifetime, before its detectors start.
+        /// An exception aborts that startup attempt; the setup releases partially created tracking state.
+        /// </remarks>
         void ConfigureRealm(Realm realm);
     }
 }

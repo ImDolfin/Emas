@@ -20,8 +20,10 @@ namespace Emas
         private readonly PoseSmoother _smoother = new PoseSmoother();
 
         /// <summary>Gets or sets seconds to halve position error; zero applies the incoming presentation position directly.</summary>
+        /// <value>A finite, nonnegative half-life in seconds; the default is 0.08 seconds.</value>
         /// <remarks>Defaults to 0.08. After one half-life, 50% of a stationary correction remains; after three, 12.5% remains.
         /// The Inspector offers 0-0.5 seconds; larger finite values are supported in code and create stronger lag.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The assigned half-life is negative, NaN or infinite.</exception>
         public float PositionHalfLife
         {
             get => _positionHalfLife;
@@ -37,8 +39,10 @@ namespace Emas
         }
 
         /// <summary>Gets or sets seconds to halve angular error; zero applies orientation immediately (the default).</summary>
+        /// <value>A finite, nonnegative rotation half-life in seconds.</value>
         /// <remarks>Controls reference orientation and scene repositioning when this Ghost is followed with FollowRotation enabled.
         /// Changing this setting preserves position history.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The assigned half-life is negative, NaN or infinite.</exception>
         public float RotationHalfLife
         {
             get => _rotationHalfLife;
@@ -54,6 +58,7 @@ namespace Emas
         }
 
         /// <summary>Discards both filter histories so the next projection uses the current input directly.</summary>
+        /// <remarks>Retains half-life settings, raw Spatial input and any separate Prediction history.</remarks>
         public void Reset()
         {
             _smoother.Reset();

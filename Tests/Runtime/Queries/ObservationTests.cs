@@ -64,6 +64,7 @@ namespace Emas.Tests
         /// <summary>
         /// Departure identities remain usable after Unity has destroyed the removed component.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator Departure_UsesStableKeyAfterObjectDestruction()
         {
@@ -146,6 +147,7 @@ namespace Emas.Tests
         /// <summary>
         /// Disposing the subscription or realm cancels pending departures without synthetic callbacks.
         /// </summary>
+        /// <param name="disposeRealm"><see langword="true"/> to dispose the Realm; otherwise, dispose only the subscription.</param>
         [TestCase(false)]
         [TestCase(true)]
         public void Observe_DisposalCancelsPendingNotifications(bool disposeRealm)

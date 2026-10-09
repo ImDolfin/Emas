@@ -7,7 +7,8 @@ namespace Emas.RelativeWorld
     public sealed class GeoAttachmentTrait : Trait<GeoPoseReading>
     {
         /// <summary>Attaches by parent identity, including before discovery, or resumes cached absolute placement.</summary>
-        /// <param name="value">The latest SDK snapshot, including optional parent identity and local body offset.</param>
+        /// <param name="value">A non-null SDK snapshot, including optional parent identity and local body offset.</param>
+        /// <remarks>The parent is resolved in the same Anchor as this Ghost. Detaching resumes the independently supplied absolute pose.</remarks>
         public override void Apply(GeoPoseReading value)
         {
             Spatial spatial = Ghost.GetRequired<Spatial>();

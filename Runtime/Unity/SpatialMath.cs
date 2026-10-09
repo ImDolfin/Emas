@@ -10,6 +10,7 @@ namespace Emas
             RequireFiniteAngle(yawDegrees, nameof(yawDegrees));
             RequireFiniteAngle(pitchDegrees, nameof(pitchDegrees));
             RequireFiniteAngle(rollDegrees, nameof(rollDegrees));
+
             // Named aircraft angles use physical directions, independent of a source quaternion's basis.
             Quaternion yaw = Quaternion.AngleAxis((float)(yawDegrees % 360d), Vector3.up);
             Quaternion pitch = Quaternion.AngleAxis(-(float)(pitchDegrees % 360d), Vector3.right);
@@ -47,6 +48,7 @@ namespace Emas
                 throw new ArgumentOutOfRangeException(paramName, "A rotation must have finite components.");
             }
 
+            // Squaring float components in doubles avoids overflow when a valid quaternion has a large finite scale.
             double x = value.x;
             double y = value.y;
             double z = value.z;

@@ -11,6 +11,7 @@ namespace Emas.Editor
         /// <summary>Draws concise authoring controls and read-only connections.</summary>
         public override void OnInspectorGUI()
         {
+            // Serialized editing preserves Undo, prefab overrides and mixed values across selected objects.
             serializedObject.Update();
             bool attached = false;
             foreach (Object value in targets)
@@ -73,7 +74,8 @@ namespace Emas.Editor
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Keeps detector health and entity counts current while the application is playing.</summary>
+        /// <returns>True in Play Mode; otherwise false.</returns>
         public override bool RequiresConstantRepaint()
         {
             return Application.isPlaying;

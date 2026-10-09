@@ -42,6 +42,8 @@ namespace Emas.RelativeWorld
         private SimulatedGeoSdk _sdk;
 
         /// <summary>Enables deterministic observation noise and packet delay; disabling immediately restores clean input.</summary>
+        /// <value>True for packet simulation, or false for immediate clean observations; defaults to true.</value>
+        /// <remarks>Changing this setting discards pending simulated packets. Before the first attachment, it only updates configuration.</remarks>
         public bool SimulateJitterAndDelay
         {
             get => _simulateJitterAndDelay;
@@ -53,6 +55,7 @@ namespace Emas.RelativeWorld
         }
 
         /// <summary>Gets or sets northward travel speed in kilometres per hour without changing the current position.</summary>
+        /// <value>A finite, nonnegative speed; zero stops northward travel while the bird continues its orbit.</value>
         /// <remarks>Defaults to 360 km/h (100 m/s). Subsequent observations carry the new velocity; queued packets retain their captured data.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The speed is negative or non-finite.</exception>
         public float SpeedKilometersPerHour
@@ -69,7 +72,7 @@ namespace Emas.RelativeWorld
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Restarts the sample's shared SDK clock and initializes the configured packet simulation.</summary>
         protected override void OnStart()
         {
             // This sample owns the Realm's shared SDK clock, which restarts when the source starts again.
@@ -82,6 +85,8 @@ namespace Emas.RelativeWorld
         /// Advances the simulation and delivers due packets; the next realm update reads the latest delivered snapshot.
         /// </summary>
         /// <param name="seconds">Additional simulated time in seconds.</param>
+        /// <remarks>Does nothing before attachment. Large jumps discard missed captures instead of replaying an unbounded backlog.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">An attached source receives a negative or non-finite time step.</exception>
         public void Advance(double seconds)
         {
             if (_sdk != null)
@@ -94,6 +99,7 @@ namespace Emas.RelativeWorld
 
         /// <summary>Changes the SDK attachment state; the next realm update attaches or detaches both bird feet.</summary>
         /// <param name="attached">True to follow the bird; false to hold each foot's current absolute world pose.</param>
+        /// <remarks>State changes publish immediately and discard queued attachment state. They consume one microsecond on the simulated SDK clock.</remarks>
         public void SetBirdFeetAttached(bool attached)
         {
             if (_sdk != null)
@@ -138,7 +144,7 @@ namespace Emas.RelativeWorld
                 _packetDelayJitter, _positionJitter, _yawJitter);
         }
 
-        /// <inheritdoc />
+        /// <summary>Advances source capture and packet delivery using Unity's scaled frame duration before trait readers run.</summary>
         protected override void OnUpdate()
         {
             Advance(Time.deltaTime);

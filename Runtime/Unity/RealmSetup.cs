@@ -80,6 +80,7 @@ namespace Emas
         /// <summary>
         /// Gets the owned realm, or null when this setup is stopped.
         /// </summary>
+        /// <value>The isolated realm for this running setup; a later startup creates a new instance.</value>
         public Realm Realm
         {
             get

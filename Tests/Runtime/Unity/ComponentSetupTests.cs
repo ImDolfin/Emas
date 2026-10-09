@@ -236,6 +236,7 @@ namespace Emas.Tests
             internal int Stops;
             internal int OwnedCount { get { return OwnedPresences.Count; } }
 
+            /// <summary>Verifies bound ownership, captures the current dispatcher and publishes the initial reading.</summary>
             protected override void OnStart()
             {
                 Assert.That(Anchor, Is.Not.Null);
@@ -244,10 +245,12 @@ namespace Emas.Tests
                 Captured = CaptureDispatcher();
                 Publish();
             }
+            /// <summary>Runs the configured action before bound traits read the source.</summary>
             protected override void OnUpdate()
             {
                 BeforeRead?.Invoke();
             }
+            /// <summary>Verifies ownership remains available during shutdown and counts the callback.</summary>
             protected override void OnStop()
             {
                 Assert.That(Anchor, Is.Not.Null);
@@ -273,6 +276,9 @@ namespace Emas.Tests
             internal int Calls;
             internal bool Fail;
 
+            /// <summary>Checks initializer ownership and binds the source value, or raises the configured mapping failure.</summary>
+            /// <param name="presence">The detected presence being initialized.</param>
+            /// <param name="ghost">The root created for the detected presence.</param>
             protected override void Initialize(Presence presence, Ghost ghost)
             {
                 Assert.That(Anchor, Is.Not.Null);
@@ -290,6 +296,7 @@ namespace Emas.Tests
 
         private sealed class CodeDetector : PresenceDetector
         {
+            /// <summary>Detects the entity used to exercise authored initialization.</summary>
             protected override void OnStart()
             {
                 Detect("one", TestKind);

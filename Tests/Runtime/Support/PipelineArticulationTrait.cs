@@ -7,6 +7,7 @@ namespace Emas.Tests
     public sealed class PipelineArticulationTrait : Trait<int>
     {
         /// <summary>Sets the Ghost's consumer-facing articulation state.</summary>
+        /// <param name="articulation">The articulation value supplied by the bound reader.</param>
         public override void Apply(int articulation)
         {
             GetComponent<PipelineGhost>().Articulation = articulation;

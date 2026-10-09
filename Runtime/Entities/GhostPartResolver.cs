@@ -16,6 +16,7 @@ namespace Emas
         internal bool TryGet<T>(Ghost ghost, out T part) where T : class
         {
             part = null;
+            // Refresh membership on every lookup so runtime component changes and new ambiguities are visible immediately.
             ghost.GetComponents(_components);
             int count = 0;
             for (int index = 0; index < _components.Count; index++)

@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas.Sample
 {
     /// <summary>
-    /// Represents a proxy shape supplied by the second sample SDK.
+    /// Captures one SDK Two vehicle observation with vector position and normalized steering.
     /// </summary>
 
     public sealed class SdkTwoVehicleProxy
@@ -25,6 +25,7 @@ namespace Emas.Sample
         /// <param name="wheelAngle">
         /// Normalized steering in [-1, 1], despite the simulated SDK's angle-like name.
         /// </param>
+        /// <remarks>Stores the supplied values without validation, clamping or unit conversion.</remarks>
         public SdkTwoVehicleProxy(
             int id,
             int modelCode,
@@ -53,7 +54,7 @@ namespace Emas.Sample
         /// Gets the source appearance code.
         /// </summary>
         /// <value>
-        /// The second-SDK appearance code.
+        /// The second-SDK appearance code: 0 selects a small car, 1 a large car, and other values a truck.
         /// </value>
         public int ModelCode
         {
@@ -65,7 +66,7 @@ namespace Emas.Sample
         /// Gets the position in the owning anchor's local Unity axes.
         /// </summary>
         /// <value>
-        /// The second-SDK source position.
+        /// The source position in local Unity units, using X right, Y up and Z forward.
         /// </value>
         public Vector3 Coordinates
         {
@@ -77,7 +78,7 @@ namespace Emas.Sample
         /// Gets normalized steering in [-1, 1]; this simulated SDK does not use angular units.
         /// </summary>
         /// <value>
-        /// The steering input mapped directly to IArticulate.Steering.
+        /// The steering input mapped directly to <see cref="IArticulate.Steering"/>.
         /// </value>
         public float WheelAngle
         {

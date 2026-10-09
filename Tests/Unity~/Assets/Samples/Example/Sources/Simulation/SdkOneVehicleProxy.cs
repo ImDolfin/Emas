@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Emas.Sample
 {
     /// <summary>
-    /// Represents a proxy shape supplied by the first sample SDK.
+    /// Captures one SDK One vehicle observation with separate position coordinates and normalized steering.
     /// </summary>
 
     public sealed class SdkOneVehicleProxy
@@ -20,17 +20,18 @@ namespace Emas.Sample
         /// The source appearance code.
         /// </param>
         /// <param name="positionX">
-        /// The source X coordinate.
+        /// The X coordinate in the owning Anchor's local Unity units.
         /// </param>
         /// <param name="positionY">
-        /// The source Y coordinate.
+        /// The Y coordinate in the owning Anchor's local Unity units.
         /// </param>
         /// <param name="positionZ">
-        /// The source Z coordinate.
+        /// The Z coordinate in the owning Anchor's local Unity units.
         /// </param>
         /// <param name="steering">
-        /// The source articulation value.
+        /// Normalized steering, expected in [-1, 1]; stored without clamping.
         /// </param>
+        /// <remarks>Stores the supplied values without validation or unit conversion.</remarks>
         public SdkOneVehicleProxy(
             string identifier,
             int typeCode,
@@ -63,7 +64,7 @@ namespace Emas.Sample
         /// Gets the source appearance code.
         /// </summary>
         /// <value>
-        /// The first-SDK appearance code.
+        /// The first-SDK appearance code: 0 selects a small car, 1 a large car, and other values a truck.
         /// </value>
         public int TypeCode
         {
@@ -75,7 +76,7 @@ namespace Emas.Sample
         /// Gets the source X coordinate.
         /// </summary>
         /// <value>
-        /// The source X coordinate.
+        /// Position along the Anchor's local right axis, in Unity units.
         /// </value>
         public float PositionX
         {
@@ -87,7 +88,7 @@ namespace Emas.Sample
         /// Gets the source Y coordinate.
         /// </summary>
         /// <value>
-        /// The source Y coordinate.
+        /// Position along the Anchor's local up axis, in Unity units.
         /// </value>
         public float PositionY
         {
@@ -99,7 +100,7 @@ namespace Emas.Sample
         /// Gets the source Z coordinate.
         /// </summary>
         /// <value>
-        /// The source Z coordinate.
+        /// Position along the Anchor's local forward axis, in Unity units.
         /// </value>
         public float PositionZ
         {
@@ -111,7 +112,7 @@ namespace Emas.Sample
         /// Gets the source articulation value.
         /// </summary>
         /// <value>
-        /// The first-SDK articulation value.
+        /// The normalized steering input mapped directly to <see cref="IArticulate.Steering"/>.
         /// </value>
         public float Steering
         {

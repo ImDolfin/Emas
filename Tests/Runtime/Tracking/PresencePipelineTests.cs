@@ -319,6 +319,7 @@ namespace Emas.Tests
         /// Reporting an identity from its old root's removal callback creates a distinct presence.
         /// Stale publication and delayed Unity destruction cannot replace or remove the new entity.
         /// </summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator RemovalCallback_CanRediscoverIdentityWithoutOldCleanupRemovingIt()
         {
@@ -359,6 +360,7 @@ namespace Emas.Tests
         /// A failed reader or trait removes its detector's population before query notifications
         /// and retains the original exception for diagnostics.
         /// </summary>
+        /// <param name="failInReader"><see langword="true"/> to fail while reading; otherwise, fail while applying the trait value.</param>
         [TestCase(true)]
         [TestCase(false)]
         public void TraitFailure_RemovesDetectorPopulationAndPreservesError(bool failInReader)

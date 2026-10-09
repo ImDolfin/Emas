@@ -22,6 +22,7 @@ namespace Emas
                 return;
             }
 
+            // Fresh stationary observations refresh prediction age. Re-reading an unchanged untimed cache does not.
             if (!HasPosition || Position != position || sampleTime.HasValue || PositionTime.HasValue)
             {
                 PositionReceivedTime = receivedTime;
@@ -56,6 +57,7 @@ namespace Emas
 
         internal static bool Accepts(Timestamp? previous, Timestamp? incoming)
         {
+            // Ordering applies only within a timed channel; callers may intentionally switch to or from untimed input.
             return !previous.HasValue || !incoming.HasValue || incoming.Value.CompareTo(previous.Value) > 0;
         }
     }

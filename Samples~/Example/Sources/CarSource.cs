@@ -20,9 +20,10 @@ namespace Emas.Sample
         /// <summary>
         /// Gets whether the current attachment has switched to SDK Two.
         /// </summary>
+        /// <value>True after replacement; false when a new attachment starts with SDK One.</value>
         public bool IsUsingSecondSdk { get; private set; }
 
-        /// <inheritdoc />
+        /// <summary>Restarts the replacement timer and publishes the permanent car population from SDK One.</summary>
         protected override void OnStart()
         {
             _elapsed = 0f;
@@ -38,6 +39,7 @@ namespace Emas.Sample
         /// <summary>
         /// Switches to SDK Two once, retaining compatible car ghosts and their consumers.
         /// </summary>
+        /// <remarks>Does nothing while detached or after replacement has already occurred.</remarks>
         public void ReplaceCarSource()
         {
             Anchor anchor = Anchor;
@@ -66,6 +68,7 @@ namespace Emas.Sample
                 ReplaceCarSource();
             }
         }
+
         private void ReadProxies()
         {
             // The component continues refreshing the application-owned feed after its detector is replaced.

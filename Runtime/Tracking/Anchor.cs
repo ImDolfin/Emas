@@ -96,6 +96,7 @@ namespace Emas
         /// <remarks>
         /// Read on the Unity thread. Earlier snapshots do not change; disposed anchors return an empty snapshot.
         /// </remarks>
+        /// <value>The registered detectors captured when the property is read, including inactive registrations retained for retry.</value>
         public IReadOnlyList<PresenceDetector> Detectors
         {
             get
@@ -386,6 +387,10 @@ namespace Emas
         /// <summary>
         /// Stops the anchor and destroys its scene objects.
         /// </summary>
+        /// <remarks>
+        /// Idempotent. Unregisters the anchor before cleanup callbacks, stops its detectors and removes their identities.
+        /// Application-owned SDK clients are not disposed. Scene destruction follows Unity's deferred destruction rules.
+        /// </remarks>
         public void Dispose()
         {
             if (_disposed)

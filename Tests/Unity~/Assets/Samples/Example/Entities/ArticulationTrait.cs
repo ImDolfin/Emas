@@ -5,7 +5,8 @@ namespace Emas.Sample
     /// <summary>Stores normalized steering from either SDK for the manifested vehicle's articulation.</summary>
     public sealed class ArticulationTrait : Trait<float>, IArticulate
     {
-        /// <inheritdoc />
+        /// <summary>Gets the last supplied steering input without clamping it.</summary>
+        /// <value>A normalized steering value, expected between -1 and 1; zero before the first reading.</value>
         public float Steering { get; private set; }
 
         /// <summary>Replaces the steering value exposed through IArticulate.</summary>

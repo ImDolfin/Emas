@@ -23,6 +23,32 @@ namespace Emas.Editor
                 EditorGUILayout.HelpBox("No live Realms. Enable a configured Realm Setup in Play Mode, or create a Realm from code.", MessageType.Info);
                 return;
             }
+
+            SelectRealm(realms);
+            IReadOnlyList<Anchor> anchors = _selected.Anchors;
+            int failed = DrawSummary(anchors);
+            if (compact)
+            {
+                if (failed > 0)
+                {
+                    EditorGUILayout.HelpBox("Detector failures need attention. Open diagnostics for context and details.", MessageType.Warning);
+                }
+
+                if (GUILayout.Button("Open Emas diagnostics"))
+                {
+                    DiagnosticsWindow.ShowWindow();
+                }
+
+                return;
+            }
+
+            DrawFilter();
+            DrawAnchors(anchors);
+        }
+
+        private void SelectRealm(Realm[] realms)
+        {
+            // Query existing owners only; opening diagnostics must never create or start a default Realm.
             Realm defaultRealm;
             DefaultRuntime.TryGetRealm(out defaultRealm);
             RealmSetup[] setups = UnityEngine.Object.FindObjectsOfType<RealmSetup>(true);
@@ -44,9 +70,13 @@ namespace Emas.Editor
                     selected = index;
                 }
             }
+
             selected = EditorGUILayout.Popup(new GUIContent("Realm", "Live Realms only. Inspecting never starts tracking."), selected, names);
             _selected = realms[selected];
-            IReadOnlyList<Anchor> anchors = _selected.Anchors;
+        }
+
+        private int DrawSummary(IReadOnlyList<Anchor> anchors)
+        {
             int active = 0;
             int stopped = 0;
             int failed = 0;
@@ -68,20 +98,14 @@ namespace Emas.Editor
                     }
                 }
             }
+
             EditorGUILayout.LabelField(anchors.Count + " anchors  ?  " + _selected.Query().Count + " available entities", EditorStyles.boldLabel);
             EditorGUILayout.LabelField(active + " active detectors  ?  " + stopped + " stopped  ?  " + failed + " errors", EditorStyles.wordWrappedMiniLabel);
-            if (compact)
-            {
-                if (failed > 0)
-                {
-                    EditorGUILayout.HelpBox("Detector failures need attention. Open diagnostics for context and details.", MessageType.Warning);
-                }
-                if (GUILayout.Button("Open Emas diagnostics"))
-                {
-                    DiagnosticsWindow.ShowWindow();
-                }
-                return;
-            }
+            return failed;
+        }
+
+        private void DrawFilter()
+        {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
                 GUILayout.Label("Filter", GUILayout.Width(36f));
@@ -92,6 +116,10 @@ namespace Emas.Editor
                     GUI.FocusControl(null);
                 }
             }
+        }
+
+        private void DrawAnchors(IReadOnlyList<Anchor> anchors)
+        {
             HashSet<PresenceDetector> errors = new HashSet<PresenceDetector>();
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
             bool any = false;
@@ -106,6 +134,7 @@ namespace Emas.Editor
                 {
                     continue;
                 }
+
                 any = true;
                 using (InspectorLayout.Section(anchor.Id, _selected.Query().InAnchor(anchor.Id).Count + " available entities"))
                 {
@@ -120,46 +149,55 @@ namespace Emas.Editor
                     }
                     foreach (PresenceDetector detector in anchor.Detectors)
                     {
-                        using (InspectorLayout.Section(detector.Name))
-                        {
-                            IReadOnlyList<IGhost> ghosts = _selected.GetOwnedGhosts(detector);
-                            int available = 0;
-                            foreach (IGhost ghost in ghosts)
-                            {
-                                if (ghost.IsAvailable)
-                                {
-                                    available++;
-                                }
-                            }
-                            InspectorLayout.ReadOnly("Status", detector.LastError != null ? "Failed" : detector.IsActive ? "Active" : "Stopped (attached)");
-                            InspectorLayout.ReadOnly("Available / owned", available + " / " + ghosts.Count);
-                            InspectorLayout.ReadOnly("Inactivity timeout (s)", detector.InactivityTimeout.HasValue ? detector.InactivityTimeout.Value.TotalSeconds.ToString("G") : "Off");
-                            InspectorLayout.ReadOnly("Disappearance grace (s)", detector.DisappearanceGracePeriod.TotalSeconds.ToString("G"));
-                            if (detector.LastError != null)
-                            {
-                                errors.Add(detector);
-                                EditorGUILayout.HelpBox(detector.LastErrorContext + "\n" + detector.LastError.Message, MessageType.Error);
-                                bool expanded = EditorGUILayout.Foldout(_expandedErrors.Contains(detector), "Exception details", true);
-                                if (expanded)
-                                {
-                                    _expandedErrors.Add(detector);
-                                    EditorGUILayout.SelectableLabel(detector.LastError.ToString(), EditorStyles.textArea, GUILayout.MinHeight(100f));
-                                }
-                                else
-                                {
-                                    _expandedErrors.Remove(detector);
-                                }
-                            }
-                        }
+                        DrawDetector(detector, errors);
                     }
                 }
             }
+
             if (!any)
             {
                 EditorGUILayout.HelpBox(anchors.Count == 0 ? "This Realm has no Anchors." : "No Anchors or detectors match the filter.", MessageType.Info);
             }
+
             EditorGUILayout.EndScrollView();
+            // Stop retaining disposed or recovered detectors solely because their error foldout was once open.
             _expandedErrors.IntersectWith(errors);
+        }
+
+        private void DrawDetector(PresenceDetector detector, HashSet<PresenceDetector> errors)
+        {
+            using (InspectorLayout.Section(detector.Name))
+            {
+                IReadOnlyList<IGhost> ghosts = _selected.GetOwnedGhosts(detector);
+                int available = 0;
+                foreach (IGhost ghost in ghosts)
+                {
+                    if (ghost.IsAvailable)
+                    {
+                        available++;
+                    }
+                }
+
+                InspectorLayout.ReadOnly("Status", detector.LastError != null ? "Failed" : detector.IsActive ? "Active" : "Stopped (attached)");
+                InspectorLayout.ReadOnly("Available / owned", available + " / " + ghosts.Count);
+                InspectorLayout.ReadOnly("Inactivity timeout (s)", detector.InactivityTimeout.HasValue ? detector.InactivityTimeout.Value.TotalSeconds.ToString("G") : "Off");
+                InspectorLayout.ReadOnly("Disappearance grace (s)", detector.DisappearanceGracePeriod.TotalSeconds.ToString("G"));
+                if (detector.LastError != null)
+                {
+                    errors.Add(detector);
+                    EditorGUILayout.HelpBox(detector.LastErrorContext + "\n" + detector.LastError.Message, MessageType.Error);
+                    bool expanded = EditorGUILayout.Foldout(_expandedErrors.Contains(detector), "Exception details", true);
+                    if (expanded)
+                    {
+                        _expandedErrors.Add(detector);
+                        EditorGUILayout.SelectableLabel(detector.LastError.ToString(), EditorStyles.textArea, GUILayout.MinHeight(100f));
+                    }
+                    else
+                    {
+                        _expandedErrors.Remove(detector);
+                    }
+                }
+            }
         }
 
         private bool Matches(string value)

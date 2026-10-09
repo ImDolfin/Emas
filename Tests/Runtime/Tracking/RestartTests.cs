@@ -33,6 +33,7 @@ namespace Emas.Tests
         /// <summary>
         /// Restart invalidates old work and recreates ghosts removed by a previous source failure.
         /// </summary>
+        /// <param name="fail">Whether the detector fails before restart, requiring its population to be recreated.</param>
         [TestCase(false, TestName = "Restart_PreservesIdentityAndDiscardsQueuedWork")]
         [TestCase(true, TestName = "Restart_RecoversPopulationAfterFailure")]
         public void Restart_DiscardsOldWorkAndRecoversPopulation(bool fail)
@@ -190,17 +191,20 @@ namespace Emas.Tests
                 return CaptureDispatcher();
             }
 
+            /// <summary>Counts starts and invokes the configured startup behavior.</summary>
             protected override void OnStart()
             {
                 Starts++;
                 Starting?.Invoke();
             }
 
+            /// <summary>Invokes the configured update behavior, including simulated source failures.</summary>
             protected override void OnUpdate()
             {
                 Updating?.Invoke();
             }
 
+            /// <summary>Counts stops and invokes the configured shutdown behavior.</summary>
             protected override void OnStop()
             {
                 Stops++;

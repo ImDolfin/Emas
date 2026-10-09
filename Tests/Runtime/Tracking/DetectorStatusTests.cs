@@ -188,16 +188,19 @@ namespace Emas.Tests
                 return GetOrCreate<StatusGhost>(id, new Kind("status"));
             }
 
+            /// <summary>Runs the configured startup action to exercise detector status transitions.</summary>
             protected override void OnStart()
             {
                 Starting?.Invoke();
             }
 
+            /// <summary>Runs the configured update action, including simulated detector failures.</summary>
             protected override void OnUpdate()
             {
                 Updating?.Invoke();
             }
 
+            /// <summary>Counts shutdowns and runs the configured cleanup action.</summary>
             protected override void OnStop()
             {
                 Stops++;

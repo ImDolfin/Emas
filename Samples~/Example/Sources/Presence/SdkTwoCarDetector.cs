@@ -39,7 +39,7 @@ namespace Emas.Sample
             _feed = feed;
         }
 
-        /// <inheritdoc />
+        /// <summary>Publishes the second SDK's car identities so compatible existing Ghosts can be adopted.</summary>
         protected override void OnStart()
         {
             DetectAll(Time.time);

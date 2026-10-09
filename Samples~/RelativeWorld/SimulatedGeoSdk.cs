@@ -6,6 +6,8 @@ using UnityEngine;
 namespace Emas.RelativeWorld
 {
     /// <summary>Simulates a car driving north past stationary roadside parking.</summary>
+    /// <remarks>Capture and delivery share a simulated clock, but packets retain their original observation times.
+    /// Consumers see only complete delivered snapshots; waiting for a packet never removes the previous population.</remarks>
     internal sealed class SimulatedGeoSdk
     {
         private const double ParkingSpacingMeters = 80.0;
@@ -48,12 +50,14 @@ namespace Emas.RelativeWorld
                 _speedMetersPerSecond = speed;
                 _nextCapture = Math.Max(_nextCapture, _elapsed);
             }
+
             double interval = 1.0 / Mathf.Clamp(packetsPerSecond, 1f, 120f);
             if (_simulateJitterAndDelay != simulateJitterAndDelay || _captureInterval != interval)
             {
                 _pending.Clear();
                 _nextCapture = _elapsed;
             }
+
             _simulateJitterAndDelay = simulateJitterAndDelay;
             _captureInterval = interval;
             _delay = Mathf.Clamp(delay, 0f, 0.5f);
@@ -72,6 +76,7 @@ namespace Emas.RelativeWorld
             // A control event consumes one microsecond on the mock SDK clock. This keeps its changed pose
             // and zero release velocity newer than the previous packet, even while manual advancement is paused.
             _elapsed += 0.000001;
+
             if (!attached)
             {
                 Dictionary<string, GeoPoseReading> captured = Capture(_elapsed);
@@ -104,6 +109,7 @@ namespace Emas.RelativeWorld
             {
                 throw new ArgumentOutOfRangeException(nameof(seconds));
             }
+
             _elapsed += seconds;
             if (!_simulateJitterAndDelay)
             {
@@ -112,12 +118,19 @@ namespace Emas.RelativeWorld
                 return;
             }
 
+            QueueDueCaptures();
+            DeliverDuePackets();
+        }
+
+        private void QueueDueCaptures()
+        {
             // Drop skipped captures after a pause or a large manual time jump; never replay an unbounded backlog.
             double due = Math.Floor((_elapsed - _nextCapture) / _captureInterval) + 1.0;
             if (due > MaximumCapturesPerAdvance)
             {
                 _nextCapture += (due - MaximumCapturesPerAdvance) * _captureInterval;
             }
+
             for (int index = 0; index < MaximumCapturesPerAdvance && _nextCapture <= _elapsed; index++)
             {
                 double captureTime = _nextCapture;
@@ -125,7 +138,6 @@ namespace Emas.RelativeWorld
                 _pending.Add(new Packet(captureTime, captureTime + delay, Capture(captureTime)));
                 _nextCapture += _captureInterval;
             }
-            DeliverDuePackets();
         }
 
         private void DeliverDuePackets()
@@ -143,12 +155,15 @@ namespace Emas.RelativeWorld
                     _pending.RemoveAt(index);
                 }
             }
+
             if (newest != null)
             {
                 // Publish a complete immutable observation set atomically, including its membership.
                 _current = newest.Readings;
                 _lastDelivered = newest.CaptureTime;
             }
+
+            // Delay jitter can reorder arrivals. Older queued snapshots must not restore stale membership or motion.
             for (int index = _pending.Count - 1; index >= 0; index--)
             {
                 if (_pending[index].CaptureTime <= _lastDelivered)
@@ -185,6 +200,7 @@ namespace Emas.RelativeWorld
                     GeoSource.Kind, new Variant("target"), left ? -4.5 : 4.5,
                     FirstParkingNorthMeters + index * ParkingSpacingMeters, left ? 180.0 : 0.0, default(Double3));
             }
+
             return captured;
         }
 
@@ -242,16 +258,9 @@ namespace Emas.RelativeWorld
         {
             if (_simulateJitterAndDelay)
             {
-                double phase = sampleTime * 61.0;
-                for (int index = 0; index < id.Length; index++)
-                {
-                    phase += id[index] * (index + 1);
-                }
-                // Horizontal error stays inside the configured radius. Feet derive from the same noisy bird pose.
-                east += _positionJitter / Math.Sqrt(2.0) * Noise(phase);
-                north += _positionJitter / Math.Sqrt(2.0) * Noise(phase + 7.0);
-                yaw += _yawJitter * Noise(phase + 19.0);
+                ApplyObservationNoise(sampleTime, id, ref east, ref north, ref yaw);
             }
+
             // Only the mock SDK needs a starting road location. Emas has no fixed geographic origin.
             const double startLatitude = 52.520008;
             const double startLongitude = 13.404954;
@@ -272,6 +281,21 @@ namespace Emas.RelativeWorld
             double altitude = roadHeight + up;
             return new GeoPoseReading(id, label, kind, variant, latitude, longitude, altitude, yaw, 0.0, roll,
                 eastNorthUpVelocity: velocity, sampleTime: Timestamp.FromSeconds(sampleTime));
+        }
+
+        private void ApplyObservationNoise(double sampleTime, string id, ref double east, ref double north, ref double yaw)
+        {
+            // Identity and capture time make repeated runs reproducible without touching Unity's global random state.
+            double phase = sampleTime * 61.0;
+            for (int index = 0; index < id.Length; index++)
+            {
+                phase += id[index] * (index + 1);
+            }
+
+            // Horizontal error stays inside the configured radius. Feet derive from the same noisy bird pose.
+            east += _positionJitter / Math.Sqrt(2.0) * Noise(phase);
+            north += _positionJitter / Math.Sqrt(2.0) * Noise(phase + 7.0);
+            yaw += _yawJitter * Noise(phase + 19.0);
         }
 
         private static double Noise(double phase)

@@ -70,25 +70,31 @@ namespace Emas
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>Compares appearance identifiers using case-sensitive ordinal equality.</summary>
+        /// <param name="other">The appearance to compare.</param>
+        /// <returns>True when the identifiers match; default and empty serialized identifiers both represent no appearance.</returns>
         public bool Equals(Variant other)
         {
             return string.Equals(Id, other.Id, StringComparison.Ordinal);
         }
 
-        /// <inheritdoc />
+        /// <summary>Compares another object with this appearance identifier.</summary>
+        /// <param name="obj">The object to compare, including null.</param>
+        /// <returns>True when the object is a variant with an equal normalized identifier.</returns>
         public override bool Equals(object obj)
         {
             return obj is Variant && Equals((Variant)obj);
         }
 
-        /// <inheritdoc />
+        /// <summary>Hashes the appearance identifier using ordinal comparison rules.</summary>
+        /// <returns>A hash consistent with normalized appearance equality.</returns>
         public override int GetHashCode()
         {
             return StringComparer.Ordinal.GetHashCode(Id);
         }
 
-        /// <inheritdoc />
+        /// <summary>Formats the appearance as its application-defined identifier.</summary>
+        /// <returns>The identifier, or an empty string when no appearance is specified.</returns>
         public override string ToString()
         {
             return Id;

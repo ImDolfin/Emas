@@ -32,10 +32,15 @@ namespace Emas
         }
 
         /// <summary>Gets latitude in degrees north.</summary>
+        /// <value>The geodetic latitude from -90 degrees at the south pole to 90 degrees at the north pole.</value>
         public double LatitudeDegrees => _latitudeDegrees;
+
         /// <summary>Gets longitude in degrees east.</summary>
+        /// <value>The longitude in [-180, 180] degrees relative to the prime meridian.</value>
         public double LongitudeDegrees => _longitudeDegrees;
+
         /// <summary>Gets height above the WGS84 ellipsoid in metres.</summary>
+        /// <value>The finite ellipsoidal height; negative values lie below the ellipsoid.</value>
         public double HeightMeters => _heightMeters;
 
         /// <summary>Converts to Earth-centered, Earth-fixed XYZ metres without a local origin.</summary>
@@ -57,6 +62,7 @@ namespace Emas
 
         /// <summary>Rotates an east/north/up vector into ECEF XYZ at this WGS84 tangent origin without adding a position offset.</summary>
         /// <param name="eastNorthUp">X east, Y north, Z up; units are preserved, including velocity and linear acceleration.</param>
+        /// <returns>The same vector expressed in ECEF XYZ axes, without the origin's position added.</returns>
         /// <remarks>Uses geodetic latitude and longitude. Height does not affect vector rotation.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The origin or vector is invalid, or the rotated vector overflows.</exception>
         public Double3 ToEarthCenteredVector(Double3 eastNorthUp)
@@ -105,6 +111,7 @@ namespace Emas
         }
 
         /// <summary>Formats latitude, longitude and ellipsoidal height using invariant culture.</summary>
+        /// <returns>A parenthesized latitude, longitude, and height triple with degree and metre units.</returns>
         public override string ToString()
         {
             return string.Format(CultureInfo.InvariantCulture, "({0:R} deg, {1:R} deg, {2:R} m)",

@@ -45,6 +45,7 @@ namespace Emas
 
             _renderers.Clear();
             _colliders.Clear();
+            // Destroyed components cannot be restored; drop their Unity-null handles while retaining live suppression ownership.
             _hiddenRenderers.RemoveWhere(item => item == null);
             _hiddenColliders.RemoveWhere(item => item == null);
         }
