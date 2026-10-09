@@ -30,6 +30,8 @@ namespace Emas
         /// Supplied SDK velocity in Prediction reduces motion lag even when Prediction is disabled; without it,
         /// ordinary position filtering produces speed-dependent lag. Raw input and timestamps are retained.
         /// Buffered playback samples that velocity at the same delayed time as the pose, preserving observed maneuvers.
+        /// New timed observations retain motion assistance after earlier packets reach the prediction horizon;
+        /// a held observation at its limit adds no further motion.
         /// Live edits retain history and blend the setting-induced displacement over 0.25 seconds of real time,
         /// including changes to zero and the enabled toggle. Inspector edits and property assignments behave identically.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned half-life is negative, NaN or infinite.</exception>

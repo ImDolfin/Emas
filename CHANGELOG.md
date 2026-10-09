@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Preserve SDK motion assistance across newly accepted packets after the prediction horizon is reached, with immediate or buffered playback. Track the previously presented source time instead of reconstructing it from the newest packet; held packets still stop at the cap and live-tuning previews do not advance history. Cover delayed 560 kt input with zero interpolation delay, 0.3-second position half-lives and a 50 ms horizon, including sustained noisy geographic reference following.
+
 - Add optional shared timestamped pose buffering through `Realm.InterpolationDelay` and Realm Setup. Interpolate position and orientation on one timeline for the followed reference and its peers, then filter noise using SDK velocity from that playback time. Bound linear and angular prediction to gaps after buffered observations. Preserve burst samples, raw inputs, live tuning and clock-reset recovery. Configure Relative World with a 100 ms buffer and 50 ms gap horizon, and cover noisy 360 km/h motion, packet jitter and abrupt stops/restarts.
 
 - Keep SDK motion assistance available to Smoothing when Prediction is disabled or its horizon is zero. Compensate only the interval between accepted timestamped observations, leaving held packets without extrapolation. Prevent presentation-only range culling from resetting filter history and producing repeated drift-and-snap cycles. Cover the noisy 360 km/h bird sample with prediction disabled.

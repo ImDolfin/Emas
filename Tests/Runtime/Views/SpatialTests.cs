@@ -1430,6 +1430,111 @@ namespace Emas.Tests
             peer.SetGeographicRotation(yaw, 0, 0, sampleTime);
         }
 
+        /// <summary>Late coherent observations retain their supplied motion after the extrapolation cap, with immediate and buffered playback, while a held packet cannot continue advancing the filter.</summary>
+        /// <returns>An iterator that delivers a 560-knot stream at 60 Hz while requesting 90 Hz presentation.</returns>
+        [UnityTest]
+        public IEnumerator TimestampedPrediction_LatePacketsPreserveMotionAfterTheExtrapolationCap()
+        {
+            int targetFrameRate = Application.targetFrameRate;
+            int verticalSync = QualitySettings.vSyncCount;
+            try
+            {
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = 90;
+                _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1e9, 0, 0) };
+                TestGhost ghost = _source.Publish("late moving entity");
+                Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+                Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+                prediction.MaximumExtrapolation = 0.05f;
+                ghost.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.3f;
+                Spatial clock = _source.Publish("fresh clock witness").gameObject.AddComponent<Spatial>();
+                foreach (float delay in new[] { 0f, 0.1f })
+                {
+                    yield return AssertLatePacketsPreserveCappedMotion(spatial, prediction, clock, delay);
+                }
+            }
+            finally
+            {
+                Application.targetFrameRate = targetFrameRate;
+                QualitySettings.vSyncCount = verticalSync;
+            }
+        }
+
+        /// <summary>Measures filter error against the capped target while coherent packets arrive 300 ms behind another entity's SDK observations.</summary>
+        /// <param name="spatial">The moving entity observed with a fixed transport delay.</param>
+        /// <param name="prediction">Its enabled motion provider with a 50 ms extrapolation limit.</param>
+        /// <param name="clock">A stationary entity reporting the same SDK clock without the moving entity's transport delay.</param>
+        /// <param name="interpolationDelay">The realm's immediate or buffered presentation delay.</param>
+        /// <returns>An iterator that advances the source and projection streams, then holds the final capped observation.</returns>
+        private IEnumerator AssertLatePacketsPreserveCappedMotion(Spatial spatial, Prediction prediction,
+            Spatial clock, float interpolationDelay)
+        {
+            _realm.ResetSpatialTime();
+            _realm.InterpolationDelay = interpolationDelay;
+            const double speed = 560d * 1852d / 3600d;
+            Timestamp latest = new Timestamp(1000, 0);
+            void Publish(double observedSeconds)
+            {
+                latest = Timestamp.FromSeconds(1000 + observedSeconds);
+                spatial.SetCartesianPosition(new Double3(1e9 + speed * observedSeconds, 0, 0), latest);
+                prediction.SetCartesianVelocity(new Double3(speed, 0, 0), latest);
+                // Both channels use the same SDK clock: the moving entity's packet was observed 300 ms earlier.
+                clock.SetCartesianPosition(new Double3(1e9, 0, 0), Timestamp.FromSeconds(1000.3 + observedSeconds));
+            }
+
+            Publish(0);
+            _realm.Update();
+            AssertPosition(spatial.transform.position, new Vector3((float)(speed * prediction.MaximumExtrapolation), 0, 0), 0.001f);
+            double started = Time.realtimeSinceStartupAsDouble;
+            double elapsed;
+            double maximumError = 0;
+            int nextPacket = 1;
+            int updates = 0;
+            do
+            {
+                yield return null;
+                elapsed = Time.realtimeSinceStartupAsDouble - started;
+                while (nextPacket / 60d <= elapsed)
+                {
+                    Publish(nextPacket / 60d);
+                    nextPacket++;
+                }
+
+                _realm.Update();
+                Double3 expected = spatial.Position + prediction.Velocity * prediction.MaximumExtrapolation;
+                Double3 presented = _realm.ReferenceFrame.ToSimulationPosition(spatial.transform.position);
+                maximumError = Math.Max(maximumError, Double3.Distance(presented, expected));
+                updates++;
+            }
+            while (elapsed < 1);
+
+            TestContext.WriteLine("Late capped packets: delay=" + interpolationDelay + " s; maximum filter error="
+                + maximumError + " m; observed updates=" + updates / elapsed + " Hz");
+            Assert.That(spatial.PositionTime, Is.EqualTo(latest));
+            Assert.That(spatial.IsInRange, Is.True);
+            Assert.That(maximumError, Is.LessThan(1),
+                "Fresh late packets must advance motion assistance even when the previous observation already reached its prediction cap.");
+
+            Double3 heldPosition = spatial.Position;
+            Double3 heldTarget = heldPosition + prediction.Velocity * prediction.MaximumExtrapolation;
+            Double3 heldPresentation = _realm.ReferenceFrame.ToSimulationPosition(spatial.transform.position);
+            double initialError = Double3.Distance(heldPresentation, heldTarget);
+            double holdDeadline = Time.realtimeSinceStartupAsDouble + 0.12;
+            do
+            {
+                yield return null;
+                _realm.Update();
+                Assert.That(prediction.enabled, Is.True);
+                Assert.That(spatial.PositionTime, Is.EqualTo(latest));
+                Assert.That(spatial.Position, Is.EqualTo(heldPosition));
+                Assert.That(spatial.IsInRange, Is.True);
+                Double3 presented = _realm.ReferenceFrame.ToSimulationPosition(spatial.transform.position);
+                Assert.That(Double3.Distance(presented, heldTarget), Is.LessThanOrEqualTo(initialError + 0.001),
+                    "Holding an already capped packet may settle the remaining correction but must not keep integrating velocity.");
+            }
+            while (Time.realtimeSinceStartupAsDouble < holdDeadline);
+        }
+
         /// <summary>Prediction and shared-delay tuning preserve the displayed pose, settle to the new timeline and keep a moving stream advancing through repeated edits without changing raw observations.</summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]

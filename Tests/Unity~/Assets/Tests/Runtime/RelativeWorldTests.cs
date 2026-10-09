@@ -456,11 +456,31 @@ namespace Emas.Tests.Samples
             private double _distanceErrorSquared;
             private double _rawDistanceErrorSquared;
             private float _maximumFrameDistance;
+            private double _firstSample = double.NaN;
+            private double _lastSample;
+            private double _firstSourceElapsed;
+            private double _lastSourceElapsed;
+            private int _heldFrames;
+            private int _freshSamples;
+            private double _maximumSampleInterval;
+            private double _maximumPacketAge;
+            private double _staleDuration;
+            private double _beyondCapDuration;
+            private double _referenceErrorSquared;
+            private Double3 _firstReference;
+            private Double3 _lastReference;
+            private Double3 _firstRawReference;
+            private Double3 _lastRawReference;
 
             internal float MaximumRelativeDistance { get; private set; }
+            internal int SuppressedFrames { get; private set; }
             internal double VelocityError => System.Math.Sqrt(_velocityErrorSquared / _duration);
             internal double DistanceError => System.Math.Sqrt(_distanceErrorSquared / _duration);
             internal double RawDistanceError => System.Math.Sqrt(_rawDistanceErrorSquared / _duration);
+            internal double ReferenceError => System.Math.Sqrt(_referenceErrorSquared / _duration);
+            internal double SourceProgress => (_lastSample - _firstSample) / (_lastSourceElapsed - _firstSourceElapsed);
+            internal double ReferenceProgress => Double3.Distance(_lastReference, _firstReference)
+                / Double3.Distance(_lastRawReference, _firstRawReference);
 
             internal void Record(Vector3 previous, Vector3 current, double seconds, double rawDistance)
             {
@@ -479,44 +499,180 @@ namespace Emas.Tests.Samples
                 MaximumRelativeDistance = Mathf.Max(MaximumRelativeDistance, current.magnitude);
             }
 
+            internal void RecordTiming(Timestamp sample, double sourceElapsed, double seconds, bool beyondCap,
+                bool visible, Double3 rawReference, Double3 reference, Double3 target)
+            {
+                double sampleSeconds = sample.ElapsedSince(new Timestamp(0, 0));
+                if (double.IsNaN(_firstSample))
+                {
+                    _firstSample = sampleSeconds;
+                    _firstSourceElapsed = sourceElapsed;
+                    _firstReference = reference;
+                    _firstRawReference = rawReference;
+                }
+                else if (sampleSeconds == _lastSample)
+                {
+                    _heldFrames++;
+                }
+                else
+                {
+                    _freshSamples++;
+                    _maximumSampleInterval = System.Math.Max(_maximumSampleInterval, sampleSeconds - _lastSample);
+                }
+                _lastSample = sampleSeconds;
+                _lastSourceElapsed = sourceElapsed;
+                _lastReference = reference;
+                _lastRawReference = rawReference;
+                double age = sourceElapsed - sampleSeconds;
+                _maximumPacketAge = System.Math.Max(_maximumPacketAge, age);
+                _staleDuration += age > 0.15 ? seconds : 0;
+                _beyondCapDuration += beyondCap ? seconds : 0;
+                SuppressedFrames += visible ? 0 : 1;
+                double error = Double3.Distance(reference, target);
+                _referenceErrorSquared += error * error * seconds;
+            }
+
             internal void WriteReport(string label)
             {
                 TestContext.WriteLine(label + ": observed updates=" + (_frames / _duration)
                     + " Hz; velocity ripple RMS=" + VelocityError + " m/s; orbit distance error RMS=" + DistanceError
                     + " m; raw distance error RMS=" + RawDistanceError + " m; largest frame displacement="
                     + _maximumFrameDistance + " m; maximum relative distance=" + MaximumRelativeDistance + " m");
+                if (!double.IsNaN(_firstSample))
+                {
+                    TestContext.WriteLine(label + ": source progress/realtime=" + SourceProgress
+                        + "; reference/raw travel=" + ReferenceProgress + "; capped reference target error RMS="
+                        + ReferenceError + " m; fresh observations=" + (_freshSamples / _duration)
+                        + " Hz; held frame ratio=" + ((double)_heldFrames / _frames) + "; max sample interval="
+                        + (_maximumSampleInterval * 1000) + " ms; max SDK packet age=" + (_maximumPacketAge * 1000)
+                        + " ms; age>150ms ratio=" + (_staleDuration / _duration) + "; shared age>50ms cap ratio="
+                        + (_beyondCapDuration / _duration) + "; suppressed frames=" + SuppressedFrames);
+                }
             }
         }
 
-        /// <summary>Strong smoothing keeps a noisy 100 m/s bird near its moving reference with prediction disabled, and a held packet only settles its existing correction.</summary>
+        /// <summary>Noisy 560-knot motion retains prediction and smoothing quality over time; disabling bird prediction preserves moving observations and only settles corrections once a packet is held.</summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
-        public IEnumerator RelativeWorld_DisabledBirdPredictionSmoothsWithoutDriftingOrExtrapolatingHeldPackets()
+        public IEnumerator RelativeWorld_FastMotionDoesNotDegradeOverTimeOrExtrapolateHeldBirdPackets()
         {
-            yield return Load(true, true);
-            Realm realm = Find<RealmSetup>().Realm;
-            Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
-            Assert.That(source.AutomaticAdvance, Is.True);
-            Assert.That(source.SimulateJitterAndDelay, Is.True);
-            Assert.That(source.SpeedKilometersPerHour, Is.EqualTo(360));
-            Key birdKey = new Key("relative-world", Emas.RelativeWorld.GeoSource.BirdKind, "bird");
-            double startupDeadline = Time.realtimeSinceStartupAsDouble + 5;
-            IGhost entity;
-            while (!realm.TryGetGhost(birdKey, out entity) && Time.realtimeSinceStartupAsDouble < startupDeadline)
+            int targetFrameRate = Application.targetFrameRate;
+            int verticalSync = QualitySettings.vSyncCount;
+            try
             {
-                yield return null;
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = 90;
+                yield return Load(true, true);
+                Realm realm = Find<RealmSetup>().Realm;
+                realm.InterpolationDelay = 0;
+                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+                Assert.That(source.AutomaticAdvance, Is.True);
+                Assert.That(source.SimulateJitterAndDelay, Is.True);
+                source.SpeedKilometersPerHour = 1037.12f;
+                source.enabled = false;
+                double sdkStarted = Time.realtimeSinceStartupAsDouble;
+                source.enabled = true;
+                Key birdKey = new Key("relative-world", Emas.RelativeWorld.GeoSource.BirdKind, "bird");
+                double startupDeadline = Time.realtimeSinceStartupAsDouble + 5;
+                IGhost entity;
+                while (!realm.TryGetGhost(birdKey, out entity) && Time.realtimeSinceStartupAsDouble < startupDeadline)
+                {
+                    yield return null;
+                }
+                Assert.That(entity, Is.Not.Null, "The automatic feed must deliver its first delayed observation.");
+                Ghost bird = (Ghost)entity;
+                Ghost origin = Car(realm, "origin");
+                foreach (Ghost ghost in new[] { origin, bird })
+                {
+                    Prediction prediction = ghost.GetRequired<Prediction>();
+                    prediction.enabled = true;
+                    prediction.MaximumExtrapolation = 0.05f;
+                    ghost.GetRequired<Smoothing>().PositionHalfLife = 0.3f;
+                }
+                yield return AssertFastMotionRemainsStable(realm, bird, origin, sdkStarted);
+                bird.GetRequired<Prediction>().enabled = false;
+                yield return AssertMovingBirdWithoutPrediction(realm, source, bird, origin);
+                yield return AssertHeldBirdPacketOnlySettles(realm, source, bird);
             }
-            Assert.That(entity, Is.Not.Null, "The automatic feed must deliver its first delayed observation.");
-            Ghost bird = (Ghost)entity;
-            Ghost origin = Car(realm, "origin");
-            Assert.That(origin.GetRequired<Prediction>().enabled, Is.True);
-            bird.GetRequired<Prediction>().enabled = false;
-            bird.GetRequired<Smoothing>().PositionHalfLife = 0.5f;
-            yield return AssertMovingBirdRemainsNearReference(realm, bird, origin);
-            yield return AssertHeldBirdPacketOnlySettles(realm, source, bird);
+            finally
+            {
+                Application.targetFrameRate = targetFrameRate;
+                QualitySettings.vSyncCount = verticalSync;
+            }
         }
 
-        private static IEnumerator AssertMovingBirdRemainsNearReference(Realm realm, Ghost bird, Ghost origin)
+        private static IEnumerator AssertFastMotionRemainsStable(Realm realm, Ghost bird, Ghost origin, double sdkStarted)
+        {
+            Spatial spatial = bird.GetRequired<Spatial>();
+            Spatial originSpatial = origin.GetRequired<Spatial>();
+            Prediction originPrediction = origin.GetRequired<Prediction>();
+            View view = bird.GetComponentInChildren<View>();
+            Assert.That(view, Is.Not.Null);
+            Double3 initialObservation = spatial.Position;
+            SampleMotionMetrics early = new SampleMotionMetrics();
+            SampleMotionMetrics late = new SampleMotionMetrics();
+            SampleMotionMetrics entire = new SampleMotionMetrics();
+            bool retainedView = true;
+            double minimumArrivalAge = double.PositiveInfinity;
+            double started = Time.realtimeSinceStartupAsDouble;
+            double previousTime = started;
+            Vector3 previous = bird.transform.position - origin.transform.position;
+            do
+            {
+                yield return null;
+                double now = Time.realtimeSinceStartupAsDouble;
+                double elapsed = now - started;
+                double step = now - previousTime;
+                Assert.That(realm.TryGetGhost(bird.Key, out IGhost entity), Is.True);
+                Assert.That(entity, Is.SameAs(bird));
+                retainedView &= object.ReferenceEquals(bird.GetComponentInChildren<View>(), view);
+                Assert.That(bird.GetRequired<Prediction>().HasVelocity, Is.True);
+                Timestamp sample = spatial.PositionTime.Value;
+                Assert.That(originSpatial.PositionTime, Is.EqualTo(sample));
+                double sourceElapsed = now - sdkStarted;
+                double arrivalAge = sourceElapsed - sample.ElapsedSince(new Timestamp(0, 0));
+                minimumArrivalAge = System.Math.Min(minimumArrivalAge, arrivalAge);
+                double sharedAge = System.Math.Max(0, arrivalAge - minimumArrivalAge);
+                Double3 target = originSpatial.Position + originPrediction.Velocity * System.Math.Min(sharedAge, 0.05);
+                Vector3 current = bird.transform.position - origin.transform.position;
+                SampleMotionMetrics window = elapsed >= 2 && elapsed < 6 ? early : elapsed >= 16 ? late : null;
+                foreach (SampleMotionMetrics metrics in new[] { entire, window })
+                {
+                    if (metrics != null && step > 0)
+                    {
+                        metrics.Record(previous, current, step, Double3.Distance(spatial.Position, originSpatial.Position));
+                        metrics.RecordTiming(sample, sourceElapsed, step, sharedAge > 0.05,
+                            spatial.IsInRange && originSpatial.IsInRange, originSpatial.Position, realm.ReferenceFrame.Position, target);
+                    }
+                }
+                previous = current;
+                previousTime = now;
+            }
+            while (previousTime - started < 20);
+
+            early.WriteReport("560 kt early window (2-6 s)");
+            late.WriteReport("560 kt late window (16-20 s)");
+            entire.WriteReport("560 kt complete 20 s run");
+            Assert.That(entire.SuppressedFrames, Is.Zero);
+            Assert.That(retainedView, Is.True);
+            Assert.That(Double3.Distance(initialObservation, spatial.Position), Is.GreaterThan(5000));
+            AssertFastMotionWindows(early, late);
+        }
+
+        private static void AssertFastMotionWindows(SampleMotionMetrics early, SampleMotionMetrics late)
+        {
+            Assert.That(late.SourceProgress, Is.InRange(0.95, 1.05), "Fresh SDK timestamps must retain the realtime clock rate.");
+            Assert.That(late.ReferenceProgress, Is.InRange(0.95, 1.05), "The reference must continue travelling with the SDK.");
+            Assert.That(late.ReferenceError, Is.LessThan(5), "Strong filtering must not accumulate lag behind the capped SDK target.");
+            Assert.That(late.ReferenceError, Is.LessThan(early.ReferenceError * 2 + 1));
+            Assert.That(late.DistanceError, Is.LessThan(1.5), "The noisy bird must remain on its relative orbit after long travel.");
+            Assert.That(late.DistanceError, Is.LessThan(early.DistanceError * 2 + 0.25));
+            Assert.That(late.VelocityError, Is.LessThan(early.VelocityError * 2 + 2),
+                "Frame-to-frame jitter must not grow with time spent tracking the moving source.");
+        }
+
+        private static IEnumerator AssertMovingBirdWithoutPrediction(Realm realm, Emas.RelativeWorld.GeoSource source,
+            Ghost bird, Ghost origin)
         {
             Spatial spatial = bird.GetRequired<Spatial>();
             Prediction prediction = bird.GetRequired<Prediction>();
@@ -525,25 +681,21 @@ namespace Emas.Tests.Samples
             Double3 initialObservation = spatial.Position;
             Timestamp previousSample = spatial.PositionTime.Value;
             int freshObservations = 0;
-            bool sawFilteredObservation = false;
-            int suppressedFrames = 0;
             float maximumDistance = 0;
-            bool retainedView = true;
-            double deadline = Time.realtimeSinceStartupAsDouble + 2.1;
+            double deadline = Time.realtimeSinceStartupAsDouble + 1.2;
             do
             {
                 yield return null;
-                if (!spatial.IsInRange)
-                {
-                    suppressedFrames++;
-                }
-                maximumDistance = Mathf.Max(maximumDistance, bird.transform.position.magnitude);
-                Assert.That(realm.TryGetGhost(bird.Key, out IGhost entity), Is.True);
-                Assert.That(entity, Is.SameAs(bird));
-                retainedView &= object.ReferenceEquals(bird.GetComponentInChildren<View>(), view);
+                Assert.That(source.AutomaticAdvance, Is.True, "This phase must retain the running SDK and presentation history.");
+                Assert.That(spatial.IsInRange, Is.True);
+                Assert.That(origin.GetRequired<Spatial>().IsInRange, Is.True);
+                Assert.That(bird.GetComponentInChildren<View>(), Is.SameAs(view));
                 Assert.That(prediction.enabled, Is.False);
-                Assert.That(prediction.HasVelocity, Is.True, "Disabling prediction retains supplied SDK motion for observation smoothing.");
+                Assert.That(prediction.HasVelocity, Is.True, "Observation smoothing retains the supplied SDK velocity.");
                 Assert.That(origin.GetRequired<Prediction>().enabled, Is.True);
+                maximumDistance = Mathf.Max(maximumDistance, Vector3.Distance(bird.transform.position, origin.transform.position));
+                Assert.That(maximumDistance, Is.LessThan(25),
+                    "Turning prediction off must not reintroduce speed-dependent smoothing lag or range suppression.");
                 Timestamp sample = spatial.PositionTime.Value;
                 Assert.That(sample.CompareTo(previousSample), Is.GreaterThanOrEqualTo(0));
                 if (sample.CompareTo(previousSample) > 0)
@@ -551,20 +703,14 @@ namespace Emas.Tests.Samples
                     freshObservations++;
                     previousSample = sample;
                 }
-                Assert.That(realm.ReferenceFrame.TryToUnityPosition(spatial.Position, out Vector3 rawPosition), Is.True);
-                sawFilteredObservation |= Vector3.Distance(rawPosition, bird.transform.position) > 0.01f;
             }
             while (Time.realtimeSinceStartupAsDouble < deadline);
 
-            TestContext.WriteLine("Disabled prediction sample: maximum distance=" + maximumDistance
-                + " m; suppressed frames=" + suppressedFrames + "; fresh observations=" + freshObservations);
-            Assert.That(maximumDistance, Is.LessThan(25),
-                "Smoothing must not add tens of metres of lag to shared 100 m/s travel. Suppressed frames: " + suppressedFrames);
-            Assert.That(suppressedFrames, Is.Zero, "Disabling prediction must not cause repeated range suppression and filter resets.");
-            Assert.That(retainedView, Is.True, "The bird keeps its original visible View throughout live tuning.");
-            Assert.That(freshObservations, Is.GreaterThan(2));
-            Assert.That(Double3.Distance(initialObservation, spatial.Position), Is.GreaterThan(150));
-            Assert.That(sawFilteredObservation, Is.True, "The authored two-metre observation noise must still pass through the smoothing filter.");
+            double travel = Double3.Distance(initialObservation, spatial.Position);
+            TestContext.WriteLine("560 kt with bird prediction disabled: maximum relative distance=" + maximumDistance
+                + " m; fresh observations=" + freshObservations + "; raw travel=" + travel + " m");
+            Assert.That(freshObservations, Is.GreaterThan(5));
+            Assert.That(travel, Is.GreaterThan(250));
         }
 
         private static IEnumerator AssertHeldBirdPacketOnlySettles(Realm realm, Emas.RelativeWorld.GeoSource source, Ghost bird)

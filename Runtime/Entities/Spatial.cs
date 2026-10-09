@@ -119,12 +119,12 @@ namespace Emas
             PresentationPose pose;
             if (settings.InterpolationDelay > 0)
             {
-                pose = BufferedPose(clock, timestamp, prediction, settings, out motion, out observation);
+                pose = BufferedPose(clock, timestamp, prediction, settings, preview, out motion, out observation);
             }
             else
             {
                 Double3 position = prediction != null
-                    ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, out motion) : Position;
+                    ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion) : Position;
                 pose = new PresentationPose(position, Rotation);
             }
 
@@ -133,7 +133,7 @@ namespace Emas
         }
 
         private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Prediction prediction,
-            PresentationSettings settings, out Double3 motion, out Double3 observation)
+            PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
         {
             Double3 position = Position;
             Quaternion rotation = Rotation;
@@ -146,13 +146,13 @@ namespace Emas
                 observation = position;
                 if (prediction != null)
                 {
-                    position = prediction.ProjectBuffered(this, clock, timestamp, settings, position, offset, out motion);
+                    position = prediction.ProjectBuffered(this, clock, timestamp, settings, position, offset, preview, out motion);
                 }
             }
             else if (prediction != null)
             {
                 // An untimed channel has no SDK history to interpolate; preserve its arrival-timed behavior.
-                position = prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, out motion);
+                position = prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion);
             }
 
             if (_history.NewestRotationTime.HasValue)
