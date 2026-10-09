@@ -2,7 +2,8 @@
   "name": "Emas.Tests.Samples.Editor",
   "rootNamespace": "Emas.Tests.Samples",
   "references": [
-    "Emas.Runtime"
+    "Emas.Runtime",
+    "Emas.RelativeWorld"
   ],
   "includePlatforms": [
     "Editor"

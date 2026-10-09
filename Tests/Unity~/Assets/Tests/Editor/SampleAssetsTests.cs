@@ -86,6 +86,18 @@ namespace Emas.Tests.Samples
                     Assert.That(blueprint.GhostPrefab.GetComponents<Trait>(), Is.Not.Empty,
                         "Reusable data traits must be saved on the Ghost prefab.");
 
+                    if (sample == "RelativeWorld")
+                    {
+                        Prediction prediction = blueprint.GhostPrefab.GetRequired<Prediction>();
+                        Smoothing smoothing = blueprint.GhostPrefab.GetRequired<Smoothing>();
+                        Assert.That(prediction.enabled, Is.True);
+                        Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.15f));
+                        Assert.That(smoothing.enabled, Is.True);
+                        Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.08f));
+                        Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.04f));
+                        Assert.That(blueprint.GhostPrefab.GetRequired<Emas.RelativeWorld.GeoVelocityTrait>().enabled, Is.True);
+                    }
+
                     SerializedProperty variants = new SerializedObject(blueprint).FindProperty("_variants");
                     Assert.That(variants.arraySize, Is.GreaterThan(0));
                     for (int variantIndex = 0; variantIndex < variants.arraySize; variantIndex++)

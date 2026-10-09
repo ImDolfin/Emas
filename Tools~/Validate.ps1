@@ -18,7 +18,7 @@ try
 {
     $repository = Split-Path -Parent $PSScriptRoot
     $project = Join-Path $repository 'Tests\Unity~'
-    $output = Join-Path $repository 'TestResults\Validation'
+    $output = Join-Path $repository 'TestResults\Validation~'
     if ([string]::IsNullOrWhiteSpace($UnityPath))
     {
         $UnityPath = Join-Path ${env:ProgramFiles} 'Unity\Hub\Editor\2022.3.62f3\Editor\Unity.exe'

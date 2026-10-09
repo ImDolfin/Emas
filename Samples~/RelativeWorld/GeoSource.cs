@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Emas.RelativeWorld
@@ -18,23 +19,74 @@ namespace Emas.RelativeWorld
         /// <summary>The bird's independently tracked, attachable feet.</summary>
         public static readonly Kind BirdFootKind = new Kind("relative.bird-foot");
 
+        [Tooltip("Simulate noisy observations and delayed packets. Disable to compare immediate, clean SDK input.")]
+        [SerializeField] private bool _simulateJitterAndDelay = true;
+        [Tooltip("Northward travel speed in kilometres per hour. Changing speed preserves the current position; subsequent observations use the new velocity.")]
+        [Min(0)]
+        [SerializeField] private float _speedKilometersPerHour = 360f;
+        [Tooltip("SDK observations captured per simulated second, independently of Realm updates.")]
+        [Range(1, 120)]
+        [SerializeField] private float _sourcePacketsPerSecond = 60f;
+        [Tooltip("Base packet delivery delay in seconds. Observation timestamps remain the original capture times.")]
+        [Range(0, 0.5f)]
+        [SerializeField] private float _packetDelay = 0.08f;
+        [Tooltip("Maximum deterministic variation around the delivery delay, in seconds. Older arriving packets are discarded.")]
+        [Range(0, 0.5f)]
+        [SerializeField] private float _packetDelayJitter = 0.04f;
+        [Tooltip("Maximum horizontal observation error in metres. Noise is applied once per captured packet.")]
+        [Range(0, 2)]
+        [SerializeField] private float _positionJitter = 2f;
+        [Tooltip("Maximum heading observation error in degrees, applied once per captured packet.")]
+        [Range(0, 5)]
+        [SerializeField] private float _yawJitter = 1f;
         private SimulatedGeoSdk _sdk;
+
+        /// <summary>Enables deterministic observation noise and packet delay; disabling immediately restores clean input.</summary>
+        public bool SimulateJitterAndDelay
+        {
+            get => _simulateJitterAndDelay;
+            set
+            {
+                _simulateJitterAndDelay = value;
+                Advance(0.0);
+            }
+        }
+
+        /// <summary>Gets or sets northward travel speed in kilometres per hour without changing the current position.</summary>
+        /// <remarks>Defaults to 360 km/h (100 m/s). Subsequent observations carry the new velocity; queued packets retain their captured data.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The speed is negative or non-finite.</exception>
+        public float SpeedKilometersPerHour
+        {
+            get => _speedKilometersPerHour;
+            set
+            {
+                if (float.IsNaN(value) || float.IsInfinity(value) || value < 0f)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "The speed must be finite and nonnegative.");
+                }
+                _speedKilometersPerHour = value;
+                Advance(0.0);
+            }
+        }
 
         /// <inheritdoc />
         protected override void OnStart()
         {
+            // This sample owns the Realm's shared SDK clock, which restarts when the source starts again.
+            Realm.ResetSpatialTime();
             _sdk = new SimulatedGeoSdk();
-            RefreshPresence();
+            Advance(0.0);
         }
 
         /// <summary>
-        /// Advances the simulation; the next realm update reads the resulting snapshot.
+        /// Advances the simulation and delivers due packets; the next realm update reads the latest delivered snapshot.
         /// </summary>
         /// <param name="seconds">Additional simulated time in seconds.</param>
         public void Advance(double seconds)
         {
             if (_sdk != null)
             {
+                ConfigureSimulation();
                 _sdk.Advance(seconds);
                 RefreshPresence();
             }
@@ -46,6 +98,7 @@ namespace Emas.RelativeWorld
         {
             if (_sdk != null)
             {
+                ConfigureSimulation();
                 _sdk.SetBirdFeetAttached(attached);
                 RefreshPresence();
             }
@@ -65,7 +118,7 @@ namespace Emas.RelativeWorld
 
         private void RefreshPresence()
         {
-            foreach (GeoPoseReading reading in _sdk.ReadFrame())
+            foreach (GeoPoseReading reading in _sdk.Current.Values)
             {
                 Detect(reading.Id, reading.Kind, reading.Label, reading.Variant, source: _sdk);
             }
@@ -77,6 +130,12 @@ namespace Emas.RelativeWorld
                     Disappear(presence.Key.Kind, presence.Key.EntityId);
                 }
             }
+        }
+
+        private void ConfigureSimulation()
+        {
+            _sdk.Configure(_simulateJitterAndDelay, _speedKilometersPerHour, _sourcePacketsPerSecond, _packetDelay,
+                _packetDelayJitter, _positionJitter, _yawJitter);
         }
 
         /// <inheritdoc />

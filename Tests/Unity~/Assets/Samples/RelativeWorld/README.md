@@ -1,6 +1,6 @@
 # Relative world
 
-Open `RelativeWorld.unity` and press Play. The green origin drives north at **8 m/s** (28.8 km/h), while the reference frame keeps it fixed in Unity. Orange parked cars appear ahead on alternating sides, pass the origin, then disappear behind it. Road markings scroll at the same speed to make the travel visible. A little white bird circles the origin at a height of 3.2 m, turning with its orbit; its orange feet are separate entities attached to its moving root.
+Open `RelativeWorld.unity` and press Play. The green origin drives north at **100 m/s (360 km/h)**, while the reference frame keeps it fixed in Unity. Orange parked cars appear ahead on alternating sides, pass the origin, then disappear behind it. Road markings scroll at the same speed to make the travel visible. A little white bird circles the origin at a height of 3.2 m, turning with its orbit; its orange feet are separate entities attached to its moving root.
 
 ## Inspect the setup
 
@@ -9,13 +9,36 @@ Open `RelativeWorld.unity` and press Play. The green origin drives north at **8 
 - **Environment / Road Motion** references that Realm Setup and the authored road markings. It scrolls them using the reference frame's actual northward travel, wrapping the repeating five-metre pattern.
 - `Manifestations/RelativeBird.asset` maps `relative.bird` to the saved `BirdView.prefab` through its inline `bird` variant. It reuses the same spatial Ghost root and traits as the cars.
 - `Manifestations/RelativeBirdFoot.asset` maps `relative.bird-foot` to `BirdFootView.prefab`. Its `RelativeBirdFoot.prefab` root adds `GeoAttachmentTrait` beside the absolute position and orientation traits.
-- `Manifestations/RelativeCar.asset` selects the plain Ghost root, `Spatial`, position and orientation traits. Its inline `origin` and `target` variant rows select the green driving and orange parked views.
+- `Manifestations/RelativeCar.asset` selects a Ghost root with `Spatial`, position/orientation/velocity readers, `Prediction` and `Smoothing`. Its inline `origin` and `target` variant rows select the green driving and orange parked views. The bird shares this root prefab; the foot root has the same behaviors plus attachment handling.
 
-The road, markings, camera, light, tracking prefab and vehicle prefabs are saved assets or scene objects. No bootstrap creates the scene. Disable and re-enable Tracking to restart the drive.
+The road, markings, camera, light, tracking prefab and vehicle prefabs are saved assets or scene objects. No bootstrap creates the scene. Disable and re-enable Tracking to restart the drive. Restarting just Geo Source also resets the Realm's spatial clock before publishing from the restarted SDK; this sample has one shared SDK clock.
 
 ## SDK and reference coordinates
 
-The saved Ghost prefabs use plain `Spatial` for direct placement. For jittery SDK input, add the optional `Smoothing` Trait on the same root: position half-life defaults to `0.08 s`; rotation half-life defaults to `0` so followed heading changes reposition other Ghosts immediately. A half-life is the time to halve correction error, not a fixed delay. Inspector sliders offer `0–0.5 s` with response/jitter tradeoffs in tooltips. Add `Prediction` independently to bridge packet gaps (maximum extrapolation defaults to `0.15 s`), or combine both.
+Both saved Ghost prefabs enable `Prediction` with a `0.15 s` extrapolation limit and `Smoothing` with `0.08 s` position and `0.04 s` rotation half-lives. A half-life is the time to halve correction error, not a fixed delay. The sample explicitly smooths heading, including the followed origin; the component's general rotation default remains zero. Attached feet inherit the bird's processed pose and bypass their own filters until detached.
+
+## Try noisy and delayed packets
+
+Select **Tracking / Geodetic Feed / Geo Source**. **Simulate Jitter And Delay** is enabled on the saved Tracking prefab, with these editable settings:
+
+| Setting | Default |
+| --- | --- |
+| Speed Kilometers Per Hour | 360 km/h (100 m/s) |
+| Source Packets Per Second | 60 Hz |
+| Packet Delay | 80 ms |
+| Packet Delay Jitter | ±40 ms, giving 40–120 ms delivery delay |
+| Position Jitter | Up to 2 m of horizontal measurement error (adjustable 0–2 m) |
+| Yaw Jitter | Up to ±1 degree |
+
+The SDK captures immutable observations at the source rate, adds deterministic measurement noise once per packet, then queues delivery. The first entities appear after the first packet arrives. Each reading retains its capture timestamp; held packets keep the same readings while the Realm continues prediction and smoothing at its own update rate. Reordered older frames are discarded as a whole so they cannot restore departed entities or stale attachment state. Large manual `Advance` jumps drop skipped captures and process at most eight recent captures instead of replaying the entire backlog.
+
+Disable **Simulate Jitter And Delay** to compare against immediate clean input. To isolate transport jitter, keep simulation enabled and set **Position Jitter** and **Yaw Jitter** to zero. To compare spatial behaviors, toggle `Prediction` and `Smoothing` separately on live Ghost roots during Play mode, or edit the saved Ghost prefabs before playing. The feed supplies analytical ENU velocity so positional noise is not amplified by estimating velocity from consecutive noisy observations: the origin moves north at the configured speed, parked cars report zero, and the bird reports its orbit velocity plus the origin's travel.
+
+Change **Speed Kilometers Per Hour** during Play mode to test slower or faster motion; zero stops the northward drive. Code can set `geoSource.SpeedKilometersPerHour`. Speed changes preserve distance already travelled and affect subsequent observations, while delayed packets retain the pose and velocity captured earlier. At 360 km/h, 60 Hz observations are about 1.67 m apart and 40–120 ms of transport delay corresponds to 4–12 m of travel. The 2 m noise bound applies to each observation; consecutive noisy samples, or the relative error between independently noisy entities, can differ by up to 4 m.
+
+Prediction can legitimately move forward and then correct backward when a newer measured position falls behind the extrapolated estimate. Shared original timestamps remove one common cause, but do not make noisy measurements, velocity mismatches or turns exact. Compare the raw `Spatial.Position` samples and their timestamps with the supplied velocity; `newPosition - (oldPosition + oldVelocity * sampleInterval)` exposes the correction for constant-velocity Cartesian/ECEF input. Check ENU axes (east, north, up), metres per second, the velocity observation time and its geographic tangent origin. A moving or rotating followed reference also changes relative motion even when absolute motion is forward. Smoothing softens valid corrections; it does not forbid them.
+
+## Timestamped observations
 
 `GeoPoseReading.SampleTime` preserves the shared SDK seconds/nanoseconds time through position and orientation Traits; the mock SDK supplies elapsed observation time. The Realm aligns that clock from arrivals and uses one estimated presentation time across entities, without assuming access to SDK “now” or knowing absolute transport latency. Optional `GeoVelocityTrait` and `GeoAccelerationTrait` require Prediction; `GeoInitializer` binds each when present. Their nullable ENU vectors use X east, Y north, Z up, in metres per second and metres per second squared, at the observation's WGS84 location. Acceleration must have gravity removed. Prediction can also derive velocity from consecutive timestamped positions when SDK velocity is unavailable. Call `Spatial.ResetPresentation()` for teleports and `Realm.ResetSpatialTime()` before publishing from a restarted SDK clock. See [spatial behavior and tuning](../../Documentation~/Spatial.md#choose-spatial-behavior-per-ghost).
 
@@ -25,7 +48,7 @@ The bird is always present as `relative.bird / bird`. Its four-metre-radius orbi
 
 ## Attach and detach the bird's feet
 
-While playing, select **Tracking / Geodetic Feed**, open the **Geo Source** component's context menu, and choose **Detach bird feet**. Both feet hold their release poses in the SDK's absolute world coordinates while the bird and driving reference continue moving. Choose **Attach bird feet** to return them to the bird. Code can call `geoSource.SetBirdFeetAttached(false)` or `true`; `Advance(seconds)` supports deterministic stepping of the same demonstration.
+While playing, select **Tracking / Geodetic Feed**, open the **Geo Source** component's context menu, and choose **Detach bird feet**. Both feet hold their release poses in the SDK's absolute world coordinates while the bird and driving reference continue moving. Choose **Attach bird feet** to return them to the bird. These explicit controls publish immediately and clear pending packets so old attachment state cannot undo the command. Each state change advances the mock clock by one microsecond so its new observation and zero release velocity cannot be rejected as a duplicate, even when manually stepping a paused sample. Code can call `geoSource.SetBirdFeetAttached(false)` or `true`; `Advance(seconds)` supports deterministic stepping of the same demonstration.
 
 The two foot identities are `relative.bird-foot / bird-left-foot` and `bird-right-foot`. The SDK reports them before the bird on startup. Each foot's `GeoAttachmentTrait` binds to the current immutable SDK reading and calls `Spatial.Attach` with the bird's complete key, so the parent does not need to be discovered yet. The parts remain separate Ghost roots under the same Anchor.
 

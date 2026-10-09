@@ -116,6 +116,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f8c16b0f3cc34b9e9e7088635eb6ba6f, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+  _simulateJitterAndDelay: 1
+  _speedKilometersPerHour: 360
+  _sourcePacketsPerSecond: 60
+  _packetDelay: 0.08
+  _packetDelayJitter: 0.04
+  _positionJitter: 2
+  _yawJitter: 1
 --- !u!114 &6866208983204963280
 MonoBehaviour:
   m_ObjectHideFlags: 0

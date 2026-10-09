@@ -40,7 +40,7 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// Stationary roadside cars pass a steadily moving origin on alternating sides, then leave the population.
+        /// Stationary roadside cars pass on alternating sides; changing driving speed preserves distance and supplies matching velocity.
         /// </summary>
         [UnityTest]
         public IEnumerator RelativeWorld_PassesStationaryCarsOnBothSides()
@@ -88,11 +88,30 @@ namespace Emas.Tests.Samples
             Assert.That(Double3.Distance(right.GetComponent<Spatial>().Position, rightPosition), Is.LessThan(0.000001));
             AssertOriginPose(origin);
 
+            Double3 beforeSpeedChange = originSpatial.Position;
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => source.SpeedKilometersPerHour = -1);
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => source.SpeedKilometersPerHour = float.NaN);
+            source.SpeedKilometersPerHour = 360;
+            realm.Update();
+            Assert.That(originSpatial.Position, Is.EqualTo(beforeSpeedChange), "Changing speed must not reinterpret past travel.");
+            source.Advance(0.25);
+            realm.Update();
+            Assert.That(Double3.Distance(beforeSpeedChange, originSpatial.Position), Is.EqualTo(25).Within(0.001));
+            Assert.That(Double3.Distance(origin.GetRequired<Prediction>().Velocity, default(Double3)), Is.EqualTo(100).Within(0.001));
+            Double3 stoppedPosition = originSpatial.Position;
+            source.SpeedKilometersPerHour = 0;
+            source.Advance(0.25);
+            realm.Update();
+            Assert.That(originSpatial.Position, Is.EqualTo(stoppedPosition));
+            Assert.That(origin.GetRequired<Prediction>().Velocity, Is.EqualTo(default(Double3)));
+            source.SpeedKilometersPerHour = 28.8f;
+
             setup.gameObject.SetActive(false);
             Assert.That(realm.Query().Count, Is.Zero);
             setup.gameObject.SetActive(true);
             yield return null;
             yield return null;
+            UseDirectPresentation(setup.Realm);
             Assert.That(setup.Realm, Is.Not.SameAs(realm));
             Assert.That(setup.Realm.Query().OfKind(CarKind).Count, Is.EqualTo(2));
             Assert.That(Car(setup.Realm, "parked-0").transform.position.z, Is.EqualTo(24f).Within(0.001f));
@@ -190,13 +209,155 @@ namespace Emas.Tests.Samples
             AssertFeetAttached(bird, leftFoot, rightFoot);
         }
 
-        private IEnumerator Load()
+        /// <summary>Authored prediction and smoothing handle metre-scale noise at 360 km/h, preserve source identity through packet gaps and recover from control changes.</summary>
+        [UnityTest]
+        public IEnumerator RelativeWorld_PredictsAndSmoothsDelayedNoisyPackets()
+        {
+            yield return Load(true);
+            Realm realm = Find<RealmSetup>().Realm;
+            Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+            Assert.That(source.SimulateJitterAndDelay, Is.True);
+            Assert.That(source.SpeedKilometersPerHour, Is.EqualTo(360));
+            double started = Time.realtimeSinceStartupAsDouble;
+            double previousTime = started;
+            double elapsed = 0;
+            Timestamp? previousSample = null;
+            Double3 previousParked = default(Double3);
+            string previousParkedId = null;
+            Ghost firstOrigin = null;
+            bool sawMeasurementJitter = false;
+            bool sawDelayedObservation = false;
+            bool sawProcessedPresentation = false;
+            do
+            {
+                yield return null;
+                double now = Time.realtimeSinceStartupAsDouble;
+                double step = now - previousTime;
+                elapsed += step;
+                previousTime = now;
+                source.Advance(step);
+                realm.Update();
+                if (!realm.TryGetGhost(new Key("relative-world", CarKind, "origin"), out IGhost entity))
+                {
+                    continue;
+                }
+
+                Ghost origin = (Ghost)entity;
+                Ghost parked = null;
+                foreach (IGhost car in realm.Query().OfKind(CarKind))
+                {
+                    if (car.Key.EntityId != "origin")
+                    {
+                        parked = (Ghost)car;
+                        break;
+                    }
+                }
+                Ghost bird = (Ghost)realm.Query().OfKind(Emas.RelativeWorld.GeoSource.BirdKind).FirstOrDefault();
+                Assert.That(bird, Is.Not.Null);
+                Spatial spatial = origin.GetRequired<Spatial>();
+                Spatial parkedSpatial = parked == null ? null : parked.GetRequired<Spatial>();
+                Assert.That(spatial.PositionTime.HasValue, Is.True);
+                Timestamp sample = spatial.PositionTime.Value;
+                sawDelayedObservation |= elapsed - sample.ElapsedSince(new Timestamp(0, 0)) > 0.025;
+                Assert.That(origin.GetRequired<Prediction>().HasVelocity, Is.True);
+                Assert.That(Double3.Distance(origin.GetRequired<Prediction>().Velocity, default(Double3)), Is.EqualTo(100).Within(0.001));
+                Assert.That(origin.GetRequired<Smoothing>().enabled, Is.True);
+                Assert.That(origin.GetRequired<Smoothing>().RotationHalfLife, Is.GreaterThan(0));
+                Assert.That(bird.GetRequired<Prediction>().HasVelocity, Is.True);
+                AssertOriginPose(origin);
+                AssertFeetAttached(bird, Foot(realm, "bird-left-foot"), Foot(realm, "bird-right-foot"));
+                Assert.That(realm.ReferenceFrame.TryToUnityPosition(bird.GetRequired<Spatial>().Position,
+                    out Vector3 rawBirdPosition), Is.True);
+                sawProcessedPresentation |= Vector3.Distance(rawBirdPosition, bird.transform.position) > 0.001f;
+                if (previousSample.HasValue)
+                {
+                    Assert.That(origin, Is.SameAs(firstOrigin), "Packet gaps must retain membership and the Ghost.");
+                    Assert.That(sample.CompareTo(previousSample.Value), Is.GreaterThanOrEqualTo(0));
+                    if (!sample.Equals(previousSample.Value) && parked != null && parked.Key.EntityId == previousParkedId)
+                    {
+                        double displacement = Double3.Distance(previousParked, parkedSpatial.Position);
+                        Assert.That(displacement, Is.LessThanOrEqualTo(4.01), "Two bounded 2 m errors cannot move a stationary car by more than 4 m.");
+                        sawMeasurementJitter |= displacement > 1.0;
+                    }
+                }
+
+                firstOrigin = origin;
+                previousSample = sample;
+                previousParkedId = parked == null ? null : parked.Key.EntityId;
+                previousParked = parkedSpatial == null ? default(Double3) : parkedSpatial.Position;
+            }
+            while (elapsed < 1.2);
+
+            Assert.That(firstOrigin, Is.Not.Null);
+            Assert.That(sawDelayedObservation, Is.True, "Capture timestamps must survive delivery delay.");
+            Assert.That(sawMeasurementJitter, Is.True, "The parked cars must receive metre-scale measurement noise.");
+            Assert.That(sawProcessedPresentation, Is.True, "The saved behaviors process raw SDK observations.");
+            Timestamp heldSample = firstOrigin.GetRequired<Spatial>().PositionTime.Value;
+            Double3 beforeHold = realm.ReferenceFrame.Position;
+            // Hold the SDK explicitly, so this check also works when rendering is slower than the packet rate.
+            yield return null;
+            realm.Update();
+            Assert.That(firstOrigin.GetRequired<Spatial>().PositionTime.Value, Is.EqualTo(heldSample));
+            Assert.That(Double3.Distance(beforeHold, realm.ReferenceFrame.Position), Is.GreaterThan(0.00001),
+                "Presentation continues between packets without refreshing the raw timestamp.");
+            source.SimulateJitterAndDelay = false;
+            realm.Update();
+            Assert.That(firstOrigin.GetRequired<Spatial>().PositionTime.Value.ElapsedSince(new Timestamp(0, 0)),
+                Is.EqualTo(elapsed).Within(0.000001), "Clean mode immediately exposes the latest observation.");
+
+            Ghost left = Foot(realm, "bird-left-foot");
+            Timestamp beforeDetach = left.GetRequired<Spatial>().PositionTime.Value;
+            source.SetBirdFeetAttached(false);
+            realm.Update();
+            Assert.That(left.GetRequired<Spatial>().AttachedTo, Is.Null);
+            Assert.That(left.GetRequired<Spatial>().PositionTime.Value.CompareTo(beforeDetach), Is.GreaterThan(0));
+            Assert.That(left.GetRequired<Prediction>().HasVelocity, Is.True);
+            Assert.That(left.GetRequired<Prediction>().Velocity, Is.EqualTo(default(Double3)),
+                "A paused manual detach must replace the attached bird velocity immediately.");
+            source.SetBirdFeetAttached(true);
+            realm.Update();
+            Ghost attachedBird = (Ghost)realm.Query().OfKind(Emas.RelativeWorld.GeoSource.BirdKind).FirstOrDefault();
+            AssertFeetAttached(attachedBird, left, Foot(realm, "bird-right-foot"));
+
+            source.enabled = false;
+            source.enabled = true;
+            realm.Update();
+            Assert.That(Find<RealmSetup>().Realm, Is.SameAs(realm));
+            Ghost restarted = Car(realm, "origin");
+            Spatial restartedSpatial = restarted.GetRequired<Spatial>();
+            Assert.That(restartedSpatial.PositionTime, Is.EqualTo(new Timestamp(0, 0)));
+            double predictionRange = source.SpeedKilometersPerHour / 3.6 * restarted.GetRequired<Prediction>().MaximumExtrapolation;
+            Assert.That(Double3.Distance(realm.ReferenceFrame.Position, restartedSpatial.Position), Is.LessThan(predictionRange * 0.25),
+                "Restarting just the source resets its clock; the origin must not immediately extrapolate by the full horizon.");
+        }
+
+        private IEnumerator Load(bool withImpairments = false)
         {
             const string path = "Assets/Samples/RelativeWorld/RelativeWorld.unity";
             yield return SceneManager.LoadSceneAsync(path, LoadSceneMode.Additive);
             _scene = SceneManager.GetSceneByPath(path);
             yield return null;
             yield return null;
+            if (!withImpairments)
+            {
+                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+                source.SpeedKilometersPerHour = 28.8f;
+                source.SimulateJitterAndDelay = false;
+                UseDirectPresentation(Find<RealmSetup>().Realm);
+                yield return null; // Let RoadMotion capture the initial reference before manually advancing the SDK.
+            }
+        }
+
+        private static void UseDirectPresentation(Realm realm)
+        {
+            // These exact mapping scenarios advance SDK time in jumps rather than at the presentation clock's rate.
+            foreach (IGhost entity in realm.Ghosts)
+            {
+                Ghost ghost = (Ghost)entity;
+                ghost.GetRequired<Prediction>().enabled = false;
+                ghost.GetRequired<Smoothing>().enabled = false;
+            }
+            realm.Update();
         }
 
         private T Find<T>() where T : Component

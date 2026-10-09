@@ -28,7 +28,7 @@ namespace Emas.RelativeWorld
         /// <param name="parentId">The parent entity ID while attached; null for absolute placement.</param>
         /// <param name="parentKind">The attached parent's category.</param>
         /// <param name="bodyOffset">Parent-local metres in SDK axes: X forward, Y right and Z down.</param>
-        /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for smoothing.</param>
+        /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for prediction and motion-assisted smoothing.</param>
         /// <param name="eastNorthUpAcceleration">Optional local ENU linear acceleration in metres per second squared, with gravity removed.</param>
         /// <param name="sampleTime">Optional observation time in the SDK's shared seconds/nanoseconds clock.</param>
         public GeoPoseReading(string id, string label, Kind kind, Variant variant, double latitudeDegrees,

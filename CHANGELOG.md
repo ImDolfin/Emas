@@ -2,6 +2,14 @@
 
 ## 0.1.0
 
+- Run Relative World at a configurable 360 km/h by default with up to 2 m of horizontal observation noise. Preserve travelled distance and captured packet velocities when changing speed.
+
+- Keep views requested by update observers on the Realm's completed shared projection, preventing prediction from advancing a reference or attachment parent separately from its children during automatic view creation.
+
+- Enable prediction, position/rotation smoothing and SDK velocity readers on Relative World Ghost prefabs. Simulate configurable 60 Hz observations with delivery delay, jitter and measurement noise while preserving original timestamps; provide a clean-input toggle and document prediction corrections.
+
+- Store validation output in Unity-excluded `TestResults/Validation~` so growing logs cannot interrupt prefab imports.
+
 - Avoid per-Ghost trait enumerator allocations during realm updates by indexing the existing read-only membership snapshot.
 
 - Exclude destroyed Ghost roots from query results, including contract filters, and report their observer departures on the next realm update.

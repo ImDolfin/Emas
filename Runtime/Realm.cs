@@ -95,6 +95,7 @@ namespace Emas
         private int _sourceDepth;
         private bool _finalizing;
         private bool _updating;
+        private bool _notifyingUpdateQueries;
         private bool _disposed;
 
         /// <summary>
@@ -121,8 +122,8 @@ namespace Emas
         /// <remarks>
         /// Null, the default, uses an identity frame: spatial positions and rotations map directly to Unity world space.
         /// Enabled Spatial components opt individual ghosts in; disable Spatial to release transform control.
-        /// Changes apply during the next realm update or an explicit Manifest request. Projection runs after source
-        /// processing and before root/view activation, and does not change data, source activity or query membership.
+        /// Changes apply during the next realm update or an explicit Manifest request outside update query notifications.
+        /// Projection runs after source processing and before root/view activation, and does not change data, source activity or query membership.
         /// Anchor parenting is retained; its transform is compensated when assigning the projected world pose.
         /// </remarks>
         public ReferenceFrame ReferenceFrame
@@ -570,6 +571,7 @@ namespace Emas
         /// </returns>
         /// <remarks>
         /// Requests made during source mutation or finalization are refreshed after source data is complete.
+        /// Requests from update query notifications use that update's projected pose, keeping followed references and attachments aligned.
         /// The request persists while unavailable, awaiting a reference or outside spatial range; a view can appear
         /// on a later update without another call. Demanifest cancels that request. Trait readers are not refreshed by this call.
         /// Null, foreign and removed ghosts return null.
@@ -675,11 +677,13 @@ namespace Emas
                     _population.RemoveExpiredGhosts();
                     // Expose complete data and refresh views before notifying consumers.
                     FinalizeChanges(null, updateGhosts: true);
+                    _notifyingUpdateQueries = true;
                     _subscriptions.NotifyAll();
                 }
             }
             finally
             {
+                _notifyingUpdateQueries = false;
                 _updating = false;
             }
         }
@@ -1012,7 +1016,11 @@ namespace Emas
             record.ViewDirty = true;
             if (_sourceDepth == 0 && !_finalizing)
             {
-                _spatial.Project(record, _referenceFrame);
+                // Arrival observers may request each view in turn. Keep the shared projection captured before notification.
+                if (!_notifyingUpdateQueries)
+                {
+                    _spatial.Project(record, _referenceFrame);
+                }
                 _views.Refresh(record);
                 _spatial.RefreshSuppression(record);
             }

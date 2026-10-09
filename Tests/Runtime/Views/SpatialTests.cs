@@ -999,6 +999,79 @@ namespace Emas.Tests
             AssertPosition(part.transform.position, releasePosition);
         }
 
+        /// <summary>Views requested by arrival observers use one finalized predicted pose for the followed reference, parent and attached children; standalone requests still project fresh input.</summary>
+        [Test]
+        public void Manifest_FromArrivalObserversPreservesSharedAttachmentPresentation()
+        {
+            RegisterView(observeEnable: true);
+            ReferenceFrame frame = new ReferenceFrame { FollowedGhost = new Key("simulation", SpatialKind, "reference") };
+            _realm.ReferenceFrame = frame;
+            TestGhost reference = null;
+            TestGhost parent = null;
+            TestGhost left = null;
+            TestGhost right = null;
+            Vector3 leftOffset = new Vector3(-0.085f, -0.09f, 0.02f);
+            Vector3 rightOffset = new Vector3(0.085f, -0.09f, 0.02f);
+            int arrivals = 0;
+            bool presentationChanged = false;
+            bool sourceRequestReturnedView = false;
+            using (_realm.Query().OnAvailable(ghost =>
+            {
+                Double3 referencePosition = frame.Position;
+                Vector3 parentPosition = parent.transform.position;
+                Vector3 leftPosition = left.transform.position;
+                Vector3 rightPosition = right.transform.position;
+                _realm.Manifest(ghost);
+                presentationChanged |= frame.Position != referencePosition
+                    || !parent.transform.position.Equals(parentPosition)
+                    || !left.transform.position.Equals(leftPosition)
+                    || !right.transform.position.Equals(rightPosition);
+                arrivals++;
+            }))
+            {
+                _source.NextUpdate = () =>
+                {
+                    reference = _source.PublishPosition("reference", new Double3(1000, 0, 0));
+                    reference.gameObject.AddComponent<Prediction>().SetCartesianVelocity(new Double3(2, 0, 0));
+                    reference.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.08f;
+                    left = _source.Publish("left");
+                    left.gameObject.AddComponent<Spatial>().Attach(new Key("simulation", SpatialKind, "parent"), leftOffset);
+                    right = _source.Publish("right");
+                    right.gameObject.AddComponent<Spatial>().Attach(new Key("simulation", SpatialKind, "parent"), rightOffset);
+                    parent = _source.PublishPosition("parent", new Double3(1010, 0, 0));
+                    parent.GetComponent<Spatial>().SetSourceRotation(Quaternion.Euler(10, 35, 7));
+                    parent.gameObject.AddComponent<Prediction>().SetCartesianVelocity(new Double3(8, 0, 0));
+                    Smoothing smoothing = parent.gameObject.AddComponent<Smoothing>();
+                    smoothing.PositionHalfLife = 0.08f;
+                    smoothing.RotationHalfLife = 0.04f;
+                    sourceRequestReturnedView = _realm.Manifest(parent) != null;
+                };
+                _realm.Update();
+            }
+
+            Assert.That(sourceRequestReturnedView, Is.False, "Source-phase requests still wait for complete projection.");
+            Assert.That(arrivals, Is.EqualTo(4));
+            Assert.That(presentationChanged, Is.False,
+                "Creating views during update notifications must not advance individual roots beyond their shared projection.");
+            AssertPosition(reference.transform.position, frame.UnityPosition);
+            AssertPosition(left.transform.position, parent.transform.position + parent.transform.rotation * leftOffset);
+            AssertPosition(right.transform.position, parent.transform.position + parent.transform.rotation * rightOffset);
+            foreach (TestGhost ghost in new[] { reference, parent, left, right })
+            {
+                Assert.That(ActiveView(ghost), Is.Not.Null);
+                AssertPosition(ActiveView(ghost).GetComponent<EnableProbe>().PositionOnEnable, ghost.transform.position);
+            }
+
+            View existingView = ActiveView(parent);
+            parent.GetComponent<Prediction>().enabled = false;
+            parent.GetComponent<Smoothing>().enabled = false;
+            Spatial parentSpatial = parent.GetComponent<Spatial>();
+            parentSpatial.SetCartesianPosition(new Double3(1020, 0, 0));
+            Assert.That(_realm.Manifest(parent), Is.SameAs(existingView));
+            Assert.That(frame.TryToUnityPosition(parentSpatial.Position, out Vector3 immediatePosition), Is.True);
+            AssertPosition(parent.transform.position, immediatePosition);
+        }
+
         /// <summary>Visibility uses current source range and recovered or re-enabled roots snap to fresh inputs.</summary>
         [Test]
         public void Smoothing_RangeRecoveryAndReenableDiscardOldHistory()
@@ -1115,6 +1188,104 @@ namespace Emas.Tests
             Assert.That(frame.Position.X, Is.EqualTo(1e9 + 4).Within(0.001));
             AssertPosition(reference.transform.position, Vector3.zero);
             AssertPosition(target.transform.position, new Vector3(16, 0, 0), 0.001f);
+        }
+
+        /// <summary>Coherent timestamped motion stays continuous through delayed, held and reordered packets, with or without smoothing, while a followed origin preserves relative placement.</summary>
+        [UnityTest]
+        public IEnumerator TimestampedPrediction_DelayedStreamPreservesMotionAndRelativePlacement()
+        {
+            double[] delays = { 0.035, 0.015, 0.07, 0.025, 0.05, 0.02 };
+            Double3 velocity = new Double3(8, 0, 0);
+            for (int variant = 0; variant < 2; variant++)
+            {
+                using (Realm realm = new Realm())
+                {
+                    TestSource source = new TestSource();
+                    realm.GetOrCreateAnchor("simulation", source);
+                    TestGhost reference = source.Publish("reference");
+                    TestGhost target = source.Publish("target");
+                    Spatial referenceSpatial = reference.gameObject.AddComponent<Spatial>();
+                    Spatial targetSpatial = target.gameObject.AddComponent<Spatial>();
+                    Prediction referencePrediction = reference.gameObject.AddComponent<Prediction>();
+                    Prediction targetPrediction = target.gameObject.AddComponent<Prediction>();
+                    referencePrediction.MaximumExtrapolation = 0.5f;
+                    targetPrediction.MaximumExtrapolation = 0.5f;
+                    if (variant == 1)
+                    {
+                        reference.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.08f;
+                        target.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.08f;
+                    }
+
+                    ReferenceFrame frame = new ReferenceFrame { FollowedGhost = reference.Key };
+                    realm.ReferenceFrame = frame;
+                    double started = Time.realtimeSinceStartupAsDouble;
+
+                    void Deliver(double observedSeconds, Timestamp sampleTime)
+                    {
+                        double position = 1e9 + velocity.X * observedSeconds;
+                        referenceSpatial.SetCartesianPosition(new Double3(position, 0, 0), sampleTime);
+                        targetSpatial.SetCartesianPosition(new Double3(position + 20, 0, 0), sampleTime);
+                        referencePrediction.SetCartesianVelocity(velocity, sampleTime);
+                        targetPrediction.SetCartesianVelocity(velocity, sampleTime);
+                    }
+
+                    Deliver(0, Timestamp.FromSeconds(0));
+                    realm.Update();
+                    double previousPosition = frame.Position.X;
+                    Timestamp? previousSampleTime = referenceSpatial.PositionTime;
+                    bool movedWhileHeld = false;
+
+                    void UpdateAndAssert()
+                    {
+                        bool held = referenceSpatial.PositionTime.Equals(previousSampleTime);
+                        realm.Update();
+                        Assert.That(frame.Position.X, Is.GreaterThanOrEqualTo(previousPosition - 0.0001),
+                            "Coherent forward motion must not rewind when a delayed packet arrives (smoothing variant " + variant + ").");
+                        AssertPosition(reference.transform.position, frame.UnityPosition);
+                        AssertPosition(target.transform.position, new Vector3(20, 0, 0), 0.001f);
+                        movedWhileHeld |= held && frame.Position.X > previousPosition + 0.0001;
+                        previousPosition = frame.Position.X;
+                        previousSampleTime = referenceSpatial.PositionTime;
+                    }
+
+                    double reorderedSeconds = 0;
+                    Timestamp reorderedTime = default;
+                    for (int packet = 0; packet < delays.Length; packet++)
+                    {
+                        // Capture actual observation time before transport delay; never stamp a future or arrival-time pose.
+                        double observedSeconds = Time.realtimeSinceStartupAsDouble - started;
+                        Timestamp sampleTime = Timestamp.FromSeconds(observedSeconds);
+                        double deliveryTime = Time.realtimeSinceStartupAsDouble + delays[packet];
+                        do
+                        {
+                            yield return null;
+                            UpdateAndAssert();
+                        }
+                        while (Time.realtimeSinceStartupAsDouble < deliveryTime);
+
+                        if (packet == 0)
+                        {
+                            // Hold this original observation until newer packets have already been accepted.
+                            reorderedSeconds = observedSeconds;
+                            reorderedTime = sampleTime;
+                            continue;
+                        }
+
+                        Deliver(observedSeconds, sampleTime);
+                        UpdateAndAssert();
+                        if (packet == 2)
+                        {
+                            Deliver(reorderedSeconds, reorderedTime);
+                            Assert.That(referenceSpatial.PositionTime, Is.EqualTo(sampleTime));
+                            Assert.That(targetSpatial.PositionTime, Is.EqualTo(sampleTime));
+                            UpdateAndAssert();
+                        }
+                    }
+
+                    Assert.That(movedWhileHeld, Is.True,
+                        "Prediction must continue advancing between source observations in both smoothing configurations.");
+                }
+            }
         }
 
         private IEnumerator AdvanceSmoothing(double seconds)

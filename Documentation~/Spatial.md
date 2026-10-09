@@ -28,6 +28,8 @@ Author these components on the **same Ghost root**, not on child transforms. `Sp
 
 `Smoothing` and `Prediction` are built-in Traits without SDK readers; the Realm evaluates them after every data Trait and Ghost hook has run. They appear in `Ghost.Traits` and the Ghost Inspector. Disabling either behavior bypasses it on the next projection. Adding a behavior component requires `Spatial` automatically. Attached parts inherit their parent's processed world pose and bypass their own filters, avoiding a second smoothing pass.
 
+Views requested from the Realm update's query notifications use that update's already projected pose. Creating a view does not advance one predicted entity or attachment parent beyond the rest of that frame. Standalone view requests outside those notifications still apply current spatial input immediately.
+
 ## Supply SDK sample times
 
 Supply the SDK's **seconds and nanoseconds separately** so a large Unix-style epoch does not lose its fractional precision:
@@ -86,7 +88,7 @@ Supply Cartesian motion in shared source axes/units through `Prediction.SetCarte
 
 `Prediction.Velocity`, `Acceleration`, `HasVelocity` and `HasAcceleration` expose supplied SDK channels. `ClearVelocity()` releases that supplied channel; timestamp-derived velocity may still be available. `ClearAcceleration()` retains velocity. `Prediction.Reset()` clears estimated motion after a discontinuity, retaining supplied motion. For a teleport, supply the new pose with a fresh timestamp (or untimed override), update motion and call `spatial.ResetPresentation()` to reset both optional behaviors. Raw/source range checks still suppress distant input immediately; recovery or re-enabling Spatial restarts presentation history.
 
-The Relative World sample reads a nullable `GeoPoseReading.SampleTime` with pose and motion from the same observation. Its optional `GeoVelocityTrait` and `GeoAccelerationTrait` require Prediction and supply nullable ENU vectors at that reading's location, independently of reader order. They clear their supplied channel when a vector is unavailable. Existing sample prefabs use Spatial directly; add Smoothing and/or Prediction to select behavior per entity kind or root.
+The Relative World sample reads a nullable `GeoPoseReading.SampleTime` with pose and motion from the same observation. Its `GeoVelocityTrait` and optional `GeoAccelerationTrait` require Prediction and supply nullable ENU vectors at that reading's location, independently of reader order. They clear their supplied channel when a vector is unavailable. The saved sample Ghost prefabs enable Prediction and Smoothing, with analytical SDK velocity and configurable observation noise and delivery delay. The Geo Source Inspector can disable those input impairments for comparison; see the [sample controls and correction troubleshooting](../Samples~/RelativeWorld/README.md#try-noisy-and-delayed-packets).
 
 This implementation uses timestamp-aware kinematic prediction and exponential correction smoothing. A Kalman filter would additionally need suitable process and measurement noise models, ideally SDK accuracy estimates; timestamps alone do not provide those. See [Welch and Bishop's introduction](https://www.cs.unc.edu/~welch/media/pdf/kalman_intro.pdf).
 

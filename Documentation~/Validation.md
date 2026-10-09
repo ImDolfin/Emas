@@ -24,7 +24,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools~\Validate.ps1
 
 The execution-policy override applies only to this PowerShell process; it does not change the machine's saved policy. The script runs EditMode and PlayMode sequentially against `Tests/Unity~`. It discovers the standard Windows Unity Hub installation; use `-UnityPath 'D:\Unity\2022.3.62f3\Editor\Unity.exe'` or the `UNITY_PATH` environment variable for a different location. Use `-TestPlatform EditMode` or `-TestPlatform PlayMode` to run one suite.
 
-Each selected suite replaces its XML report and editor log in `TestResults/Validation/`. The command waits for Unity to exit, attempts both selected suites even if one fails, and returns a nonzero exit code for editor errors, missing or malformed XML, unsuccessful results, or zero discovered tests. Generated reports stay out of version control. `Tools~` is also excluded from Unity package import.
+Each selected suite replaces its XML report and editor log in `TestResults/Validation~/`. The command waits for Unity to exit, attempts both selected suites even if one fails, and returns a nonzero exit code for editor errors, missing or malformed XML, unsuccessful results, or zero discovered tests. Generated reports stay out of version control. The `~` suffix excludes validation output and `Tools~` from Unity package import, so growing logs cannot trigger repeated imports.
 
 ## GitHub Actions
 
