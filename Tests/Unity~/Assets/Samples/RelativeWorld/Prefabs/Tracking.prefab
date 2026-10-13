@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1870669238211547641}
   - component: {fileID: 7597676094643558135}
+  - component: {fileID: 800000000000003586}
   m_Layer: 0
   m_Name: Tracking
   m_TagString: Untagged
@@ -71,6 +72,20 @@ MonoBehaviour:
   _followRotation: 1
   _limitDistance: 1
   _maxDistance: 45
+--- !u!114 &800000000000003586
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 460666751279428389}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc0fa7cb6bdf471298067810a1b4d670, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  _setup: {fileID: 7597676094643558135}
+  _anchor: {fileID: 6866208983204963280}
 --- !u!1 &6154541216453642157
 GameObject:
   m_ObjectHideFlags: 0

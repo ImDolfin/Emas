@@ -193,6 +193,25 @@ Before the first position, while an explicitly assigned reference is uninitializ
 
 ## Queries and subscriptions
 
+Use a Query to select available Ghosts, read root contracts, or observe result membership on Unity's main
+thread. The [query guide](Queries.md) provides the complete API reference, scope and lifetime rules, LINQ
+examples, and runnable sample links. A useful starting point is:
+
+```csharp
+Query cars = realm.Query().InAnchor("cars").OfKind(new Kind("vehicles.car"));
+Query positionedCars = cars.With<Spatial>();
+Query targets = positionedCars.WithVariant(new Variant("target"));
+int count = targets.Count;
+IGhost first = targets.FirstOrDefault();
+```
+
+Each selection returns a new description; `cars` stays unchanged. Use your application's actual Anchor,
+Kind and Variant IDs. A component filter confirms a unique root provider; readiness such as
+`Spatial.HasPosition` is a separate application check. Query membership is independent of views and range.
+
+**Available query results and broader Ghost snapshots have different purposes.** Queries exclude prepared
+and unavailable roots. The lookup and snapshot APIs below support initialization and retained-root lookup:
+
 Use `TryGetGhost` when the full `Key` is known. It reads the realm registry without creating, activating or updating anything. Check `ghost.IsAvailable` before consuming its data; a found ghost may be prepared or awaiting publication during startup handover. Keys are case-sensitive and resolved only within the receiving realm. Removal stops lookup immediately, even before Unity finishes destroying the object.
 
 Use `realm.Ghosts` for list-style searches by partial entity ID, root type or trait data. The read-only snapshot includes all live tracked roots in that realm: prepared entities, entities awaiting activation and entities retained during disappearance grace or handover. It is available inside an initializer for roots created so far. Each access takes a fresh membership snapshot; earlier lists retain their membership, while their Unity components remain subject to removal and destruction. New snapshots exclude removed or destroyed roots, and disposed realms return an empty list. No ordering is guaranteed. Use `System.Linq` to filter it:
@@ -221,9 +240,10 @@ Queries also implement `IEnumerable<IGhost>` and support LINQ, such as `realm.Qu
 | Filter/result | Meaning |
 | --- | --- |
 | `Query(partialName)` / `WithExactName(name)` | Case-insensitive substring / exact display-name match |
+| `Realm.Query(description)` / `Query.All(partialName)` | Rebind retained filters into one Realm / select every live and future Realm without creating Realm.Default |
 | `OfKind(kind)` / `InAnchor(id)` / `WithVariant(variant)` | Exact, case-sensitive ID match |
-| `With<T>()` | Require a root contract |
-| Enumeration / `Count` | Current available matches; empty when none match |
+| `With<T>()` | Require exactly one live root provider; disabled components are eligible, children and capability metadata do not supply contracts |
+| Enumeration / `Count` | Copied current membership / freshly evaluated count; Ghost data remains live, and disposed scoped Realms yield empty results |
 | `FirstOrDefault()` | First match or null; no ordering guarantee |
 | `Single()` | Exactly one match; otherwise throws |
 | `OnAvailable(callback)` | Notify current and future complete matches; dispose the returned subscription to stop |
@@ -231,6 +251,14 @@ Queries also implement `IEnumerable<IGhost>` and support LINQ, such as `realm.Qu
 | `ObserveWithRealm(onEnter, onLeave)` | Paired callbacks with the owning `Realm` on entry and departure, so matching keys in separate realms remain distinguishable |
 
 Within each realm, subscriptions notify once while a ghost remains a match. Availability loss permits a fresh notification on recovery. Outside that realm's detector, finalization and notification callbacks, current matches notify immediately. Inside those phases, notification is deferred; subscriptions created during notification wait for a later update in that realm. Cross-realm result and callback order is unspecified. Callback exceptions are isolated, and each match is rechecked before invoking the callback.
+
+Callbacks describe membership, rather than each frame's data changes. Initialize callback state before
+subscribing, keep the returned `IDisposable`, and dispose it when the consumer stops. A cached query is live
+when evaluated again; retaining an enumerator or LINQ array does not freeze availability or data. Filters
+combine with AND, repeated selectors replace that selector, and repeated `With<T>()` calls add requirements.
+`InAnchor(null)` and `WithExactName(null)` clear those selectors; `WithVariant(Variant.None)` selects unspecified
+appearances rather than clearing its filter. Invalid Kinds throw `ArgumentException`, null callbacks throw
+`ArgumentNullException`, and subscribing to a disposed scoped Realm throws `ObjectDisposedException`.
 
 `Observe` reports departure when a previously delivered ghost is removed, becomes unavailable or no longer matches. Departures run at the update notification phase, before that subscription's arrivals. Removal and availability loss remain observable even if the identity returns before the next update; filter changes are evaluated at notification time. A departure receives a `Key` because its Unity object may already be destroyed. Keys identify ghosts within a realm, so two realms may have the same key. Use `ObserveWithRealm` when a consumer must tell those departures apart. Disposing a realm reports departures for previously observed matches of an all-realm query; a realm-scoped subscription instead ends without synthetic departures. Disposing either subscription cancels pending callbacks; consumers clear their own retained state.
 

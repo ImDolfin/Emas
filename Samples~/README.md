@@ -5,8 +5,8 @@ Import through Package Manager before opening a scene.
 | Sample | Open | Demonstrates |
 | --- | --- | --- |
 | **Quick start** (`Minimal/`) | `QuickStart.unity` | One arrival detector with a mapped position trait, authored Ghost and view prefabs, blueprint with a named variant |
-| **Emas sample** (`Example/`) | `Scenes/Example.unity` | Isolated Realm Setup, three cars, typed views and source replacement |
-| **Relative world** (`RelativeWorld/`) | `RelativeWorld.unity` | Authored `Spatial` roots and blueprint variant rows, `Double3` positions and a driving reference passing parked cars with a circling bird |
+| **Emas sample** (`Example/`) | `Scenes/Example.unity` | Isolated Realm Setup, three cars, typed views, filtered car queries with membership subscriptions and source replacement |
+| **Relative world** (`RelativeWorld/`) | `RelativeWorld.unity` | Authored `Spatial` roots and blueprint variant rows, `Double3` positions, parked-car query membership and bird-distance lookup around a driving reference |
 
 Imported samples appear beneath `Assets/Samples/Emas/0.1.0/`, in a folder matching their displayed sample name.
 

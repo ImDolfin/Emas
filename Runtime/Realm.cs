@@ -409,14 +409,15 @@ namespace Emas
         }
 
         /// <summary>
-        /// Creates a query by partial display name.
+        /// Creates an immutable query description scoped to this Realm's available Ghosts.
         /// </summary>
         /// <param name="partialName">
-        /// The optional case-insensitive partial name.
+        /// The optional case-insensitive display-name substring; null leaves names unrestricted. Entity IDs are separate.
         /// </param>
         /// <returns>
-        /// The query.
+        /// A reusable description evaluated when counted, selected, enumerated or subscribed to.
         /// </returns>
+        /// <remarks>Use on Unity's main thread. Does not advance tracking, create roots or request views. A disposed Realm yields empty query results; subscriptions reject disposal.</remarks>
         public Query Query(string partialName = null)
         {
             return new Query(this, partialName);
@@ -429,8 +430,9 @@ namespace Emas
         /// The query description.
         /// </param>
         /// <returns>
-        /// A query bound to this realm.
+        /// A new description bound to this Realm, retaining all filters and leaving the original query and its scope unchanged.
         /// </returns>
+        /// <remarks>Rebinds descriptions from Query.All or another Realm without changing their existing subscriptions. Query evaluation and notifications require Unity's main thread.</remarks>
         /// <exception cref="ArgumentNullException">
         /// Thrown when the description is null.
         /// </exception>

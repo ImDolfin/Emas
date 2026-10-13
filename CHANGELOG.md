@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Expand query documentation with a README introduction and complete scope/filter/result/subscription guide. Demonstrate immutable variant filters and root-contract reads in Example, and parked-car arrivals/departures plus measured bird separation in Relative World. Author the geographic query consumer in its tracking prefab, dispose/rebind sample subscriptions across disable and Realm restart, and cover both consumers in the imported sample scenarios.
+
 - Add optional timestamped body angular velocity to Prediction with explicit SDK body axes and radians-per-second units. Sample rates at the attitude observation's time, bound orientation gaps by the existing horizon, preserve zero overrides and restore rotation-history estimation on clear. Add Relative World's GeoAngularVelocityTrait, analytical banked-bird body rates and stationary zero rates to its readings, initializer and Ghost prefabs, with matching imported samples and focused API/integration coverage.
 
 - Apply changes in timestamped SDK prediction lead without position smoothing lag during known maneuvers, while retaining position-noise filtering and held-packet caps. Sample motion at the pose timestamp with immediate or buffered playback, preserving exact timestamp boundaries and excluding later acceleration. Extend timed orientation prediction to zero interpolation delay. Clarify geographic ENU versus aircraft body motion and cover pitch/roll reference projection, independent channel timing and live orientation tuning.

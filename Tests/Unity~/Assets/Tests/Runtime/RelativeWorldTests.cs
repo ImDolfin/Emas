@@ -152,7 +152,7 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// Stationary roadside cars pass on alternating sides; changing driving speed preserves distance and supplies matching velocity.
+        /// Stationary roadside cars pass on alternating sides; scoped query consumers report parking arrivals/departures and measured bird distance across a setup restart, while driving speed preserves distance and matching velocity.
         /// </summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
@@ -164,6 +164,7 @@ namespace Emas.Tests.Samples
             Realm realm = setup.Realm;
             Ghost origin = Car(realm, "origin");
             Ghost parked = Car(realm, "parked-0");
+            Emas.RelativeWorld.GeoQueryExample queries = Find<Emas.RelativeWorld.GeoQueryExample>();
             Spatial originSpatial = origin.GetComponent<Spatial>();
             Spatial parkedSpatial = parked.GetComponent<Spatial>();
             Double3 parkedPosition = parkedSpatial.Position;
@@ -174,6 +175,12 @@ namespace Emas.Tests.Samples
             Assert.That(parked.transform.position.z, Is.EqualTo(24f).Within(0.001f));
             Assert.That(parked.transform.position.y, Is.EqualTo(0f).Within(0.001f));
             AssertOriginPose(origin);
+            Assert.That(queries.AvailableCarCount, Is.EqualTo(2));
+            Assert.That(queries.ParkedCarCount, Is.EqualTo(1));
+            IGhost bird = queries.Bird;
+            Assert.That(bird, Is.Not.Null);
+            Assert.That(bird.Key.Kind, Is.EqualTo(Emas.RelativeWorld.GeoSource.BirdKind));
+            Assert.That(queries.BirdDistanceMeters, Is.EqualTo(System.Math.Sqrt(4 * 4 + 3.2 * 3.2)).Within(0.01));
 
             source.Advance(5.0);
             realm.Update();
@@ -189,9 +196,12 @@ namespace Emas.Tests.Samples
             realm.Update();
             Assert.That(realm.TryGetGhost(new Key("relative-world", CarKind, "parked-0"), out IGhost removed), Is.False);
             Assert.That(realm.Query().OfKind(CarKind).Count, Is.EqualTo(1));
+            Assert.That(queries.AvailableCarCount, Is.EqualTo(1));
+            Assert.That(queries.ParkedCarCount, Is.Zero, "Observer departures remove the previously reported parked car.");
             source.Advance(3.0);
             realm.Update();
             Ghost right = Car(realm, "parked-1");
+            Assert.That(queries.ParkedCarCount, Is.EqualTo(1), "A later parking bay enters the same cached query.");
             Assert.That(right.transform.position.x, Is.EqualTo(3f).Within(0.001f));
             Assert.That(right.transform.position.z, Is.EqualTo(32f).Within(0.001f));
             Double3 rightPosition = right.GetComponent<Spatial>().Position;
@@ -220,6 +230,10 @@ namespace Emas.Tests.Samples
             source.SpeedKilometersPerHour = 28.8f;
 
             setup.gameObject.SetActive(false);
+            Assert.That(queries.AvailableCarCount, Is.Zero);
+            Assert.That(queries.ParkedCarCount, Is.Zero);
+            Assert.That(queries.Bird, Is.Null);
+            Assert.That(queries.BirdDistanceMeters, Is.Null);
             Assert.That(realm.Query().Count, Is.Zero);
             setup.gameObject.SetActive(true);
             yield return null;
@@ -228,6 +242,10 @@ namespace Emas.Tests.Samples
             Assert.That(setup.Realm, Is.Not.SameAs(realm));
             Assert.That(setup.Realm.Query().OfKind(CarKind).Count, Is.EqualTo(2));
             Assert.That(Car(setup.Realm, "parked-0").transform.position.z, Is.EqualTo(24f).Within(0.001f));
+            Assert.That(queries.AvailableCarCount, Is.EqualTo(2));
+            Assert.That(queries.ParkedCarCount, Is.EqualTo(1));
+            Assert.That(queries.Bird, Is.Not.SameAs(bird));
+            Assert.That(queries.BirdDistanceMeters, Is.EqualTo(System.Math.Sqrt(4 * 4 + 3.2 * 3.2)).Within(0.01));
         }
 
         /// <summary>Road markings follow actual reference travel, and large time jumps keep a bounded, level population.</summary>

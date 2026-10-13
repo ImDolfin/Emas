@@ -67,7 +67,7 @@ namespace Emas.Tests.Samples
         }
 
         /// <summary>
-        /// Switching the example's SDK source keeps entity identities and the position/articulation contracts used by its views.
+        /// Switching the example's SDK source preserves identities and root contracts; its query consumer filters small cars and releases/rebinds observations when disabled or restarted.
         /// </summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
@@ -75,6 +75,7 @@ namespace Emas.Tests.Samples
         {
             yield return Load("Assets/Samples/Example/Scenes/Example.unity");
             Emas.Sample.CarSource source = Find<Emas.Sample.CarSource>();
+            Emas.Sample.SampleStatus status = Find<Emas.Sample.SampleStatus>();
             Realm realm = Find<RealmSetup>().Realm;
             Query cars = realm.Query().InAnchor("cars").OfKind(Emas.Sample.SampleKinds.Car);
             Dictionary<Key, IGhost> roots = new Dictionary<Key, IGhost>();
@@ -85,12 +86,21 @@ namespace Emas.Tests.Samples
             }
 
             Assert.That(roots.Count, Is.EqualTo(3));
+            Assert.That(status.AvailableCarCount, Is.EqualTo(3));
+            Assert.That(status.SmallCarCount, Is.EqualTo(1));
+            IGhost smallCar = status.FirstSmallCar;
+            Assert.That(smallCar, Is.Not.Null);
+            Assert.That(smallCar.Variant, Is.EqualTo(Emas.Sample.CarVariants.SmallCar));
+            AssertCarView(smallCar);
             Assert.That(realm.Anchors.Count, Is.EqualTo(1));
             source.ReplaceCarSource();
             yield return null;
             yield return null;
 
             Assert.That(cars.Count, Is.EqualTo(roots.Count));
+            Assert.That(status.AvailableCarCount, Is.EqualTo(roots.Count));
+            Assert.That(status.SmallCarCount, Is.EqualTo(1));
+            Assert.That(status.FirstSmallCar, Is.SameAs(smallCar));
             foreach (IGhost ghost in cars)
             {
                 Assert.That(ghost, Is.SameAs(roots[ghost.Key]));
@@ -98,14 +108,25 @@ namespace Emas.Tests.Samples
             }
 
             RealmSetup setup = Find<RealmSetup>();
+            status.enabled = false;
+            Assert.That(status.AvailableCarCount, Is.Zero);
+            Assert.That(status.SmallCarCount, Is.Zero);
+            Assert.That(status.FirstSmallCar, Is.Null);
+            status.enabled = true;
+            yield return null;
+            Assert.That(status.AvailableCarCount, Is.EqualTo(roots.Count));
             setup.gameObject.SetActive(false);
             Assert.That(realm.Query().Count, Is.Zero);
+            Assert.That(status.AvailableCarCount, Is.Zero);
             setup.gameObject.SetActive(true);
             yield return null;
             yield return null;
             Assert.That(setup.Realm, Is.Not.SameAs(realm));
             Assert.That(source.IsUsingSecondSdk, Is.False);
             Assert.That(setup.Realm.Query().InAnchor("cars").Count, Is.EqualTo(roots.Count));
+            Assert.That(status.AvailableCarCount, Is.EqualTo(roots.Count));
+            Assert.That(status.SmallCarCount, Is.EqualTo(1));
+            Assert.That(status.FirstSmallCar, Is.Not.SameAs(smallCar));
         }
 
         private static void AssertCarView(IGhost ghost)

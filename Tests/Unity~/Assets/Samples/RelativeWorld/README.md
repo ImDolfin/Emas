@@ -21,6 +21,43 @@ Tracking's **Realm Setup** sets **Interpolation Delay** to `0.1 s`. The origin, 
 
 Both saved Ghost prefabs enable `Prediction` with a short `0.05 s` extrapolation limit for gaps that extend beyond the available history. They also enable `Smoothing` with `0.08 s` position and `0.04 s` rotation half-lives to filter measurement error. A half-life is the time to halve correction error, not the interpolation delay. The sample explicitly smooths heading, including the followed origin; the component's general rotation default remains zero. Attached feet inherit the bird's processed pose and bypass their own filters until detached.
 
+## Query parked cars and the bird
+
+The saved **Tracking** prefab includes [GeoQueryExample](GeoQueryExample.cs). Its overlay reports available
+cars, the parked-car set maintained by paired callbacks, and the bird's measured separation from the driving
+reference. Select **Tracking > Geo Query Example** while playing and choose **Log queried parked cars** from
+the component context menu to enumerate their identities and WGS84 positions.
+
+```csharp
+Query cars = realm.Query().InAnchor("relative-world").OfKind(GeoSource.Kind).With<Spatial>();
+Query parkedCars = cars.WithVariant(new Variant("target"));
+Query origin = cars.WithVariant(new Variant("origin"));
+Query birds = realm.Query().InAnchor("relative-world").OfKind(GeoSource.BirdKind).With<Spatial>();
+
+int carCount = cars.Count;
+IGhost bird = birds.FirstOrDefault();
+```
+
+All filters combine with AND. The derived variant queries keep `cars` unchanged. Car queries exclude the bird
+and foot Kinds; the parked-car query also excludes the driving reference. `FirstOrDefault()` lets the consumer
+wait for delayed arrivals without assuming exactly-one membership at startup. A cached Query evaluates fresh
+results whenever counted, selected or enumerated.
+
+`GeoQueryExample` subscribes to `parkedCars.Observe(...)`, retaining Keys on entry and removing them on departure.
+Drive past a parking bay to see it leave, then advance to the next bay to see a new entry through the same
+subscription. Callbacks describe membership, rather than every position update. The component disposes its
+handle and clears retained state on disable or Realm restart, then binds to the replacement `RealmSetup.Realm`.
+It reads query results without advancing tracking or requesting views.
+
+The bird distance uses the two available roots' raw `Spatial.Position` ECEF values and `Double3.Distance`, in
+metres, after checking `HasPosition`. These paired mock readings share a capture time. The readout measures
+SDK-observed separation independently of presentation prediction, smoothing and reference rotation. Queries
+still include available roots with no view or outside the reference range; use `Spatial.IsInRange` in an
+application predicate if selection should depend on visibility.
+
+See the [query guide and complete API reference](../../Documentation~/Queries.md) for contract filters,
+display-name versus entity-ID lookup, result snapshots, `Query.All()` and subscription lifetime.
+
 ## Try noisy and delayed packets
 
 Select **Tracking / Geodetic Feed / Geo Source**. **Simulate Jitter And Delay** is enabled on the saved Tracking prefab, with these editable settings:

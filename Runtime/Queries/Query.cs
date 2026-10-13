@@ -8,9 +8,11 @@ namespace Emas
     /// Describes filters used to select tracked ghosts.
     /// </summary>
     /// <remarks>
-    /// Immutable filters evaluated on the Unity thread. Results contain only available ghosts, with no ordering guarantee.
+    /// Immutable filters evaluated on Unity's main thread. Results contain only available ghosts, with no ordering guarantee.
     /// Each filter call returns a new description. Kind, anchor, exact name and variant selectors replace the corresponding
     /// selector; repeated With calls add required contracts. View requests and spatial range do not affect membership.
+    /// Count and selection methods evaluate when called; each enumeration copies matching membership, while Ghost data
+    /// remains live. Subscriptions observe membership changes, not per-frame trait values. Keep and dispose their handles.
     /// </remarks>
     public sealed class Query : IEnumerable<IGhost>
     {
@@ -26,7 +28,7 @@ namespace Emas
         /// Gets the number of current matches.
         /// </summary>
         /// <value>
-        /// The number of currently matching available ghosts.
+        /// The freshly evaluated number of matching available ghosts; zero when a scoped query's Realm is disposed.
         /// </value>
         public int Count
         {
@@ -79,7 +81,7 @@ namespace Emas
         /// Creates a query across every live realm, including realms created later.
         /// </summary>
         /// <param name="partialName">
-        /// The optional case-insensitive partial display name.
+        /// The optional case-insensitive display-name substring; null leaves names unrestricted. This does not filter entity IDs.
         /// </param>
         /// <returns>A query that evaluates all live realms.</returns>
         /// <remarks>
@@ -151,6 +153,7 @@ namespace Emas
         /// </summary>
         /// <param name="name">
         /// The case-insensitive exact display name, or null to clear this filter. Other name filters still apply.
+        /// Matches Ghost.Name metadata, independently of Key.EntityId and the root GameObject name.
         /// </param>
         /// <returns>
         /// A new query with this exact name selector and all other filters retained.
@@ -164,7 +167,7 @@ namespace Emas
         /// Restricts the query to one visual variant.
         /// </summary>
         /// <param name="variant">
-        /// The variant identifier.
+        /// The case-sensitive appearance identifier; Variant.None matches unspecified appearances and does not clear this selector.
         /// </param>
         /// <returns>
         /// A new query with this variant selector and all other filters retained.
@@ -183,6 +186,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// Thrown when the result is not exactly one ghost.
         /// </exception>
+        /// <remarks>Evaluates current matches on every call. A disposed scoped Realm has zero matches and also causes this exception.</remarks>
         public IGhost Single()
         {
             IGhost first;
@@ -253,7 +257,7 @@ namespace Emas
         /// Subscribes to ghosts that become matches.
         /// </summary>
         /// <param name="callback">
-        /// The callback invoked for current and future matches.
+        /// The callback invoked once per matching membership period, including current matches; this is not a per-frame data callback.
         /// </param>
         /// <returns>
         /// A subscription that stops future callbacks when disposed.
@@ -369,7 +373,8 @@ namespace Emas
         }
 
         /// <summary>Enumerates a snapshot of the available ghosts matching at the time enumeration is requested.</summary>
-        /// <returns>An enumerator over the copied results; the referenced ghosts retain their own tracking lifetimes.</returns>
+        /// <returns>An enumerator over copied membership; the referenced ghosts retain live data and their own tracking lifetimes.</returns>
+        /// <remarks>Request enumeration on Unity's main thread. Re-enumerating this Query reevaluates current membership; keeping an enumerator or LINQ materialization does not freeze Ghost data.</remarks>
         public IEnumerator<IGhost> GetEnumerator()
         {
             return Evaluate().GetEnumerator();

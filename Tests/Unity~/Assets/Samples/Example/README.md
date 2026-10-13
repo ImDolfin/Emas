@@ -31,7 +31,43 @@ To customize an appearance, open its view prefab variant and change the body, ca
 | Root position consumption | `Behaviors/ApplyPosition.cs` |
 | View consumption through `View.Ghost.TryGet<T>` | `Behaviors/VehicleLogic.cs`, `ArticulationLogic.cs` |
 
-`SampleStatus` uses `Observe`: entry callbacks retain ghost keys and departure callbacks remove them. It disposes its subscription and clears the retained sets when disabled or when its realm changes. Automatic views are configured on the anchors, so the observer only displays membership. Source diagnostic labels are visible in **Window > Emas**.
+`SampleStatus` uses `Observe`: entry callbacks retain ghost keys and departure callbacks remove them. It disposes its subscription and clears retained state when disabled or when its realm changes. Automatic views are configured on the anchors. Source diagnostic labels are visible in **Window > Emas**.
+
+## Query the cars
+
+The saved Tracking prefab includes `SampleStatus`. Its overlay shows the observed car count, a filtered
+small-car count, and position read through `I3DPosition`. Select **Tracking > Sample Status** while playing
+and use **Log queried car positions** in the component context menu to enumerate the matching root contracts.
+
+The query is scoped to this scene's Realm and the `cars` Anchor:
+
+```csharp
+Query cars = realm.Query().InAnchor("cars").OfKind(SampleKinds.Car)
+    .With<I3DPosition>().With<IArticulate>();
+Query smallCars = cars.WithVariant(CarVariants.SmallCar);
+
+int smallCarCount = smallCars.Count;
+IGhost smallCar = smallCars.FirstOrDefault();
+I3DPosition position;
+if (smallCar != null && smallCar.TryGet<I3DPosition>(out position))
+{
+    Debug.Log(position.Position);
+}
+```
+
+Deriving `smallCars` leaves `cars` unchanged. `Count` and `FirstOrDefault()` evaluate current available
+matches; the first result has no ordering guarantee. `With<T>()` checks a unique provider on the Ghost root,
+so views do not supply these contracts. Position is anchor-local Unity data. Neither query requests a view.
+
+Read [Behaviors/SampleStatus.cs](Behaviors/SampleStatus.cs) for the full consumer. Its `Observe` subscription
+maintains the available-car set across SDK replacement. Callbacks run once per matching membership period,
+while the overlay reads current contract data each frame. Departures receive a `Key`, allowing cleanup after
+the Unity object has been destroyed. The collection exists before subscribing because current matches can
+enter synchronously. Disabling the consumer disposes its handle and clears its state; restarting Tracking
+creates a new Realm, so it rebuilds the descriptions and subscription instead of retaining the old scope.
+
+See the [query guide and complete API reference](../../Documentation~/Queries.md) for display-name filters,
+known entity IDs, LINQ, `Single()`, all-Realm queries and callback timing.
 
 Positions are local to the owning anchor. The simulated feeds already use that frame; real SDK adapters must convert units, axes and coordinates in the initializer-bound readers. The Ghost traits only consume `Vector3` and `float`; detectors only announce arrivals and departures. Consumers only receive read-only interfaces.
 

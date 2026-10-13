@@ -133,6 +133,48 @@ Code setup stays the same: construct a plain `PresenceDetector` with injected de
 
 Choose **Geographic** under **Reference space**. **Source quaternion axes** describes input to `SetSourceRotation`: Unity means east/up/north, with ENU, NED and custom mappings also available. Direct `SetGeographicRotation` yaw/pitch/roll uses its documented angle convention regardless of this setting. For the moving origin, enable **Follow a Ghost** and enter entity `origin`, anchor `items`, Kind `tracked.item`. If the ID is known only at runtime, leave Entity ID empty and assign `realmSetup.Realm.ReferenceFrame.FollowedGhost = ghost.Key` after startup. For a fixed geographic reference, leave following off and enter latitude, longitude and ellipsoidal height, or assign `ReferenceFrame.GeographicPosition` by code. `Unity Position` chooses where the reference appears. For ordinary Cartesian data, choose **Cartesian** and use `Spatial.SetCartesianPosition(Double3)`. See [Spatial](Documentation~/Spatial.md) for projection and reference loss.
 
+## Query available entities
+
+Queries select available Ghost roots independently of views and spatial visibility. Reuse an immutable
+description to count, select, or enumerate the current matches on Unity's main thread:
+
+```csharp
+Query items = realm.Query()
+    .InAnchor("items")
+    .OfKind(new Kind("tracked.item"))
+    .With<Spatial>();
+
+Query standardItems = items.WithVariant(new Variant("standard"));
+int count = standardItems.Count;
+IGhost first = standardItems.FirstOrDefault(); // Null while waiting for a matching arrival.
+
+foreach (IGhost ghost in items)
+{
+    Spatial spatial;
+    if (ghost.TryGet<Spatial>(out spatial) && spatial.HasPosition)
+    {
+        Debug.Log(ghost.Key + ": " + spatial.Position);
+    }
+}
+```
+
+`With<T>()` can require a read-only interface implemented on the root, as demonstrated by the Example
+sample's `.With<I3DPosition>().With<IArticulate>()`. A filter returns a new Query; it does not change the
+original. Each enumeration copies current membership, while the returned Ghosts retain live data.
+`FirstOrDefault()` has no ordering guarantee; `Single()` throws unless exactly one entity matches.
+Name filters search display metadata, while known identities use `Realm.TryGetGhost(key, out ghost)`.
+
+For ongoing membership, retain the handle returned by `query.Observe(onEnter, onLeave)`: entries receive
+an `IGhost`, departures a `Key`. Current entries can arrive synchronously. Dispose the handle and clear
+retained state when the consumer stops or its Realm changes. Callbacks report membership changes rather
+than every frame's trait values. `Query.All()` spans live Realms; `ObserveWithRealm` distinguishes duplicate
+Keys across those scopes.
+
+Both samples contain runnable query consumers: [Example](Samples~/Example/Behaviors/SampleStatus.cs) shows
+small-car filtering and contract reads; [Relative World](Samples~/RelativeWorld/GeoQueryExample.cs) shows
+parked-car membership and measured bird separation. See the [query guide and complete API reference](Documentation~/Queries.md)
+for filters, subscription timing, cleanup, LINQ, and unavailable-root lookup.
+
 ## Tests
 
 1. In **Unity Hub**, add the project from **`Tests/Unity~`** and open it with **Unity 2022.3.62f3**.
@@ -148,5 +190,6 @@ On Windows, close the test project in Unity and run `powershell -NoProfile -Exec
 - [Getting started](Documentation~/GettingStarted.md): install and integrate a source.
 - [Guidelines](Documentation~/Guidelines.md): contracts, ownership and contributions.
 - [API reference](Documentation~/API.md): operations and behavior contracts.
+- [Queries](Documentation~/Queries.md): select available Ghosts, read root contracts, and own membership subscriptions.
 - [Architecture](Documentation~/Architecture.md): ownership, update phases and lifecycle diagrams.
 - [Validation](Documentation~/Validation.md): Unity Test Runner setup and API contract coverage.
