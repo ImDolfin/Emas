@@ -6,6 +6,12 @@ namespace Emas
     // A live query subscription with one independent registration per realm.
     internal sealed class GlobalQuerySubscription : IDisposable
     {
+        private sealed class Child
+        {
+            internal readonly HashSet<Key> Seen = new HashSet<Key>();
+            internal IDisposable Subscription;
+        }
+
         private readonly Query _query;
         private readonly Action<Realm, IGhost> _onEnter;
         private readonly Action<Realm, Key> _onLeave;
@@ -18,6 +24,28 @@ namespace Emas
             _query = query;
             _onEnter = onEnter;
             _onLeave = onLeave;
+        }
+
+        /// <summary>
+        /// Stops observing all realms without reporting departures.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            RealmRegistry.Remove(this);
+            Child[] children = new Child[_children.Count];
+            _children.Values.CopyTo(children, 0);
+            _children.Clear();
+            foreach (Child child in children)
+            {
+                child.Subscription?.Dispose();
+                child.Seen.Clear();
+            }
         }
 
         internal void Attach(Realm realm)
@@ -88,28 +116,6 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Stops observing all realms without reporting departures.
-        /// </summary>
-        public void Dispose()
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            RealmRegistry.Remove(this);
-            Child[] children = new Child[_children.Count];
-            _children.Values.CopyTo(children, 0);
-            _children.Clear();
-            foreach (Child child in children)
-            {
-                child.Subscription?.Dispose();
-                child.Seen.Clear();
-            }
-        }
-
         private void Enter(Realm realm, Child child, IGhost ghost)
         {
             Child current;
@@ -136,12 +142,6 @@ namespace Emas
             }
 
             _onLeave(realm, key);
-        }
-
-        private sealed class Child
-        {
-            internal readonly HashSet<Key> Seen = new HashSet<Key>();
-            internal IDisposable Subscription;
         }
     }
 }

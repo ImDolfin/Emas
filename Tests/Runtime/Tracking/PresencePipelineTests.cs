@@ -12,6 +12,81 @@ namespace Emas.Tests
     /// </summary>
     public sealed class PresencePipelineTests
     {
+        private interface IPositionCapability
+        {
+        }
+
+        private interface IArticulationCapability
+        {
+        }
+
+        private sealed class PositionSdk : IDisposable
+        {
+            internal Double3 Position;
+            internal bool IsDisposed;
+
+            /// <summary>Records disposal initiated by the application.</summary>
+            public void Dispose()
+            {
+                IsDisposed = true;
+            }
+        }
+
+        private sealed class Reading
+        {
+            internal Double3 Position;
+            internal int Articulation;
+
+            internal Reading(Double3 position, int articulation)
+            {
+                Position = position;
+                Articulation = articulation;
+            }
+        }
+
+        private sealed class RemovalCallback : MonoBehaviour
+        {
+            internal Action Disabled;
+
+            private void OnDisable()
+            {
+                Action disabled = Disabled;
+                Disabled = null;
+                disabled?.Invoke();
+            }
+        }
+
+        private sealed class Detector : PresenceDetector
+        {
+            internal Action<Detector> Starting;
+
+            internal Presence Arrive(string entityId, object source)
+            {
+                return Detect(entityId, TrackedKind, source: source);
+            }
+
+            internal void Lose(string entityId)
+            {
+                Disappear(TrackedKind, entityId);
+            }
+
+            internal void PublishCached(IGhost ghost)
+            {
+                MarkPublished(ghost);
+            }
+
+            internal Presence PublishMetadata(string entityId, string name, params Type[] capabilities)
+            {
+                return Detect(entityId, TrackedKind, name, capabilities: capabilities);
+            }
+
+            /// <inheritdoc />
+            protected override void OnStart()
+            {
+                Starting?.Invoke(this);
+            }
+        }
+
         private static readonly Kind TrackedKind = new Kind("tests.presence.pipeline");
         private Realm _realm;
 
@@ -191,12 +266,6 @@ namespace Emas.Tests
                     UnityEngine.Object.DestroyImmediate(source);
                 }
             }
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static Presence DetectTemporarySource(Detector detector)
-        {
-            return detector.Arrive("temporary", new object());
         }
 
         /// <summary>
@@ -546,79 +615,10 @@ namespace Emas.Tests
             }
         }
 
-        private interface IPositionCapability
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static Presence DetectTemporarySource(Detector detector)
         {
-        }
-
-        private interface IArticulationCapability
-        {
-        }
-
-        private sealed class PositionSdk : IDisposable
-        {
-            internal Double3 Position;
-            internal bool IsDisposed;
-
-            /// <summary>Records disposal initiated by the application.</summary>
-            public void Dispose()
-            {
-                IsDisposed = true;
-            }
-        }
-
-        private sealed class Reading
-        {
-            internal Reading(Double3 position, int articulation)
-            {
-                Position = position;
-                Articulation = articulation;
-            }
-
-            internal Double3 Position;
-            internal int Articulation;
-        }
-
-        private sealed class RemovalCallback : MonoBehaviour
-        {
-            internal Action Disabled;
-
-            private void OnDisable()
-            {
-                Action disabled = Disabled;
-                Disabled = null;
-                disabled?.Invoke();
-            }
-        }
-
-        private sealed class Detector : PresenceDetector
-        {
-            internal Action<Detector> Starting;
-
-            /// <inheritdoc />
-            protected override void OnStart()
-            {
-                Starting?.Invoke(this);
-            }
-
-            internal Presence Arrive(string entityId, object source)
-            {
-                return Detect(entityId, TrackedKind, source: source);
-            }
-
-            internal void Lose(string entityId)
-            {
-                Disappear(TrackedKind, entityId);
-            }
-
-            internal void PublishCached(IGhost ghost)
-            {
-                MarkPublished(ghost);
-            }
-
-            internal Presence PublishMetadata(string entityId, string name, params Type[] capabilities)
-            {
-                return Detect(entityId, TrackedKind, name, capabilities: capabilities);
-            }
+            return detector.Arrive("temporary", new object());
         }
     }
 }

@@ -11,6 +11,23 @@ namespace Emas.Tests
     /// </summary>
     public sealed class ObservationTests
     {
+        private sealed class Probe : PresenceDetector
+        {
+            internal TestGhost Publish(string id, Variant? variant = null, string name = null)
+            {
+                return GetOrCreate<TestGhost>(id, new Kind("observe"), variant, name);
+            }
+
+            internal void RemoveId(string id)
+            {
+                Disappear(new Kind("observe"), id);
+            }
+        }
+
+        private sealed class TestGhost : Ghost
+        {
+        }
+
         private Realm _realm;
         private Probe _source;
         private Anchor _anchor;
@@ -216,23 +233,6 @@ namespace Emas.Tests
             _source.Publish("one");
             _realm.Update();
             Assert.That(entries, Is.EqualTo(1));
-        }
-
-        private sealed class Probe : PresenceDetector
-        {
-            internal TestGhost Publish(string id, Variant? variant = null, string name = null)
-            {
-                return GetOrCreate<TestGhost>(id, new Kind("observe"), variant, name);
-            }
-
-            internal void RemoveId(string id)
-            {
-                Disappear(new Kind("observe"), id);
-            }
-        }
-
-        private sealed class TestGhost : Ghost
-        {
         }
     }
 }

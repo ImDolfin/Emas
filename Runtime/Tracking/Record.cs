@@ -5,15 +5,6 @@ namespace Emas
     // One tracked root's lifetime and presentation state; availability, spatial visibility and view requests are independent.
     internal sealed class Record
     {
-        internal Record(Ghost ghost, PresenceDetector owner, ManifestationBlueprintSnapshot blueprint)
-        {
-            Key = ghost.Key;
-            Ghost = ghost;
-            Owner = owner;
-            ManifestationBlueprint = blueprint;
-            RegistrationGeneration = owner == null ? 0 : owner.RegistrationGeneration;
-        }
-
         internal readonly Key Key;
         internal readonly Ghost Ghost;
         internal Presence Presence;
@@ -37,5 +28,14 @@ namespace Emas
         internal long HandoverUpdate;
         internal long HandoverDispatchSequence;
         internal double LastPublishedAt;
+
+        internal Record(Ghost ghost, PresenceDetector owner, ManifestationBlueprintSnapshot blueprint)
+        {
+            Key = ghost.Key;
+            Ghost = ghost;
+            Owner = owner;
+            ManifestationBlueprint = blueprint;
+            RegistrationGeneration = owner == null ? 0 : owner.RegistrationGeneration;
+        }
     }
 }

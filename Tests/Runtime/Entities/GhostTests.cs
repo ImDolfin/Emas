@@ -12,6 +12,26 @@ namespace Emas.Tests
     /// </summary>
     public sealed class GhostTests
     {
+        private interface IPart
+        {
+        }
+
+        private sealed class FirstPart : MonoBehaviour, IPart
+        {
+        }
+
+        private sealed class SecondPart : MonoBehaviour, IPart
+        {
+        }
+
+        private sealed class Probe : PresenceDetector
+        {
+            internal Ghost Publish(string id)
+            {
+                return GetOrCreate<Ghost>(id, new Kind("vehicles.car"));
+            }
+        }
+
         /// <summary>
         /// Lookup refuses an ambiguous contract, required access identifies both matching components, and removal resolves the remaining provider.
         /// This prevents prefab composition from silently selecting the wrong application component.
@@ -120,26 +140,6 @@ namespace Emas.Tests
                 Assert.That(original.Count, Is.EqualTo(1));
                 Assert.That(ghost.TryGet<PipelinePositionTrait>(out PipelinePositionTrait removed), Is.False);
                 Assert.That(removed, Is.Null);
-            }
-        }
-
-        private interface IPart
-        {
-        }
-
-        private sealed class FirstPart : MonoBehaviour, IPart
-        {
-        }
-
-        private sealed class SecondPart : MonoBehaviour, IPart
-        {
-        }
-
-        private sealed class Probe : PresenceDetector
-        {
-            internal Ghost Publish(string id)
-            {
-                return GetOrCreate<Ghost>(id, new Kind("vehicles.car"));
             }
         }
     }

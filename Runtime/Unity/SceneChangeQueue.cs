@@ -6,6 +6,20 @@ namespace Emas
     // Identity map mutations stay immediate; nested scene changes drain after the current change returns.
     internal sealed class SceneChangeQueue
     {
+        private readonly struct Change
+        {
+            internal readonly GameObject Target;
+            internal readonly bool Active;
+            internal readonly bool Destroy;
+
+            internal Change(GameObject target, bool active, bool destroy)
+            {
+                Target = target;
+                Active = active;
+                Destroy = destroy;
+            }
+        }
+
         private readonly CommandQueue<Change> _pending = new CommandQueue<Change>(Execute);
 
         internal void SetActive(GameObject target, bool active)
@@ -40,20 +54,6 @@ namespace Emas
             {
                 Object.Destroy(change.Target);
             }
-        }
-
-        private readonly struct Change
-        {
-            internal Change(GameObject target, bool active, bool destroy)
-            {
-                Target = target;
-                Active = active;
-                Destroy = destroy;
-            }
-
-            internal readonly GameObject Target;
-            internal readonly bool Active;
-            internal readonly bool Destroy;
         }
     }
 }

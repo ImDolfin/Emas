@@ -13,46 +13,44 @@ namespace Emas
     /// </remarks>
     public sealed class Anchor : IDisposable
     {
+        private struct SourceTick
+        {
+            internal readonly PresenceDetector Source;
+            internal readonly long Generation;
+
+            internal SourceTick(PresenceDetector source)
+            {
+                Source = source;
+                Generation = source.RegistrationGeneration;
+            }
+        }
+
+        private sealed class AnchorLifetime : MonoBehaviour
+        {
+            private Anchor _anchor;
+
+            internal void Initialize(Anchor anchor)
+            {
+                _anchor = anchor;
+            }
+
+            private void OnDestroy()
+            {
+                Anchor anchor = _anchor;
+                _anchor = null;
+                if (anchor != null)
+                {
+                    anchor.Realm.NotifyAnchorDestroyed(anchor);
+                }
+            }
+        }
+
         private readonly List<PresenceDetector> _sources = new List<PresenceDetector>();
         private readonly HashSet<PresenceDetector> _restarting = new HashSet<PresenceDetector>();
         private readonly GameObject _gameObject;
         private bool _disposed;
 
         private GhostInitializer _ghostInitializer;
-        internal Action<Presence, Ghost> InitializeGhost { get; private set; }
-
-        internal void SetGhostInitializer(GhostInitializer initializer)
-        {
-            _ghostInitializer = initializer;
-            InitializeGhost = initializer.Apply;
-            initializer.Bind(this);
-        }
-
-        private struct SourceTick
-        {
-            internal SourceTick(PresenceDetector source)
-            {
-                Source = source;
-                Generation = source.RegistrationGeneration;
-            }
-
-            internal readonly PresenceDetector Source;
-            internal readonly long Generation;
-        }
-
-        internal Anchor(Realm realm, string id, Transform frame)
-        {
-            Realm = realm;
-            Id = id;
-            _gameObject = new GameObject("[Emas Anchor] " + id);
-            Transform = _gameObject.transform;
-            AnchorLifetime lifetime = _gameObject.AddComponent<AnchorLifetime>();
-            lifetime.Initialize(this);
-            if (frame != null)
-            {
-                Transform.SetParent(frame, false);
-            }
-        }
 
         /// <summary>
         /// Gets the owning realm.
@@ -105,9 +103,20 @@ namespace Emas
             }
         }
 
-        internal bool ContainsSource(PresenceDetector source)
+        internal Action<Presence, Ghost> InitializeGhost { get; private set; }
+
+        internal Anchor(Realm realm, string id, Transform frame)
         {
-            return _sources.Contains(source);
+            Realm = realm;
+            Id = id;
+            _gameObject = new GameObject("[Emas Anchor] " + id);
+            Transform = _gameObject.transform;
+            AnchorLifetime lifetime = _gameObject.AddComponent<AnchorLifetime>();
+            lifetime.Initialize(this);
+            if (frame != null)
+            {
+                Transform.SetParent(frame, false);
+            }
         }
 
         /// <summary>
@@ -167,22 +176,6 @@ namespace Emas
                 }
 
                 throw;
-            }
-        }
-
-        internal void RollbackAddedSource(PresenceDetector source, HashSet<Record> previous)
-        {
-            if (!_sources.Remove(source) || !source.IsAttachedTo(this))
-            {
-                return;
-            }
-
-            long generation = source.RegistrationGeneration;
-            source.Detach();
-            if (source.RegistrationGeneration == generation && !source.IsAttached)
-            {
-                // Keep records that were prepared before this batch instead of destroying them.
-                Realm.RollbackSource(source, previous);
             }
         }
 
@@ -289,12 +282,6 @@ namespace Emas
             {
                 _restarting.Remove(source);
             }
-        }
-
-        private bool CanContinueRestart(PresenceDetector source, long generation)
-        {
-            return !_disposed && _sources.Contains(source) && !source.IsAttached
-                && source.RegistrationGeneration == generation;
         }
 
         /// <summary>
@@ -424,32 +411,40 @@ namespace Emas
             }
         }
 
+        internal void SetGhostInitializer(GhostInitializer initializer)
+        {
+            _ghostInitializer = initializer;
+            InitializeGhost = initializer.Apply;
+            initializer.Bind(this);
+        }
+
+        internal bool ContainsSource(PresenceDetector source)
+        {
+            return _sources.Contains(source);
+        }
+
+        internal void RollbackAddedSource(PresenceDetector source, HashSet<Record> previous)
+        {
+            if (!_sources.Remove(source) || !source.IsAttachedTo(this))
+            {
+                return;
+            }
+
+            long generation = source.RegistrationGeneration;
+            source.Detach();
+            if (source.RegistrationGeneration == generation && !source.IsAttached)
+            {
+                // Keep records that were prepared before this batch instead of destroying them.
+                Realm.RollbackSource(source, previous);
+            }
+        }
+
         internal void ThrowIfDisposed()
         {
             Realm.ThrowIfDisposed();
             if (_disposed)
             {
                 throw new ObjectDisposedException(nameof(Anchor));
-            }
-        }
-
-        private sealed class AnchorLifetime : MonoBehaviour
-        {
-            private Anchor _anchor;
-
-            internal void Initialize(Anchor anchor)
-            {
-                _anchor = anchor;
-            }
-
-            private void OnDestroy()
-            {
-                Anchor anchor = _anchor;
-                _anchor = null;
-                if (anchor != null)
-                {
-                    anchor.Realm.NotifyAnchorDestroyed(anchor);
-                }
             }
         }
 
@@ -485,6 +480,12 @@ namespace Emas
                     current.Source.Tick();
                 }
             }
+        }
+
+        private bool CanContinueRestart(PresenceDetector source, long generation)
+        {
+            return !_disposed && _sources.Contains(source) && !source.IsAttached
+                && source.RegistrationGeneration == generation;
         }
     }
 }

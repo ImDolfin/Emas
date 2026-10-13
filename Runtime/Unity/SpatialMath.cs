@@ -18,14 +18,6 @@ namespace Emas
             return NormalizeRotation(yaw * pitch * roll, "rotation");
         }
 
-        private static void RequireFiniteAngle(double value, string parameter)
-        {
-            if (!IsFinite(value))
-            {
-                throw new ArgumentOutOfRangeException(parameter, "An angle must be finite and expressed in degrees.");
-            }
-        }
-
         internal static bool IsFinite(double value)
         {
             return !double.IsNaN(value) && !double.IsInfinity(value);
@@ -107,6 +99,14 @@ namespace Emas
 
             result = new Vector3((float)value.X, (float)value.Y, (float)value.Z);
             return true;
+        }
+
+        private static void RequireFiniteAngle(double value, string parameter)
+        {
+            if (!IsFinite(value))
+            {
+                throw new ArgumentOutOfRangeException(parameter, "An angle must be finite and expressed in degrees.");
+            }
         }
     }
 }

@@ -9,6 +9,57 @@ namespace Emas.Tests
     /// </summary>
     public sealed class RestartTests
     {
+        private sealed class Probe : PresenceDetector
+        {
+            internal Action Starting;
+            internal Action Updating;
+            internal Action Stopping;
+            internal Action<Action> Captured;
+            internal int Starts;
+            internal int Stops;
+
+            internal IReadOnlyList<IGhost> Population => OwnedGhosts;
+
+            internal TestGhost Publish(string id)
+            {
+                return GetOrCreate<TestGhost>(id, Kind);
+            }
+
+            internal void Enqueue(Action action)
+            {
+                Dispatch(action);
+            }
+
+            internal Action<Action> Capture()
+            {
+                return CaptureDispatcher();
+            }
+
+            /// <summary>Counts starts and invokes the configured startup behavior.</summary>
+            protected override void OnStart()
+            {
+                Starts++;
+                Starting?.Invoke();
+            }
+
+            /// <summary>Invokes the configured update behavior, including simulated source failures.</summary>
+            protected override void OnUpdate()
+            {
+                Updating?.Invoke();
+            }
+
+            /// <summary>Counts stops and invokes the configured shutdown behavior.</summary>
+            protected override void OnStop()
+            {
+                Stops++;
+                Stopping?.Invoke();
+            }
+        }
+
+        private sealed class TestGhost : Ghost
+        {
+        }
+
         private static readonly Kind Kind = new Kind("restart");
         private Realm _realm;
 
@@ -163,57 +214,6 @@ namespace Emas.Tests
             current(() => calls += 100);
             _realm.Update();
             Assert.That(calls, Is.EqualTo(10));
-        }
-
-        private sealed class Probe : PresenceDetector
-        {
-            internal Action Starting;
-            internal Action Updating;
-            internal Action Stopping;
-            internal Action<Action> Captured;
-            internal int Starts;
-            internal int Stops;
-
-            internal IReadOnlyList<IGhost> Population => OwnedGhosts;
-
-            internal TestGhost Publish(string id)
-            {
-                return GetOrCreate<TestGhost>(id, Kind);
-            }
-
-            internal void Enqueue(Action action)
-            {
-                Dispatch(action);
-            }
-
-            internal Action<Action> Capture()
-            {
-                return CaptureDispatcher();
-            }
-
-            /// <summary>Counts starts and invokes the configured startup behavior.</summary>
-            protected override void OnStart()
-            {
-                Starts++;
-                Starting?.Invoke();
-            }
-
-            /// <summary>Invokes the configured update behavior, including simulated source failures.</summary>
-            protected override void OnUpdate()
-            {
-                Updating?.Invoke();
-            }
-
-            /// <summary>Counts stops and invokes the configured shutdown behavior.</summary>
-            protected override void OnStop()
-            {
-                Stops++;
-                Stopping?.Invoke();
-            }
-        }
-
-        private sealed class TestGhost : Ghost
-        {
         }
     }
 }

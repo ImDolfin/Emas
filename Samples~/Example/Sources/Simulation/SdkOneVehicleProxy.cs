@@ -11,44 +11,6 @@ namespace Emas.Sample
     public sealed class SdkOneVehicleProxy
     {
         /// <summary>
-        /// Creates a first-SDK proxy.
-        /// </summary>
-        /// <param name="identifier">
-        /// The source identifier.
-        /// </param>
-        /// <param name="typeCode">
-        /// The source appearance code.
-        /// </param>
-        /// <param name="positionX">
-        /// The X coordinate in the owning Anchor's local Unity units.
-        /// </param>
-        /// <param name="positionY">
-        /// The Y coordinate in the owning Anchor's local Unity units.
-        /// </param>
-        /// <param name="positionZ">
-        /// The Z coordinate in the owning Anchor's local Unity units.
-        /// </param>
-        /// <param name="steering">
-        /// Normalized steering, expected in [-1, 1]; stored without clamping.
-        /// </param>
-        /// <remarks>Stores the supplied values without validation or unit conversion.</remarks>
-        public SdkOneVehicleProxy(
-            string identifier,
-            int typeCode,
-            float positionX,
-            float positionY,
-            float positionZ,
-            float steering)
-        {
-            Identifier = identifier;
-            TypeCode = typeCode;
-            PositionX = positionX;
-            PositionY = positionY;
-            PositionZ = positionZ;
-            Steering = steering;
-        }
-
-        /// <summary>
         /// Gets the source identifier.
         /// </summary>
         /// <value>
@@ -118,6 +80,44 @@ namespace Emas.Sample
         {
             get;
             private set;
+        }
+
+        /// <summary>
+        /// Creates a first-SDK proxy.
+        /// </summary>
+        /// <param name="identifier">
+        /// The source identifier.
+        /// </param>
+        /// <param name="typeCode">
+        /// The source appearance code.
+        /// </param>
+        /// <param name="positionX">
+        /// The X coordinate in the owning Anchor's local Unity units.
+        /// </param>
+        /// <param name="positionY">
+        /// The Y coordinate in the owning Anchor's local Unity units.
+        /// </param>
+        /// <param name="positionZ">
+        /// The Z coordinate in the owning Anchor's local Unity units.
+        /// </param>
+        /// <param name="steering">
+        /// Normalized steering, expected in [-1, 1]; stored without clamping.
+        /// </param>
+        /// <remarks>Stores the supplied values without validation or unit conversion.</remarks>
+        public SdkOneVehicleProxy(
+            string identifier,
+            int typeCode,
+            float positionX,
+            float positionY,
+            float positionZ,
+            float steering)
+        {
+            Identifier = identifier;
+            TypeCode = typeCode;
+            PositionX = positionX;
+            PositionY = positionY;
+            PositionZ = positionZ;
+            Steering = steering;
         }
     }
 }

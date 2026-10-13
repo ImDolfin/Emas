@@ -107,6 +107,26 @@ namespace Emas
             }
         }
 
+        internal void Destroy(Record record)
+        {
+            View view = record.View;
+            // Clear bookkeeping before OnDisable can request another view for the same root.
+            record.View = null;
+            record.ViewPrefab = null;
+            try
+            {
+                if (view != null)
+                {
+                    GameObject instance = view.gameObject;
+                    _sceneChanges.Destroy(instance);
+                }
+            }
+            catch (System.Exception exception)
+            {
+                PresenceDetector.LogError(exception, "view removal for " + record.Key);
+            }
+        }
+
         private void CreateView(Record record, GameObject prefab, long version)
         {
             // Inactive staging keeps OnEnable from running before the view is bound to its Ghost.
@@ -169,26 +189,6 @@ namespace Emas
                 {
                     Object.Destroy(staging);
                 }
-            }
-        }
-
-        internal void Destroy(Record record)
-        {
-            View view = record.View;
-            // Clear bookkeeping before OnDisable can request another view for the same root.
-            record.View = null;
-            record.ViewPrefab = null;
-            try
-            {
-                if (view != null)
-                {
-                    GameObject instance = view.gameObject;
-                    _sceneChanges.Destroy(instance);
-                }
-            }
-            catch (System.Exception exception)
-            {
-                PresenceDetector.LogError(exception, "view removal for " + record.Key);
             }
         }
 

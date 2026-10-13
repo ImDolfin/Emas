@@ -11,6 +11,117 @@ namespace Emas.Tests.Samples
     /// </summary>
     public sealed class RelativeWorldTests
     {
+        private sealed class SampleMotionMetrics
+        {
+            private double _duration;
+            private int _frames;
+            private double _velocityErrorSquared;
+            private double _distanceErrorSquared;
+            private double _rawDistanceErrorSquared;
+            private float _maximumFrameDistance;
+            private double _firstSample = double.NaN;
+            private double _lastSample;
+            private double _firstSourceElapsed;
+            private double _lastSourceElapsed;
+            private int _heldFrames;
+            private int _freshSamples;
+            private double _maximumSampleInterval;
+            private double _maximumPacketAge;
+            private double _staleDuration;
+            private double _beyondCapDuration;
+            private double _referenceErrorSquared;
+            private Double3 _firstReference;
+            private Double3 _lastReference;
+            private Double3 _firstRawReference;
+            private Double3 _lastRawReference;
+
+            internal float MaximumRelativeDistance { get; private set; }
+            internal int SuppressedFrames { get; private set; }
+            internal double VelocityError => System.Math.Sqrt(_velocityErrorSquared / _duration);
+            internal double DistanceError => System.Math.Sqrt(_distanceErrorSquared / _duration);
+            internal double RawDistanceError => System.Math.Sqrt(_rawDistanceErrorSquared / _duration);
+            internal double ReferenceError => System.Math.Sqrt(_referenceErrorSquared / _duration);
+            internal double SourceProgress => (_lastSample - _firstSample) / (_lastSourceElapsed - _firstSourceElapsed);
+            internal double ReferenceProgress => Double3.Distance(_lastReference, _firstReference)
+                / Double3.Distance(_lastRawReference, _firstRawReference);
+
+            internal void Record(Vector3 previous, Vector3 current, double seconds, double rawDistance)
+            {
+                Vector3 midpoint = (previous + current) * 0.5f;
+                Vector3 expectedVelocity = new Vector3(-midpoint.z, 0, midpoint.x) * (Mathf.PI / 4f);
+                Vector3 velocityError = (current - previous) / (float)seconds - expectedVelocity;
+                double orbitDistance = System.Math.Sqrt(4 * 4 + 3.2 * 3.2);
+                double distanceError = current.magnitude - orbitDistance;
+                double rawError = rawDistance - orbitDistance;
+                _duration += seconds;
+                _frames++;
+                _velocityErrorSquared += velocityError.sqrMagnitude * seconds;
+                _distanceErrorSquared += distanceError * distanceError * seconds;
+                _rawDistanceErrorSquared += rawError * rawError * seconds;
+                _maximumFrameDistance = Mathf.Max(_maximumFrameDistance, Vector3.Distance(previous, current));
+                MaximumRelativeDistance = Mathf.Max(MaximumRelativeDistance, current.magnitude);
+            }
+
+            internal void RecordTiming(Timestamp sample, double sourceElapsed, double seconds, bool beyondCap,
+                bool visible, Double3 rawReference, Double3 reference, Double3 target)
+            {
+                double sampleSeconds = sample.ElapsedSince(new Timestamp(0, 0));
+                if (double.IsNaN(_firstSample))
+                {
+                    _firstSample = sampleSeconds;
+                    _firstSourceElapsed = sourceElapsed;
+                    _firstReference = reference;
+                    _firstRawReference = rawReference;
+                }
+                else if (sampleSeconds == _lastSample)
+                {
+                    _heldFrames++;
+                }
+                else
+                {
+                    _freshSamples++;
+                    _maximumSampleInterval = System.Math.Max(_maximumSampleInterval, sampleSeconds - _lastSample);
+                }
+                _lastSample = sampleSeconds;
+                _lastSourceElapsed = sourceElapsed;
+                _lastReference = reference;
+                _lastRawReference = rawReference;
+                double age = sourceElapsed - sampleSeconds;
+                _maximumPacketAge = System.Math.Max(_maximumPacketAge, age);
+                _staleDuration += age > 0.15 ? seconds : 0;
+                _beyondCapDuration += beyondCap ? seconds : 0;
+                SuppressedFrames += visible ? 0 : 1;
+                double error = Double3.Distance(reference, target);
+                _referenceErrorSquared += error * error * seconds;
+            }
+
+            internal void WriteReport(string label)
+            {
+                TestContext.WriteLine(label + ": observed updates=" + (_frames / _duration)
+                    + " Hz; velocity ripple RMS=" + VelocityError + " m/s; orbit distance error RMS=" + DistanceError
+                    + " m; raw distance error RMS=" + RawDistanceError + " m; largest frame displacement="
+                    + _maximumFrameDistance + " m; maximum relative distance=" + MaximumRelativeDistance + " m");
+                if (!double.IsNaN(_firstSample))
+                {
+                    TestContext.WriteLine(label + ": source progress/realtime=" + SourceProgress
+                        + "; reference/raw travel=" + ReferenceProgress + "; capped reference target error RMS="
+                        + ReferenceError + " m; fresh observations=" + (_freshSamples / _duration)
+                        + " Hz; held frame ratio=" + ((double)_heldFrames / _frames) + "; max sample interval="
+                        + (_maximumSampleInterval * 1000) + " ms; max SDK packet age=" + (_maximumPacketAge * 1000)
+                        + " ms; age>150ms ratio=" + (_staleDuration / _duration) + "; shared age>50ms cap ratio="
+                        + (_beyondCapDuration / _duration) + "; suppressed frames=" + SuppressedFrames);
+                }
+            }
+        }
+
+        private sealed class VelocityDetector : PresenceDetector
+        {
+            internal Ghost Publish()
+            {
+                return Detect("optional", CarKind).Root;
+            }
+        }
+
         private static readonly Kind CarKind = new Kind("relative.car");
         private Scene _scene;
         private float _timeScale;
@@ -373,6 +484,198 @@ namespace Emas.Tests.Samples
             }
         }
 
+        /// <summary>Noisy 560-knot motion retains prediction and smoothing quality over time; disabling bird prediction preserves moving observations and only settles corrections once a packet is held.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
+        [UnityTest]
+        public IEnumerator RelativeWorld_FastMotionDoesNotDegradeOverTimeOrExtrapolateHeldBirdPackets()
+        {
+            int targetFrameRate = Application.targetFrameRate;
+            int verticalSync = QualitySettings.vSyncCount;
+            try
+            {
+                QualitySettings.vSyncCount = 0;
+                Application.targetFrameRate = 90;
+                yield return Load(true, true);
+                Realm realm = Find<RealmSetup>().Realm;
+                realm.InterpolationDelay = 0;
+                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+                Assert.That(source.AutomaticAdvance, Is.True);
+                Assert.That(source.SimulateJitterAndDelay, Is.True);
+                source.SpeedKilometersPerHour = 1037.12f;
+                source.enabled = false;
+                double sdkStarted = Time.realtimeSinceStartupAsDouble;
+                source.enabled = true;
+                Key birdKey = new Key("relative-world", Emas.RelativeWorld.GeoSource.BirdKind, "bird");
+                double startupDeadline = Time.realtimeSinceStartupAsDouble + 5;
+                IGhost entity;
+                while (!realm.TryGetGhost(birdKey, out entity) && Time.realtimeSinceStartupAsDouble < startupDeadline)
+                {
+                    yield return null;
+                }
+                Assert.That(entity, Is.Not.Null, "The automatic feed must deliver its first delayed observation.");
+                Ghost bird = (Ghost)entity;
+                Ghost origin = Car(realm, "origin");
+                foreach (Ghost ghost in new[] { origin, bird })
+                {
+                    Prediction prediction = ghost.GetRequired<Prediction>();
+                    prediction.enabled = true;
+                    prediction.MaximumExtrapolation = 0.05f;
+                    ghost.GetRequired<Smoothing>().PositionHalfLife = 0.3f;
+                }
+                yield return AssertFastMotionRemainsStable(realm, bird, origin, sdkStarted);
+                bird.GetRequired<Prediction>().enabled = false;
+                yield return AssertMovingBirdWithoutPrediction(realm, source, bird, origin);
+                yield return AssertHeldBirdPacketOnlySettles(realm, source, bird);
+            }
+            finally
+            {
+                Application.targetFrameRate = targetFrameRate;
+                QualitySettings.vSyncCount = verticalSync;
+            }
+        }
+
+        /// <summary>Automatic SDK timestamps follow real elapsed time across a stalled frame, so changing the prediction cap does not introduce a large reference offset.</summary>
+        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
+        [UnityTest]
+        public IEnumerator RelativeWorld_AutomaticClockTracksRealtimeAcrossAStalledFrame()
+        {
+            float maximumDeltaTime = Time.maximumDeltaTime;
+            try
+            {
+                Time.timeScale = 1f;
+                yield return Load(true, true);
+                Realm realm = Find<RealmSetup>().Realm;
+                realm.InterpolationDelay = 0;
+                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
+                Assert.That(source.AutomaticAdvance, Is.True);
+                source.SimulateJitterAndDelay = false;
+                source.enabled = false;
+                source.enabled = true;
+                yield return null;
+                Ghost origin = Car(realm, "origin");
+                Spatial spatial = origin.GetRequired<Spatial>();
+                Prediction prediction = origin.GetRequired<Prediction>();
+                origin.GetRequired<Smoothing>().enabled = false;
+                prediction.MaximumExtrapolation = 0.15f;
+                spatial.ResetPresentation(); // Establish prediction-only setup before measuring the independent SDK clock.
+                yield return null;
+
+                Timestamp beforeSample = spatial.PositionTime.Value;
+                double beforeStall = Time.realtimeSinceStartupAsDouble;
+                Time.maximumDeltaTime = 0.02f;
+                // An editor stall must delay delivery without slowing the independent SDK observation clock.
+                System.Threading.Thread.Sleep(120);
+                yield return null;
+                double elapsed = Time.realtimeSinceStartupAsDouble - beforeStall;
+                double sourceElapsed = spatial.PositionTime.Value.ElapsedSince(beforeSample);
+                Assert.That(sourceElapsed, Is.EqualTo(elapsed).Within(0.04),
+                    "A clamped Unity frame duration must not leave fresh source packets permanently behind the prediction clock.");
+
+                prediction.MaximumExtrapolation = 0.5f;
+                yield return null;
+                Assert.That(Double3.Distance(realm.ReferenceFrame.Position, spatial.Position), Is.LessThan(5),
+                    "Fresh 100 m/s observations must not jump toward a larger cap when changing it from 0.15 s to 0.5 s.");
+                AssertOriginPose(origin);
+
+                Time.timeScale = 0f;
+                Timestamp beforeScaledPause = spatial.PositionTime.Value;
+                double scaledPauseStarted = Time.realtimeSinceStartupAsDouble;
+                yield return null;
+                yield return null;
+                double scaledPauseElapsed = Time.realtimeSinceStartupAsDouble - scaledPauseStarted;
+                Assert.That(spatial.PositionTime.Value.ElapsedSince(beforeScaledPause), Is.GreaterThan(0));
+                Assert.That(spatial.PositionTime.Value.ElapsedSince(beforeScaledPause),
+                    Is.EqualTo(scaledPauseElapsed).Within(0.04), "The independent SDK clock continues when scaled scene time is paused.");
+
+                source.AutomaticAdvance = false;
+                realm.Update();
+                Timestamp heldSample = spatial.PositionTime.Value;
+                Double3 heldPosition = spatial.Position;
+                yield return null;
+                yield return null;
+                Assert.That(spatial.PositionTime.Value, Is.EqualTo(heldSample), "Manual mode holds the last SDK observation.");
+                source.Advance(1.0);
+                realm.Update();
+                Assert.That(Double3.Distance(spatial.Position, heldPosition), Is.EqualTo(100).Within(0.001));
+                Double3 manuallyAdvancedPosition = spatial.Position;
+                source.AutomaticAdvance = true;
+                realm.Update();
+                Assert.That(Double3.Distance(spatial.Position, manuallyAdvancedPosition), Is.LessThan(1),
+                    "Resuming automatic mode preserves distance travelled instead of restarting the SDK.");
+                Assert.That(Double3.Distance(realm.ReferenceFrame.Position, spatial.Position), Is.LessThan(5),
+                    "Changing source clock modes rebases the Realm clock without predicting through the manual pause or jump.");
+            }
+            finally
+            {
+                Time.maximumDeltaTime = maximumDeltaTime;
+            }
+        }
+
+        /// <summary>Separate optional motion traits convert the same packet's ENU basis independently of pose-reader order and clear unavailable channels.</summary>
+        [Test]
+        public void GeoMotionReaders_ApplyOptionalEnuVelocityAndAccelerationThroughRealmTraitUpdates()
+        {
+            GameObject prefab = new GameObject("optional velocity root");
+            prefab.SetActive(false);
+            Ghost root = prefab.AddComponent<Ghost>();
+            prefab.AddComponent<Emas.RelativeWorld.GeoVelocityTrait>();
+            prefab.AddComponent<Emas.RelativeWorld.GeoAccelerationTrait>();
+            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
+            try
+            {
+                using (Realm realm = new Realm())
+                {
+                    blueprint.Configure(CarKind, root, null, null);
+                    realm.RegisterManifestationBlueprint(blueprint);
+                    Emas.RelativeWorld.GeoPoseReading reading = new Emas.RelativeWorld.GeoPoseReading(
+                        "optional", "Optional motion", CarKind, default, 0, 90, 40, 0, 0, 0);
+                    realm.RegisterPresenceInitializer<Ghost>(CarKind, (presence, ghost) =>
+                    {
+                        ghost.GetRequired<Emas.RelativeWorld.GeoVelocityTrait>().Bind(() => reading);
+                        ghost.GetRequired<Emas.RelativeWorld.GeoAccelerationTrait>().Bind(() => reading);
+                    });
+                    VelocityDetector detector = new VelocityDetector();
+                    realm.GetOrCreateAnchor("sdk", detector);
+                    Ghost ghost = detector.Publish();
+                    Spatial spatial = ghost.GetRequired<Spatial>();
+                    GeoPosition position = new GeoPosition(52, 13, 40);
+                    spatial.SetGeographicPosition(position);
+                    ghost.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.1f;
+                    Prediction prediction = ghost.GetRequired<Prediction>();
+                    realm.ReferenceFrame = new ReferenceFrame
+                    {
+                        Space = ReferenceSpace.Geographic,
+                        FollowedGhost = ghost.Key
+                    };
+                    realm.Update();
+                    Assert.That(prediction.HasVelocity, Is.False);
+                    Assert.That(prediction.HasAcceleration, Is.False);
+                    reading = new Emas.RelativeWorld.GeoPoseReading("optional", "Optional motion", CarKind,
+                        default, 0, 90, 40, 0, 0, 0, eastNorthUpVelocity: new Double3(1, 2, 3),
+                        eastNorthUpAcceleration: new Double3(4, 5, 6));
+                    realm.Update();
+                    Assert.That(prediction.HasVelocity, Is.True);
+                    Assert.That(Double3.Distance(prediction.Velocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12));
+                    Assert.That(prediction.HasAcceleration, Is.True);
+                    Assert.That(Double3.Distance(prediction.Acceleration, new Double3(-4, 6, 5)), Is.LessThan(1e-12));
+                    Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()), "Motion traits do not overwrite pose or use its location implicitly.");
+                    prediction.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
+                    Assert.That(prediction.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
+                    reading = null;
+                    realm.Update();
+                    Assert.That(prediction.HasVelocity, Is.False);
+                    Assert.That(prediction.HasAcceleration, Is.False);
+                    Assert.That(spatial.IsInRange, Is.True);
+                    AssertOriginPose(ghost);
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(blueprint);
+                Object.DestroyImmediate(prefab);
+            }
+        }
+
         private static IEnumerator MeasureSampleMotion(Realm realm, Emas.RelativeWorld.GeoSource source,
             float interpolationDelay, SampleMotionMetrics metrics)
         {
@@ -445,159 +748,6 @@ namespace Emas.Tests.Samples
                 while (Time.realtimeSinceStartupAsDouble < deadline);
                 Assert.That(Double3.Distance(origin.GetRequired<Prediction>().Velocity, default(Double3)),
                     Is.EqualTo(speed / 3.6).Within(0.001));
-            }
-        }
-
-        private sealed class SampleMotionMetrics
-        {
-            private double _duration;
-            private int _frames;
-            private double _velocityErrorSquared;
-            private double _distanceErrorSquared;
-            private double _rawDistanceErrorSquared;
-            private float _maximumFrameDistance;
-            private double _firstSample = double.NaN;
-            private double _lastSample;
-            private double _firstSourceElapsed;
-            private double _lastSourceElapsed;
-            private int _heldFrames;
-            private int _freshSamples;
-            private double _maximumSampleInterval;
-            private double _maximumPacketAge;
-            private double _staleDuration;
-            private double _beyondCapDuration;
-            private double _referenceErrorSquared;
-            private Double3 _firstReference;
-            private Double3 _lastReference;
-            private Double3 _firstRawReference;
-            private Double3 _lastRawReference;
-
-            internal float MaximumRelativeDistance { get; private set; }
-            internal int SuppressedFrames { get; private set; }
-            internal double VelocityError => System.Math.Sqrt(_velocityErrorSquared / _duration);
-            internal double DistanceError => System.Math.Sqrt(_distanceErrorSquared / _duration);
-            internal double RawDistanceError => System.Math.Sqrt(_rawDistanceErrorSquared / _duration);
-            internal double ReferenceError => System.Math.Sqrt(_referenceErrorSquared / _duration);
-            internal double SourceProgress => (_lastSample - _firstSample) / (_lastSourceElapsed - _firstSourceElapsed);
-            internal double ReferenceProgress => Double3.Distance(_lastReference, _firstReference)
-                / Double3.Distance(_lastRawReference, _firstRawReference);
-
-            internal void Record(Vector3 previous, Vector3 current, double seconds, double rawDistance)
-            {
-                Vector3 midpoint = (previous + current) * 0.5f;
-                Vector3 expectedVelocity = new Vector3(-midpoint.z, 0, midpoint.x) * (Mathf.PI / 4f);
-                Vector3 velocityError = (current - previous) / (float)seconds - expectedVelocity;
-                double orbitDistance = System.Math.Sqrt(4 * 4 + 3.2 * 3.2);
-                double distanceError = current.magnitude - orbitDistance;
-                double rawError = rawDistance - orbitDistance;
-                _duration += seconds;
-                _frames++;
-                _velocityErrorSquared += velocityError.sqrMagnitude * seconds;
-                _distanceErrorSquared += distanceError * distanceError * seconds;
-                _rawDistanceErrorSquared += rawError * rawError * seconds;
-                _maximumFrameDistance = Mathf.Max(_maximumFrameDistance, Vector3.Distance(previous, current));
-                MaximumRelativeDistance = Mathf.Max(MaximumRelativeDistance, current.magnitude);
-            }
-
-            internal void RecordTiming(Timestamp sample, double sourceElapsed, double seconds, bool beyondCap,
-                bool visible, Double3 rawReference, Double3 reference, Double3 target)
-            {
-                double sampleSeconds = sample.ElapsedSince(new Timestamp(0, 0));
-                if (double.IsNaN(_firstSample))
-                {
-                    _firstSample = sampleSeconds;
-                    _firstSourceElapsed = sourceElapsed;
-                    _firstReference = reference;
-                    _firstRawReference = rawReference;
-                }
-                else if (sampleSeconds == _lastSample)
-                {
-                    _heldFrames++;
-                }
-                else
-                {
-                    _freshSamples++;
-                    _maximumSampleInterval = System.Math.Max(_maximumSampleInterval, sampleSeconds - _lastSample);
-                }
-                _lastSample = sampleSeconds;
-                _lastSourceElapsed = sourceElapsed;
-                _lastReference = reference;
-                _lastRawReference = rawReference;
-                double age = sourceElapsed - sampleSeconds;
-                _maximumPacketAge = System.Math.Max(_maximumPacketAge, age);
-                _staleDuration += age > 0.15 ? seconds : 0;
-                _beyondCapDuration += beyondCap ? seconds : 0;
-                SuppressedFrames += visible ? 0 : 1;
-                double error = Double3.Distance(reference, target);
-                _referenceErrorSquared += error * error * seconds;
-            }
-
-            internal void WriteReport(string label)
-            {
-                TestContext.WriteLine(label + ": observed updates=" + (_frames / _duration)
-                    + " Hz; velocity ripple RMS=" + VelocityError + " m/s; orbit distance error RMS=" + DistanceError
-                    + " m; raw distance error RMS=" + RawDistanceError + " m; largest frame displacement="
-                    + _maximumFrameDistance + " m; maximum relative distance=" + MaximumRelativeDistance + " m");
-                if (!double.IsNaN(_firstSample))
-                {
-                    TestContext.WriteLine(label + ": source progress/realtime=" + SourceProgress
-                        + "; reference/raw travel=" + ReferenceProgress + "; capped reference target error RMS="
-                        + ReferenceError + " m; fresh observations=" + (_freshSamples / _duration)
-                        + " Hz; held frame ratio=" + ((double)_heldFrames / _frames) + "; max sample interval="
-                        + (_maximumSampleInterval * 1000) + " ms; max SDK packet age=" + (_maximumPacketAge * 1000)
-                        + " ms; age>150ms ratio=" + (_staleDuration / _duration) + "; shared age>50ms cap ratio="
-                        + (_beyondCapDuration / _duration) + "; suppressed frames=" + SuppressedFrames);
-                }
-            }
-        }
-
-        /// <summary>Noisy 560-knot motion retains prediction and smoothing quality over time; disabling bird prediction preserves moving observations and only settles corrections once a packet is held.</summary>
-        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
-        [UnityTest]
-        public IEnumerator RelativeWorld_FastMotionDoesNotDegradeOverTimeOrExtrapolateHeldBirdPackets()
-        {
-            int targetFrameRate = Application.targetFrameRate;
-            int verticalSync = QualitySettings.vSyncCount;
-            try
-            {
-                QualitySettings.vSyncCount = 0;
-                Application.targetFrameRate = 90;
-                yield return Load(true, true);
-                Realm realm = Find<RealmSetup>().Realm;
-                realm.InterpolationDelay = 0;
-                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
-                Assert.That(source.AutomaticAdvance, Is.True);
-                Assert.That(source.SimulateJitterAndDelay, Is.True);
-                source.SpeedKilometersPerHour = 1037.12f;
-                source.enabled = false;
-                double sdkStarted = Time.realtimeSinceStartupAsDouble;
-                source.enabled = true;
-                Key birdKey = new Key("relative-world", Emas.RelativeWorld.GeoSource.BirdKind, "bird");
-                double startupDeadline = Time.realtimeSinceStartupAsDouble + 5;
-                IGhost entity;
-                while (!realm.TryGetGhost(birdKey, out entity) && Time.realtimeSinceStartupAsDouble < startupDeadline)
-                {
-                    yield return null;
-                }
-                Assert.That(entity, Is.Not.Null, "The automatic feed must deliver its first delayed observation.");
-                Ghost bird = (Ghost)entity;
-                Ghost origin = Car(realm, "origin");
-                foreach (Ghost ghost in new[] { origin, bird })
-                {
-                    Prediction prediction = ghost.GetRequired<Prediction>();
-                    prediction.enabled = true;
-                    prediction.MaximumExtrapolation = 0.05f;
-                    ghost.GetRequired<Smoothing>().PositionHalfLife = 0.3f;
-                }
-                yield return AssertFastMotionRemainsStable(realm, bird, origin, sdkStarted);
-                bird.GetRequired<Prediction>().enabled = false;
-                yield return AssertMovingBirdWithoutPrediction(realm, source, bird, origin);
-                yield return AssertHeldBirdPacketOnlySettles(realm, source, bird);
-            }
-            finally
-            {
-                Application.targetFrameRate = targetFrameRate;
-                QualitySettings.vSyncCount = verticalSync;
             }
         }
 
@@ -748,83 +898,6 @@ namespace Emas.Tests.Samples
                 "A held noisy observation must converge instead of continuing to integrate the SDK velocity.");
         }
 
-        /// <summary>Automatic SDK timestamps follow real elapsed time across a stalled frame, so changing the prediction cap does not introduce a large reference offset.</summary>
-        /// <returns>An iterator that advances the scenario through Unity frames.</returns>
-        [UnityTest]
-        public IEnumerator RelativeWorld_AutomaticClockTracksRealtimeAcrossAStalledFrame()
-        {
-            float maximumDeltaTime = Time.maximumDeltaTime;
-            try
-            {
-                Time.timeScale = 1f;
-                yield return Load(true, true);
-                Realm realm = Find<RealmSetup>().Realm;
-                realm.InterpolationDelay = 0;
-                Emas.RelativeWorld.GeoSource source = Find<Emas.RelativeWorld.GeoSource>();
-                Assert.That(source.AutomaticAdvance, Is.True);
-                source.SimulateJitterAndDelay = false;
-                source.enabled = false;
-                source.enabled = true;
-                yield return null;
-                Ghost origin = Car(realm, "origin");
-                Spatial spatial = origin.GetRequired<Spatial>();
-                Prediction prediction = origin.GetRequired<Prediction>();
-                origin.GetRequired<Smoothing>().enabled = false;
-                prediction.MaximumExtrapolation = 0.15f;
-                spatial.ResetPresentation(); // Establish prediction-only setup before measuring the independent SDK clock.
-                yield return null;
-
-                Timestamp beforeSample = spatial.PositionTime.Value;
-                double beforeStall = Time.realtimeSinceStartupAsDouble;
-                Time.maximumDeltaTime = 0.02f;
-                // An editor stall must delay delivery without slowing the independent SDK observation clock.
-                System.Threading.Thread.Sleep(120);
-                yield return null;
-                double elapsed = Time.realtimeSinceStartupAsDouble - beforeStall;
-                double sourceElapsed = spatial.PositionTime.Value.ElapsedSince(beforeSample);
-                Assert.That(sourceElapsed, Is.EqualTo(elapsed).Within(0.04),
-                    "A clamped Unity frame duration must not leave fresh source packets permanently behind the prediction clock.");
-
-                prediction.MaximumExtrapolation = 0.5f;
-                yield return null;
-                Assert.That(Double3.Distance(realm.ReferenceFrame.Position, spatial.Position), Is.LessThan(5),
-                    "Fresh 100 m/s observations must not jump toward a larger cap when changing it from 0.15 s to 0.5 s.");
-                AssertOriginPose(origin);
-
-                Time.timeScale = 0f;
-                Timestamp beforeScaledPause = spatial.PositionTime.Value;
-                double scaledPauseStarted = Time.realtimeSinceStartupAsDouble;
-                yield return null;
-                yield return null;
-                double scaledPauseElapsed = Time.realtimeSinceStartupAsDouble - scaledPauseStarted;
-                Assert.That(spatial.PositionTime.Value.ElapsedSince(beforeScaledPause), Is.GreaterThan(0));
-                Assert.That(spatial.PositionTime.Value.ElapsedSince(beforeScaledPause),
-                    Is.EqualTo(scaledPauseElapsed).Within(0.04), "The independent SDK clock continues when scaled scene time is paused.");
-
-                source.AutomaticAdvance = false;
-                realm.Update();
-                Timestamp heldSample = spatial.PositionTime.Value;
-                Double3 heldPosition = spatial.Position;
-                yield return null;
-                yield return null;
-                Assert.That(spatial.PositionTime.Value, Is.EqualTo(heldSample), "Manual mode holds the last SDK observation.");
-                source.Advance(1.0);
-                realm.Update();
-                Assert.That(Double3.Distance(spatial.Position, heldPosition), Is.EqualTo(100).Within(0.001));
-                Double3 manuallyAdvancedPosition = spatial.Position;
-                source.AutomaticAdvance = true;
-                realm.Update();
-                Assert.That(Double3.Distance(spatial.Position, manuallyAdvancedPosition), Is.LessThan(1),
-                    "Resuming automatic mode preserves distance travelled instead of restarting the SDK.");
-                Assert.That(Double3.Distance(realm.ReferenceFrame.Position, spatial.Position), Is.LessThan(5),
-                    "Changing source clock modes rebases the Realm clock without predicting through the manual pause or jump.");
-            }
-            finally
-            {
-                Time.maximumDeltaTime = maximumDeltaTime;
-            }
-        }
-
         private IEnumerator Load(bool withImpairments = false, bool automaticAdvance = false)
         {
             const string path = "Assets/Samples/RelativeWorld/RelativeWorld.unity";
@@ -880,79 +953,6 @@ namespace Emas.Tests.Samples
             }
             Assert.Fail("Missing authored sample component: " + typeof(T).Name);
             return null;
-        }
-
-        /// <summary>Separate optional motion traits convert the same packet's ENU basis independently of pose-reader order and clear unavailable channels.</summary>
-        [Test]
-        public void GeoMotionReaders_ApplyOptionalEnuVelocityAndAccelerationThroughRealmTraitUpdates()
-        {
-            GameObject prefab = new GameObject("optional velocity root");
-            prefab.SetActive(false);
-            Ghost root = prefab.AddComponent<Ghost>();
-            prefab.AddComponent<Emas.RelativeWorld.GeoVelocityTrait>();
-            prefab.AddComponent<Emas.RelativeWorld.GeoAccelerationTrait>();
-            ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
-            try
-            {
-                using (Realm realm = new Realm())
-                {
-                    blueprint.Configure(CarKind, root, null, null);
-                    realm.RegisterManifestationBlueprint(blueprint);
-                    Emas.RelativeWorld.GeoPoseReading reading = new Emas.RelativeWorld.GeoPoseReading(
-                        "optional", "Optional motion", CarKind, default, 0, 90, 40, 0, 0, 0);
-                    realm.RegisterPresenceInitializer<Ghost>(CarKind, (presence, ghost) =>
-                    {
-                        ghost.GetRequired<Emas.RelativeWorld.GeoVelocityTrait>().Bind(() => reading);
-                        ghost.GetRequired<Emas.RelativeWorld.GeoAccelerationTrait>().Bind(() => reading);
-                    });
-                    VelocityDetector detector = new VelocityDetector();
-                    realm.GetOrCreateAnchor("sdk", detector);
-                    Ghost ghost = detector.Publish();
-                    Spatial spatial = ghost.GetRequired<Spatial>();
-                    GeoPosition position = new GeoPosition(52, 13, 40);
-                    spatial.SetGeographicPosition(position);
-                    ghost.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.1f;
-                    Prediction prediction = ghost.GetRequired<Prediction>();
-                    realm.ReferenceFrame = new ReferenceFrame
-                    {
-                        Space = ReferenceSpace.Geographic,
-                        FollowedGhost = ghost.Key
-                    };
-                    realm.Update();
-                    Assert.That(prediction.HasVelocity, Is.False);
-                    Assert.That(prediction.HasAcceleration, Is.False);
-                    reading = new Emas.RelativeWorld.GeoPoseReading("optional", "Optional motion", CarKind,
-                        default, 0, 90, 40, 0, 0, 0, eastNorthUpVelocity: new Double3(1, 2, 3),
-                        eastNorthUpAcceleration: new Double3(4, 5, 6));
-                    realm.Update();
-                    Assert.That(prediction.HasVelocity, Is.True);
-                    Assert.That(Double3.Distance(prediction.Velocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12));
-                    Assert.That(prediction.HasAcceleration, Is.True);
-                    Assert.That(Double3.Distance(prediction.Acceleration, new Double3(-4, 6, 5)), Is.LessThan(1e-12));
-                    Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()), "Motion traits do not overwrite pose or use its location implicitly.");
-                    prediction.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
-                    Assert.That(prediction.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
-                    reading = null;
-                    realm.Update();
-                    Assert.That(prediction.HasVelocity, Is.False);
-                    Assert.That(prediction.HasAcceleration, Is.False);
-                    Assert.That(spatial.IsInRange, Is.True);
-                    AssertOriginPose(ghost);
-                }
-            }
-            finally
-            {
-                Object.DestroyImmediate(blueprint);
-                Object.DestroyImmediate(prefab);
-            }
-        }
-
-        private sealed class VelocityDetector : PresenceDetector
-        {
-            internal Ghost Publish()
-            {
-                return Detect("optional", CarKind).Root;
-            }
         }
 
         private static Ghost Car(Realm realm, string id)

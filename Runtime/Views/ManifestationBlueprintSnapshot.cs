@@ -13,6 +13,14 @@ namespace Emas
         private readonly ManifestationVariant[] _views;
         private readonly GameObject _fallbackViewPrefab;
 
+        internal bool HasManifestationPrefab
+        {
+            get
+            {
+                return _views.Length > 0 || _fallbackViewPrefab != null;
+            }
+        }
+
         internal ManifestationBlueprintSnapshot(ManifestationBlueprint asset, Kind kind, Ghost ghostPrefab,
             ManifestationVariant[] views, GameObject fallbackViewPrefab)
         {
@@ -21,14 +29,6 @@ namespace Emas
             GhostPrefab = ghostPrefab;
             _views = views;
             _fallbackViewPrefab = fallbackViewPrefab;
-        }
-
-        internal bool HasManifestationPrefab
-        {
-            get
-            {
-                return _views.Length > 0 || _fallbackViewPrefab != null;
-            }
         }
 
         internal GameObject ResolveViewPrefab(Variant variant)

@@ -14,6 +14,130 @@ namespace Emas
     /// </remarks>
     public sealed class ReferenceFrame
     {
+        // Freeze pose, axes and range once per pass so all roots use the same reference, even if callbacks change it.
+        internal readonly struct Projection
+        {
+            internal readonly Quaternion Alignment;
+            private readonly bool _hasPosition;
+            private readonly ReferenceSpace _space;
+            private readonly GeographicBasis _geographicBasis;
+            private readonly CoordinateSystem _coordinates;
+            private readonly Double3 _position;
+            private readonly Vector3 _unityPosition;
+            private readonly double? _maxDistance;
+
+            internal Projection(bool hasPosition, Double3 position, Vector3 unityPosition, Quaternion alignment, CoordinateSystem coordinates, double? maxDistance,
+                ReferenceSpace space = ReferenceSpace.Cartesian)
+            {
+                _hasPosition = hasPosition;
+                _space = space;
+                _geographicBasis = space == ReferenceSpace.Geographic && hasPosition
+                    ? new GeographicBasis(GeoPosition.FromEarthCentered(position)) : default;
+                _coordinates = coordinates;
+                _position = position;
+                _unityPosition = unityPosition;
+                Alignment = alignment;
+                _maxDistance = maxDistance;
+            }
+
+            internal bool TryToUnityPosition(Double3 position, out Vector3 result)
+            {
+                result = default(Vector3);
+                if (!_hasPosition || (_space == ReferenceSpace.Geographic && position == default(Double3))
+                    || (_maxDistance.HasValue && Double3.Distance(_position, position) > _maxDistance.Value))
+                {
+                    return false;
+                }
+
+                try
+                {
+                    // Remove the large origin in doubles, then map the small offset into tangent/Unity axes.
+                    Double3 displacement = position - _position;
+                    Double3 local = _space == ReferenceSpace.Geographic
+                        ? _geographicBasis.ToLocal(displacement) : _coordinates.ToUnity(displacement);
+                    Double3 offset = SpatialMath.Rotate(Alignment, local);
+                    return SpatialMath.TryToVector3(offset + new Double3(_unityPosition.x, _unityPosition.y, _unityPosition.z), out result);
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    // Finite coordinates can have a separation beyond representable range.
+                    return false;
+                }
+            }
+
+            internal bool TryUnityPlacement(Double3 position, out Vector3 result)
+            {
+                result = default(Vector3);
+                // Attachment offsets are already in Unity axes; orthogonal scene alignment preserves source distance.
+                return _hasPosition && (!_maxDistance.HasValue
+                    || Double3.Distance(position, new Double3(_unityPosition.x, _unityPosition.y, _unityPosition.z)) <= _maxDistance.Value)
+                    && SpatialMath.TryToVector3(position, out result);
+            }
+
+            internal Double3 ToSimulationPosition(Vector3 unityPosition)
+            {
+                // Undo scene translation and alignment before restoring the source basis and large origin.
+                Double3 offset = new Double3((double)unityPosition.x - _unityPosition.x,
+                    (double)unityPosition.y - _unityPosition.y, (double)unityPosition.z - _unityPosition.z);
+                Double3 local = SpatialMath.Rotate(Quaternion.Inverse(Alignment), offset);
+                return _position + (_space == ReferenceSpace.Geographic
+                    ? _geographicBasis.ToEarthCentered(local) : _coordinates.ToSource(local));
+            }
+
+            internal Quaternion ToUnityRotation(Quaternion rotation, Double3 position)
+            {
+                return _space == ReferenceSpace.Geographic
+                    ? ToUnityRotation(rotation, GeoPosition.FromEarthCentered(position)) : ToUnityRotation(rotation);
+            }
+
+            internal Quaternion ToUnityRotation(Quaternion rotation, GeoPosition position)
+            {
+                // Convert the entity's local axes, rotate its tangent frame into the reference tangent frame, then align the scene.
+                return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(position)
+                    * _coordinates.ToUnityRotation(rotation), nameof(rotation));
+            }
+
+            internal Quaternion ToUnityGeographicRotation(Quaternion rotation, Double3 position)
+            {
+                if (_space != ReferenceSpace.Geographic)
+                {
+                    throw new InvalidOperationException("Geographic yaw/pitch/roll requires a Geographic reference frame.");
+                }
+
+                // Named angles are already in east/up/north; only tangent orientation and scene alignment remain.
+                return SpatialMath.NormalizeRotation(Alignment
+                    * _geographicBasis.RotationFrom(GeoPosition.FromEarthCentered(position)) * rotation, nameof(rotation));
+            }
+
+            internal Quaternion ToUnityEarthCenteredRotation(Quaternion rotation, CoordinateSystem bodyAxes)
+            {
+                if (_space != ReferenceSpace.Geographic)
+                {
+                    throw new InvalidOperationException("ECEF attitudes require a Geographic reference frame.");
+                }
+
+                return SpatialMath.NormalizeRotation(Alignment
+                    * _geographicBasis.ToLocalEarthCenteredRotation(rotation, bodyAxes), nameof(rotation));
+            }
+
+            internal Quaternion ToEarthCenteredRotation(Quaternion rotation, CoordinateSystem bodyAxes)
+            {
+                return _geographicBasis.ToEarthCenteredRotation(Quaternion.Inverse(Alignment) * rotation, bodyAxes);
+            }
+
+            internal Quaternion ToGeographicRotation(Quaternion rotation, GeoPosition position)
+            {
+                Quaternion local = Quaternion.Inverse(_geographicBasis.RotationFrom(position))
+                    * Quaternion.Inverse(Alignment) * rotation;
+                return SpatialMath.NormalizeRotation(_coordinates.ToSourceRotation(local), nameof(rotation));
+            }
+
+            internal Quaternion ToUnityRotation(Quaternion rotation)
+            {
+                return SpatialMath.NormalizeRotation(Alignment * _coordinates.ToUnityRotation(rotation), nameof(rotation));
+            }
+        }
+
         private Double3 _position;
         private ReferenceSpace _space;
         private CoordinateSystem _coordinates = CoordinateSystem.Unity;
@@ -161,42 +285,6 @@ namespace Emas
         /// <value>The representation selected by the latest manual attitude input or followed Ghost.</value>
         public RotationSpace RotationSpace => _rotationSpace;
 
-        /// <summary>Sets manual geographic reference attitude from yaw, pitch and roll in degrees.</summary>
-        /// <param name="yawDegrees">Heading clockwise from true north.</param>
-        /// <param name="pitchDegrees">Nose-up pitch after heading.</param>
-        /// <param name="rollDegrees">Right-wing-down bank after pitch.</param>
-        /// <remarks>
-        /// Uses the same intrinsic angle convention as Spatial.SetGeographicRotation, independently of Coordinates.
-        /// Stores Rotation in local east/up/north with RotationSpace.Geographic. A followed Ghost can replace it on projection.
-        /// </remarks>
-        /// <exception cref="InvalidOperationException">The reference space is not Geographic.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">An angle is not finite.</exception>
-        public void SetGeographicRotation(double yawDegrees, double pitchDegrees, double rollDegrees)
-        {
-            RequireGeographic();
-            Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
-            _rotation = rotation;
-            _rotationSpace = Emas.RotationSpace.Geographic;
-            _earthCenteredBodyAxes = null;
-        }
-
-        /// <summary>Sets manual reference attitude from a body-to-ECEF quaternion in Geographic space.</summary>
-        /// <param name="rotation">Active rotation mapping source body XYZ vectors into ECEF XYZ.</param>
-        /// <param name="bodyAxes">Body axes mapped to Unity directions; null uses forward/right/down (NED mapping).</param>
-        /// <remarks>Normalizes the quaternion. A followed Ghost with rotation data replaces this attitude during projection.</remarks>
-        /// <exception cref="InvalidOperationException">The reference space is not Geographic.</exception>
-        /// <exception cref="ArgumentException">The body axes are invalid or not right-handed.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
-        public void SetEarthCenteredRotation(Quaternion rotation, CoordinateSystem? bodyAxes = null)
-        {
-            RequireGeographic();
-            Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
-            CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
-            _rotation = normalized;
-            _rotationSpace = Emas.RotationSpace.EarthCentered;
-            _earthCenteredBodyAxes = axes;
-        }
-
         /// <summary>
         /// Gets or sets the desired Unity world position of the reference, normally near zero.
         /// </summary>
@@ -331,6 +419,42 @@ namespace Emas
             {
                 return _isReferenceAvailable;
             }
+        }
+
+        /// <summary>Sets manual geographic reference attitude from yaw, pitch and roll in degrees.</summary>
+        /// <param name="yawDegrees">Heading clockwise from true north.</param>
+        /// <param name="pitchDegrees">Nose-up pitch after heading.</param>
+        /// <param name="rollDegrees">Right-wing-down bank after pitch.</param>
+        /// <remarks>
+        /// Uses the same intrinsic angle convention as Spatial.SetGeographicRotation, independently of Coordinates.
+        /// Stores Rotation in local east/up/north with RotationSpace.Geographic. A followed Ghost can replace it on projection.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">The reference space is not Geographic.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An angle is not finite.</exception>
+        public void SetGeographicRotation(double yawDegrees, double pitchDegrees, double rollDegrees)
+        {
+            RequireGeographic();
+            Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
+            _rotation = rotation;
+            _rotationSpace = Emas.RotationSpace.Geographic;
+            _earthCenteredBodyAxes = null;
+        }
+
+        /// <summary>Sets manual reference attitude from a body-to-ECEF quaternion in Geographic space.</summary>
+        /// <param name="rotation">Active rotation mapping source body XYZ vectors into ECEF XYZ.</param>
+        /// <param name="bodyAxes">Body axes mapped to Unity directions; null uses forward/right/down (NED mapping).</param>
+        /// <remarks>Normalizes the quaternion. A followed Ghost with rotation data replaces this attitude during projection.</remarks>
+        /// <exception cref="InvalidOperationException">The reference space is not Geographic.</exception>
+        /// <exception cref="ArgumentException">The body axes are invalid or not right-handed.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
+        public void SetEarthCenteredRotation(Quaternion rotation, CoordinateSystem? bodyAxes = null)
+        {
+            RequireGeographic();
+            Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
+            CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
+            _rotation = normalized;
+            _rotationSpace = Emas.RotationSpace.EarthCentered;
+            _earthCenteredBodyAxes = axes;
         }
 
         /// <summary>
@@ -572,130 +696,6 @@ namespace Emas
             if (!_hasPosition)
             {
                 throw new InvalidOperationException("The reference position has not been supplied yet.");
-            }
-        }
-
-        // Freeze pose, axes and range once per pass so all roots use the same reference, even if callbacks change it.
-        internal readonly struct Projection
-        {
-            private readonly bool _hasPosition;
-            private readonly ReferenceSpace _space;
-            private readonly GeographicBasis _geographicBasis;
-            private readonly CoordinateSystem _coordinates;
-            private readonly Double3 _position;
-            private readonly Vector3 _unityPosition;
-            private readonly double? _maxDistance;
-            internal readonly Quaternion Alignment;
-
-            internal Projection(bool hasPosition, Double3 position, Vector3 unityPosition, Quaternion alignment, CoordinateSystem coordinates, double? maxDistance,
-                ReferenceSpace space = ReferenceSpace.Cartesian)
-            {
-                _hasPosition = hasPosition;
-                _space = space;
-                _geographicBasis = space == ReferenceSpace.Geographic && hasPosition
-                    ? new GeographicBasis(GeoPosition.FromEarthCentered(position)) : default;
-                _coordinates = coordinates;
-                _position = position;
-                _unityPosition = unityPosition;
-                Alignment = alignment;
-                _maxDistance = maxDistance;
-            }
-
-            internal bool TryToUnityPosition(Double3 position, out Vector3 result)
-            {
-                result = default(Vector3);
-                if (!_hasPosition || (_space == ReferenceSpace.Geographic && position == default(Double3))
-                    || (_maxDistance.HasValue && Double3.Distance(_position, position) > _maxDistance.Value))
-                {
-                    return false;
-                }
-
-                try
-                {
-                    // Remove the large origin in doubles, then map the small offset into tangent/Unity axes.
-                    Double3 displacement = position - _position;
-                    Double3 local = _space == ReferenceSpace.Geographic
-                        ? _geographicBasis.ToLocal(displacement) : _coordinates.ToUnity(displacement);
-                    Double3 offset = SpatialMath.Rotate(Alignment, local);
-                    return SpatialMath.TryToVector3(offset + new Double3(_unityPosition.x, _unityPosition.y, _unityPosition.z), out result);
-                }
-                catch (ArgumentOutOfRangeException)
-                {
-                    // Finite coordinates can have a separation beyond representable range.
-                    return false;
-                }
-            }
-
-            internal bool TryUnityPlacement(Double3 position, out Vector3 result)
-            {
-                result = default(Vector3);
-                // Attachment offsets are already in Unity axes; orthogonal scene alignment preserves source distance.
-                return _hasPosition && (!_maxDistance.HasValue
-                    || Double3.Distance(position, new Double3(_unityPosition.x, _unityPosition.y, _unityPosition.z)) <= _maxDistance.Value)
-                    && SpatialMath.TryToVector3(position, out result);
-            }
-
-            internal Double3 ToSimulationPosition(Vector3 unityPosition)
-            {
-                // Undo scene translation and alignment before restoring the source basis and large origin.
-                Double3 offset = new Double3((double)unityPosition.x - _unityPosition.x,
-                    (double)unityPosition.y - _unityPosition.y, (double)unityPosition.z - _unityPosition.z);
-                Double3 local = SpatialMath.Rotate(Quaternion.Inverse(Alignment), offset);
-                return _position + (_space == ReferenceSpace.Geographic
-                    ? _geographicBasis.ToEarthCentered(local) : _coordinates.ToSource(local));
-            }
-
-            internal Quaternion ToUnityRotation(Quaternion rotation, Double3 position)
-            {
-                return _space == ReferenceSpace.Geographic
-                    ? ToUnityRotation(rotation, GeoPosition.FromEarthCentered(position)) : ToUnityRotation(rotation);
-            }
-
-            internal Quaternion ToUnityRotation(Quaternion rotation, GeoPosition position)
-            {
-                // Convert the entity's local axes, rotate its tangent frame into the reference tangent frame, then align the scene.
-                return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(position)
-                    * _coordinates.ToUnityRotation(rotation), nameof(rotation));
-            }
-
-            internal Quaternion ToUnityGeographicRotation(Quaternion rotation, Double3 position)
-            {
-                if (_space != ReferenceSpace.Geographic)
-                {
-                    throw new InvalidOperationException("Geographic yaw/pitch/roll requires a Geographic reference frame.");
-                }
-
-                // Named angles are already in east/up/north; only tangent orientation and scene alignment remain.
-                return SpatialMath.NormalizeRotation(Alignment
-                    * _geographicBasis.RotationFrom(GeoPosition.FromEarthCentered(position)) * rotation, nameof(rotation));
-            }
-
-            internal Quaternion ToUnityEarthCenteredRotation(Quaternion rotation, CoordinateSystem bodyAxes)
-            {
-                if (_space != ReferenceSpace.Geographic)
-                {
-                    throw new InvalidOperationException("ECEF attitudes require a Geographic reference frame.");
-                }
-
-                return SpatialMath.NormalizeRotation(Alignment
-                    * _geographicBasis.ToLocalEarthCenteredRotation(rotation, bodyAxes), nameof(rotation));
-            }
-
-            internal Quaternion ToEarthCenteredRotation(Quaternion rotation, CoordinateSystem bodyAxes)
-            {
-                return _geographicBasis.ToEarthCenteredRotation(Quaternion.Inverse(Alignment) * rotation, bodyAxes);
-            }
-
-            internal Quaternion ToGeographicRotation(Quaternion rotation, GeoPosition position)
-            {
-                Quaternion local = Quaternion.Inverse(_geographicBasis.RotationFrom(position))
-                    * Quaternion.Inverse(Alignment) * rotation;
-                return SpatialMath.NormalizeRotation(_coordinates.ToSourceRotation(local), nameof(rotation));
-            }
-
-            internal Quaternion ToUnityRotation(Quaternion rotation)
-            {
-                return SpatialMath.NormalizeRotation(Alignment * _coordinates.ToUnityRotation(rotation), nameof(rotation));
             }
         }
     }

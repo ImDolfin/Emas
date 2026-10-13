@@ -17,24 +17,6 @@ namespace Emas
         private GameObject _prefab;
 
         /// <summary>
-        /// Creates a named appearance and its view prefab.
-        /// </summary>
-        /// <param name="name">The non-empty, case-sensitive appearance name.</param>
-        /// <param name="prefab">The view prefab.</param>
-        /// <exception cref="ArgumentException">The name is null, empty or whitespace.</exception>
-        /// <exception cref="ArgumentNullException">The prefab is null.</exception>
-        public ManifestationVariant(string name, GameObject prefab)
-        {
-            _name = new Variant(name).Id;
-            if (prefab == null)
-            {
-                throw new ArgumentNullException(nameof(prefab));
-            }
-
-            _prefab = prefab;
-        }
-
-        /// <summary>
         /// Gets the appearance name used by this blueprint row.
         /// </summary>
         /// <value>The case-sensitive appearance name, or an empty string for an unconfigured row.</value>
@@ -69,6 +51,24 @@ namespace Emas
             {
                 return _prefab;
             }
+        }
+
+        /// <summary>
+        /// Creates a named appearance and its view prefab.
+        /// </summary>
+        /// <param name="name">The non-empty, case-sensitive appearance name.</param>
+        /// <param name="prefab">The view prefab.</param>
+        /// <exception cref="ArgumentException">The name is null, empty or whitespace.</exception>
+        /// <exception cref="ArgumentNullException">The prefab is null.</exception>
+        public ManifestationVariant(string name, GameObject prefab)
+        {
+            _name = new Variant(name).Id;
+            if (prefab == null)
+            {
+                throw new ArgumentNullException(nameof(prefab));
+            }
+
+            _prefab = prefab;
         }
     }
 }

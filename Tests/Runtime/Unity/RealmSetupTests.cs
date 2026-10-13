@@ -12,6 +12,103 @@ namespace Emas.Tests
     /// </summary>
     public sealed class RealmSetupTests
     {
+        private sealed class TestProvider : MonoBehaviour, IDetectorProvider
+        {
+            internal Func<PresenceDetector> Factory;
+
+            /// <summary>
+            /// Creates the detector selected by the application scenario.
+            /// </summary>
+            /// <returns>The detector created by the configured test factory.</returns>
+            public PresenceDetector CreateDetector()
+            {
+                return Factory();
+            }
+        }
+
+        private sealed class TestConfigurator : MonoBehaviour, IRealmConfigurator
+        {
+            internal int Calls;
+
+            /// <summary>
+            /// Registers a typed root and trait before the detector publishes data.
+            /// </summary>
+            /// <param name="realm">The Realm being configured before its detectors start.</param>
+            public void ConfigureRealm(Realm realm)
+            {
+                Calls++;
+                realm.RegisterPresenceInitializer<TextGhost>(TestKind,
+                    (presence, root) => root.GetComponent<TextTrait>().Bind(() => presence.Key.EntityId));
+            }
+        }
+
+        private sealed class PublishingDetector : PresenceDetector
+        {
+            /// <summary>Publishes the typed root used to verify authored Realm configuration.</summary>
+            protected override void OnStart()
+            {
+                GetOrCreate<TextGhost>("one", TestKind);
+            }
+        }
+
+        private sealed class ReadingDetector : PresenceDetector
+        {
+            /// <summary>Detects the entity whose source reading is mapped by the configured initializer.</summary>
+            protected override void OnStart()
+            {
+                Detect("one", TestKind);
+            }
+        }
+
+        private sealed class CurrentEntityDetector : PresenceDetector
+        {
+            private readonly Func<string> _readId;
+            private string _previousId;
+
+            internal CurrentEntityDetector(Func<string> readId)
+            {
+                _readId = readId;
+            }
+
+            /// <summary>Publishes the currently selected source entity during startup.</summary>
+            protected override void OnStart()
+            {
+                OnUpdate();
+            }
+
+            /// <summary>Retires a changed source identity and detects the current entity.</summary>
+            protected override void OnUpdate()
+            {
+                string id = _readId();
+                if (_previousId != null && _previousId != id)
+                {
+                    Disappear(TestKind, _previousId);
+                }
+
+                Detect(id, TestKind);
+                _previousId = id;
+            }
+        }
+
+        private sealed class ContextInitializer : GhostInitializer
+        {
+            /// <summary>Accepts initialization without bindings so the scenario can inspect the initializer context.</summary>
+            /// <param name="presence">The detected presence being initialized.</param>
+            /// <param name="ghost">The root created for the detected presence.</param>
+            protected override void Initialize(Presence presence, Ghost ghost)
+            {
+            }
+        }
+
+        private sealed class FailingDetector : PresenceDetector
+        {
+            /// <summary>Raises a startup failure to verify authored setup cleanup and error reporting.</summary>
+            protected override void OnStart()
+            {
+                throw new InvalidOperationException("source startup failed");
+            }
+        }
+
         private static readonly Kind TestKind = new Kind("setup.entity");
         private readonly List<UnityEngine.Object> _objects = new List<UnityEngine.Object>();
 
@@ -235,103 +332,6 @@ namespace Emas.Tests
             TextTrait trait = presence.Root.GetComponent<TextTrait>();
             Assert.That(trait, Is.Not.Null);
             Assert.That(trait.Value, Is.EqualTo("one"));
-        }
-
-        private sealed class TestProvider : MonoBehaviour, IDetectorProvider
-        {
-            internal Func<PresenceDetector> Factory;
-
-            /// <summary>
-            /// Creates the detector selected by the application scenario.
-            /// </summary>
-            /// <returns>The detector created by the configured test factory.</returns>
-            public PresenceDetector CreateDetector()
-            {
-                return Factory();
-            }
-        }
-
-        private sealed class TestConfigurator : MonoBehaviour, IRealmConfigurator
-        {
-            internal int Calls;
-
-            /// <summary>
-            /// Registers a typed root and trait before the detector publishes data.
-            /// </summary>
-            /// <param name="realm">The Realm being configured before its detectors start.</param>
-            public void ConfigureRealm(Realm realm)
-            {
-                Calls++;
-                realm.RegisterPresenceInitializer<TextGhost>(TestKind,
-                    (presence, root) => root.GetComponent<TextTrait>().Bind(() => presence.Key.EntityId));
-            }
-        }
-
-        private sealed class PublishingDetector : PresenceDetector
-        {
-            /// <summary>Publishes the typed root used to verify authored Realm configuration.</summary>
-            protected override void OnStart()
-            {
-                GetOrCreate<TextGhost>("one", TestKind);
-            }
-        }
-
-        private sealed class ReadingDetector : PresenceDetector
-        {
-            /// <summary>Detects the entity whose source reading is mapped by the configured initializer.</summary>
-            protected override void OnStart()
-            {
-                Detect("one", TestKind);
-            }
-        }
-
-        private sealed class CurrentEntityDetector : PresenceDetector
-        {
-            private readonly Func<string> _readId;
-            private string _previousId;
-
-            internal CurrentEntityDetector(Func<string> readId)
-            {
-                _readId = readId;
-            }
-
-            /// <summary>Publishes the currently selected source entity during startup.</summary>
-            protected override void OnStart()
-            {
-                OnUpdate();
-            }
-
-            /// <summary>Retires a changed source identity and detects the current entity.</summary>
-            protected override void OnUpdate()
-            {
-                string id = _readId();
-                if (_previousId != null && _previousId != id)
-                {
-                    Disappear(TestKind, _previousId);
-                }
-
-                Detect(id, TestKind);
-                _previousId = id;
-            }
-        }
-
-        private sealed class ContextInitializer : GhostInitializer
-        {
-            /// <summary>Accepts initialization without bindings so the scenario can inspect the initializer context.</summary>
-            /// <param name="presence">The detected presence being initialized.</param>
-            /// <param name="ghost">The root created for the detected presence.</param>
-            protected override void Initialize(Presence presence, Ghost ghost)
-            {
-            }
-        }
-
-        private sealed class FailingDetector : PresenceDetector
-        {
-            /// <summary>Raises a startup failure to verify authored setup cleanup and error reporting.</summary>
-            protected override void OnStart()
-            {
-                throw new InvalidOperationException("source startup failed");
-            }
         }
 
     }

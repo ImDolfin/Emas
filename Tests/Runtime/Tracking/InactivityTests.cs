@@ -13,6 +13,29 @@ namespace Emas.Tests
     /// </summary>
     public sealed class InactivityTests
     {
+        private sealed class Probe : PresenceDetector
+        {
+            internal Presence Publish(string id)
+            {
+                return Detect(id, TrackedKind);
+            }
+
+            internal void PublishCached(IGhost ghost)
+            {
+                MarkPublished(ghost);
+            }
+
+            internal void Lose(string id)
+            {
+                Disappear(TrackedKind, id);
+            }
+        }
+
+        private sealed class ProbeGhost : Ghost
+        {
+            internal int Value;
+        }
+
         private static readonly Kind TrackedKind = new Kind("tests.expiry");
         private Realm _realm;
 
@@ -162,29 +185,6 @@ namespace Emas.Tests
             }
 
             Assert.That(condition(), Is.True, "The public expiry transition did not complete within five seconds.");
-        }
-
-        private sealed class Probe : PresenceDetector
-        {
-            internal Presence Publish(string id)
-            {
-                return Detect(id, TrackedKind);
-            }
-
-            internal void PublishCached(IGhost ghost)
-            {
-                MarkPublished(ghost);
-            }
-
-            internal void Lose(string id)
-            {
-                Disappear(TrackedKind, id);
-            }
-        }
-
-        private sealed class ProbeGhost : Ghost
-        {
-            internal int Value;
         }
     }
 }

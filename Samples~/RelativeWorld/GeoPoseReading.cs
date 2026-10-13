@@ -12,69 +12,6 @@ namespace Emas.RelativeWorld
     /// </remarks>
     public sealed class GeoPoseReading
     {
-        /// <summary>
-        /// Creates an immutable geographic pose observation.
-        /// </summary>
-        /// <param name="id">The stable SDK entity ID.</param>
-        /// <param name="label">The entity display label.</param>
-        /// <param name="kind">The observed entity category.</param>
-        /// <param name="variant">The requested visual variant.</param>
-        /// <param name="latitudeDegrees">WGS84 geodetic latitude in degrees north.</param>
-        /// <param name="longitudeDegrees">WGS84 longitude in degrees east.</param>
-        /// <param name="altitudeMeters">Height above the WGS84 ellipsoid in metres.</param>
-        /// <param name="yawDegrees">Heading clockwise from true north, in degrees.</param>
-        /// <param name="pitchDegrees">Nose-up pitch in degrees.</param>
-        /// <param name="rollDegrees">Right-wing-down roll in degrees.</param>
-        /// <param name="parentId">The parent entity ID while attached; null for absolute placement.</param>
-        /// <param name="parentKind">The attached parent's category.</param>
-        /// <param name="bodyOffset">Parent-local metres in SDK axes: X forward, Y right and Z down.</param>
-        /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for prediction and motion-assisted smoothing.</param>
-        /// <param name="eastNorthUpAcceleration">Optional local ENU linear acceleration in metres per second squared, with gravity removed.</param>
-        /// <param name="sampleTime">Optional observation time in the SDK's shared seconds/nanoseconds clock.</param>
-        /// <exception cref="ArgumentException">The entity ID is blank, or an attached reading has a blank parent ID or invalid parent Kind.</exception>
-        /// <exception cref="ArgumentOutOfRangeException">A pose or body-offset component is non-finite, or latitude or longitude is outside its geographic range.</exception>
-        public GeoPoseReading(string id, string label, Kind kind, Variant variant, double latitudeDegrees,
-            double longitudeDegrees, double altitudeMeters, double yawDegrees, double pitchDegrees,
-            double rollDegrees, string parentId = null, Kind parentKind = default, Vector3 bodyOffset = default,
-            Double3? eastNorthUpVelocity = null, Double3? eastNorthUpAcceleration = null, Timestamp? sampleTime = null)
-        {
-            if (string.IsNullOrWhiteSpace(id))
-            {
-                throw new ArgumentException("A geographic reading requires a nonempty entity ID.", nameof(id));
-            }
-
-            ValidateRange(latitudeDegrees, -90.0, 90.0, nameof(latitudeDegrees));
-            ValidateRange(longitudeDegrees, -180.0, 180.0, nameof(longitudeDegrees));
-            ValidateFinite(altitudeMeters, nameof(altitudeMeters));
-            ValidateFinite(yawDegrees, nameof(yawDegrees));
-            ValidateFinite(pitchDegrees, nameof(pitchDegrees));
-            ValidateFinite(rollDegrees, nameof(rollDegrees));
-            ValidateFinite(bodyOffset.x, nameof(bodyOffset));
-            ValidateFinite(bodyOffset.y, nameof(bodyOffset));
-            ValidateFinite(bodyOffset.z, nameof(bodyOffset));
-            if (parentId != null && (string.IsNullOrWhiteSpace(parentId) || !parentKind.IsValid))
-            {
-                throw new ArgumentException("An attached reading requires a parent ID and Kind.", nameof(parentId));
-            }
-
-            Id = id;
-            Label = label;
-            Kind = kind;
-            Variant = variant;
-            LatitudeDegrees = latitudeDegrees;
-            LongitudeDegrees = longitudeDegrees;
-            AltitudeMeters = altitudeMeters;
-            YawDegrees = yawDegrees;
-            PitchDegrees = pitchDegrees;
-            RollDegrees = rollDegrees;
-            ParentId = parentId;
-            ParentKind = parentKind;
-            BodyOffset = bodyOffset;
-            EastNorthUpVelocity = eastNorthUpVelocity;
-            EastNorthUpAcceleration = eastNorthUpAcceleration;
-            SampleTime = sampleTime;
-        }
-
         /// <summary>Gets the stable SDK entity ID.</summary>
         /// <value>The nonempty identity used for source lookup and presence detection.</value>
         public string Id { get; }
@@ -138,6 +75,69 @@ namespace Emas.RelativeWorld
         /// <summary>Gets the SDK sample time shared by pose and motion channels, or null when unavailable.</summary>
         /// <value>The original observation time, preserved through packet delay; this is not the packet's arrival time.</value>
         public Timestamp? SampleTime { get; }
+
+        /// <summary>
+        /// Creates an immutable geographic pose observation.
+        /// </summary>
+        /// <param name="id">The stable SDK entity ID.</param>
+        /// <param name="label">The entity display label.</param>
+        /// <param name="kind">The observed entity category.</param>
+        /// <param name="variant">The requested visual variant.</param>
+        /// <param name="latitudeDegrees">WGS84 geodetic latitude in degrees north.</param>
+        /// <param name="longitudeDegrees">WGS84 longitude in degrees east.</param>
+        /// <param name="altitudeMeters">Height above the WGS84 ellipsoid in metres.</param>
+        /// <param name="yawDegrees">Heading clockwise from true north, in degrees.</param>
+        /// <param name="pitchDegrees">Nose-up pitch in degrees.</param>
+        /// <param name="rollDegrees">Right-wing-down roll in degrees.</param>
+        /// <param name="parentId">The parent entity ID while attached; null for absolute placement.</param>
+        /// <param name="parentKind">The attached parent's category.</param>
+        /// <param name="bodyOffset">Parent-local metres in SDK axes: X forward, Y right and Z down.</param>
+        /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for prediction and motion-assisted smoothing.</param>
+        /// <param name="eastNorthUpAcceleration">Optional local ENU linear acceleration in metres per second squared, with gravity removed.</param>
+        /// <param name="sampleTime">Optional observation time in the SDK's shared seconds/nanoseconds clock.</param>
+        /// <exception cref="ArgumentException">The entity ID is blank, or an attached reading has a blank parent ID or invalid parent Kind.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A pose or body-offset component is non-finite, or latitude or longitude is outside its geographic range.</exception>
+        public GeoPoseReading(string id, string label, Kind kind, Variant variant, double latitudeDegrees,
+            double longitudeDegrees, double altitudeMeters, double yawDegrees, double pitchDegrees,
+            double rollDegrees, string parentId = null, Kind parentKind = default, Vector3 bodyOffset = default,
+            Double3? eastNorthUpVelocity = null, Double3? eastNorthUpAcceleration = null, Timestamp? sampleTime = null)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("A geographic reading requires a nonempty entity ID.", nameof(id));
+            }
+
+            ValidateRange(latitudeDegrees, -90.0, 90.0, nameof(latitudeDegrees));
+            ValidateRange(longitudeDegrees, -180.0, 180.0, nameof(longitudeDegrees));
+            ValidateFinite(altitudeMeters, nameof(altitudeMeters));
+            ValidateFinite(yawDegrees, nameof(yawDegrees));
+            ValidateFinite(pitchDegrees, nameof(pitchDegrees));
+            ValidateFinite(rollDegrees, nameof(rollDegrees));
+            ValidateFinite(bodyOffset.x, nameof(bodyOffset));
+            ValidateFinite(bodyOffset.y, nameof(bodyOffset));
+            ValidateFinite(bodyOffset.z, nameof(bodyOffset));
+            if (parentId != null && (string.IsNullOrWhiteSpace(parentId) || !parentKind.IsValid))
+            {
+                throw new ArgumentException("An attached reading requires a parent ID and Kind.", nameof(parentId));
+            }
+
+            Id = id;
+            Label = label;
+            Kind = kind;
+            Variant = variant;
+            LatitudeDegrees = latitudeDegrees;
+            LongitudeDegrees = longitudeDegrees;
+            AltitudeMeters = altitudeMeters;
+            YawDegrees = yawDegrees;
+            PitchDegrees = pitchDegrees;
+            RollDegrees = rollDegrees;
+            ParentId = parentId;
+            ParentKind = parentKind;
+            BodyOffset = bodyOffset;
+            EastNorthUpVelocity = eastNorthUpVelocity;
+            EastNorthUpAcceleration = eastNorthUpAcceleration;
+            SampleTime = sampleTime;
+        }
 
         private static void ValidateRange(double value, double minimum, double maximum, string parameter)
         {

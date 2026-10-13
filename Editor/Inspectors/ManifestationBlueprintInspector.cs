@@ -14,17 +14,6 @@ namespace Emas.Editor
     {
         private ReorderableList _variants;
 
-        private void OnEnable()
-        {
-            // Recreate callbacks whenever Unity recreates this editor; the list edits the selected serialized assets.
-            _variants = new ReorderableList(serializedObject, serializedObject.FindProperty("_variants"),
-                true, true, true, true);
-            _variants.elementHeight = EditorGUIUtility.singleLineHeight + 6f;
-            _variants.drawHeaderCallback = DrawHeader;
-            _variants.drawElementCallback = DrawVariant;
-            _variants.onAddCallback = AddVariant;
-        }
-
         /// <summary>
         /// Draws blueprint settings, the Name/Prefab table and configuration errors.
         /// </summary>
@@ -46,6 +35,17 @@ namespace Emas.Editor
                     EditorGUILayout.HelpBox(error, MessageType.Error);
                 }
             }
+        }
+
+        private void OnEnable()
+        {
+            // Recreate callbacks whenever Unity recreates this editor; the list edits the selected serialized assets.
+            _variants = new ReorderableList(serializedObject, serializedObject.FindProperty("_variants"),
+                true, true, true, true);
+            _variants.elementHeight = EditorGUIUtility.singleLineHeight + 6f;
+            _variants.drawHeaderCallback = DrawHeader;
+            _variants.drawElementCallback = DrawVariant;
+            _variants.onAddCallback = AddVariant;
         }
 
         private static void Columns(Rect rect, out Rect name, out Rect prefab)

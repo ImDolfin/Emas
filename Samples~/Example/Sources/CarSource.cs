@@ -23,19 +23,6 @@ namespace Emas.Sample
         /// <value>True after replacement; false when a new attachment starts with SDK One.</value>
         public bool IsUsingSecondSdk { get; private set; }
 
-        /// <summary>Restarts the replacement timer and publishes the permanent car population from SDK One.</summary>
-        protected override void OnStart()
-        {
-            _elapsed = 0f;
-            IsUsingSecondSdk = false;
-            foreach (SdkOneVehicleProxy proxy in _firstFeed.ReadVehicles(Time.time))
-            {
-                Variant variant = proxy.TypeCode == 0 ? CarVariants.SmallCar
-                    : proxy.TypeCode == 1 ? CarVariants.LargeCar : CarVariants.Truck;
-                Detect(proxy.Identifier, SampleKinds.Car, "Car " + proxy.Identifier, variant, source: _firstFeed);
-            }
-        }
-
         /// <summary>
         /// Switches to SDK Two once, retaining compatible car ghosts and their consumers.
         /// </summary>
@@ -51,6 +38,19 @@ namespace Emas.Sample
             IsUsingSecondSdk = true;
             ReadProxies();
             anchor.ReplaceDetector(Detector, new SdkTwoCarDetector(_secondFeed) { Name = "SDK Two cars" });
+        }
+
+        /// <summary>Restarts the replacement timer and publishes the permanent car population from SDK One.</summary>
+        protected override void OnStart()
+        {
+            _elapsed = 0f;
+            IsUsingSecondSdk = false;
+            foreach (SdkOneVehicleProxy proxy in _firstFeed.ReadVehicles(Time.time))
+            {
+                Variant variant = proxy.TypeCode == 0 ? CarVariants.SmallCar
+                    : proxy.TypeCode == 1 ? CarVariants.LargeCar : CarVariants.Truck;
+                Detect(proxy.Identifier, SampleKinds.Car, "Car " + proxy.Identifier, variant, source: _firstFeed);
+            }
         }
 
         // The application owns both feeds, including SDK Two after detector replacement.

@@ -6,6 +6,14 @@ namespace Emas
     /// <remarks>No epoch is assumed. All timestamps in one Realm must use the same clock; this is not Unity game time.</remarks>
     public readonly struct Timestamp : IComparable<Timestamp>, IEquatable<Timestamp>
     {
+        /// <summary>Gets whole seconds in the SDK clock.</summary>
+        /// <value>The integral second relative to the SDK's epoch.</value>
+        public long Seconds { get; }
+
+        /// <summary>Gets the fractional second as nanoseconds in [0, 1000000000).</summary>
+        /// <value>The fraction added to <see cref="Seconds"/>; always less than one billion.</value>
+        public uint Nanoseconds { get; }
+
         /// <summary>Creates a timestamp without converting an absolute epoch to floating point.</summary>
         /// <param name="seconds">Whole seconds since the SDK's shared epoch, which may be negative.</param>
         /// <param name="nanoseconds">The nonnegative fractional second, less than one billion nanoseconds.</param>
@@ -20,14 +28,6 @@ namespace Emas
             Seconds = seconds;
             Nanoseconds = nanoseconds;
         }
-
-        /// <summary>Gets whole seconds in the SDK clock.</summary>
-        /// <value>The integral second relative to the SDK's epoch.</value>
-        public long Seconds { get; }
-
-        /// <summary>Gets the fractional second as nanoseconds in [0, 1000000000).</summary>
-        /// <value>The fraction added to <see cref="Seconds"/>; always less than one billion.</value>
-        public uint Nanoseconds { get; }
 
         /// <summary>Creates a timestamp from finite seconds when separate SDK seconds/nanoseconds are unavailable.</summary>
         /// <param name="seconds">Finite SDK time whose whole seconds fit in a signed 64-bit integer.</param>

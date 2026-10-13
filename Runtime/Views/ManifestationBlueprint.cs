@@ -116,6 +116,17 @@ namespace Emas
             _fallbackViewPrefab = fallbackViewPrefab;
         }
 
+        /// <summary>
+        /// Returns the prefab for an exact variant name, or the optional fallback.
+        /// </summary>
+        /// <param name="variant">The requested appearance.</param>
+        /// <returns>The matching prefab, the fallback, or null when neither is configured.</returns>
+        /// <remarks>Reads this asset's current settings, which may differ from a realm's captured registration.</remarks>
+        public GameObject ResolveViewPrefab(Variant variant)
+        {
+            return ResolveViewPrefab(_variants, _fallbackViewPrefab, variant);
+        }
+
         internal string GetConfigurationError()
         {
             return GetConfigurationError(Kind, _variants);
@@ -126,6 +137,24 @@ namespace Emas
             ManifestationVariant[] variants = _variants == null
                 ? new ManifestationVariant[0] : _variants.ToArray();
             return new ManifestationBlueprintSnapshot(this, Kind, _ghostPrefab, variants, _fallbackViewPrefab);
+        }
+
+        internal static GameObject ResolveViewPrefab(IReadOnlyList<ManifestationVariant> variants,
+            GameObject fallbackViewPrefab, Variant variant)
+        {
+            if (!variant.IsNone && variants != null)
+            {
+                for (int index = 0; index < variants.Count; index++)
+                {
+                    ManifestationVariant mapping = variants[index];
+                    if (mapping.Prefab != null && string.Equals(mapping.Name, variant.Id, StringComparison.Ordinal))
+                    {
+                        return mapping.Prefab;
+                    }
+                }
+            }
+
+            return fallbackViewPrefab;
         }
 
         private static string GetConfigurationError(Kind kind, IReadOnlyList<ManifestationVariant> variants)
@@ -164,35 +193,6 @@ namespace Emas
             }
 
             return null;
-        }
-
-        /// <summary>
-        /// Returns the prefab for an exact variant name, or the optional fallback.
-        /// </summary>
-        /// <param name="variant">The requested appearance.</param>
-        /// <returns>The matching prefab, the fallback, or null when neither is configured.</returns>
-        /// <remarks>Reads this asset's current settings, which may differ from a realm's captured registration.</remarks>
-        public GameObject ResolveViewPrefab(Variant variant)
-        {
-            return ResolveViewPrefab(_variants, _fallbackViewPrefab, variant);
-        }
-
-        internal static GameObject ResolveViewPrefab(IReadOnlyList<ManifestationVariant> variants,
-            GameObject fallbackViewPrefab, Variant variant)
-        {
-            if (!variant.IsNone && variants != null)
-            {
-                for (int index = 0; index < variants.Count; index++)
-                {
-                    ManifestationVariant mapping = variants[index];
-                    if (mapping.Prefab != null && string.Equals(mapping.Name, variant.Id, StringComparison.Ordinal))
-                    {
-                        return mapping.Prefab;
-                    }
-                }
-            }
-
-            return fallbackViewPrefab;
         }
     }
 }

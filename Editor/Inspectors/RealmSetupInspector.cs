@@ -52,6 +52,13 @@ namespace Emas.Editor
             }
         }
 
+        /// <summary>Keeps the live Realm summary current while the application is playing.</summary>
+        /// <returns>True in Play Mode; otherwise false.</returns>
+        public override bool RequiresConstantRepaint()
+        {
+            return Application.isPlaying;
+        }
+
         private void DrawReference()
         {
             SerializedProperty useFrame = serializedObject.FindProperty("_useReferenceFrame");
@@ -145,13 +152,6 @@ namespace Emas.Editor
                     InspectorLayout.ReadOnly(geographic ? "Range (metres)" : "Range (shared units)", frame.MaxDistance.HasValue ? frame.MaxDistance.Value.ToString("G") : "Unlimited");
                 }
             }
-        }
-
-        /// <summary>Keeps the live Realm summary current while the application is playing.</summary>
-        /// <returns>True in Play Mode; otherwise false.</returns>
-        public override bool RequiresConstantRepaint()
-        {
-            return Application.isPlaying;
         }
     }
 }

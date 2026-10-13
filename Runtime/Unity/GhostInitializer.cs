@@ -32,16 +32,6 @@ namespace Emas
             }
         }
 
-        /// <summary>Binds the detected source to existing Ghost traits before their next refresh.</summary>
-        /// <param name="presence">The stable handle with detection metadata and the weak Source already assigned.</param>
-        /// <param name="ghost">The initialized root with its authored trait components.</param>
-        /// <remarks>
-        /// Runs on Unity's main thread and may run again for the same root when its source or ownership changes.
-        /// Reinitializing an already-available root does not make it unavailable.
-        /// Bind existing traits here; the realm reads them after initialization. Exceptions fail the owning detector's publication.
-        /// </remarks>
-        protected abstract void Initialize(Presence presence, Ghost ghost);
-
         internal void Bind(Anchor anchor)
         {
             Anchor = anchor;
@@ -65,5 +55,15 @@ namespace Emas
 
             Initialize(presence, ghost);
         }
+
+        /// <summary>Binds the detected source to existing Ghost traits before their next refresh.</summary>
+        /// <param name="presence">The stable handle with detection metadata and the weak Source already assigned.</param>
+        /// <param name="ghost">The initialized root with its authored trait components.</param>
+        /// <remarks>
+        /// Runs on Unity's main thread and may run again for the same root when its source or ownership changes.
+        /// Reinitializing an already-available root does not make it unavailable.
+        /// Bind existing traits here; the realm reads them after initialization. Exceptions fail the owning detector's publication.
+        /// </remarks>
+        protected abstract void Initialize(Presence presence, Ghost ghost);
     }
 }

@@ -9,6 +9,46 @@ namespace Emas.Tests
     /// </summary>
     public sealed class RealmTests
     {
+        private interface ITestPart
+        {
+        }
+
+        private interface IExtraPart
+        {
+        }
+
+        private sealed class TestGhost : Ghost, ITestPart
+        {
+        }
+
+        private sealed class ExtraPart : MonoBehaviour, IExtraPart
+        {
+        }
+
+        private sealed class TestSource : PresenceDetector
+        {
+            internal Kind Kind
+            {
+                get;
+                private set;
+            }
+
+            internal TestSource(Kind kind)
+            {
+                Kind = kind;
+            }
+
+            internal TestGhost Publish(string entityId, Variant variant)
+            {
+                return GetOrCreate<TestGhost>(entityId, Kind, variant);
+            }
+
+            internal TestGhost PublishNamed(string entityId, string name, Variant? variant)
+            {
+                return GetOrCreate<TestGhost>(entityId, Kind, variant, name);
+            }
+        }
+
         private Realm _realm;
 
         /// <summary>
@@ -471,46 +511,6 @@ namespace Emas.Tests
                 UnityEngine.Object.DestroyImmediate(blueprint);
                 UnityEngine.Object.DestroyImmediate(fullPrefab);
                 UnityEngine.Object.DestroyImmediate(lowPrefab);
-            }
-        }
-
-        private interface ITestPart
-        {
-        }
-
-        private interface IExtraPart
-        {
-        }
-
-        private sealed class TestGhost : Ghost, ITestPart
-        {
-        }
-
-        private sealed class ExtraPart : MonoBehaviour, IExtraPart
-        {
-        }
-
-        private sealed class TestSource : PresenceDetector
-        {
-            internal TestSource(Kind kind)
-            {
-                Kind = kind;
-            }
-
-            internal Kind Kind
-            {
-                get;
-                private set;
-            }
-
-            internal TestGhost Publish(string entityId, Variant variant)
-            {
-                return GetOrCreate<TestGhost>(entityId, Kind, variant);
-            }
-
-            internal TestGhost PublishNamed(string entityId, string name, Variant? variant)
-            {
-                return GetOrCreate<TestGhost>(entityId, Kind, variant, name);
             }
         }
     }

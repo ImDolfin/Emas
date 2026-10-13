@@ -13,6 +13,142 @@ namespace Emas.Editor.Tests
     /// </summary>
     public sealed class InspectorTests
     {
+        private sealed class DiagnosticsProbe : PresenceDetector
+        {
+            internal int Updates;
+
+            /// <inheritdoc />
+            protected override void OnUpdate()
+            {
+                Updates++;
+            }
+        }
+
+        private sealed class InspectorProvider : MonoBehaviour, IDetectorProvider
+        {
+            internal Func<PresenceDetector> Factory;
+
+            /// <summary>
+            /// Creates the detector used by the authored prefab.
+            /// </summary>
+            /// <returns>The detector created by the configured test factory.</returns>
+            public PresenceDetector CreateDetector()
+            {
+                return Factory();
+            }
+        }
+
+        private sealed class InspectorGhost : Ghost
+        {
+            [SerializeField]
+            private int _customValue = 7;
+        }
+
+        /// <summary>Represents an application-owned trait with an ordinary serialized setting.</summary>
+        private sealed class InspectorTrait : Trait<int>
+        {
+            [SerializeField]
+            private int _customValue = 7;
+
+            /// <summary>Gets the setting authored through Unity serialization.</summary>
+            /// <value>The application value retained independently of the trait's enabled state.</value>
+            public int Value => _customValue;
+
+            /// <summary>Applies an application value without depending on editor visibility.</summary>
+            /// <param name="data">The new application value.</param>
+            public override void Apply(int data)
+            {
+                _customValue = data;
+            }
+        }
+
+        private sealed class PublishingDetector : PresenceDetector
+        {
+            /// <inheritdoc />
+            protected override void OnStart()
+            {
+                GetOrCreate<InspectorGhost>("one", TestKind);
+            }
+        }
+
+        private sealed class SpatialDetector : PresenceDetector
+        {
+            /// <inheritdoc />
+            protected override void OnStart()
+            {
+                SpatialGhost ego = GetOrCreate<SpatialGhost>("ego", TestKind);
+                ego.GetComponent<Spatial>().SetCartesianPosition(new Double3(1000000000.125, 0.0, 1000000000.375));
+                SpatialGhost traffic = GetOrCreate<SpatialGhost>("traffic", TestKind);
+                traffic.GetComponent<Spatial>().SetCartesianPosition(new Double3(1000000020.375, 0.0, 1000000000.375));
+            }
+        }
+
+        /// <summary>Publishes coincident geographic roots so serialized and property tuning share one projection clock.</summary>
+        private sealed class LiveTuningDetector : PresenceDetector
+        {
+            internal static readonly Vector3 AttachmentOffset = new Vector3(2, 0.5f, -1);
+            internal Ghost Edited;
+            internal Ghost Control;
+            internal Ghost Attachment;
+            internal Double3 ObservedPosition;
+            internal Double3 ObservedVelocity;
+            internal Quaternion ObservedRotation;
+            internal Timestamp ObservedTime;
+            internal double LastProjectionStarted;
+            private double _sampleSeconds = -1;
+
+            /// <summary>Supplies identical WGS84 observations travelling east at 100 metres per second.</summary>
+            /// <param name="seconds">Elapsed SDK time, advanced by at least one microsecond for each new sample.</param>
+            /// <param name="correction">An optional positional observation correction in metres.</param>
+            /// <param name="headingCorrection">An optional heading correction in degrees.</param>
+            internal void Publish(double seconds, double correction = 0, double headingCorrection = 0)
+            {
+                _sampleSeconds = Math.Max(seconds, _sampleSeconds + 0.000001);
+                GeoPosition position = new GeoPosition(0, (100 * _sampleSeconds + correction) / 6378137.0 * 180.0 / Math.PI, 0);
+                ObservedPosition = position.ToEarthCentered();
+                ObservedTime = Timestamp.FromSeconds(_sampleSeconds);
+                foreach (Ghost ghost in new[] { Edited, Control })
+                {
+                    Spatial spatial = ghost.GetComponent<Spatial>();
+                    spatial.SetGeographicPosition(position, ObservedTime);
+                    spatial.SetGeographicRotation(30 * _sampleSeconds + headingCorrection, 0, 0, ObservedTime);
+                    ghost.GetComponent<Prediction>().SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
+                }
+
+                ObservedRotation = Edited.GetComponent<Spatial>().Rotation;
+                ObservedVelocity = Edited.GetComponent<Prediction>().Velocity;
+            }
+
+            /// <summary>Creates the edited origin, its property-controlled twin and a parent-local attached part.</summary>
+            protected override void OnStart()
+            {
+                Edited = CreateMovingGhost("serialized");
+                Control = CreateMovingGhost("property");
+                Attachment = GetOrCreate<Ghost>("attachment", TestKind);
+                Attachment.gameObject.AddComponent<Spatial>().Attach(Edited.Key, AttachmentOffset);
+                Publish(0);
+            }
+
+            /// <summary>Authors the same independent position and rotation filters on each comparison root.</summary>
+            /// <param name="id">The identity owned by this detector.</param>
+            /// <returns>The newly authored moving Ghost.</returns>
+            private Ghost CreateMovingGhost(string id)
+            {
+                Ghost ghost = GetOrCreate<Ghost>(id, TestKind);
+                ghost.gameObject.AddComponent<Spatial>();
+                Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+                smoothing.PositionHalfLife = 0.4f;
+                smoothing.RotationHalfLife = 0.4f;
+                ghost.gameObject.AddComponent<Prediction>();
+                return ghost;
+            }
+        }
+
+        [RequireComponent(typeof(Spatial))]
+        private sealed class SpatialGhost : Ghost
+        {
+        }
+
         private static readonly Kind TestKind = new Kind("authoring.entity");
         private readonly List<UnityEngine.Object> _objects = new List<UnityEngine.Object>();
 
@@ -525,6 +661,131 @@ namespace Emas.Editor.Tests
             }
         }
 
+        /// <summary>
+        /// Ghost authoring owns trait visibility while serialized settings and enabled states remain editable with Undo.
+        /// </summary>
+        /// <returns>An iterator that waits for delayed editor visibility updates after component changes.</returns>
+        [UnityTest]
+        public IEnumerator GhostAuthoring_HidesOwnedTraitsAndKeepsSettingsEditable()
+        {
+            GameObject root = new GameObject("ghost authoring");
+            _objects.Add(root);
+            root.SetActive(false);
+            Spatial spatial = root.AddComponent<Spatial>();
+            Smoothing smoothing = root.AddComponent<Smoothing>();
+            Prediction prediction = root.AddComponent<Prediction>();
+            InspectorTrait custom = root.AddComponent<InspectorTrait>();
+            smoothing.enabled = false;
+            prediction.enabled = false;
+            custom.enabled = false;
+            smoothing.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            yield return WaitForTraitVisibility(root, false);
+
+            InspectorGhost ghost = root.AddComponent<InspectorGhost>();
+            UnityEditor.Editor inspector = null;
+            try
+            {
+                inspector = UnityEditor.Editor.CreateEditor(ghost);
+                AssertGhostAuthoringMetadata(ghost);
+                yield return WaitForTraitVisibility(root, true);
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction, custom }));
+                Assert.That(spatial.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.None));
+                Assert.That(smoothing.hideFlags & HideFlags.DontUnloadUnusedAsset, Is.EqualTo(HideFlags.DontUnloadUnusedAsset));
+                AssertTraitSettingsSupportUndo(smoothing, prediction, custom);
+
+                Undo.DestroyObjectImmediate(custom);
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction }));
+                custom = Undo.AddComponent<InspectorTrait>(root);
+                custom.enabled = false;
+                yield return WaitForTraitVisibility(root, true);
+                Assert.That(ghost.Traits, Has.Member(custom));
+                Assert.That(custom.enabled, Is.False);
+
+                UnityEngine.Object.DestroyImmediate(inspector);
+                inspector = null;
+                Undo.DestroyObjectImmediate(ghost);
+                yield return WaitForTraitVisibility(root, false);
+                Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset));
+
+                ghost = Undo.AddComponent<InspectorGhost>(root);
+                yield return WaitForTraitVisibility(root, true);
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction, custom }));
+                Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset | HideFlags.HideInInspector));
+                Assert.That(spatial.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.None));
+                Assert.That(smoothing.enabled, Is.True);
+                Assert.That(prediction.enabled, Is.True);
+                Assert.That(custom.enabled, Is.False);
+            }
+            finally
+            {
+                if (inspector != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(inspector);
+                }
+
+                Undo.ClearUndo(root);
+                foreach (Component component in root.GetComponents<Component>())
+                {
+                    Undo.ClearUndo(component);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Hidden built-in traits retain serialized settings and enabled states when an authored Ghost prefab is saved and reopened.
+        /// </summary>
+        [Test]
+        public void GhostAuthoring_PersistsTraitSettingsInPrefabs()
+        {
+            GameObject root = new GameObject("ghost trait prefab");
+            _objects.Add(root);
+            root.SetActive(false);
+            Ghost ghost = root.AddComponent<Ghost>();
+            Smoothing smoothing = root.AddComponent<Smoothing>();
+            Prediction prediction = root.AddComponent<Prediction>();
+            string path = AssetDatabase.GenerateUniqueAssetPath("Assets/EmasTraitAuthoring.prefab");
+            GameObject contents = null;
+            UnityEditor.Editor inspector = null;
+            try
+            {
+                inspector = UnityEditor.Editor.CreateEditor(ghost);
+                SetSerializedTraitSettings(smoothing, prediction, false);
+                Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
+                UnityEngine.Object.DestroyImmediate(inspector);
+                inspector = null;
+
+                contents = PrefabUtility.LoadPrefabContents(path);
+                Ghost restored = contents.GetComponent<Ghost>();
+                Smoothing restoredSmoothing = contents.GetComponent<Smoothing>();
+                Prediction restoredPrediction = contents.GetComponent<Prediction>();
+                inspector = UnityEditor.Editor.CreateEditor(restored);
+                Assert.That(restored.Traits, Is.EquivalentTo(new Trait[] { restoredSmoothing, restoredPrediction }));
+                Assert.That(restoredSmoothing.PositionHalfLife, Is.EqualTo(0.15f));
+                Assert.That(restoredSmoothing.RotationHalfLife, Is.EqualTo(0.03f));
+                Assert.That(restoredPrediction.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(restoredSmoothing.enabled, Is.False);
+                Assert.That(restoredPrediction.enabled, Is.False);
+                Assert.That(restoredSmoothing.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
+                Assert.That(restoredPrediction.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
+            }
+            finally
+            {
+                if (inspector != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(inspector);
+                }
+
+                if (contents != null)
+                {
+                    PrefabUtility.UnloadPrefabContents(contents);
+                }
+
+                Undo.ClearUndo(smoothing);
+                Undo.ClearUndo(prediction);
+                AssetDatabase.DeleteAsset(path);
+            }
+        }
+
         /// <summary>Rejects tuning jumps while allowing the old filter's ordinary progress during the elapsed projection interval.</summary>
         /// <param name="realm">The realm whose followed reference exposes absolute presentation.</param>
         /// <param name="source">The paired source holding an observation past its previous prediction cap.</param>
@@ -691,131 +952,6 @@ namespace Emas.Editor.Tests
             while (Time.realtimeSinceStartupAsDouble < deadline);
         }
 
-        /// <summary>
-        /// Ghost authoring owns trait visibility while serialized settings and enabled states remain editable with Undo.
-        /// </summary>
-        /// <returns>An iterator that waits for delayed editor visibility updates after component changes.</returns>
-        [UnityTest]
-        public IEnumerator GhostAuthoring_HidesOwnedTraitsAndKeepsSettingsEditable()
-        {
-            GameObject root = new GameObject("ghost authoring");
-            _objects.Add(root);
-            root.SetActive(false);
-            Spatial spatial = root.AddComponent<Spatial>();
-            Smoothing smoothing = root.AddComponent<Smoothing>();
-            Prediction prediction = root.AddComponent<Prediction>();
-            InspectorTrait custom = root.AddComponent<InspectorTrait>();
-            smoothing.enabled = false;
-            prediction.enabled = false;
-            custom.enabled = false;
-            smoothing.hideFlags = HideFlags.DontUnloadUnusedAsset;
-            yield return WaitForTraitVisibility(root, false);
-
-            InspectorGhost ghost = root.AddComponent<InspectorGhost>();
-            UnityEditor.Editor inspector = null;
-            try
-            {
-                inspector = UnityEditor.Editor.CreateEditor(ghost);
-                AssertGhostAuthoringMetadata(ghost);
-                yield return WaitForTraitVisibility(root, true);
-                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction, custom }));
-                Assert.That(spatial.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.None));
-                Assert.That(smoothing.hideFlags & HideFlags.DontUnloadUnusedAsset, Is.EqualTo(HideFlags.DontUnloadUnusedAsset));
-                AssertTraitSettingsSupportUndo(smoothing, prediction, custom);
-
-                Undo.DestroyObjectImmediate(custom);
-                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction }));
-                custom = Undo.AddComponent<InspectorTrait>(root);
-                custom.enabled = false;
-                yield return WaitForTraitVisibility(root, true);
-                Assert.That(ghost.Traits, Has.Member(custom));
-                Assert.That(custom.enabled, Is.False);
-
-                UnityEngine.Object.DestroyImmediate(inspector);
-                inspector = null;
-                Undo.DestroyObjectImmediate(ghost);
-                yield return WaitForTraitVisibility(root, false);
-                Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset));
-
-                ghost = Undo.AddComponent<InspectorGhost>(root);
-                yield return WaitForTraitVisibility(root, true);
-                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction, custom }));
-                Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset | HideFlags.HideInInspector));
-                Assert.That(spatial.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.None));
-                Assert.That(smoothing.enabled, Is.True);
-                Assert.That(prediction.enabled, Is.True);
-                Assert.That(custom.enabled, Is.False);
-            }
-            finally
-            {
-                if (inspector != null)
-                {
-                    UnityEngine.Object.DestroyImmediate(inspector);
-                }
-
-                Undo.ClearUndo(root);
-                foreach (Component component in root.GetComponents<Component>())
-                {
-                    Undo.ClearUndo(component);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Hidden built-in traits retain serialized settings and enabled states when an authored Ghost prefab is saved and reopened.
-        /// </summary>
-        [Test]
-        public void GhostAuthoring_PersistsTraitSettingsInPrefabs()
-        {
-            GameObject root = new GameObject("ghost trait prefab");
-            _objects.Add(root);
-            root.SetActive(false);
-            Ghost ghost = root.AddComponent<Ghost>();
-            Smoothing smoothing = root.AddComponent<Smoothing>();
-            Prediction prediction = root.AddComponent<Prediction>();
-            string path = AssetDatabase.GenerateUniqueAssetPath("Assets/EmasTraitAuthoring.prefab");
-            GameObject contents = null;
-            UnityEditor.Editor inspector = null;
-            try
-            {
-                inspector = UnityEditor.Editor.CreateEditor(ghost);
-                SetSerializedTraitSettings(smoothing, prediction, false);
-                Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
-                UnityEngine.Object.DestroyImmediate(inspector);
-                inspector = null;
-
-                contents = PrefabUtility.LoadPrefabContents(path);
-                Ghost restored = contents.GetComponent<Ghost>();
-                Smoothing restoredSmoothing = contents.GetComponent<Smoothing>();
-                Prediction restoredPrediction = contents.GetComponent<Prediction>();
-                inspector = UnityEditor.Editor.CreateEditor(restored);
-                Assert.That(restored.Traits, Is.EquivalentTo(new Trait[] { restoredSmoothing, restoredPrediction }));
-                Assert.That(restoredSmoothing.PositionHalfLife, Is.EqualTo(0.15f));
-                Assert.That(restoredSmoothing.RotationHalfLife, Is.EqualTo(0.03f));
-                Assert.That(restoredPrediction.MaximumExtrapolation, Is.EqualTo(0.2f));
-                Assert.That(restoredSmoothing.enabled, Is.False);
-                Assert.That(restoredPrediction.enabled, Is.False);
-                Assert.That(restoredSmoothing.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
-                Assert.That(restoredPrediction.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
-            }
-            finally
-            {
-                if (inspector != null)
-                {
-                    UnityEngine.Object.DestroyImmediate(inspector);
-                }
-
-                if (contents != null)
-                {
-                    PrefabUtility.UnloadPrefabContents(contents);
-                }
-
-                Undo.ClearUndo(smoothing);
-                Undo.ClearUndo(prediction);
-                AssetDatabase.DeleteAsset(path);
-            }
-        }
-
         /// <summary>Waits for Unity's delayed editor callbacks to apply the observable component visibility policy.</summary>
         /// <param name="root">The GameObject whose trait cards are checked.</param>
         /// <param name="hidden">Whether every trait should be hidden from the ordinary component Inspector.</param>
@@ -979,142 +1115,6 @@ namespace Emas.Editor.Tests
             entries.arraySize = 1;
             entries.GetArrayElementAtIndex(0).objectReferenceValue = blueprint;
             serialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private sealed class DiagnosticsProbe : PresenceDetector
-        {
-            internal int Updates;
-
-            /// <inheritdoc />
-            protected override void OnUpdate()
-            {
-                Updates++;
-            }
-        }
-
-        private sealed class InspectorProvider : MonoBehaviour, IDetectorProvider
-        {
-            internal Func<PresenceDetector> Factory;
-
-            /// <summary>
-            /// Creates the detector used by the authored prefab.
-            /// </summary>
-            /// <returns>The detector created by the configured test factory.</returns>
-            public PresenceDetector CreateDetector()
-            {
-                return Factory();
-            }
-        }
-
-        private sealed class InspectorGhost : Ghost
-        {
-            [SerializeField]
-            private int _customValue = 7;
-        }
-
-        /// <summary>Represents an application-owned trait with an ordinary serialized setting.</summary>
-        private sealed class InspectorTrait : Trait<int>
-        {
-            [SerializeField]
-            private int _customValue = 7;
-
-            /// <summary>Gets the setting authored through Unity serialization.</summary>
-            /// <value>The application value retained independently of the trait's enabled state.</value>
-            public int Value => _customValue;
-
-            /// <summary>Applies an application value without depending on editor visibility.</summary>
-            /// <param name="data">The new application value.</param>
-            public override void Apply(int data)
-            {
-                _customValue = data;
-            }
-        }
-
-        private sealed class PublishingDetector : PresenceDetector
-        {
-            /// <inheritdoc />
-            protected override void OnStart()
-            {
-                GetOrCreate<InspectorGhost>("one", TestKind);
-            }
-        }
-
-        private sealed class SpatialDetector : PresenceDetector
-        {
-            /// <inheritdoc />
-            protected override void OnStart()
-            {
-                SpatialGhost ego = GetOrCreate<SpatialGhost>("ego", TestKind);
-                ego.GetComponent<Spatial>().SetCartesianPosition(new Double3(1000000000.125, 0.0, 1000000000.375));
-                SpatialGhost traffic = GetOrCreate<SpatialGhost>("traffic", TestKind);
-                traffic.GetComponent<Spatial>().SetCartesianPosition(new Double3(1000000020.375, 0.0, 1000000000.375));
-            }
-        }
-
-        /// <summary>Publishes coincident geographic roots so serialized and property tuning share one projection clock.</summary>
-        private sealed class LiveTuningDetector : PresenceDetector
-        {
-            internal static readonly Vector3 AttachmentOffset = new Vector3(2, 0.5f, -1);
-            internal Ghost Edited;
-            internal Ghost Control;
-            internal Ghost Attachment;
-            internal Double3 ObservedPosition;
-            internal Double3 ObservedVelocity;
-            internal Quaternion ObservedRotation;
-            internal Timestamp ObservedTime;
-            internal double LastProjectionStarted;
-            private double _sampleSeconds = -1;
-
-            /// <summary>Creates the edited origin, its property-controlled twin and a parent-local attached part.</summary>
-            protected override void OnStart()
-            {
-                Edited = CreateMovingGhost("serialized");
-                Control = CreateMovingGhost("property");
-                Attachment = GetOrCreate<Ghost>("attachment", TestKind);
-                Attachment.gameObject.AddComponent<Spatial>().Attach(Edited.Key, AttachmentOffset);
-                Publish(0);
-            }
-
-            /// <summary>Supplies identical WGS84 observations travelling east at 100 metres per second.</summary>
-            /// <param name="seconds">Elapsed SDK time, advanced by at least one microsecond for each new sample.</param>
-            /// <param name="correction">An optional positional observation correction in metres.</param>
-            /// <param name="headingCorrection">An optional heading correction in degrees.</param>
-            internal void Publish(double seconds, double correction = 0, double headingCorrection = 0)
-            {
-                _sampleSeconds = Math.Max(seconds, _sampleSeconds + 0.000001);
-                GeoPosition position = new GeoPosition(0, (100 * _sampleSeconds + correction) / 6378137.0 * 180.0 / Math.PI, 0);
-                ObservedPosition = position.ToEarthCentered();
-                ObservedTime = Timestamp.FromSeconds(_sampleSeconds);
-                foreach (Ghost ghost in new[] { Edited, Control })
-                {
-                    Spatial spatial = ghost.GetComponent<Spatial>();
-                    spatial.SetGeographicPosition(position, ObservedTime);
-                    spatial.SetGeographicRotation(30 * _sampleSeconds + headingCorrection, 0, 0, ObservedTime);
-                    ghost.GetComponent<Prediction>().SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
-                }
-
-                ObservedRotation = Edited.GetComponent<Spatial>().Rotation;
-                ObservedVelocity = Edited.GetComponent<Prediction>().Velocity;
-            }
-
-            /// <summary>Authors the same independent position and rotation filters on each comparison root.</summary>
-            /// <param name="id">The identity owned by this detector.</param>
-            /// <returns>The newly authored moving Ghost.</returns>
-            private Ghost CreateMovingGhost(string id)
-            {
-                Ghost ghost = GetOrCreate<Ghost>(id, TestKind);
-                ghost.gameObject.AddComponent<Spatial>();
-                Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
-                smoothing.PositionHalfLife = 0.4f;
-                smoothing.RotationHalfLife = 0.4f;
-                ghost.gameObject.AddComponent<Prediction>();
-                return ghost;
-            }
-        }
-
-        [RequireComponent(typeof(Spatial))]
-        private sealed class SpatialGhost : Ghost
-        {
         }
     }
 }

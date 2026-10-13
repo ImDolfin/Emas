@@ -8,6 +8,24 @@ namespace Emas.Tests
     /// <summary>Verifies late-bound entity attachments and the handoff back to absolute spatial input.</summary>
     public sealed class AttachmentTests
     {
+        [RequireComponent(typeof(Spatial))]
+        private sealed class Root : Ghost
+        {
+        }
+
+        private sealed class Source : PresenceDetector
+        {
+            internal Ghost Arrive(string entityId)
+            {
+                return GetOrCreate<Root>(entityId, AttachmentKind);
+            }
+
+            internal void Leave(string entityId)
+            {
+                Disappear(AttachmentKind, entityId);
+            }
+        }
+
         private static readonly Kind AttachmentKind = new Kind("attachment.entity");
         private readonly List<UnityEngine.Object> _assets = new List<UnityEngine.Object>();
         private Realm _realm;
@@ -262,24 +280,6 @@ namespace Emas.Tests
         private static void AssertRotation(Ghost ghost, Quaternion expected)
         {
             Assert.That(Quaternion.Angle(ghost.transform.rotation, expected), Is.LessThan(0.05f));
-        }
-
-        [RequireComponent(typeof(Spatial))]
-        private sealed class Root : Ghost
-        {
-        }
-
-        private sealed class Source : PresenceDetector
-        {
-            internal Ghost Arrive(string entityId)
-            {
-                return GetOrCreate<Root>(entityId, AttachmentKind);
-            }
-
-            internal void Leave(string entityId)
-            {
-                Disappear(AttachmentKind, entityId);
-            }
         }
     }
 }

@@ -48,161 +48,6 @@ namespace Emas
         /// <value>The original SDK timestamp for the stored rotation; null before timed input or after a spatial clock reset.</value>
         public Timestamp? RotationTime => _data.RotationTime;
 
-        /// <summary>Resets smoothing, estimated prediction and live-tuning transitions after an intentional discontinuity.</summary>
-        /// <remarks>Retains raw pose, supplied motion and component settings. Clears pose playback history and seeds
-        /// it with the current observation. Supply the new pose before calling this.</remarks>
-        public void ResetPresentation()
-        {
-            _hasPresentation = false;
-            ResetPoseHistory();
-            ResetTuning();
-            Smoothing smoothing = GetComponent<Smoothing>();
-            if (smoothing != null)
-            {
-                smoothing.Reset();
-            }
-
-            Prediction prediction = GetComponent<Prediction>();
-            if (prediction != null)
-            {
-                prediction.Reset();
-            }
-        }
-
-        internal double PositionReceivedTime => _data.PositionReceivedTime;
-        internal double RotationReceivedTime => _data.RotationReceivedTime;
-        internal PoseHistory History => _history;
-        internal long PositionVersion => _data.PositionVersion;
-        internal Double3 PresentationPosition => _hasPresentation ? _presentationPosition : Position;
-        internal Quaternion PresentationRotation => _hasPresentation ? _presentationRotation : Rotation;
-
-        internal void ResetTuning()
-        {
-            _tuning.Reset();
-        }
-
-        // Compose optional behavior only after all SDK readers, before capturing the shared reference.
-        internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay)
-        {
-            if (!enabled || AttachedTo.HasValue)
-            {
-                ResetPresentation();
-                return;
-            }
-
-            Prediction prediction = GetComponent<Prediction>();
-            Smoothing smoothing = GetComponent<Smoothing>();
-            PresentationSettings settings = new PresentationSettings(prediction, smoothing, interpolationDelay);
-            if (prediction != null)
-            {
-                prediction.Prepare(this, timestamp);
-            }
-
-            PresentationPose previous = default(PresentationPose);
-            if (_tuning.Changed(settings))
-            {
-                previous = PreparePose(clock, timestamp, prediction, smoothing, _tuning.Settings, true, out _);
-            }
-
-            PresentationPose current = PreparePose(clock, timestamp, prediction, smoothing, settings, false, out _presentationObservation);
-            current = _tuning.Apply(previous, current, settings, timestamp);
-            _presentationPosition = current.Position;
-            _presentationRotation = current.Rotation;
-            _hasPresentation = true;
-        }
-
-        private PresentationPose PreparePose(SpatialClock clock, double timestamp, Prediction prediction,
-            Smoothing smoothing, PresentationSettings settings, bool preview, out Double3 observation)
-        {
-            Double3 motion = default(Double3);
-            observation = Position;
-            PresentationPose pose;
-            if (settings.InterpolationDelay > 0)
-            {
-                pose = BufferedPose(clock, timestamp, prediction, settings, preview, out motion, out observation);
-            }
-            else
-            {
-                Double3 position = prediction != null
-                    ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion) : Position;
-                pose = new PresentationPose(position, Rotation);
-            }
-
-            // Keep direct (disabled) channels current too, so enabling a trait has fresh filter history.
-            return smoothing != null ? smoothing.Prepare(this, pose, timestamp, motion, settings, preview) : pose;
-        }
-
-        private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Prediction prediction,
-            PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
-        {
-            Double3 position = Position;
-            Quaternion rotation = Rotation;
-            observation = Position;
-            motion = default(Double3);
-            if (_history.NewestPositionTime.HasValue)
-            {
-                double offset = clock.OffsetFrom(_history.NewestPositionTime.Value, timestamp, settings.InterpolationDelay);
-                _history.SamplePosition(offset, out position);
-                observation = position;
-                if (prediction != null)
-                {
-                    position = prediction.ProjectBuffered(this, clock, timestamp, settings, position, offset, preview, out motion);
-                }
-            }
-            else if (prediction != null)
-            {
-                // An untimed channel has no SDK history to interpolate; preserve its arrival-timed behavior.
-                position = prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion);
-            }
-
-            if (_history.NewestRotationTime.HasValue)
-            {
-                double offset = clock.OffsetFrom(_history.NewestRotationTime.Value, timestamp, settings.InterpolationDelay);
-                _history.SampleRotation(offset, settings.MaximumExtrapolation, out rotation);
-            }
-
-            return new PresentationPose(position, rotation);
-        }
-
-        private void ResetPoseHistory()
-        {
-            _history.ClearPosition();
-            _history.ClearRotation();
-            if (PositionTime.HasValue)
-            {
-                _history.AddPosition(Position, PositionTime.Value);
-            }
-
-            if (RotationTime.HasValue)
-            {
-                _history.AddRotation(Rotation, RotationTime.Value);
-            }
-        }
-
-        internal void ResetTime(double timestamp)
-        {
-            _data.ResetTime(timestamp);
-            _history.Clear();
-            ResetPresentation();
-            Prediction prediction = GetComponent<Prediction>();
-            if (prediction != null)
-            {
-                prediction.ResetTime();
-            }
-        }
-
-        private void ResetRotationSmoothing()
-        {
-            // Corrections expressed in the former attitude basis cannot be reused in the new one.
-            _tuning.ResetRotation();
-            _history.ClearRotation();
-            Smoothing smoothing = GetComponent<Smoothing>();
-            if (smoothing != null)
-            {
-                smoothing.ResetRotation();
-            }
-        }
-
         /// <summary>
         /// Gets the last Cartesian source position or absolute ECEF metres after geographic/ECEF input; valid after HasPosition is true.
         /// </summary>
@@ -230,8 +75,6 @@ namespace Emas
         /// <summary>Gets the basis of Rotation: configured source axes, local east/up/north, or body-to-ECEF.</summary>
         /// <value>The representation selected by the last accepted rotation setter.</value>
         public RotationSpace RotationSpace => _rotationSpace;
-
-        internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
         /// <summary>
         /// Gets whether a Cartesian or geographic position has been supplied.
@@ -277,6 +120,41 @@ namespace Emas
         /// <summary>Gets the requested attachment parent, including while it is missing or cannot be presented.</summary>
         /// <value>The same-realm parent identity, or null when absolute pose projection is selected.</value>
         public Key? AttachedTo => _attachedTo;
+
+        internal double PositionReceivedTime => _data.PositionReceivedTime;
+
+        internal double RotationReceivedTime => _data.RotationReceivedTime;
+
+        internal PoseHistory History => _history;
+
+        internal long PositionVersion => _data.PositionVersion;
+
+        internal Double3 PresentationPosition => _hasPresentation ? _presentationPosition : Position;
+
+        internal Quaternion PresentationRotation => _hasPresentation ? _presentationRotation : Rotation;
+
+        internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
+
+        /// <summary>Resets smoothing, estimated prediction and live-tuning transitions after an intentional discontinuity.</summary>
+        /// <remarks>Retains raw pose, supplied motion and component settings. Clears pose playback history and seeds
+        /// it with the current observation. Supply the new pose before calling this.</remarks>
+        public void ResetPresentation()
+        {
+            _hasPresentation = false;
+            ResetPoseHistory();
+            ResetTuning();
+            Smoothing smoothing = GetComponent<Smoothing>();
+            if (smoothing != null)
+            {
+                smoothing.Reset();
+            }
+
+            Prediction prediction = GetComponent<Prediction>();
+            if (prediction != null)
+            {
+                prediction.Reset();
+            }
+        }
 
         /// <summary>Attaches to a same-realm entity at a Unity-local position offset with no relative rotation.</summary>
         /// <param name="parent">The complete parent identity; the entity may be discovered later.</param>
@@ -452,32 +330,50 @@ namespace Emas
             StoreRotationHistory(sampleTime);
         }
 
-        private void StorePosition(Double3 position, Timestamp? sampleTime)
+        internal void ResetTuning()
         {
-            if (!_data.SetPosition(position, sampleTime, Time.realtimeSinceStartupAsDouble))
+            _tuning.Reset();
+        }
+
+        // Compose optional behavior only after all SDK readers, before capturing the shared reference.
+        internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay)
+        {
+            if (!enabled || AttachedTo.HasValue)
             {
+                ResetPresentation();
                 return;
             }
 
-            if (sampleTime.HasValue)
+            Prediction prediction = GetComponent<Prediction>();
+            Smoothing smoothing = GetComponent<Smoothing>();
+            PresentationSettings settings = new PresentationSettings(prediction, smoothing, interpolationDelay);
+            if (prediction != null)
             {
-                _history.AddPosition(position, sampleTime.Value);
+                prediction.Prepare(this, timestamp);
             }
-            else
+
+            PresentationPose previous = default(PresentationPose);
+            if (_tuning.Changed(settings))
             {
-                _history.ClearPosition();
+                previous = PreparePose(clock, timestamp, prediction, smoothing, _tuning.Settings, true, out _);
             }
+
+            PresentationPose current = PreparePose(clock, timestamp, prediction, smoothing, settings, false, out _presentationObservation);
+            current = _tuning.Apply(previous, current, settings, timestamp);
+            _presentationPosition = current.Position;
+            _presentationRotation = current.Rotation;
+            _hasPresentation = true;
         }
 
-        private void StoreRotationHistory(Timestamp? sampleTime)
+        internal void ResetTime(double timestamp)
         {
-            if (sampleTime.HasValue)
+            _data.ResetTime(timestamp);
+            _history.Clear();
+            ResetPresentation();
+            Prediction prediction = GetComponent<Prediction>();
+            if (prediction != null)
             {
-                _history.AddRotation(Rotation, sampleTime.Value);
-            }
-            else
-            {
-                _history.ClearRotation();
+                prediction.ResetTime();
             }
         }
 
@@ -541,6 +437,115 @@ namespace Emas
         internal void SetInRange(bool value)
         {
             _suppression.SetInRange(this, value);
+        }
+
+        private PresentationPose PreparePose(SpatialClock clock, double timestamp, Prediction prediction,
+            Smoothing smoothing, PresentationSettings settings, bool preview, out Double3 observation)
+        {
+            Double3 motion = default(Double3);
+            observation = Position;
+            PresentationPose pose;
+            if (settings.InterpolationDelay > 0)
+            {
+                pose = BufferedPose(clock, timestamp, prediction, settings, preview, out motion, out observation);
+            }
+            else
+            {
+                Double3 position = prediction != null
+                    ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion) : Position;
+                pose = new PresentationPose(position, Rotation);
+            }
+
+            // Keep direct (disabled) channels current too, so enabling a trait has fresh filter history.
+            return smoothing != null ? smoothing.Prepare(this, pose, timestamp, motion, settings, preview) : pose;
+        }
+
+        private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Prediction prediction,
+            PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
+        {
+            Double3 position = Position;
+            Quaternion rotation = Rotation;
+            observation = Position;
+            motion = default(Double3);
+            if (_history.NewestPositionTime.HasValue)
+            {
+                double offset = clock.OffsetFrom(_history.NewestPositionTime.Value, timestamp, settings.InterpolationDelay);
+                _history.SamplePosition(offset, out position);
+                observation = position;
+                if (prediction != null)
+                {
+                    position = prediction.ProjectBuffered(this, clock, timestamp, settings, position, offset, preview, out motion);
+                }
+            }
+            else if (prediction != null)
+            {
+                // An untimed channel has no SDK history to interpolate; preserve its arrival-timed behavior.
+                position = prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion);
+            }
+
+            if (_history.NewestRotationTime.HasValue)
+            {
+                double offset = clock.OffsetFrom(_history.NewestRotationTime.Value, timestamp, settings.InterpolationDelay);
+                _history.SampleRotation(offset, settings.MaximumExtrapolation, out rotation);
+            }
+
+            return new PresentationPose(position, rotation);
+        }
+
+        private void ResetPoseHistory()
+        {
+            _history.ClearPosition();
+            _history.ClearRotation();
+            if (PositionTime.HasValue)
+            {
+                _history.AddPosition(Position, PositionTime.Value);
+            }
+
+            if (RotationTime.HasValue)
+            {
+                _history.AddRotation(Rotation, RotationTime.Value);
+            }
+        }
+
+        private void ResetRotationSmoothing()
+        {
+            // Corrections expressed in the former attitude basis cannot be reused in the new one.
+            _tuning.ResetRotation();
+            _history.ClearRotation();
+            Smoothing smoothing = GetComponent<Smoothing>();
+            if (smoothing != null)
+            {
+                smoothing.ResetRotation();
+            }
+        }
+
+        private void StorePosition(Double3 position, Timestamp? sampleTime)
+        {
+            if (!_data.SetPosition(position, sampleTime, Time.realtimeSinceStartupAsDouble))
+            {
+                return;
+            }
+
+            if (sampleTime.HasValue)
+            {
+                _history.AddPosition(position, sampleTime.Value);
+            }
+            else
+            {
+                _history.ClearPosition();
+            }
+        }
+
+        private void StoreRotationHistory(Timestamp? sampleTime)
+        {
+            if (sampleTime.HasValue)
+            {
+                _history.AddRotation(Rotation, sampleTime.Value);
+            }
+            else
+            {
+                _history.ClearRotation();
+            }
         }
 
         private void OnDestroy()

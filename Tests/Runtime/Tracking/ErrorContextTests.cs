@@ -8,6 +8,23 @@ namespace Emas.Tests
     /// </summary>
     public sealed class ErrorContextTests
     {
+        private sealed class ArrivalDetector : PresenceDetector
+        {
+            internal Action Stopping;
+
+            /// <summary>Publishes the vehicle used to test error context during initialization.</summary>
+            protected override void OnUpdate()
+            {
+                Detect("42", VehicleKind);
+            }
+
+            /// <summary>Runs the cleanup action whose failure must retain detector context.</summary>
+            protected override void OnStop()
+            {
+                Stopping?.Invoke();
+            }
+        }
+
         private static readonly Kind VehicleKind = new Kind("car");
         private Realm _realm;
 
@@ -93,23 +110,6 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.IsAttached && source.IsActive, Is.True);
-        }
-
-        private sealed class ArrivalDetector : PresenceDetector
-        {
-            internal Action Stopping;
-
-            /// <summary>Publishes the vehicle used to test error context during initialization.</summary>
-            protected override void OnUpdate()
-            {
-                Detect("42", VehicleKind);
-            }
-
-            /// <summary>Runs the cleanup action whose failure must retain detector context.</summary>
-            protected override void OnStop()
-            {
-                Stopping?.Invoke();
-            }
         }
 
     }

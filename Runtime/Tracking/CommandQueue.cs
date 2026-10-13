@@ -9,15 +9,22 @@ namespace Emas
     /// <typeparam name="T">The command data interpreted by the owning subsystem.</typeparam>
     internal sealed class CommandQueue<T>
     {
+        private readonly struct Entry
+        {
+            internal readonly T Command;
+            internal readonly long Sequence;
+
+            internal Entry(T command, long sequence)
+            {
+                Command = command;
+                Sequence = sequence;
+            }
+        }
+
         private readonly Queue<Entry> _pending = new Queue<Entry>();
         private readonly Action<T> _execute;
         private long _lastSequence;
         private bool _executing;
-
-        internal CommandQueue(Action<T> execute)
-        {
-            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-        }
 
         internal long LastSequence
         {
@@ -25,6 +32,11 @@ namespace Emas
             {
                 return _lastSequence;
             }
+        }
+
+        internal CommandQueue(Action<T> execute)
+        {
+            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
         }
 
         internal void Enqueue(T command)
@@ -74,18 +86,6 @@ namespace Emas
             {
                 _executing = false;
             }
-        }
-
-        private readonly struct Entry
-        {
-            internal Entry(T command, long sequence)
-            {
-                Command = command;
-                Sequence = sequence;
-            }
-
-            internal readonly T Command;
-            internal readonly long Sequence;
         }
     }
 }

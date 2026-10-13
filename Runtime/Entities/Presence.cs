@@ -23,14 +23,6 @@ namespace Emas
         private bool _available;
         private bool _removed;
 
-        internal Presence(Realm realm, Key key, string name, Variant variant)
-        {
-            _realm = realm;
-            _key = key;
-            _name = name ?? key.EntityId;
-            _variant = variant;
-        }
-
         /// <summary>
         /// Gets the stable anchor, kind and entity identity.
         /// </summary>
@@ -144,6 +136,22 @@ namespace Emas
             }
         }
 
+        internal Realm Realm
+        {
+            get
+            {
+                return _realm;
+            }
+        }
+
+        internal Presence(Realm realm, Key key, string name, Variant variant)
+        {
+            _realm = realm;
+            _key = key;
+            _name = name ?? key.EntityId;
+            _variant = variant;
+        }
+
         /// <summary>
         /// Checks whether the detector reported a capability interface.
         /// </summary>
@@ -153,14 +161,6 @@ namespace Emas
         public bool HasCapability<T>() where T : class
         {
             return _capabilities.Contains(typeof(T));
-        }
-
-        internal Realm Realm
-        {
-            get
-            {
-                return _realm;
-            }
         }
 
         internal bool SetSource(object source)

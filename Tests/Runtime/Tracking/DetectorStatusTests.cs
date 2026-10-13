@@ -9,6 +9,45 @@ namespace Emas.Tests
     /// </summary>
     public sealed class DetectorStatusTests
     {
+        /// <summary>
+        /// A minimal component used to test source identity and availability.
+        /// </summary>
+        public sealed class StatusGhost : Ghost
+        {
+        }
+
+        private sealed class ProbeSource : PresenceDetector
+        {
+            internal Action Starting;
+            internal Action Updating;
+            internal Action Stopping;
+            internal int Stops;
+
+            internal StatusGhost Publish(string id)
+            {
+                return GetOrCreate<StatusGhost>(id, new Kind("status"));
+            }
+
+            /// <summary>Runs the configured startup action to exercise detector status transitions.</summary>
+            protected override void OnStart()
+            {
+                Starting?.Invoke();
+            }
+
+            /// <summary>Runs the configured update action, including simulated detector failures.</summary>
+            protected override void OnUpdate()
+            {
+                Updating?.Invoke();
+            }
+
+            /// <summary>Counts shutdowns and runs the configured cleanup action.</summary>
+            protected override void OnStop()
+            {
+                Stops++;
+                Stopping?.Invoke();
+            }
+        }
+
         private Realm _realm;
 
         /// <summary>
@@ -174,45 +213,6 @@ namespace Emas.Tests
             Assert.That(anchor.Detectors, Is.Empty);
             Assert.That(anchors.Count, Is.EqualTo(1));
             Assert.That(sources.Count, Is.EqualTo(1));
-        }
-
-        private sealed class ProbeSource : PresenceDetector
-        {
-            internal Action Starting;
-            internal Action Updating;
-            internal Action Stopping;
-            internal int Stops;
-
-            internal StatusGhost Publish(string id)
-            {
-                return GetOrCreate<StatusGhost>(id, new Kind("status"));
-            }
-
-            /// <summary>Runs the configured startup action to exercise detector status transitions.</summary>
-            protected override void OnStart()
-            {
-                Starting?.Invoke();
-            }
-
-            /// <summary>Runs the configured update action, including simulated detector failures.</summary>
-            protected override void OnUpdate()
-            {
-                Updating?.Invoke();
-            }
-
-            /// <summary>Counts shutdowns and runs the configured cleanup action.</summary>
-            protected override void OnStop()
-            {
-                Stops++;
-                Stopping?.Invoke();
-            }
-        }
-
-        /// <summary>
-        /// A minimal component used to test source identity and availability.
-        /// </summary>
-        public sealed class StatusGhost : Ghost
-        {
         }
     }
 }

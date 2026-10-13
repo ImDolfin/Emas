@@ -271,6 +271,18 @@ namespace Emas
             }
         }
 
+        internal override void Refresh()
+        {
+            // Read every input trait before predicting during the spatial phase.
+        }
+
+        internal override void ClearBinding()
+        {
+            ClearVelocity();
+            ClearAcceleration();
+            Reset();
+        }
+
         private Double3 DirectMotion(Spatial spatial, SpatialClock clock, double timestamp, bool preview)
         {
             if (!spatial.PositionTime.HasValue)
@@ -538,18 +550,6 @@ namespace Emas
                     history.ClearAcceleration();
                 }
             }
-        }
-
-        internal override void Refresh()
-        {
-            // Read every input trait before predicting during the spatial phase.
-        }
-
-        internal override void ClearBinding()
-        {
-            ClearVelocity();
-            ClearAcceleration();
-            Reset();
         }
 
     }

@@ -22,9 +22,57 @@ namespace Emas
         private readonly Variant? _variant;
         private readonly List<Func<IGhost, bool>> _parts;
 
+        /// <summary>
+        /// Gets the number of current matches.
+        /// </summary>
+        /// <value>
+        /// The number of currently matching available ghosts.
+        /// </value>
+        public int Count
+        {
+            get
+            {
+                IGhost ignored;
+                if (_realm != null)
+                {
+                    return _realm.CountMatches(this, out ignored);
+                }
+
+                int total = 0;
+                foreach (Realm realm in RealmRegistry.Snapshot())
+                {
+                    if (!realm.IsDisposed)
+                    {
+                        total += realm.CountMatches(this, out ignored);
+                    }
+                }
+
+                return total;
+            }
+        }
+
+        internal Realm Realm
+        {
+            get
+            {
+                return _realm;
+            }
+        }
+
         internal Query(Realm realm, string partialName)
             : this(realm, partialName, null, null, null, null, new List<Func<IGhost, bool>>())
         {
+        }
+
+        private Query(Realm realm, string partialName, string exactName, string anchorId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
+        {
+            _realm = realm;
+            _partialName = partialName;
+            _exactName = exactName;
+            _anchorId = anchorId;
+            _kind = kind;
+            _variant = variant;
+            _parts = parts;
         }
 
         /// <summary>
@@ -40,17 +88,6 @@ namespace Emas
         public static Query All(string partialName = null)
         {
             return new Query(null, partialName);
-        }
-
-        private Query(Realm realm, string partialName, string exactName, string anchorId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)
-        {
-            _realm = realm;
-            _partialName = partialName;
-            _exactName = exactName;
-            _anchorId = anchorId;
-            _kind = kind;
-            _variant = variant;
-            _parts = parts;
         }
 
         /// <summary>
@@ -135,35 +172,6 @@ namespace Emas
         public Query WithVariant(Variant variant)
         {
             return Copy(_partialName, _exactName, _anchorId, _kind, variant, _parts);
-        }
-
-        /// <summary>
-        /// Gets the number of current matches.
-        /// </summary>
-        /// <value>
-        /// The number of currently matching available ghosts.
-        /// </value>
-        public int Count
-        {
-            get
-            {
-                IGhost ignored;
-                if (_realm != null)
-                {
-                    return _realm.CountMatches(this, out ignored);
-                }
-
-                int total = 0;
-                foreach (Realm realm in RealmRegistry.Snapshot())
-                {
-                    if (!realm.IsDisposed)
-                    {
-                        total += realm.CountMatches(this, out ignored);
-                    }
-                }
-
-                return total;
-            }
         }
 
         /// <summary>
@@ -367,21 +375,6 @@ namespace Emas
             return Evaluate().GetEnumerator();
         }
 
-        /// <summary>Enumerates the same copied membership snapshot through the nongeneric collection interface.</summary>
-        /// <returns>An enumerator over the matching Ghost handles captured for this enumeration.</returns>
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
-
-        internal Realm Realm
-        {
-            get
-            {
-                return _realm;
-            }
-        }
-
         internal bool Matches(IGhost ghost)
         {
             // Interface null checks do not detect destroyed Unity components.
@@ -427,6 +420,18 @@ namespace Emas
             return true;
         }
 
+        internal Query Rebind(Realm realm)
+        {
+            return new Query(realm, _partialName, _exactName, _anchorId, _kind, _variant, _parts);
+        }
+
+        /// <summary>Enumerates the same copied membership snapshot through the nongeneric collection interface.</summary>
+        /// <returns>An enumerator over the matching Ghost handles captured for this enumeration.</returns>
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
         private static bool HasPart<T>(IGhost ghost) where T : class
         {
             T part;
@@ -452,11 +457,6 @@ namespace Emas
             }
 
             return result;
-        }
-
-        internal Query Rebind(Realm realm)
-        {
-            return new Query(realm, _partialName, _exactName, _anchorId, _kind, _variant, _parts);
         }
 
         private Query Copy(string partialName, string exactName, string anchorId, Kind? kind, Variant? variant, List<Func<IGhost, bool>> parts)

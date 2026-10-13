@@ -9,24 +9,6 @@ namespace Emas.Editor
     [CanEditMultipleObjects]
     public sealed class GhostInspector : UnityEditor.Editor
     {
-        private void OnEnable()
-        {
-            foreach (Object value in targets)
-            {
-                Ghost ghost = value as Ghost;
-                if (ghost != null)
-                {
-                    TraitInspectorVisibility.Synchronize(ghost.gameObject);
-                }
-            }
-        }
-
-        private void OnDisable()
-        {
-            // Removing the owner must make any surviving trait components inspectable again.
-            TraitInspectorVisibility.QueueRefresh();
-        }
-
         /// <summary>Draws authored settings, runtime data and root-trait settings without section foldouts.</summary>
         public override void OnInspectorGUI()
         {
@@ -83,6 +65,31 @@ namespace Emas.Editor
                     }
                 }
             }
+        }
+
+        /// <summary>Refreshes live identity, pose and trait state while the application is playing.</summary>
+        /// <returns>True in Play Mode; otherwise false.</returns>
+        public override bool RequiresConstantRepaint()
+        {
+            return Application.isPlaying;
+        }
+
+        private void OnEnable()
+        {
+            foreach (Object value in targets)
+            {
+                Ghost ghost = value as Ghost;
+                if (ghost != null)
+                {
+                    TraitInspectorVisibility.Synchronize(ghost.gameObject);
+                }
+            }
+        }
+
+        private void OnDisable()
+        {
+            // Removing the owner must make any surviving trait components inspectable again.
+            TraitInspectorVisibility.QueueRefresh();
         }
 
         private static void DrawSpatial(Ghost ghost, Spatial spatial)
@@ -156,13 +163,6 @@ namespace Emas.Editor
                 }
             });
             menu.ShowAsContext();
-        }
-
-        /// <summary>Refreshes live identity, pose and trait state while the application is playing.</summary>
-        /// <returns>True in Play Mode; otherwise false.</returns>
-        public override bool RequiresConstantRepaint()
-        {
-            return Application.isPlaying;
         }
     }
 }

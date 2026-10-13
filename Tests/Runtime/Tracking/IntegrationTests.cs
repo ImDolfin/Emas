@@ -9,6 +9,24 @@ namespace Emas.Tests
     /// </summary>
     public sealed class IntegrationTests
     {
+        private sealed class SeedDetector : PresenceDetector
+        {
+            internal int Starts;
+            private readonly string _id;
+
+            internal SeedDetector(string id)
+            {
+                _id = id;
+            }
+
+            /// <summary>Counts startup and publishes the configured entity for the integration scenario.</summary>
+            protected override void OnStart()
+            {
+                Starts++;
+                Detect(_id, Population);
+            }
+        }
+
         private static readonly Kind Population = new Kind("tests.anchor.integration");
         private readonly List<UnityEngine.Object> _objects = new List<UnityEngine.Object>();
         private Realm _realm;
@@ -58,24 +76,6 @@ namespace Emas.Tests
             Assert.That(first.Starts, Is.EqualTo(1));
             Assert.That(second.Starts, Is.EqualTo(1));
             Assert.That(_realm.Query().Count, Is.EqualTo(2));
-        }
-
-        private sealed class SeedDetector : PresenceDetector
-        {
-            private readonly string _id;
-            internal int Starts;
-
-            internal SeedDetector(string id)
-            {
-                _id = id;
-            }
-
-            /// <summary>Counts startup and publishes the configured entity for the integration scenario.</summary>
-            protected override void OnStart()
-            {
-                Starts++;
-                Detect(_id, Population);
-            }
         }
     }
 }

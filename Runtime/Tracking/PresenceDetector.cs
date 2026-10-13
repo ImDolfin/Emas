@@ -51,6 +51,183 @@ namespace Emas
         }
 
         /// <summary>
+        /// Gets or sets how long an owned presence may go without publication before it disappears.
+        /// </summary>
+        /// <value>
+        /// A positive timeout, or null to disable inactivity expiry, which is the default.
+        /// </value>
+        /// <remarks>
+        /// Configure while detached. Uses unscaled real time and marks expired presences missing during the next realm update,
+        /// after queued publications and detector updates. Detect, GetOrCreate and MarkPublished reset the individual presence's deadline.
+        /// DisappearanceGracePeriod then determines whether removal is immediate or delayed.
+        /// Trait reads do not count as presence activity. Enable only for feeds that confirm continued presence;
+        /// arrival/departure-only feeds should leave expiry disabled.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The timeout is zero or negative.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// The source is attached or running a lifecycle callback.
+        /// </exception>
+        public TimeSpan? InactivityTimeout
+        {
+            get
+            {
+                return _inactivityTimeout;
+            }
+            set
+            {
+                if (IsAttached || IsInLifecycle)
+                {
+                    throw new InvalidOperationException("Configure inactivity expiry before attaching the source to an anchor.");
+                }
+
+                if (value.HasValue && value.Value <= TimeSpan.Zero)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "The inactivity timeout must be positive or null.");
+                }
+
+                _inactivityTimeout = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets how long a disappeared presence remains unavailable before removal.
+        /// </summary>
+        /// <remarks>
+        /// Zero, the default, removes immediately. A later report during the grace period reuses the same
+        /// Presence and Ghost root. Configure while detached on Unity's main thread.
+        /// </remarks>
+        /// <value>A nonnegative period of unavailability before removal; zero removes immediately.</value>
+        /// <exception cref="ArgumentOutOfRangeException">The grace period is negative.</exception>
+        /// <exception cref="InvalidOperationException">The detector is attached or running a lifecycle callback.</exception>
+        public TimeSpan DisappearanceGracePeriod
+        {
+            get
+            {
+                return _disappearanceGracePeriod;
+            }
+            set
+            {
+                if (IsAttached || IsInLifecycle)
+                {
+                    throw new InvalidOperationException("Configure disappearance grace before attaching the detector to an anchor.");
+                }
+
+                if (value < TimeSpan.Zero)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "Disappearance grace cannot be negative.");
+                }
+
+                _disappearanceGracePeriod = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets whether this registration is starting or accepting updates.
+        /// </summary>
+        /// <remarks>
+        /// False after failure or detachment. Failure leaves the source attached for retry but removes its ghosts.
+        /// </remarks>
+        /// <value>True while the current attachment accepts publications and update callbacks.</value>
+        public bool IsActive
+        {
+            get
+            {
+                return _started;
+            }
+        }
+
+        /// <summary>
+        /// Gets whether an anchor currently owns this source, including a failed registration.
+        /// </summary>
+        /// <value>True while an anchor retains this detector, even if the attachment has stopped after failure.</value>
+        public bool IsAttached
+        {
+            get
+            {
+                return _anchor != null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the first error from the most recent attachment attempt, or null.
+        /// </summary>
+        /// <remarks>
+        /// Cleared before OnStart. Retained after stopping or detachment; cleanup errors do not replace a primary error.
+        /// Errors from superseded registrations cannot change this value.
+        /// </remarks>
+        /// <value>The primary lifecycle or source-processing exception, or null when none has been recorded.</value>
+        public Exception LastError
+        {
+            get
+            {
+                return _lastError;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets an application label used in diagnostics and failure reports.
+        /// </summary>
+        /// <remarks>
+        /// Null, empty or whitespace labels use the source type name. Labels do not affect identity or ownership.
+        /// Change this value only on Unity's main thread; recorded failure context retains its original label.
+        /// </remarks>
+        /// <value>The application label, or the detector's type name when no nonblank label is assigned.</value>
+        public string Name
+        {
+            get
+            {
+                return string.IsNullOrWhiteSpace(_name) ? GetType().Name.Split('`')[0] : _name;
+            }
+            set
+            {
+                _name = value;
+                _sourceContext = null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the anchor, source and operation associated with LastError, or null when no error is recorded.
+        /// </summary>
+        /// <remarks>
+        /// Emas includes the kind and entity ID when known. Captured with the primary error and cleared
+        /// before each attachment attempt; cleanup and stale registrations cannot replace that context.
+        /// </remarks>
+        /// <value>The captured diagnostic context for <see cref="LastError"/>, or null when no error is recorded.</value>
+        public string LastErrorContext
+        {
+            get
+            {
+                return _lastErrorContext;
+            }
+        }
+
+        internal bool IsInLifecycle
+        {
+            get
+            {
+                return _lifecycleDepth > 0;
+            }
+        }
+
+        internal bool IsApplyingSourceChanges
+        {
+            get
+            {
+                return _sourceChangeGeneration == _registrationGeneration;
+            }
+        }
+
+        internal long RegistrationGeneration
+        {
+            get
+            {
+                return _registrationGeneration;
+            }
+        }
+
+        /// <summary>
         /// Gets ghosts owned by this source.
         /// </summary>
         /// <value>
@@ -73,6 +250,184 @@ namespace Emas
             get
             {
                 return _anchor == null ? new List<Presence>() : _anchor.Realm.GetOwnedPresences(this);
+            }
+        }
+
+        internal void ApplySourceChanges(Realm realm, Action action)
+        {
+            long? previousGeneration = _sourceChangeGeneration;
+            _sourceChangeGeneration = _registrationGeneration;
+            try
+            {
+                realm.ApplySourceChanges(action);
+            }
+            finally
+            {
+                _sourceChangeGeneration = previousGeneration;
+            }
+        }
+
+        internal string CaptureErrorContext()
+        {
+            if (_sourceContext == null)
+            {
+                _sourceContext = "anchor '" + (_anchor == null ? "<detached>" : _anchor.Id)
+                    + "', source '" + Name + "' (" + GetType().Name.Split('`')[0] + ")";
+            }
+
+            return _sourceContext;
+        }
+
+        internal static string DescribeError(string sourceContext, string operation, Kind? kind = null, string entityId = null)
+        {
+            string context = sourceContext + ", operation '" + operation + "'";
+            if (kind.HasValue)
+            {
+                context += ", kind '" + kind.Value.Id + "'";
+            }
+
+            if (entityId != null)
+            {
+                context += ", entity '" + entityId + "'";
+            }
+
+            return context;
+        }
+
+        internal void RecordError(Exception exception, long generation, string context)
+        {
+            if (_registrationGeneration == generation && _lastError == null)
+            {
+                _lastError = exception;
+                _lastErrorContext = context;
+            }
+        }
+
+        internal static void LogError(Exception exception, string context)
+        {
+            // Unity unwraps LogException's inner exceptions; format explicitly to keep context on the first line.
+            UnityEngine.Debug.LogFormat(UnityEngine.LogType.Exception, UnityEngine.LogOption.NoStacktrace, null,
+                "Emas: {0}. {1}: {2}\n{3}", context, exception.GetType().Name, exception.Message, exception);
+        }
+
+        internal bool IsAttachedTo(Anchor anchor)
+        {
+            return _anchor == anchor;
+        }
+
+        internal bool IsRegistration(Realm realm, long generation)
+        {
+            return _started && _anchor != null && _anchor.Realm == realm
+                && _registrationGeneration == generation;
+        }
+
+        internal void Attach(Anchor anchor)
+        {
+            anchor.ThrowIfDisposed();
+            if (_anchor != null)
+            {
+                throw new InvalidOperationException("The source is already attached to an anchor.");
+            }
+
+            // Startup callbacks observe the new attachment and a cleared error state.
+            _anchor = anchor;
+            _sourceContext = null;
+            _registrationGeneration++;
+            _lastError = null;
+            _lastErrorContext = null;
+            _started = true;
+            long generation = RegistrationGeneration;
+            string context = DescribeError(CaptureErrorContext(), "OnStart");
+            try
+            {
+                ApplySourceChanges(anchor.Realm, () => InvokeLifecycle(OnStart));
+                if (IsRegistration(anchor.Realm, generation))
+                {
+                    anchor.Realm.FinalizeSource(this);
+                }
+            }
+            catch (Exception exception)
+            {
+                RecordError(exception, generation, context);
+                if (IsAttachedTo(anchor) && RegistrationGeneration == generation)
+                {
+                    StopAfterFailure(generation, false);
+                }
+
+                throw;
+            }
+        }
+
+        internal void Tick()
+        {
+            Anchor anchor = _anchor;
+            long generation = RegistrationGeneration;
+            if (anchor == null || !IsRegistration(anchor.Realm, generation))
+            {
+                return;
+            }
+
+            string sourceContext = CaptureErrorContext();
+            try
+            {
+                ApplySourceChanges(anchor.Realm, OnUpdate);
+                if (IsRegistration(anchor.Realm, generation))
+                {
+                    anchor.Realm.FinalizeSource(this);
+                }
+            }
+            catch (Exception exception)
+            {
+                if (IsRegistration(anchor.Realm, generation))
+                {
+                    HandleFailure(exception, DescribeError(sourceContext, "OnUpdate"));
+                }
+                else
+                {
+                    LogError(exception, DescribeError(sourceContext, "OnUpdate"));
+                }
+            }
+        }
+
+        internal void HandleFailure(Exception exception, string context)
+        {
+            if (!IsActive)
+            {
+                return;
+            }
+
+            long generation = RegistrationGeneration;
+            RecordError(exception, generation, context);
+            LogError(exception, ErrorContextFor(exception, generation, context));
+            StopAfterFailure(generation);
+        }
+
+        internal void Detach()
+        {
+            long generation = RegistrationGeneration;
+            bool wasStarted = _started;
+            string context = DescribeError(CaptureErrorContext(), "OnStop");
+            _started = false;
+            try
+            {
+                if (wasStarted)
+                {
+                    InvokeLifecycle(OnStop);
+                }
+            }
+            catch (Exception exception)
+            {
+                RecordError(exception, generation, context);
+                LogError(exception, context);
+            }
+            finally
+            {
+                // Cleanup may remove and reattach the instance; leave a newer registration intact.
+                if (_registrationGeneration == generation)
+                {
+                    _anchor = null;
+                    _sourceContext = null;
+                }
             }
         }
 
@@ -341,232 +696,6 @@ namespace Emas
             };
         }
 
-        /// <summary>
-        /// Gets or sets how long an owned presence may go without publication before it disappears.
-        /// </summary>
-        /// <value>
-        /// A positive timeout, or null to disable inactivity expiry, which is the default.
-        /// </value>
-        /// <remarks>
-        /// Configure while detached. Uses unscaled real time and marks expired presences missing during the next realm update,
-        /// after queued publications and detector updates. Detect, GetOrCreate and MarkPublished reset the individual presence's deadline.
-        /// DisappearanceGracePeriod then determines whether removal is immediate or delayed.
-        /// Trait reads do not count as presence activity. Enable only for feeds that confirm continued presence;
-        /// arrival/departure-only feeds should leave expiry disabled.
-        /// </remarks>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// The timeout is zero or negative.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// The source is attached or running a lifecycle callback.
-        /// </exception>
-        public TimeSpan? InactivityTimeout
-        {
-            get
-            {
-                return _inactivityTimeout;
-            }
-            set
-            {
-                if (IsAttached || IsInLifecycle)
-                {
-                    throw new InvalidOperationException("Configure inactivity expiry before attaching the source to an anchor.");
-                }
-
-                if (value.HasValue && value.Value <= TimeSpan.Zero)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(value), "The inactivity timeout must be positive or null.");
-                }
-
-                _inactivityTimeout = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets how long a disappeared presence remains unavailable before removal.
-        /// </summary>
-        /// <remarks>
-        /// Zero, the default, removes immediately. A later report during the grace period reuses the same
-        /// Presence and Ghost root. Configure while detached on Unity's main thread.
-        /// </remarks>
-        /// <value>A nonnegative period of unavailability before removal; zero removes immediately.</value>
-        /// <exception cref="ArgumentOutOfRangeException">The grace period is negative.</exception>
-        /// <exception cref="InvalidOperationException">The detector is attached or running a lifecycle callback.</exception>
-        public TimeSpan DisappearanceGracePeriod
-        {
-            get
-            {
-                return _disappearanceGracePeriod;
-            }
-            set
-            {
-                if (IsAttached || IsInLifecycle)
-                {
-                    throw new InvalidOperationException("Configure disappearance grace before attaching the detector to an anchor.");
-                }
-
-                if (value < TimeSpan.Zero)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(value), "Disappearance grace cannot be negative.");
-                }
-
-                _disappearanceGracePeriod = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets whether this registration is starting or accepting updates.
-        /// </summary>
-        /// <remarks>
-        /// False after failure or detachment. Failure leaves the source attached for retry but removes its ghosts.
-        /// </remarks>
-        /// <value>True while the current attachment accepts publications and update callbacks.</value>
-        public bool IsActive
-        {
-            get
-            {
-                return _started;
-            }
-        }
-
-        /// <summary>
-        /// Gets whether an anchor currently owns this source, including a failed registration.
-        /// </summary>
-        /// <value>True while an anchor retains this detector, even if the attachment has stopped after failure.</value>
-        public bool IsAttached
-        {
-            get
-            {
-                return _anchor != null;
-            }
-        }
-
-        /// <summary>
-        /// Gets the first error from the most recent attachment attempt, or null.
-        /// </summary>
-        /// <remarks>
-        /// Cleared before OnStart. Retained after stopping or detachment; cleanup errors do not replace a primary error.
-        /// Errors from superseded registrations cannot change this value.
-        /// </remarks>
-        /// <value>The primary lifecycle or source-processing exception, or null when none has been recorded.</value>
-        public Exception LastError
-        {
-            get
-            {
-                return _lastError;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets an application label used in diagnostics and failure reports.
-        /// </summary>
-        /// <remarks>
-        /// Null, empty or whitespace labels use the source type name. Labels do not affect identity or ownership.
-        /// Change this value only on Unity's main thread; recorded failure context retains its original label.
-        /// </remarks>
-        /// <value>The application label, or the detector's type name when no nonblank label is assigned.</value>
-        public string Name
-        {
-            get
-            {
-                return string.IsNullOrWhiteSpace(_name) ? GetType().Name.Split('`')[0] : _name;
-            }
-            set
-            {
-                _name = value;
-                _sourceContext = null;
-            }
-        }
-
-        /// <summary>
-        /// Gets the anchor, source and operation associated with LastError, or null when no error is recorded.
-        /// </summary>
-        /// <remarks>
-        /// Emas includes the kind and entity ID when known. Captured with the primary error and cleared
-        /// before each attachment attempt; cleanup and stale registrations cannot replace that context.
-        /// </remarks>
-        /// <value>The captured diagnostic context for <see cref="LastError"/>, or null when no error is recorded.</value>
-        public string LastErrorContext
-        {
-            get
-            {
-                return _lastErrorContext;
-            }
-        }
-
-        internal bool IsInLifecycle
-        {
-            get
-            {
-                return _lifecycleDepth > 0;
-            }
-        }
-
-        internal bool IsApplyingSourceChanges
-        {
-            get
-            {
-                return _sourceChangeGeneration == _registrationGeneration;
-            }
-        }
-
-        internal void ApplySourceChanges(Realm realm, Action action)
-        {
-            long? previousGeneration = _sourceChangeGeneration;
-            _sourceChangeGeneration = _registrationGeneration;
-            try
-            {
-                realm.ApplySourceChanges(action);
-            }
-            finally
-            {
-                _sourceChangeGeneration = previousGeneration;
-            }
-        }
-
-        internal string CaptureErrorContext()
-        {
-            if (_sourceContext == null)
-            {
-                _sourceContext = "anchor '" + (_anchor == null ? "<detached>" : _anchor.Id)
-                    + "', source '" + Name + "' (" + GetType().Name.Split('`')[0] + ")";
-            }
-
-            return _sourceContext;
-        }
-
-        internal static string DescribeError(string sourceContext, string operation, Kind? kind = null, string entityId = null)
-        {
-            string context = sourceContext + ", operation '" + operation + "'";
-            if (kind.HasValue)
-            {
-                context += ", kind '" + kind.Value.Id + "'";
-            }
-
-            if (entityId != null)
-            {
-                context += ", entity '" + entityId + "'";
-            }
-
-            return context;
-        }
-
-        internal void RecordError(Exception exception, long generation, string context)
-        {
-            if (_registrationGeneration == generation && _lastError == null)
-            {
-                _lastError = exception;
-                _lastErrorContext = context;
-            }
-        }
-
-        internal static void LogError(Exception exception, string context)
-        {
-            // Unity unwraps LogException's inner exceptions; format explicitly to keep context on the first line.
-            UnityEngine.Debug.LogFormat(UnityEngine.LogType.Exception, UnityEngine.LogOption.NoStacktrace, null,
-                "Emas: {0}. {1}: {2}\n{3}", context, exception.GetType().Name, exception.Message, exception);
-        }
-
         private string ErrorContextFor(Exception exception, long generation, string fallback)
         {
             return _registrationGeneration == generation && ReferenceEquals(_lastError, exception)
@@ -584,106 +713,6 @@ namespace Emas
             {
                 _lifecycleDepth--;
             }
-        }
-
-        internal long RegistrationGeneration
-        {
-            get
-            {
-                return _registrationGeneration;
-            }
-        }
-
-        internal bool IsAttachedTo(Anchor anchor)
-        {
-            return _anchor == anchor;
-        }
-
-        internal bool IsRegistration(Realm realm, long generation)
-        {
-            return _started && _anchor != null && _anchor.Realm == realm
-                && _registrationGeneration == generation;
-        }
-
-        internal void Attach(Anchor anchor)
-        {
-            anchor.ThrowIfDisposed();
-            if (_anchor != null)
-            {
-                throw new InvalidOperationException("The source is already attached to an anchor.");
-            }
-
-            // Startup callbacks observe the new attachment and a cleared error state.
-            _anchor = anchor;
-            _sourceContext = null;
-            _registrationGeneration++;
-            _lastError = null;
-            _lastErrorContext = null;
-            _started = true;
-            long generation = RegistrationGeneration;
-            string context = DescribeError(CaptureErrorContext(), "OnStart");
-            try
-            {
-                ApplySourceChanges(anchor.Realm, () => InvokeLifecycle(OnStart));
-                if (IsRegistration(anchor.Realm, generation))
-                {
-                    anchor.Realm.FinalizeSource(this);
-                }
-            }
-            catch (Exception exception)
-            {
-                RecordError(exception, generation, context);
-                if (IsAttachedTo(anchor) && RegistrationGeneration == generation)
-                {
-                    StopAfterFailure(generation, false);
-                }
-
-                throw;
-            }
-        }
-
-        internal void Tick()
-        {
-            Anchor anchor = _anchor;
-            long generation = RegistrationGeneration;
-            if (anchor == null || !IsRegistration(anchor.Realm, generation))
-            {
-                return;
-            }
-
-            string sourceContext = CaptureErrorContext();
-            try
-            {
-                ApplySourceChanges(anchor.Realm, OnUpdate);
-                if (IsRegistration(anchor.Realm, generation))
-                {
-                    anchor.Realm.FinalizeSource(this);
-                }
-            }
-            catch (Exception exception)
-            {
-                if (IsRegistration(anchor.Realm, generation))
-                {
-                    HandleFailure(exception, DescribeError(sourceContext, "OnUpdate"));
-                }
-                else
-                {
-                    LogError(exception, DescribeError(sourceContext, "OnUpdate"));
-                }
-            }
-        }
-
-        internal void HandleFailure(Exception exception, string context)
-        {
-            if (!IsActive)
-            {
-                return;
-            }
-
-            long generation = RegistrationGeneration;
-            RecordError(exception, generation, context);
-            LogError(exception, ErrorContextFor(exception, generation, context));
-            StopAfterFailure(generation);
         }
 
         private void StopAfterFailure(long generation, bool removeGhosts = true)
@@ -726,35 +755,6 @@ namespace Emas
             finally
             {
                 _lifecycleDepth--;
-            }
-        }
-
-        internal void Detach()
-        {
-            long generation = RegistrationGeneration;
-            bool wasStarted = _started;
-            string context = DescribeError(CaptureErrorContext(), "OnStop");
-            _started = false;
-            try
-            {
-                if (wasStarted)
-                {
-                    InvokeLifecycle(OnStop);
-                }
-            }
-            catch (Exception exception)
-            {
-                RecordError(exception, generation, context);
-                LogError(exception, context);
-            }
-            finally
-            {
-                // Cleanup may remove and reattach the instance; leave a newer registration intact.
-                if (_registrationGeneration == generation)
-                {
-                    _anchor = null;
-                    _sourceContext = null;
-                }
             }
         }
     }

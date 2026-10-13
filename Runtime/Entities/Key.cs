@@ -11,26 +11,6 @@ namespace Emas
     public struct Key : IEquatable<Key>
     {
         /// <summary>
-        /// Creates an identity value, normalizing null anchor and entity IDs to empty strings.
-        /// </summary>
-        /// <param name="anchorId">
-        /// The anchor identifier.
-        /// </param>
-        /// <param name="kind">
-        /// The ghost kind.
-        /// </param>
-        /// <param name="entityId">
-        /// The source entity identifier.
-        /// </param>
-        /// <remarks>This constructor does not validate identity completeness; tracking APIs require nonempty IDs and a valid kind.</remarks>
-        public Key(string anchorId, Kind kind, string entityId)
-        {
-            AnchorId = anchorId ?? string.Empty;
-            Kind = kind;
-            EntityId = entityId ?? string.Empty;
-        }
-
-        /// <summary>
         /// Gets the anchor identifier.
         /// </summary>
         /// <value>
@@ -66,34 +46,24 @@ namespace Emas
             private set;
         }
 
-        /// <summary>Compares the anchor, kind and entity identifiers using ordinal equality.</summary>
-        /// <param name="other">The complete identity to compare.</param>
-        /// <returns>True when all three identity fields match, independently of their owning realms.</returns>
-        public bool Equals(Key other)
+        /// <summary>
+        /// Creates an identity value, normalizing null anchor and entity IDs to empty strings.
+        /// </summary>
+        /// <param name="anchorId">
+        /// The anchor identifier.
+        /// </param>
+        /// <param name="kind">
+        /// The ghost kind.
+        /// </param>
+        /// <param name="entityId">
+        /// The source entity identifier.
+        /// </param>
+        /// <remarks>This constructor does not validate identity completeness; tracking APIs require nonempty IDs and a valid kind.</remarks>
+        public Key(string anchorId, Kind kind, string entityId)
         {
-            return string.Equals(AnchorId, other.AnchorId, StringComparison.Ordinal)
-                && Kind == other.Kind
-                && string.Equals(EntityId, other.EntityId, StringComparison.Ordinal);
-        }
-
-        /// <summary>Compares another object with this complete identity.</summary>
-        /// <param name="obj">The object to compare, including null.</param>
-        /// <returns>True when the object is a key with equal anchor, kind and entity identifiers.</returns>
-        public override bool Equals(object obj)
-        {
-            return obj is Key && Equals((Key)obj);
-        }
-
-        /// <summary>Combines the ordinal hashes of all three identity fields.</summary>
-        /// <returns>A hash consistent with key equality.</returns>
-        public override int GetHashCode()
-        {
-            unchecked
-            {
-                int hash = StringComparer.Ordinal.GetHashCode(AnchorId ?? string.Empty);
-                hash = (hash * 397) ^ Kind.GetHashCode();
-                return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(EntityId ?? string.Empty);
-            }
+            AnchorId = anchorId ?? string.Empty;
+            Kind = kind;
+            EntityId = entityId ?? string.Empty;
         }
 
         /// <summary>
@@ -128,6 +98,36 @@ namespace Emas
         public static bool operator !=(Key left, Key right)
         {
             return !left.Equals(right);
+        }
+
+        /// <summary>Compares the anchor, kind and entity identifiers using ordinal equality.</summary>
+        /// <param name="other">The complete identity to compare.</param>
+        /// <returns>True when all three identity fields match, independently of their owning realms.</returns>
+        public bool Equals(Key other)
+        {
+            return string.Equals(AnchorId, other.AnchorId, StringComparison.Ordinal)
+                && Kind == other.Kind
+                && string.Equals(EntityId, other.EntityId, StringComparison.Ordinal);
+        }
+
+        /// <summary>Compares another object with this complete identity.</summary>
+        /// <param name="obj">The object to compare, including null.</param>
+        /// <returns>True when the object is a key with equal anchor, kind and entity identifiers.</returns>
+        public override bool Equals(object obj)
+        {
+            return obj is Key && Equals((Key)obj);
+        }
+
+        /// <summary>Combines the ordinal hashes of all three identity fields.</summary>
+        /// <returns>A hash consistent with key equality.</returns>
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = StringComparer.Ordinal.GetHashCode(AnchorId ?? string.Empty);
+                hash = (hash * 397) ^ Kind.GetHashCode();
+                return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(EntityId ?? string.Empty);
+            }
         }
 
         /// <summary>Formats the identity for diagnostics.</summary>

@@ -97,17 +97,6 @@ namespace Emas.RelativeWorld
             }
         }
 
-        /// <summary>Restarts the sample's shared SDK clock and initializes the configured packet simulation.</summary>
-        protected override void OnStart()
-        {
-            // This sample owns the Realm's shared SDK clock, which restarts when the source starts again.
-            Realm.ResetSpatialTime();
-            _appliedAutomaticAdvance = _automaticAdvance;
-            _lastArrivalTime = Time.realtimeSinceStartupAsDouble;
-            _sdk = new SimulatedGeoSdk();
-            Advance(0.0);
-        }
-
         /// <summary>
         /// Advances the simulation and delivers due packets; the next realm update reads the latest delivered snapshot.
         /// </summary>
@@ -138,6 +127,29 @@ namespace Emas.RelativeWorld
                 _sdk.SetBirdFeetAttached(attached);
                 RefreshPresence();
             }
+        }
+
+        /// <summary>Restarts the sample's shared SDK clock and initializes the configured packet simulation.</summary>
+        protected override void OnStart()
+        {
+            // This sample owns the Realm's shared SDK clock, which restarts when the source starts again.
+            Realm.ResetSpatialTime();
+            _appliedAutomaticAdvance = _automaticAdvance;
+            _lastArrivalTime = Time.realtimeSinceStartupAsDouble;
+            _sdk = new SimulatedGeoSdk();
+            Advance(0.0);
+        }
+
+        /// <summary>Advances source capture and packet delivery with real elapsed time, or applies configuration without advancing in manual mode.</summary>
+        protected override void OnUpdate()
+        {
+            double arrivalTime = Time.realtimeSinceStartupAsDouble;
+            // Serialized Inspector edits bypass property setters, so reconcile the clock mode here as well.
+            SynchronizeClockMode(arrivalTime);
+            double seconds = _automaticAdvance ? arrivalTime - _lastArrivalTime : 0.0;
+            _lastArrivalTime = arrivalTime;
+            // deltaTime is scaled and capped after long frames; SDK observations must share the Realm's real-time rate.
+            Advance(seconds);
         }
 
         [ContextMenu("Attach bird feet")]
@@ -183,18 +195,6 @@ namespace Emas.RelativeWorld
                 // Mode changes intentionally change the source clock's rate. Spatial tuning does not reset it.
                 Realm.ResetSpatialTime();
             }
-        }
-
-        /// <summary>Advances source capture and packet delivery with real elapsed time, or applies configuration without advancing in manual mode.</summary>
-        protected override void OnUpdate()
-        {
-            double arrivalTime = Time.realtimeSinceStartupAsDouble;
-            // Serialized Inspector edits bypass property setters, so reconcile the clock mode here as well.
-            SynchronizeClockMode(arrivalTime);
-            double seconds = _automaticAdvance ? arrivalTime - _lastArrivalTime : 0.0;
-            _lastArrivalTime = arrivalTime;
-            // deltaTime is scaled and capped after long frames; SDK observations must share the Realm's real-time rate.
-            Advance(seconds);
         }
 
     }

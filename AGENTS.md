@@ -31,6 +31,16 @@ Runtime entry point: `Realm.Default`. Keep short role names in namespace `Emas`;
 
 - Use **C# 8.0** features only. Do not use records, target-typed new, init accessors, relational patterns, static lambdas, global usings or file-scoped namespaces. Use Allman braces and braces for every control-flow body.
 - Follow **Unity naming conventions**: `PascalCase` for public members, `_camelCase` for private fields.
+- Order members within every class, struct and interface using this schema, and apply it recursively inside nested types:
+  1. Nested type declarations (`class`, `struct`, `interface`, `enum` and delegates), ordered **public → internal → protected → private**.
+  2. Fields, constants and events, ordered **public → internal → protected → private**.
+  3. Properties and indexers, ordered **public → internal → protected → private**.
+  4. Constructors, ordered **public → internal → protected → private**.
+  5. Operator overloads and conversion operators.
+  6. Public methods that are not overrides.
+  7. Remaining non-private methods, including all method overrides and explicit interface implementations, ordered **public → internal → protected**. Place explicit interface implementations after the public methods and before private methods.
+  8. Private methods.
+  Nested declarations always precede fields, regardless of visibility. Constructors stay after properties, including in types without nested declarations. Treat implicitly public interface members as public. Preserve relative order within each group, keep documentation and attributes attached to their declarations, and preserve initialization behavior when moving members.
 - Document every public API and protected extension point with Visual Studio/Doxygen-compatible XML comments: meaningful `<summary>`, `<param>`, `<typeparam>`, `<returns>` and `<value>` tags where applicable. Include units, ownership, timing, validation and lifecycle constraints when they affect callers. Document interface members and enum values too.
 - Explain non-obvious algorithms, coordinate conversions and lifecycle ordering with focused code comments. Avoid comments that merely repeat the statement below them.
 - Keep methods focused, separate logical blocks with blank lines, and use explicit multi-line braces for control flow; do not write one-line `if` or loop bodies. Use regions only when they make a substantial group of related members easier to navigate.

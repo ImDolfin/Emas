@@ -8,15 +8,15 @@ namespace Emas.Minimal
         /// <summary>The entity category configured by this sample.</summary>
         public static readonly Kind Kind = new Kind("minimal.marker");
 
+        internal Vector3 ReadPosition(string id)
+        {
+            return new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f);
+        }
+
         /// <summary>Publishes the permanent marker when this detector attaches to its Anchor.</summary>
         protected override void OnStart()
         {
             Detect("one", Kind, variant: new Variant("marker"), source: this);
-        }
-
-        internal Vector3 ReadPosition(string id)
-        {
-            return new Vector3(Mathf.Sin(Time.time) * 2f, 0f, 0f);
         }
     }
 }

@@ -10,6 +10,20 @@ namespace Emas.RelativeWorld
     /// Consumers see only complete delivered snapshots; waiting for a packet never removes the previous population.</remarks>
     internal sealed class SimulatedGeoSdk
     {
+        private sealed class Packet
+        {
+            internal readonly double CaptureTime;
+            internal readonly double DeliveryTime;
+            internal readonly Dictionary<string, GeoPoseReading> Readings;
+
+            internal Packet(double captureTime, double deliveryTime, Dictionary<string, GeoPoseReading> readings)
+            {
+                CaptureTime = captureTime;
+                DeliveryTime = deliveryTime;
+                Readings = readings;
+            }
+        }
+
         private const double ParkingSpacingMeters = 80.0;
         private const double FirstParkingNorthMeters = 24.0;
         private const double OrbitRadiansPerSecond = Math.PI / 4.0;
@@ -302,20 +316,6 @@ namespace Emas.RelativeWorld
         {
             double value = Math.Sin(phase * 12.9898 + 78.233) * 43758.5453;
             return 2.0 * (value - Math.Floor(value)) - 1.0;
-        }
-
-        private sealed class Packet
-        {
-            internal readonly double CaptureTime;
-            internal readonly double DeliveryTime;
-            internal readonly Dictionary<string, GeoPoseReading> Readings;
-
-            internal Packet(double captureTime, double deliveryTime, Dictionary<string, GeoPoseReading> readings)
-            {
-                CaptureTime = captureTime;
-                DeliveryTime = deliveryTime;
-                Readings = readings;
-            }
         }
     }
 }

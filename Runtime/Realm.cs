@@ -13,6 +13,39 @@ namespace Emas
     /// </remarks>
     public sealed class Realm : IDisposable
     {
+        private readonly struct DispatchCommand
+        {
+            internal readonly PresenceDetector Source;
+            internal readonly long Generation;
+            internal readonly Action Action;
+
+            internal DispatchCommand(PresenceDetector source, long generation, Action action)
+            {
+                Source = source;
+                Generation = generation;
+                Action = action;
+            }
+        }
+
+        private readonly Dictionary<string, Anchor> _anchors = new Dictionary<string, Anchor>();
+        private readonly IdentityMap _identities = new IdentityMap();
+        private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
+        private readonly Subscriptions _subscriptions;
+        private readonly Population _population;
+        private readonly ViewManager _views;
+        private readonly SpatialManager _spatial;
+        private ReferenceFrame _referenceFrame;
+        private float _interpolationDelay;
+        private readonly SceneChangeQueue _sceneChanges = new SceneChangeQueue();
+        private readonly CommandQueue<DispatchCommand> _dispatch;
+        private const int MaxDispatchActionsPerUpdate = 256;
+        private long _updateNumber;
+        private int _sourceDepth;
+        private bool _finalizing;
+        private bool _updating;
+        private bool _notifyingUpdateQueries;
+        private bool _disposed;
+
         /// <summary>
         /// Gets the shared realm advanced automatically by Unity.
         /// </summary>
@@ -82,43 +115,6 @@ namespace Emas
             }
         }
 
-        private readonly Dictionary<string, Anchor> _anchors = new Dictionary<string, Anchor>();
-        private readonly IdentityMap _identities = new IdentityMap();
-        private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
-        private readonly Subscriptions _subscriptions;
-        private readonly Population _population;
-        private readonly ViewManager _views;
-        private readonly SpatialManager _spatial;
-        private ReferenceFrame _referenceFrame;
-        private float _interpolationDelay;
-        private readonly SceneChangeQueue _sceneChanges = new SceneChangeQueue();
-        private readonly CommandQueue<DispatchCommand> _dispatch;
-        private const int MaxDispatchActionsPerUpdate = 256;
-        private long _updateNumber;
-        private int _sourceDepth;
-        private bool _finalizing;
-        private bool _updating;
-        private bool _notifyingUpdateQueries;
-        private bool _disposed;
-
-        /// <summary>
-        /// Creates an isolated realm advanced explicitly with Update.
-        /// </summary>
-        public Realm()
-            : this(() => Time.realtimeSinceStartupAsDouble)
-        {
-        }
-
-        internal Realm(Func<double> elapsedSeconds)
-        {
-            _dispatch = new CommandQueue<DispatchCommand>(ExecuteDispatch);
-            _subscriptions = new Subscriptions(this);
-            _views = new ViewManager(_identities, _sceneChanges);
-            _spatial = new SpatialManager(this, _identities);
-            _population = new Population(this, _identities, elapsedSeconds, _views, _subscriptions, _sceneChanges);
-            RealmRegistry.Register(this);
-        }
-
         /// <summary>
         /// Gets or sets the optional Cartesian or geographic reference used to project source poses into Unity world space.
         /// </summary>
@@ -166,16 +162,6 @@ namespace Emas
             }
         }
 
-        /// <summary>Resets SDK-to-local spatial clock alignment and sample ordering after the SDK clock restarts.</summary>
-        /// <remarks>Retains raw poses and supplied motion, clears sample timestamps and filter histories.
-        /// Call before publishing samples from the restarted clock. Each Realm requires one shared SDK clock.</remarks>
-        /// <exception cref="ObjectDisposedException">This realm has been disposed.</exception>
-        public void ResetSpatialTime()
-        {
-            ThrowIfDisposed();
-            _spatial.ResetTime(_identities.Snapshot());
-        }
-
         internal bool IsDisposed
         {
             get
@@ -184,17 +170,32 @@ namespace Emas
             }
         }
 
-        internal void ThrowIfDisposed()
+        /// <summary>
+        /// Creates an isolated realm advanced explicitly with Update.
+        /// </summary>
+        public Realm()
+            : this(() => Time.realtimeSinceStartupAsDouble)
         {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(nameof(Realm));
-            }
         }
 
-        internal bool ContainsAnchor(string id)
+        internal Realm(Func<double> elapsedSeconds)
         {
-            return _anchors.ContainsKey(id);
+            _dispatch = new CommandQueue<DispatchCommand>(ExecuteDispatch);
+            _subscriptions = new Subscriptions(this);
+            _views = new ViewManager(_identities, _sceneChanges);
+            _spatial = new SpatialManager(this, _identities);
+            _population = new Population(this, _identities, elapsedSeconds, _views, _subscriptions, _sceneChanges);
+            RealmRegistry.Register(this);
+        }
+
+        /// <summary>Resets SDK-to-local spatial clock alignment and sample ordering after the SDK clock restarts.</summary>
+        /// <remarks>Retains raw poses and supplied motion, clears sample timestamps and filter histories.
+        /// Call before publishing samples from the restarted clock. Each Realm requires one shared SDK clock.</remarks>
+        /// <exception cref="ObjectDisposedException">This realm has been disposed.</exception>
+        public void ResetSpatialTime()
+        {
+            ThrowIfDisposed();
+            _spatial.ResetTime(_identities.Snapshot());
         }
 
         /// <summary>
@@ -220,33 +221,6 @@ namespace Emas
             ValidateManifestationBlueprint(blueprint);
             List<Kind> staleKinds = _blueprints.Register(blueprint);
             RebindManifestationBlueprintRegistration(staleKinds, blueprint.Kind);
-        }
-
-        private void RebindManifestationBlueprintRegistration(List<Kind> staleKinds, Kind kind)
-        {
-            if (staleKinds != null)
-            {
-                for (int index = 0; index < staleKinds.Count; index++)
-                {
-                    RebindManifestationBlueprints(staleKinds[index]);
-                }
-            }
-
-            RebindManifestationBlueprints(kind);
-        }
-
-        private static void ValidateManifestationBlueprint(ManifestationBlueprint blueprint)
-        {
-            if (blueprint == null)
-            {
-                throw new ArgumentException("A valid blueprint is required.", nameof(blueprint));
-            }
-
-            string error = blueprint.GetConfigurationError();
-            if (error != null)
-            {
-                throw new ArgumentException(error, nameof(blueprint));
-            }
         }
 
         /// <summary>
@@ -370,27 +344,6 @@ namespace Emas
                 }
 
                 throw;
-            }
-        }
-
-        private void RollbackAnchorSources(Anchor anchor, List<PresenceDetector> sources, HashSet<Record> previous)
-        {
-            for (int index = sources.Count - 1; index >= 0; index--)
-            {
-                Anchor current;
-                if (_disposed || !_anchors.TryGetValue(anchor.Id, out current) || !ReferenceEquals(current, anchor))
-                {
-                    return;
-                }
-
-                try
-                {
-                    anchor.RollbackAddedSource(sources[index], previous);
-                }
-                catch (Exception exception)
-                {
-                    PresenceDetector.LogError(exception, "rolling back source attachment to anchor '" + anchor.Id + "'");
-                }
             }
         }
 
@@ -751,6 +704,19 @@ namespace Emas
             _referenceFrame = null;
         }
 
+        internal void ThrowIfDisposed()
+        {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(Realm));
+            }
+        }
+
+        internal bool ContainsAnchor(string id)
+        {
+            return _anchors.ContainsKey(id);
+        }
+
         internal List<IGhost> Evaluate(Query query)
         {
             List<IGhost> result = new List<IGhost>();
@@ -832,41 +798,6 @@ namespace Emas
             }
 
             _dispatch.Enqueue(new DispatchCommand(source, generation, action));
-        }
-
-        private void ExecuteDispatch(DispatchCommand command)
-        {
-            // Check the attachment at execution time: work queued before a restart belongs to the old lifetime.
-            if (_disposed
-                || (command.Source != null && !command.Source.IsRegistration(this, command.Generation)))
-            {
-                return;
-            }
-
-            string sourceContext = command.Source == null ? "realm" : command.Source.CaptureErrorContext();
-            try
-            {
-                if (command.Source == null)
-                {
-                    ApplySourceChanges(command.Action);
-                }
-                else
-                {
-                    command.Source.ApplySourceChanges(this, command.Action);
-                }
-            }
-            catch (Exception exception)
-            {
-                string context = PresenceDetector.DescribeError(sourceContext, "Dispatch");
-                if (command.Source == null)
-                {
-                    PresenceDetector.LogError(exception, context);
-                }
-                else if (command.Source.IsRegistration(this, command.Generation))
-                {
-                    command.Source.HandleFailure(exception, context);
-                }
-            }
         }
 
         internal Presence DetectPresence(PresenceDetector detector, string anchorId, string entityId,
@@ -1006,6 +937,133 @@ namespace Emas
             return _population.GetOwnedGhosts(owner);
         }
 
+        internal void ApplySourceChanges(Action action)
+        {
+            _sourceDepth++;
+            try
+            {
+                action();
+            }
+            finally
+            {
+                _sourceDepth--;
+            }
+        }
+
+        internal bool IsCurrentGhost(IGhost ghost)
+        {
+            Ghost component = ghost as Ghost;
+            return component != null && _identities.Find(ghost) != null;
+        }
+
+        internal void DestroySceneObject(GameObject target)
+        {
+            _sceneChanges.Destroy(target);
+        }
+
+        internal void NotifyAnchorDisposed(Anchor anchor)
+        {
+            Anchor current;
+            if (_anchors.TryGetValue(anchor.Id, out current) && current == anchor)
+            {
+                _anchors.Remove(anchor.Id);
+                _population.RemoveAnchorGhosts(anchor.Id);
+            }
+        }
+
+        internal HashSet<Record> CaptureGhosts()
+        {
+            return _population.CaptureGhosts();
+        }
+
+        internal void RollbackSource(PresenceDetector owner, HashSet<Record> previous)
+        {
+            _population.RollbackSource(owner, previous);
+        }
+
+        private void RebindManifestationBlueprintRegistration(List<Kind> staleKinds, Kind kind)
+        {
+            if (staleKinds != null)
+            {
+                for (int index = 0; index < staleKinds.Count; index++)
+                {
+                    RebindManifestationBlueprints(staleKinds[index]);
+                }
+            }
+
+            RebindManifestationBlueprints(kind);
+        }
+
+        private static void ValidateManifestationBlueprint(ManifestationBlueprint blueprint)
+        {
+            if (blueprint == null)
+            {
+                throw new ArgumentException("A valid blueprint is required.", nameof(blueprint));
+            }
+
+            string error = blueprint.GetConfigurationError();
+            if (error != null)
+            {
+                throw new ArgumentException(error, nameof(blueprint));
+            }
+        }
+
+        private void RollbackAnchorSources(Anchor anchor, List<PresenceDetector> sources, HashSet<Record> previous)
+        {
+            for (int index = sources.Count - 1; index >= 0; index--)
+            {
+                Anchor current;
+                if (_disposed || !_anchors.TryGetValue(anchor.Id, out current) || !ReferenceEquals(current, anchor))
+                {
+                    return;
+                }
+
+                try
+                {
+                    anchor.RollbackAddedSource(sources[index], previous);
+                }
+                catch (Exception exception)
+                {
+                    PresenceDetector.LogError(exception, "rolling back source attachment to anchor '" + anchor.Id + "'");
+                }
+            }
+        }
+
+        private void ExecuteDispatch(DispatchCommand command)
+        {
+            // Check the attachment at execution time: work queued before a restart belongs to the old lifetime.
+            if (_disposed
+                || (command.Source != null && !command.Source.IsRegistration(this, command.Generation)))
+            {
+                return;
+            }
+
+            string sourceContext = command.Source == null ? "realm" : command.Source.CaptureErrorContext();
+            try
+            {
+                if (command.Source == null)
+                {
+                    ApplySourceChanges(command.Action);
+                }
+                else
+                {
+                    command.Source.ApplySourceChanges(this, command.Action);
+                }
+            }
+            catch (Exception exception)
+            {
+                string context = PresenceDetector.DescribeError(sourceContext, "Dispatch");
+                if (command.Source == null)
+                {
+                    PresenceDetector.LogError(exception, context);
+                }
+                else if (command.Source.IsRegistration(this, command.Generation))
+                {
+                    command.Source.HandleFailure(exception, context);
+                }
+            }
+        }
+
         private ManifestationBlueprintSnapshot ResolveManifestationBlueprint(Kind kind)
         {
             ManifestationBlueprintSnapshot blueprint;
@@ -1054,50 +1112,6 @@ namespace Emas
             }
         }
 
-        internal void ApplySourceChanges(Action action)
-        {
-            _sourceDepth++;
-            try
-            {
-                action();
-            }
-            finally
-            {
-                _sourceDepth--;
-            }
-        }
-
-        internal bool IsCurrentGhost(IGhost ghost)
-        {
-            Ghost component = ghost as Ghost;
-            return component != null && _identities.Find(ghost) != null;
-        }
-
-        internal void DestroySceneObject(GameObject target)
-        {
-            _sceneChanges.Destroy(target);
-        }
-
-        internal void NotifyAnchorDisposed(Anchor anchor)
-        {
-            Anchor current;
-            if (_anchors.TryGetValue(anchor.Id, out current) && current == anchor)
-            {
-                _anchors.Remove(anchor.Id);
-                _population.RemoveAnchorGhosts(anchor.Id);
-            }
-        }
-
-        internal HashSet<Record> CaptureGhosts()
-        {
-            return _population.CaptureGhosts();
-        }
-
-        internal void RollbackSource(PresenceDetector owner, HashSet<Record> previous)
-        {
-            _population.RollbackSource(owner, previous);
-        }
-
         private void FinalizeChanges(PresenceDetector onlyOwner, bool updateGhosts = false)
         {
             _finalizing = true;
@@ -1132,20 +1146,6 @@ namespace Emas
             {
                 _finalizing = false;
             }
-        }
-
-        private readonly struct DispatchCommand
-        {
-            internal DispatchCommand(PresenceDetector source, long generation, Action action)
-            {
-                Source = source;
-                Generation = generation;
-                Action = action;
-            }
-
-            internal readonly PresenceDetector Source;
-            internal readonly long Generation;
-            internal readonly Action Action;
         }
     }
 }

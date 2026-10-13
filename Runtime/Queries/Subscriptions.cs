@@ -7,6 +7,49 @@ namespace Emas
     // Owns match intervals; callbacks may remove ghosts, dispose subscriptions or dispose the realm.
     internal sealed class Subscriptions
     {
+        private sealed class Subscription : IDisposable
+        {
+            internal readonly Subscriptions Owner;
+            internal readonly Query Query;
+            internal readonly HashSet<Key> Seen = new HashSet<Key>();
+            internal readonly HashSet<Key> MatchKeys = new HashSet<Key>();
+            internal readonly List<IGhost> Matches = new List<IGhost>();
+            internal readonly List<Key> Departures = new List<Key>();
+            internal readonly List<Key> PendingDepartures = new List<Key>();
+            internal Action<IGhost> Callback;
+            internal Action<Key> OnLeave;
+            internal bool Disposed;
+
+            internal Subscription(Subscriptions owner, Query query, Action<IGhost> callback, Action<Key> onLeave)
+            {
+                Owner = owner;
+                Query = query;
+                Callback = callback;
+                OnLeave = onLeave;
+            }
+
+            /// <summary>
+            /// Stops notifications and releases the callback.
+            /// </summary>
+            public void Dispose()
+            {
+                if (Disposed)
+                {
+                    return;
+                }
+
+                Disposed = true;
+                Owner._items.Remove(this);
+                Seen.Clear();
+                MatchKeys.Clear();
+                Matches.Clear();
+                Departures.Clear();
+                PendingDepartures.Clear();
+                Callback = null;
+                OnLeave = null;
+            }
+        }
+
         private readonly Realm _realm;
         private readonly List<Subscription> _items = new List<Subscription>();
         private readonly List<Subscription> _notificationItems = new List<Subscription>();
@@ -192,49 +235,6 @@ namespace Emas
                         PresenceDetector.LogError(exception, "query arrival for " + ghost.Key);
                     }
                 }
-            }
-        }
-
-        private sealed class Subscription : IDisposable
-        {
-            internal Subscription(Subscriptions owner, Query query, Action<IGhost> callback, Action<Key> onLeave)
-            {
-                Owner = owner;
-                Query = query;
-                Callback = callback;
-                OnLeave = onLeave;
-            }
-
-            internal readonly Subscriptions Owner;
-            internal readonly Query Query;
-            internal readonly HashSet<Key> Seen = new HashSet<Key>();
-            internal readonly HashSet<Key> MatchKeys = new HashSet<Key>();
-            internal readonly List<IGhost> Matches = new List<IGhost>();
-            internal readonly List<Key> Departures = new List<Key>();
-            internal readonly List<Key> PendingDepartures = new List<Key>();
-            internal Action<IGhost> Callback;
-            internal Action<Key> OnLeave;
-            internal bool Disposed;
-
-            /// <summary>
-            /// Stops notifications and releases the callback.
-            /// </summary>
-            public void Dispose()
-            {
-                if (Disposed)
-                {
-                    return;
-                }
-
-                Disposed = true;
-                Owner._items.Remove(this);
-                Seen.Clear();
-                MatchKeys.Clear();
-                Matches.Clear();
-                Departures.Clear();
-                PendingDepartures.Clear();
-                Callback = null;
-                OnLeave = null;
             }
         }
     }

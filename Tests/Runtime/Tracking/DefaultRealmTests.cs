@@ -9,6 +9,17 @@ namespace Emas.Tests
     /// </summary>
     public sealed class DefaultRealmTests
     {
+        private sealed class CountingSource : PresenceDetector
+        {
+            internal int Updates;
+
+            /// <summary>Counts the automatic updates delivered by the default Realm.</summary>
+            protected override void OnUpdate()
+            {
+                Updates++;
+            }
+        }
+
         /// <summary>
         /// A disposed shared realm is replaced on next access and accepts active detectors.
         /// </summary>
@@ -48,17 +59,6 @@ namespace Emas.Tests
             finally
             {
                 anchor.Dispose();
-            }
-        }
-
-        private sealed class CountingSource : PresenceDetector
-        {
-            internal int Updates;
-
-            /// <summary>Counts the automatic updates delivered by the default Realm.</summary>
-            protected override void OnUpdate()
-            {
-                Updates++;
             }
         }
     }

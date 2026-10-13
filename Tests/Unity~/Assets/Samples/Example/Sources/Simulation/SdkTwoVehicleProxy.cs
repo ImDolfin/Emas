@@ -11,34 +11,6 @@ namespace Emas.Sample
     public sealed class SdkTwoVehicleProxy
     {
         /// <summary>
-        /// Creates a second-SDK proxy.
-        /// </summary>
-        /// <param name="id">
-        /// The source identifier.
-        /// </param>
-        /// <param name="modelCode">
-        /// The source appearance code.
-        /// </param>
-        /// <param name="coordinates">
-        /// Position in the owning anchor's local Unity axes.
-        /// </param>
-        /// <param name="wheelAngle">
-        /// Normalized steering in [-1, 1], despite the simulated SDK's angle-like name.
-        /// </param>
-        /// <remarks>Stores the supplied values without validation, clamping or unit conversion.</remarks>
-        public SdkTwoVehicleProxy(
-            int id,
-            int modelCode,
-            Vector3 coordinates,
-            float wheelAngle)
-        {
-            Id = id;
-            ModelCode = modelCode;
-            Coordinates = coordinates;
-            WheelAngle = wheelAngle;
-        }
-
-        /// <summary>
         /// Gets the numeric source identifier.
         /// </summary>
         /// <value>
@@ -84,6 +56,34 @@ namespace Emas.Sample
         {
             get;
             private set;
+        }
+
+        /// <summary>
+        /// Creates a second-SDK proxy.
+        /// </summary>
+        /// <param name="id">
+        /// The source identifier.
+        /// </param>
+        /// <param name="modelCode">
+        /// The source appearance code.
+        /// </param>
+        /// <param name="coordinates">
+        /// Position in the owning anchor's local Unity axes.
+        /// </param>
+        /// <param name="wheelAngle">
+        /// Normalized steering in [-1, 1], despite the simulated SDK's angle-like name.
+        /// </param>
+        /// <remarks>Stores the supplied values without validation, clamping or unit conversion.</remarks>
+        public SdkTwoVehicleProxy(
+            int id,
+            int modelCode,
+            Vector3 coordinates,
+            float wheelAngle)
+        {
+            Id = id;
+            ModelCode = modelCode;
+            Coordinates = coordinates;
+            WheelAngle = wheelAngle;
         }
     }
 }

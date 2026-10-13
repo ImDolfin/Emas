@@ -29,25 +29,6 @@ namespace Emas
         [SerializeField]
         private Axis _forward;
 
-        /// <summary>
-        /// Creates a coordinate convention from three distinct signed source axes.
-        /// </summary>
-        /// <param name="right">The source axis that maps to Unity positive X.</param>
-        /// <param name="up">The source axis that maps to Unity positive Y.</param>
-        /// <param name="forward">The source axis that maps to Unity positive Z.</param>
-        /// <exception cref="ArgumentException">An axis is undefined or used more than once.</exception>
-        public CoordinateSystem(Axis right, Axis up, Axis forward)
-        {
-            _right = right;
-            _up = up;
-            _forward = forward;
-            string error = GetConfigurationError();
-            if (error != null)
-            {
-                throw new ArgumentException(error);
-            }
-        }
-
         /// <summary>Gets the source axis mapped to Unity right.</summary>
         /// <value>The signed source axis that produces Unity positive X.</value>
         public Axis Right
@@ -75,6 +56,37 @@ namespace Emas
             get
             {
                 return _forward;
+            }
+        }
+
+        private int Determinant
+        {
+            get
+            {
+                int right = Index(_right);
+                int up = Index(_up);
+                int forward = Index(_forward);
+                int inversions = (right > up ? 1 : 0) + (right > forward ? 1 : 0) + (up > forward ? 1 : 0);
+                return (inversions % 2 == 0 ? 1 : -1) * Sign(_right) * Sign(_up) * Sign(_forward);
+            }
+        }
+
+        /// <summary>
+        /// Creates a coordinate convention from three distinct signed source axes.
+        /// </summary>
+        /// <param name="right">The source axis that maps to Unity positive X.</param>
+        /// <param name="up">The source axis that maps to Unity positive Y.</param>
+        /// <param name="forward">The source axis that maps to Unity positive Z.</param>
+        /// <exception cref="ArgumentException">An axis is undefined or used more than once.</exception>
+        public CoordinateSystem(Axis right, Axis up, Axis forward)
+        {
+            _right = right;
+            _up = up;
+            _forward = forward;
+            string error = GetConfigurationError();
+            if (error != null)
+            {
+                throw new ArgumentException(error);
             }
         }
 
@@ -134,18 +146,6 @@ namespace Emas
             }
 
             return value;
-        }
-
-        private int Determinant
-        {
-            get
-            {
-                int right = Index(_right);
-                int up = Index(_up);
-                int forward = Index(_forward);
-                int inversions = (right > up ? 1 : 0) + (right > forward ? 1 : 0) + (up > forward ? 1 : 0);
-                return (inversions % 2 == 0 ? 1 : -1) * Sign(_right) * Sign(_up) * Sign(_forward);
-            }
         }
 
         private Quaternion Rotation(Double3 vector, float scalar)

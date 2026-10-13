@@ -7,6 +7,32 @@ namespace Emas.Tests
     /// <summary>Verifies the realm-driven lifecycle hook for application Ghost behavior.</summary>
     public sealed class GhostUpdateTests
     {
+        private sealed class Detector : PresenceDetector
+        {
+            internal Action Starting;
+
+            internal Presence Arrive(string id)
+            {
+                return Detect(id, TestKind);
+            }
+
+            internal PipelineGhost Publish(string id)
+            {
+                return GetOrCreate<PipelineGhost>(id, TestKind);
+            }
+
+            internal void Lose(string id)
+            {
+                Disappear(TestKind, id);
+            }
+
+            /// <inheritdoc />
+            protected override void OnStart()
+            {
+                Starting?.Invoke();
+            }
+        }
+
         private static readonly Kind TestKind = new Kind("tests.ghost.update");
         private Realm _realm;
 
@@ -155,32 +181,6 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Count, Is.Zero);
             _realm.Update();
             Assert.That(first.UpdateCount + second.UpdateCount, Is.EqualTo(1));
-        }
-
-        private sealed class Detector : PresenceDetector
-        {
-            internal Action Starting;
-
-            /// <inheritdoc />
-            protected override void OnStart()
-            {
-                Starting?.Invoke();
-            }
-
-            internal Presence Arrive(string id)
-            {
-                return Detect(id, TestKind);
-            }
-
-            internal PipelineGhost Publish(string id)
-            {
-                return GetOrCreate<PipelineGhost>(id, TestKind);
-            }
-
-            internal void Lose(string id)
-            {
-                Disappear(TestKind, id);
-            }
         }
     }
 }

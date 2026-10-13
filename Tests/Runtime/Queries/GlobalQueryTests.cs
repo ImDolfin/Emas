@@ -10,6 +10,23 @@ namespace Emas.Tests
     /// </summary>
     public sealed class GlobalQueryTests
     {
+        private sealed class ProbeSource : PresenceDetector
+        {
+            internal TestGhost Publish(string id)
+            {
+                return GetOrCreate<TestGhost>(id, TestKind);
+            }
+
+            internal void RemoveId(string id)
+            {
+                Disappear(TestKind, id);
+            }
+        }
+
+        private sealed class TestGhost : Ghost
+        {
+        }
+
         private static readonly Kind TestKind = new Kind("tests.global-query");
         private readonly List<Realm> _realms = new List<Realm>();
         private readonly List<IDisposable> _subscriptions = new List<IDisposable>();
@@ -178,23 +195,6 @@ namespace Emas.Tests
         {
             _realms.Add(realm);
             return realm;
-        }
-
-        private sealed class ProbeSource : PresenceDetector
-        {
-            internal TestGhost Publish(string id)
-            {
-                return GetOrCreate<TestGhost>(id, TestKind);
-            }
-
-            internal void RemoveId(string id)
-            {
-                Disappear(TestKind, id);
-            }
-        }
-
-        private sealed class TestGhost : Ghost
-        {
         }
     }
 }

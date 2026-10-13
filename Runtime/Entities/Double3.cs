@@ -18,6 +18,24 @@ namespace Emas
         [SerializeField] private double _z;
 
         /// <summary>
+        /// Gets the X coordinate.
+        /// </summary>
+        /// <value>The first coordinate without a change of units or precision.</value>
+        public double X => _x;
+
+        /// <summary>
+        /// Gets the Y coordinate.
+        /// </summary>
+        /// <value>The second coordinate without a change of units or precision.</value>
+        public double Y => _y;
+
+        /// <summary>
+        /// Gets the Z coordinate.
+        /// </summary>
+        /// <value>The third coordinate without a change of units or precision.</value>
+        public double Z => _z;
+
+        /// <summary>
         /// Creates a position or offset with finite coordinates.
         /// </summary>
         /// <param name="x">The finite X coordinate in the caller's coordinate system.</param>
@@ -47,24 +65,6 @@ namespace Emas
             _y = y;
             _z = z;
         }
-
-        /// <summary>
-        /// Gets the X coordinate.
-        /// </summary>
-        /// <value>The first coordinate without a change of units or precision.</value>
-        public double X => _x;
-
-        /// <summary>
-        /// Gets the Y coordinate.
-        /// </summary>
-        /// <value>The second coordinate without a change of units or precision.</value>
-        public double Y => _y;
-
-        /// <summary>
-        /// Gets the Z coordinate.
-        /// </summary>
-        /// <value>The third coordinate without a change of units or precision.</value>
-        public double Z => _z;
 
         /// <summary>
         /// Adds two positions or offsets without converting to float precision.
@@ -112,6 +112,28 @@ namespace Emas
         public static Double3 operator *(double scalar, Double3 value)
         {
             return value * scalar;
+        }
+
+        /// <summary>
+        /// Returns whether all coordinates are equal.
+        /// </summary>
+        /// <param name="left">The first position or offset.</param>
+        /// <param name="right">The second position or offset.</param>
+        /// <returns>True when all corresponding coordinates compare exactly equal.</returns>
+        public static bool operator ==(Double3 left, Double3 right)
+        {
+            return left.Equals(right);
+        }
+
+        /// <summary>
+        /// Returns whether any coordinate differs.
+        /// </summary>
+        /// <param name="left">The first position or offset.</param>
+        /// <param name="right">The second position or offset.</param>
+        /// <returns>True when at least one corresponding coordinate differs.</returns>
+        public static bool operator !=(Double3 left, Double3 right)
+        {
+            return !left.Equals(right);
         }
 
         /// <summary>
@@ -171,28 +193,6 @@ namespace Emas
                 hash = (hash * 397) ^ _y.GetHashCode();
                 return (hash * 397) ^ _z.GetHashCode();
             }
-        }
-
-        /// <summary>
-        /// Returns whether all coordinates are equal.
-        /// </summary>
-        /// <param name="left">The first position or offset.</param>
-        /// <param name="right">The second position or offset.</param>
-        /// <returns>True when all corresponding coordinates compare exactly equal.</returns>
-        public static bool operator ==(Double3 left, Double3 right)
-        {
-            return left.Equals(right);
-        }
-
-        /// <summary>
-        /// Returns whether any coordinate differs.
-        /// </summary>
-        /// <param name="left">The first position or offset.</param>
-        /// <param name="right">The second position or offset.</param>
-        /// <returns>True when at least one corresponding coordinate differs.</returns>
-        public static bool operator !=(Double3 left, Double3 right)
-        {
-            return !left.Equals(right);
         }
 
         /// <summary>

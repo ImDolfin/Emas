@@ -13,6 +13,64 @@ namespace Emas
     [DisallowMultipleComponent]
     public abstract class PresenceDetectorComponent : MonoBehaviour, IDetectorProvider
     {
+        // The bridge shares the plain detector's ownership, failure handling and callback-generation checks.
+        private sealed class ComponentDetector : PresenceDetector
+        {
+            private readonly PresenceDetectorComponent _owner;
+
+            internal IReadOnlyList<Presence> Presences
+            {
+                get
+                {
+                    return OwnedPresences;
+                }
+            }
+
+            internal ComponentDetector(PresenceDetectorComponent owner)
+            {
+                _owner = owner;
+            }
+
+            internal Presence DetectEntity(string id, Kind kind, string name, Variant? variant,
+                IEnumerable<Type> capabilities, object source)
+            {
+                return Detect(id, kind, name, variant, capabilities, source);
+            }
+
+            internal void RemoveEntity(Kind kind, string id)
+            {
+                Disappear(kind, id);
+            }
+
+            internal void Enqueue(Action action)
+            {
+                Dispatch(action);
+            }
+
+            internal Action<Action> Capture()
+            {
+                return CaptureDispatcher();
+            }
+
+            /// <summary>Forwards attachment startup to the owning scene component.</summary>
+            protected override void OnStart()
+            {
+                _owner.OnStart();
+            }
+
+            /// <summary>Forwards the detector update to the owning scene component.</summary>
+            protected override void OnUpdate()
+            {
+                _owner.OnUpdate();
+            }
+
+            /// <summary>Forwards attachment cleanup to the owning scene component.</summary>
+            protected override void OnStop()
+            {
+                _owner.OnStop();
+            }
+        }
+
         private ComponentDetector _detector;
 
         /// <summary>Gets the lazily created detector reused for this component's attachments.</summary>
@@ -54,6 +112,18 @@ namespace Emas
             get
             {
                 return Bridge.Presences;
+            }
+        }
+
+        private ComponentDetector Bridge
+        {
+            get
+            {
+                if (_detector == null)
+                {
+                    _detector = new ComponentDetector(this) { Name = GetType().Name };
+                }
+                return _detector;
             }
         }
 
@@ -137,18 +207,6 @@ namespace Emas
             return Detector;
         }
 
-        private ComponentDetector Bridge
-        {
-            get
-            {
-                if (_detector == null)
-                {
-                    _detector = new ComponentDetector(this) { Name = GetType().Name };
-                }
-                return _detector;
-            }
-        }
-
         private void OnEnable()
         {
             AnchorSetup setup = GetComponent<AnchorSetup>();
@@ -168,60 +226,6 @@ namespace Emas
             if (setup != null && setup.AttachmentOwner != null)
             {
                 setup.AttachmentOwner.StopAnchor(setup);
-            }
-        }
-
-        // The bridge shares the plain detector's ownership, failure handling and callback-generation checks.
-        private sealed class ComponentDetector : PresenceDetector
-        {
-            private readonly PresenceDetectorComponent _owner;
-
-            internal ComponentDetector(PresenceDetectorComponent owner)
-            {
-                _owner = owner;
-            }
-
-            internal IReadOnlyList<Presence> Presences
-            {
-                get
-                {
-                    return OwnedPresences;
-                }
-            }
-
-            /// <summary>Forwards attachment startup to the owning scene component.</summary>
-            protected override void OnStart()
-            {
-                _owner.OnStart();
-            }
-
-            /// <summary>Forwards the detector update to the owning scene component.</summary>
-            protected override void OnUpdate()
-            {
-                _owner.OnUpdate();
-            }
-
-            /// <summary>Forwards attachment cleanup to the owning scene component.</summary>
-            protected override void OnStop()
-            {
-                _owner.OnStop();
-            }
-            internal Presence DetectEntity(string id, Kind kind, string name, Variant? variant,
-                IEnumerable<Type> capabilities, object source)
-            {
-                return Detect(id, kind, name, variant, capabilities, source);
-            }
-            internal void RemoveEntity(Kind kind, string id)
-            {
-                Disappear(kind, id);
-            }
-            internal void Enqueue(Action action)
-            {
-                Dispatch(action);
-            }
-            internal Action<Action> Capture()
-            {
-                return CaptureDispatcher();
             }
         }
     }

@@ -20,30 +20,6 @@ namespace Emas
             _identities = identities;
         }
 
-        private ReferenceFrame.Projection Capture(ReferenceFrame frame, double timestamp, float interpolationDelay)
-        {
-            if (frame != null && frame.FollowedGhost.HasValue)
-            {
-                Record reference;
-                Spatial spatial = null;
-                if (_identities.TryGetValue(frame.FollowedGhost.Value, out reference) && CanProject(reference))
-                {
-                    spatial = reference.Ghost.GetComponent<Spatial>();
-                }
-
-                if (spatial != null)
-                {
-                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay);
-                }
-
-                frame.UpdateFollowedPose(spatial);
-            }
-
-            return frame == null
-                ? new ReferenceFrame.Projection(true, default(Double3), Vector3.zero, Quaternion.identity, CoordinateSystem.Unity, null)
-                : frame.Capture();
-        }
-
         internal void Project(List<Record> records, ReferenceFrame frame)
         {
             double timestamp = Time.realtimeSinceStartupAsDouble;
@@ -80,6 +56,70 @@ namespace Emas
             }
         }
 
+        internal void ResetTime(List<Record> records)
+        {
+            _clock.Reset();
+            double timestamp = Time.realtimeSinceStartupAsDouble;
+            foreach (Record record in records)
+            {
+                if (record.Ghost != null)
+                {
+                    Spatial spatial = record.Ghost.GetComponent<Spatial>();
+                    if (spatial != null)
+                    {
+                        spatial.ResetTime(timestamp);
+                    }
+                }
+            }
+        }
+
+        internal void RefreshSuppression(List<Record> records)
+        {
+            for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
+            {
+                RefreshSuppression(records[index]);
+            }
+        }
+
+        internal void RefreshSuppression(Record record)
+        {
+            if (!CanProject(record) || record.SpatialVisible)
+            {
+                return;
+            }
+
+            Spatial spatial = record.Ghost.GetComponent<Spatial>();
+            if (spatial != null && spatial.enabled)
+            {
+                // Activation/destruction callbacks can add presentation after the projection pass.
+                spatial.SetInRange(false);
+            }
+        }
+
+        private ReferenceFrame.Projection Capture(ReferenceFrame frame, double timestamp, float interpolationDelay)
+        {
+            if (frame != null && frame.FollowedGhost.HasValue)
+            {
+                Record reference;
+                Spatial spatial = null;
+                if (_identities.TryGetValue(frame.FollowedGhost.Value, out reference) && CanProject(reference))
+                {
+                    spatial = reference.Ghost.GetComponent<Spatial>();
+                }
+
+                if (spatial != null)
+                {
+                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay);
+                }
+
+                frame.UpdateFollowedPose(spatial);
+            }
+
+            return frame == null
+                ? new ReferenceFrame.Projection(true, default(Double3), Vector3.zero, Quaternion.identity, CoordinateSystem.Unity, null)
+                : frame.Capture();
+        }
+
         private void PreparePresentation(Record record, double timestamp, float interpolationDelay)
         {
             if (CanProject(record))
@@ -110,23 +150,6 @@ namespace Emas
                         {
                             _clock.Observe(spatial.RotationTime.Value, spatial.RotationReceivedTime);
                         }
-                    }
-                }
-            }
-        }
-
-        internal void ResetTime(List<Record> records)
-        {
-            _clock.Reset();
-            double timestamp = Time.realtimeSinceStartupAsDouble;
-            foreach (Record record in records)
-            {
-                if (record.Ghost != null)
-                {
-                    Spatial spatial = record.Ghost.GetComponent<Spatial>();
-                    if (spatial != null)
-                    {
-                        spatial.ResetTime(timestamp);
                     }
                 }
             }
@@ -211,29 +234,6 @@ namespace Emas
                 record.SpatialVisible = visible;
                 record.ViewVersion++;
                 record.ViewDirty = true;
-            }
-        }
-
-        internal void RefreshSuppression(List<Record> records)
-        {
-            for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
-            {
-                RefreshSuppression(records[index]);
-            }
-        }
-
-        internal void RefreshSuppression(Record record)
-        {
-            if (!CanProject(record) || record.SpatialVisible)
-            {
-                return;
-            }
-
-            Spatial spatial = record.Ghost.GetComponent<Spatial>();
-            if (spatial != null && spatial.enabled)
-            {
-                // Activation/destruction callbacks can add presentation after the projection pass.
-                spatial.SetInRange(false);
             }
         }
 

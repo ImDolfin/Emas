@@ -7,192 +7,6 @@ namespace Emas
     // Each ring retains 128 observations; sampling and insertion allocate nothing after construction.
     internal sealed class PoseHistory
     {
-        private const int Capacity = 128;
-        private readonly VectorHistory _positions = new VectorHistory();
-        private readonly VectorHistory _velocities = new VectorHistory();
-        private readonly VectorHistory _accelerations = new VectorHistory();
-        private readonly RotationSample[] _rotations = new RotationSample[Capacity];
-        private int _rotationStart;
-        private int _rotationCount;
-
-        internal Timestamp? NewestPositionTime => _positions.NewestTime;
-        internal Timestamp? OldestPositionTime => _positions.OldestTime;
-        internal Timestamp? NewestRotationTime => _rotationCount == 0
-            ? (Timestamp?)null : RotationAt(_rotationCount - 1).Time;
-        internal Timestamp? NewestVelocityTime => _velocities.NewestTime;
-        internal Timestamp? OldestVelocityTime => _velocities.OldestTime;
-        internal Timestamp? NewestAccelerationTime => _accelerations.NewestTime;
-        internal Timestamp? OldestAccelerationTime => _accelerations.OldestTime;
-
-        internal void AddPosition(Double3 position, Timestamp time)
-        {
-            _positions.Add(position, time);
-        }
-
-        internal void AddRotation(Quaternion rotation, Timestamp time)
-        {
-            if (_rotationCount > 0 && time.CompareTo(RotationAt(_rotationCount - 1).Time) <= 0)
-            {
-                return;
-            }
-
-            int index = (_rotationStart + _rotationCount) % Capacity;
-            _rotations[index] = new RotationSample(rotation, time);
-            if (_rotationCount == Capacity)
-            {
-                _rotationStart = (_rotationStart + 1) % Capacity;
-            }
-            else
-            {
-                _rotationCount++;
-            }
-        }
-
-        internal void AddVelocity(Double3 velocity, Timestamp time)
-        {
-            _velocities.Add(velocity, time);
-        }
-
-        internal void AddAcceleration(Double3 acceleration, Timestamp time)
-        {
-            _accelerations.Add(acceleration, time);
-        }
-
-        // Offsets are playback time minus this channel's newest timestamp. Negative values sample
-        // recorded history; positive values hold the latest vector for the caller's bounded prediction.
-        internal bool SamplePosition(double offsetFromNewest, out Double3 position)
-        {
-            return _positions.Sample(offsetFromNewest, out position);
-        }
-
-        internal bool SampleVelocity(double offsetFromNewest, out Double3 velocity)
-        {
-            return _velocities.Sample(offsetFromNewest, out velocity);
-        }
-
-        // Integrate the same piecewise-linear velocity curve used by sampling, including every
-        // crossed observation. Endpoint-only trapezoids miss a maneuver inside a long render step.
-        internal bool IntegrateVelocity(double startOffsetFromNewest, double endOffsetFromNewest, out Double3 motion)
-        {
-            return _velocities.Integrate(startOffsetFromNewest, endOffsetFromNewest, out motion);
-        }
-
-        internal bool SampleAcceleration(double offsetFromNewest, out Double3 acceleration)
-        {
-            return _accelerations.Sample(offsetFromNewest, out acceleration);
-        }
-
-        internal bool SampleRotation(double offsetFromNewest, double maximumExtrapolation, out Quaternion rotation)
-        {
-            rotation = Quaternion.identity;
-            if (_rotationCount == 0 || !SpatialMath.IsFinite(offsetFromNewest))
-            {
-                return false;
-            }
-
-            RotationSample newest = RotationAt(_rotationCount - 1);
-            rotation = newest.Value;
-            if (_rotationCount == 1)
-            {
-                return true;
-            }
-
-            if (offsetFromNewest >= 0)
-            {
-                rotation = ExtrapolateRotation(newest, offsetFromNewest, maximumExtrapolation);
-                return true;
-            }
-
-            RotationSample oldest = RotationAt(0);
-            if (offsetFromNewest <= oldest.Time.ElapsedSince(newest.Time))
-            {
-                // Startup and an exhausted ring hold the oldest available observation rather than
-                // inventing an earlier pose or stretching the playback clock for this one entity.
-                rotation = oldest.Value;
-                return true;
-            }
-
-            RotationSample after = newest;
-            for (int index = _rotationCount - 2; index >= 0; index--)
-            {
-                RotationSample before = RotationAt(index);
-                double beforeOffset = before.Time.ElapsedSince(newest.Time);
-                if (offsetFromNewest >= beforeOffset)
-                {
-                    double weight = (offsetFromNewest - beforeOffset) / after.Time.ElapsedSince(before.Time);
-                    rotation = Quaternion.Slerp(before.Value, after.Value, (float)weight);
-                    return true;
-                }
-
-                after = before;
-            }
-
-            rotation = oldest.Value;
-            return true;
-        }
-
-        internal void ClearPosition()
-        {
-            _positions.Clear();
-        }
-
-        internal void ClearRotation()
-        {
-            _rotationStart = 0;
-            _rotationCount = 0;
-        }
-
-        internal void ClearVelocity()
-        {
-            _velocities.Clear();
-        }
-
-        internal void ClearAcceleration()
-        {
-            _accelerations.Clear();
-        }
-
-        internal void Clear()
-        {
-            ClearPosition();
-            ClearRotation();
-            ClearVelocity();
-            ClearAcceleration();
-        }
-
-        private Quaternion ExtrapolateRotation(RotationSample newest, double offset, double maximumExtrapolation)
-        {
-            if (offset <= 0 || !SpatialMath.IsFinite(maximumExtrapolation) || maximumExtrapolation <= 0)
-            {
-                return newest.Value;
-            }
-
-            RotationSample previous = RotationAt(_rotationCount - 2);
-            double elapsed = newest.Time.ElapsedSince(previous.Time);
-            double amount = 1d + Math.Min(offset, maximumExtrapolation) / elapsed;
-            if (!SpatialMath.IsFinite(amount) || amount > float.MaxValue)
-            {
-                return newest.Value;
-            }
-
-            try
-            {
-                // Extend the shortest observed quaternion arc, freezing at the capped future pose
-                // once the gap exceeds the horizon. One observation cannot define an angular rate.
-                return SpatialMath.NormalizeRotation(
-                    Quaternion.SlerpUnclamped(previous.Value, newest.Value, (float)amount), nameof(newest));
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return newest.Value;
-            }
-        }
-
-        private RotationSample RotationAt(int index)
-        {
-            return _rotations[(_rotationStart + index) % Capacity];
-        }
-
         private readonly struct RotationSample
         {
             internal readonly Quaternion Value;
@@ -400,6 +214,198 @@ namespace Emas
                 return SpatialMath.IsFinite(difference)
                     ? before + difference * weight : before * (1d - weight) + after * weight;
             }
+        }
+
+        private const int Capacity = 128;
+        private readonly VectorHistory _positions = new VectorHistory();
+        private readonly VectorHistory _velocities = new VectorHistory();
+        private readonly VectorHistory _accelerations = new VectorHistory();
+        private readonly RotationSample[] _rotations = new RotationSample[Capacity];
+        private int _rotationStart;
+        private int _rotationCount;
+
+        internal Timestamp? NewestPositionTime => _positions.NewestTime;
+
+        internal Timestamp? OldestPositionTime => _positions.OldestTime;
+
+        internal Timestamp? NewestRotationTime => _rotationCount == 0
+            ? (Timestamp?)null : RotationAt(_rotationCount - 1).Time;
+
+        internal Timestamp? NewestVelocityTime => _velocities.NewestTime;
+
+        internal Timestamp? OldestVelocityTime => _velocities.OldestTime;
+
+        internal Timestamp? NewestAccelerationTime => _accelerations.NewestTime;
+
+        internal Timestamp? OldestAccelerationTime => _accelerations.OldestTime;
+
+        internal void AddPosition(Double3 position, Timestamp time)
+        {
+            _positions.Add(position, time);
+        }
+
+        internal void AddRotation(Quaternion rotation, Timestamp time)
+        {
+            if (_rotationCount > 0 && time.CompareTo(RotationAt(_rotationCount - 1).Time) <= 0)
+            {
+                return;
+            }
+
+            int index = (_rotationStart + _rotationCount) % Capacity;
+            _rotations[index] = new RotationSample(rotation, time);
+            if (_rotationCount == Capacity)
+            {
+                _rotationStart = (_rotationStart + 1) % Capacity;
+            }
+            else
+            {
+                _rotationCount++;
+            }
+        }
+
+        internal void AddVelocity(Double3 velocity, Timestamp time)
+        {
+            _velocities.Add(velocity, time);
+        }
+
+        internal void AddAcceleration(Double3 acceleration, Timestamp time)
+        {
+            _accelerations.Add(acceleration, time);
+        }
+
+        // Offsets are playback time minus this channel's newest timestamp. Negative values sample
+        // recorded history; positive values hold the latest vector for the caller's bounded prediction.
+        internal bool SamplePosition(double offsetFromNewest, out Double3 position)
+        {
+            return _positions.Sample(offsetFromNewest, out position);
+        }
+
+        internal bool SampleVelocity(double offsetFromNewest, out Double3 velocity)
+        {
+            return _velocities.Sample(offsetFromNewest, out velocity);
+        }
+
+        // Integrate the same piecewise-linear velocity curve used by sampling, including every
+        // crossed observation. Endpoint-only trapezoids miss a maneuver inside a long render step.
+        internal bool IntegrateVelocity(double startOffsetFromNewest, double endOffsetFromNewest, out Double3 motion)
+        {
+            return _velocities.Integrate(startOffsetFromNewest, endOffsetFromNewest, out motion);
+        }
+
+        internal bool SampleAcceleration(double offsetFromNewest, out Double3 acceleration)
+        {
+            return _accelerations.Sample(offsetFromNewest, out acceleration);
+        }
+
+        internal bool SampleRotation(double offsetFromNewest, double maximumExtrapolation, out Quaternion rotation)
+        {
+            rotation = Quaternion.identity;
+            if (_rotationCount == 0 || !SpatialMath.IsFinite(offsetFromNewest))
+            {
+                return false;
+            }
+
+            RotationSample newest = RotationAt(_rotationCount - 1);
+            rotation = newest.Value;
+            if (_rotationCount == 1)
+            {
+                return true;
+            }
+
+            if (offsetFromNewest >= 0)
+            {
+                rotation = ExtrapolateRotation(newest, offsetFromNewest, maximumExtrapolation);
+                return true;
+            }
+
+            RotationSample oldest = RotationAt(0);
+            if (offsetFromNewest <= oldest.Time.ElapsedSince(newest.Time))
+            {
+                // Startup and an exhausted ring hold the oldest available observation rather than
+                // inventing an earlier pose or stretching the playback clock for this one entity.
+                rotation = oldest.Value;
+                return true;
+            }
+
+            RotationSample after = newest;
+            for (int index = _rotationCount - 2; index >= 0; index--)
+            {
+                RotationSample before = RotationAt(index);
+                double beforeOffset = before.Time.ElapsedSince(newest.Time);
+                if (offsetFromNewest >= beforeOffset)
+                {
+                    double weight = (offsetFromNewest - beforeOffset) / after.Time.ElapsedSince(before.Time);
+                    rotation = Quaternion.Slerp(before.Value, after.Value, (float)weight);
+                    return true;
+                }
+
+                after = before;
+            }
+
+            rotation = oldest.Value;
+            return true;
+        }
+
+        internal void ClearPosition()
+        {
+            _positions.Clear();
+        }
+
+        internal void ClearRotation()
+        {
+            _rotationStart = 0;
+            _rotationCount = 0;
+        }
+
+        internal void ClearVelocity()
+        {
+            _velocities.Clear();
+        }
+
+        internal void ClearAcceleration()
+        {
+            _accelerations.Clear();
+        }
+
+        internal void Clear()
+        {
+            ClearPosition();
+            ClearRotation();
+            ClearVelocity();
+            ClearAcceleration();
+        }
+
+        private Quaternion ExtrapolateRotation(RotationSample newest, double offset, double maximumExtrapolation)
+        {
+            if (offset <= 0 || !SpatialMath.IsFinite(maximumExtrapolation) || maximumExtrapolation <= 0)
+            {
+                return newest.Value;
+            }
+
+            RotationSample previous = RotationAt(_rotationCount - 2);
+            double elapsed = newest.Time.ElapsedSince(previous.Time);
+            double amount = 1d + Math.Min(offset, maximumExtrapolation) / elapsed;
+            if (!SpatialMath.IsFinite(amount) || amount > float.MaxValue)
+            {
+                return newest.Value;
+            }
+
+            try
+            {
+                // Extend the shortest observed quaternion arc, freezing at the capped future pose
+                // once the gap exceeds the horizon. One observation cannot define an angular rate.
+                return SpatialMath.NormalizeRotation(
+                    Quaternion.SlerpUnclamped(previous.Value, newest.Value, (float)amount), nameof(newest));
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return newest.Value;
+            }
+        }
+
+        private RotationSample RotationAt(int index)
+        {
+            return _rotations[(_rotationStart + index) % Capacity];
         }
     }
 }

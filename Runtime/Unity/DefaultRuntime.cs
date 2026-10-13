@@ -5,6 +5,18 @@ namespace Emas
     // Owns the shared realm and its persistent Unity runner; isolated RealmSetup lifetimes use their own updates.
     internal static class DefaultRuntime
     {
+        [DefaultExecutionOrder(-32000)]
+        private sealed class Runner : MonoBehaviour
+        {
+            private void Update()
+            {
+                if (_realm != null)
+                {
+                    _realm.Update();
+                }
+            }
+        }
+
         private static Realm _realm;
         private static Runner _runner;
 
@@ -36,18 +48,6 @@ namespace Emas
                 GameObject runnerObject = new GameObject("[Emas Runner]");
                 Object.DontDestroyOnLoad(runnerObject);
                 _runner = runnerObject.AddComponent<Runner>();
-            }
-        }
-
-        [DefaultExecutionOrder(-32000)]
-        private sealed class Runner : MonoBehaviour
-        {
-            private void Update()
-            {
-                if (_realm != null)
-                {
-                    _realm.Update();
-                }
             }
         }
 

@@ -119,19 +119,6 @@ namespace Emas
             return _partResolver.TryGet(this, out part);
         }
 
-        /// <summary>
-        /// Runs entity-specific behavior after all trait readers and before spatial projection.
-        /// </summary>
-        /// <remarks>
-        /// The realm calls this once per Update for each enabled, owned Ghost that is available or awaiting activation.
-        /// It may run before the root's first activation. Prepared or disappeared Ghosts do not update.
-        /// Startup finalization and view requests do not invoke this hook. Ordering between Ghost hooks is unspecified.
-        /// An exception stops the owning detector and removes its population, as with trait update failures.
-        /// </remarks>
-        protected virtual void OnUpdate()
-        {
-        }
-
         internal void Tick()
         {
             OnUpdate();
@@ -194,6 +181,19 @@ namespace Emas
             {
                 _variant = variantValue.Value;
             }
+        }
+
+        /// <summary>
+        /// Runs entity-specific behavior after all trait readers and before spatial projection.
+        /// </summary>
+        /// <remarks>
+        /// The realm calls this once per Update for each enabled, owned Ghost that is available or awaiting activation.
+        /// It may run before the root's first activation. Prepared or disappeared Ghosts do not update.
+        /// Startup finalization and view requests do not invoke this hook. Ordering between Ghost hooks is unspecified.
+        /// An exception stops the owning detector and removes its population, as with trait update failures.
+        /// </remarks>
+        protected virtual void OnUpdate()
+        {
         }
     }
 }

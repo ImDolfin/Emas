@@ -8,9 +8,10 @@ namespace Emas.Tests
     [RequireComponent(typeof(PipelinePositionTrait), typeof(PipelineArticulationTrait), typeof(PipelineActionTrait))]
     public sealed class PipelineGhost : Ghost
     {
-        internal int Articulation { get; set; }
         internal Action Updating;
         internal int UpdateCount;
+
+        internal int Articulation { get; set; }
 
         /// <summary>Runs consumer behavior in the realm's Ghost update phase.</summary>
         protected override void OnUpdate()

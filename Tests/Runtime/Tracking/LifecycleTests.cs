@@ -13,6 +13,82 @@ namespace Emas.Tests
     /// </summary>
     public sealed class LifecycleTests
     {
+        private interface IProbeData
+        {
+        }
+
+        private interface IViewOnly
+        {
+        }
+
+        private sealed class ProbeGhost : Ghost, IProbeData
+        {
+            internal int Value;
+        }
+
+        private sealed class ProbeView : MonoBehaviour, IViewOnly
+        {
+            internal static Action<ProbeView> Enabled;
+
+            private void OnEnable()
+            {
+                if (Enabled != null)
+                {
+                    Enabled(this);
+                }
+            }
+        }
+
+        private sealed class ProbeSource : PresenceDetector
+        {
+            internal Action Starting;
+            internal Action Updating;
+            internal int UpdateCount;
+            internal int StopCount;
+
+            internal ProbeGhost Publish(string id)
+            {
+                return Publish(id, First, 0);
+            }
+
+            internal ProbeGhost Publish(string id, Variant variant, int value)
+            {
+                ProbeGhost ghost = GetOrCreate<ProbeGhost>(id, Kind, variant);
+                ghost.Value = value;
+                return ghost;
+            }
+
+            internal void Queue(Action action)
+            {
+                Dispatch(action);
+            }
+
+            /// <summary>Runs the optional startup action, allowing lifecycle callbacks to reenter the Realm.</summary>
+            protected override void OnStart()
+            {
+                if (Starting != null)
+                {
+                    Starting();
+                }
+            }
+
+            /// <summary>Counts updates and runs the optional update action.</summary>
+            protected override void OnUpdate()
+            {
+                UpdateCount++;
+                if (Updating != null)
+                {
+                    Updating();
+                }
+            }
+
+            /// <summary>Counts completed shutdown callbacks.</summary>
+            protected override void OnStop()
+            {
+                StopCount++;
+            }
+        }
+
         private static readonly Kind Kind = new Kind("tests.lifecycle");
         private static readonly Variant First = new Variant("first");
         private static readonly Variant Second = new Variant("second");
@@ -536,82 +612,6 @@ namespace Emas.Tests
             _assets.Add(second);
             _assets.Add(blueprint);
             return blueprint;
-        }
-
-        private interface IProbeData
-        {
-        }
-
-        private interface IViewOnly
-        {
-        }
-
-        private sealed class ProbeGhost : Ghost, IProbeData
-        {
-            internal int Value;
-        }
-
-        private sealed class ProbeView : MonoBehaviour, IViewOnly
-        {
-            internal static Action<ProbeView> Enabled;
-
-            private void OnEnable()
-            {
-                if (Enabled != null)
-                {
-                    Enabled(this);
-                }
-            }
-        }
-
-        private sealed class ProbeSource : PresenceDetector
-        {
-            internal Action Starting;
-            internal Action Updating;
-            internal int UpdateCount;
-            internal int StopCount;
-
-            internal ProbeGhost Publish(string id)
-            {
-                return Publish(id, First, 0);
-            }
-
-            internal ProbeGhost Publish(string id, Variant variant, int value)
-            {
-                ProbeGhost ghost = GetOrCreate<ProbeGhost>(id, Kind, variant);
-                ghost.Value = value;
-                return ghost;
-            }
-
-            internal void Queue(Action action)
-            {
-                Dispatch(action);
-            }
-
-            /// <summary>Runs the optional startup action, allowing lifecycle callbacks to reenter the Realm.</summary>
-            protected override void OnStart()
-            {
-                if (Starting != null)
-                {
-                    Starting();
-                }
-            }
-
-            /// <summary>Counts updates and runs the optional update action.</summary>
-            protected override void OnUpdate()
-            {
-                UpdateCount++;
-                if (Updating != null)
-                {
-                    Updating();
-                }
-            }
-
-            /// <summary>Counts completed shutdown callbacks.</summary>
-            protected override void OnStop()
-            {
-                StopCount++;
-            }
         }
     }
 }

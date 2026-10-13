@@ -94,6 +94,14 @@ namespace Emas
             }
         }
 
+        private ManifestationBlueprint[] Blueprints
+        {
+            get
+            {
+                return _blueprints ?? new ManifestationBlueprint[0];
+            }
+        }
+
         /// <summary>
         /// Starts an isolated realm from the active child anchor and reference-frame settings.
         /// </summary>
@@ -265,14 +273,6 @@ namespace Emas
             }
 
             return null;
-        }
-
-        private ManifestationBlueprint[] Blueprints
-        {
-            get
-            {
-                return _blueprints ?? new ManifestationBlueprint[0];
-            }
         }
 
         internal void StartAnchor(AnchorSetup setup)

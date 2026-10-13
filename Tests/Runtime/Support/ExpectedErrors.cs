@@ -24,33 +24,6 @@ namespace Emas.Tests
             }
         }
 
-        internal static void Verify(Action operation, params string[] patterns)
-        {
-            if (operation == null)
-            {
-                throw new ArgumentNullException(nameof(operation));
-            }
-
-            if (patterns == null)
-            {
-                throw new ArgumentNullException(nameof(patterns));
-            }
-
-            ExpectedErrors capture = new ExpectedErrors(patterns);
-            Debug.unityLogger.logHandler = capture;
-            try
-            {
-                operation();
-            }
-            finally
-            {
-                // Restore logging before assertions or test output, even when the operation itself throws.
-                Debug.unityLogger.logHandler = capture._previous;
-            }
-
-            capture.VerifyComplete();
-        }
-
         /// <summary>
         /// Captures the next expected exception message or forwards the original log unchanged.
         /// </summary>
@@ -91,6 +64,33 @@ namespace Emas.Tests
             {
                 _previous.LogException(exception, context);
             }
+        }
+
+        internal static void Verify(Action operation, params string[] patterns)
+        {
+            if (operation == null)
+            {
+                throw new ArgumentNullException(nameof(operation));
+            }
+
+            if (patterns == null)
+            {
+                throw new ArgumentNullException(nameof(patterns));
+            }
+
+            ExpectedErrors capture = new ExpectedErrors(patterns);
+            Debug.unityLogger.logHandler = capture;
+            try
+            {
+                operation();
+            }
+            finally
+            {
+                // Restore logging before assertions or test output, even when the operation itself throws.
+                Debug.unityLogger.logHandler = capture._previous;
+            }
+
+            capture.VerifyComplete();
         }
 
         private bool TryCapture(string message)

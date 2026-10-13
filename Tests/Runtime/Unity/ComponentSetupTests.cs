@@ -10,6 +10,94 @@ namespace Emas.Tests
     /// <summary>Verifies scene adapters share the code-based detector and trait contracts.</summary>
     public sealed class ComponentSetupTests
     {
+        private sealed class Reading
+        {
+            internal string Value = "first";
+        }
+
+        private sealed class SceneDetector : PresenceDetectorComponent
+        {
+            internal Reading Source = new Reading();
+            internal Presence Current;
+            internal Action BeforeRead;
+            internal Action<Action> Captured;
+            internal int Starts;
+            internal int Stops;
+
+            internal int OwnedCount { get { return OwnedPresences.Count; } }
+
+            internal void Publish()
+            {
+                Current = Detect("one", TestKind, source: Source);
+            }
+
+            internal void Remove()
+            {
+                Disappear(TestKind, "one");
+            }
+
+            internal void Queue(Action action)
+            {
+                Dispatch(action);
+            }
+
+            /// <summary>Verifies bound ownership, captures the current dispatcher and publishes the initial reading.</summary>
+            protected override void OnStart()
+            {
+                Assert.That(Anchor, Is.Not.Null);
+                Assert.That(Realm, Is.SameAs(Anchor.Realm));
+                Starts++;
+                Captured = CaptureDispatcher();
+                Publish();
+            }
+
+            /// <summary>Runs the configured action before bound traits read the source.</summary>
+            protected override void OnUpdate()
+            {
+                BeforeRead?.Invoke();
+            }
+
+            /// <summary>Verifies ownership remains available during shutdown and counts the callback.</summary>
+            protected override void OnStop()
+            {
+                Assert.That(Anchor, Is.Not.Null);
+                Assert.That(Realm, Is.SameAs(Anchor.Realm));
+                Stops++;
+            }
+        }
+
+        private sealed class SceneInitializer : GhostInitializer
+        {
+            internal int Calls;
+            internal bool Fail;
+
+            /// <summary>Checks initializer ownership and binds the source value, or raises the configured mapping failure.</summary>
+            /// <param name="presence">The detected presence being initialized.</param>
+            /// <param name="ghost">The root created for the detected presence.</param>
+            protected override void Initialize(Presence presence, Ghost ghost)
+            {
+                Assert.That(Anchor, Is.Not.Null);
+                Assert.That(Realm, Is.SameAs(Anchor.Realm));
+                Assert.That(Anchor.Id, Is.EqualTo(presence.Key.AnchorId));
+                Assert.That(Realm.Ghosts, Does.Contain(ghost));
+                Calls++;
+                if (Fail)
+                {
+                    throw new InvalidOperationException("mapping failed");
+                }
+                ghost.GetComponent<TextTrait>().Bind(() => ((Reading)presence.Source).Value);
+            }
+        }
+
+        private sealed class CodeDetector : PresenceDetector
+        {
+            /// <summary>Detects the entity used to exercise authored initialization.</summary>
+            protected override void OnStart()
+            {
+                Detect("one", TestKind);
+            }
+        }
+
         private static readonly Kind TestKind = new Kind("components.entity");
         private readonly List<UnityEngine.Object> _objects = new List<UnityEngine.Object>();
         private RealmSetup _setup;
@@ -219,88 +307,6 @@ namespace Emas.Tests
             Assert.That(_source.Detector.LastErrorContext, Does.Contain("Detect"));
             Assert.That(_setup.Realm.Query().Count, Is.Zero);
             Assert.That(_source.Stops, Is.EqualTo(2));
-        }
-
-        private sealed class Reading
-        {
-            internal string Value = "first";
-        }
-
-        private sealed class SceneDetector : PresenceDetectorComponent
-        {
-            internal Reading Source = new Reading();
-            internal Presence Current;
-            internal Action BeforeRead;
-            internal Action<Action> Captured;
-            internal int Starts;
-            internal int Stops;
-            internal int OwnedCount { get { return OwnedPresences.Count; } }
-
-            /// <summary>Verifies bound ownership, captures the current dispatcher and publishes the initial reading.</summary>
-            protected override void OnStart()
-            {
-                Assert.That(Anchor, Is.Not.Null);
-                Assert.That(Realm, Is.SameAs(Anchor.Realm));
-                Starts++;
-                Captured = CaptureDispatcher();
-                Publish();
-            }
-            /// <summary>Runs the configured action before bound traits read the source.</summary>
-            protected override void OnUpdate()
-            {
-                BeforeRead?.Invoke();
-            }
-            /// <summary>Verifies ownership remains available during shutdown and counts the callback.</summary>
-            protected override void OnStop()
-            {
-                Assert.That(Anchor, Is.Not.Null);
-                Assert.That(Realm, Is.SameAs(Anchor.Realm));
-                Stops++;
-            }
-            internal void Publish()
-            {
-                Current = Detect("one", TestKind, source: Source);
-            }
-            internal void Remove()
-            {
-                Disappear(TestKind, "one");
-            }
-            internal void Queue(Action action)
-            {
-                Dispatch(action);
-            }
-        }
-
-        private sealed class SceneInitializer : GhostInitializer
-        {
-            internal int Calls;
-            internal bool Fail;
-
-            /// <summary>Checks initializer ownership and binds the source value, or raises the configured mapping failure.</summary>
-            /// <param name="presence">The detected presence being initialized.</param>
-            /// <param name="ghost">The root created for the detected presence.</param>
-            protected override void Initialize(Presence presence, Ghost ghost)
-            {
-                Assert.That(Anchor, Is.Not.Null);
-                Assert.That(Realm, Is.SameAs(Anchor.Realm));
-                Assert.That(Anchor.Id, Is.EqualTo(presence.Key.AnchorId));
-                Assert.That(Realm.Ghosts, Does.Contain(ghost));
-                Calls++;
-                if (Fail)
-                {
-                    throw new InvalidOperationException("mapping failed");
-                }
-                ghost.GetComponent<TextTrait>().Bind(() => ((Reading)presence.Source).Value);
-            }
-        }
-
-        private sealed class CodeDetector : PresenceDetector
-        {
-            /// <summary>Detects the entity used to exercise authored initialization.</summary>
-            protected override void OnStart()
-            {
-                Detect("one", TestKind);
-            }
         }
     }
 }

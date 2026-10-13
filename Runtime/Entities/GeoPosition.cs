@@ -18,6 +18,18 @@ namespace Emas
         [SerializeField] private double _longitudeDegrees;
         [SerializeField] private double _heightMeters;
 
+        /// <summary>Gets latitude in degrees north.</summary>
+        /// <value>The geodetic latitude from -90 degrees at the south pole to 90 degrees at the north pole.</value>
+        public double LatitudeDegrees => _latitudeDegrees;
+
+        /// <summary>Gets longitude in degrees east.</summary>
+        /// <value>The longitude in [-180, 180] degrees relative to the prime meridian.</value>
+        public double LongitudeDegrees => _longitudeDegrees;
+
+        /// <summary>Gets height above the WGS84 ellipsoid in metres.</summary>
+        /// <value>The finite ellipsoidal height; negative values lie below the ellipsoid.</value>
+        public double HeightMeters => _heightMeters;
+
         /// <summary>Creates a WGS84 position in degrees and ellipsoidal metres.</summary>
         /// <param name="latitudeDegrees">Latitude in [-90, 90], positive north.</param>
         /// <param name="longitudeDegrees">Longitude in [-180, 180], positive east.</param>
@@ -30,18 +42,6 @@ namespace Emas
             _longitudeDegrees = longitudeDegrees;
             _heightMeters = heightMeters;
         }
-
-        /// <summary>Gets latitude in degrees north.</summary>
-        /// <value>The geodetic latitude from -90 degrees at the south pole to 90 degrees at the north pole.</value>
-        public double LatitudeDegrees => _latitudeDegrees;
-
-        /// <summary>Gets longitude in degrees east.</summary>
-        /// <value>The longitude in [-180, 180] degrees relative to the prime meridian.</value>
-        public double LongitudeDegrees => _longitudeDegrees;
-
-        /// <summary>Gets height above the WGS84 ellipsoid in metres.</summary>
-        /// <value>The finite ellipsoidal height; negative values lie below the ellipsoid.</value>
-        public double HeightMeters => _heightMeters;
 
         /// <summary>Converts to Earth-centered, Earth-fixed XYZ metres without a local origin.</summary>
         /// <returns>ECEF metres: X through the equator at longitude zero, Y through 90 degrees east, Z through the north pole.</returns>

@@ -11,6 +11,33 @@ namespace Emas.Tests
     /// </summary>
     public sealed class LookupTests
     {
+        private sealed class TestGhost : Ghost
+        {
+        }
+
+        [RequireComponent(typeof(Spatial))]
+        private sealed class AttachedGhost : Ghost
+        {
+        }
+
+        private sealed class Probe : PresenceDetector
+        {
+            internal TestGhost Publish(string id, Kind? kind = null)
+            {
+                return GetOrCreate<TestGhost>(id, kind ?? Kind, null, "Shared name");
+            }
+
+            internal Presence PublishMetadata(string id, Kind kind)
+            {
+                return Detect(id, kind, name: "Shared name");
+            }
+
+            internal void Delete(string id)
+            {
+                Disappear(Kind, id);
+            }
+        }
+
         private static readonly Kind Kind = new Kind("lookup");
         private Realm _realm;
 
@@ -212,33 +239,6 @@ namespace Emas.Tests
                 Assert.That(found, Is.SameAs(second));
                 Assert.That(_realm.Ghosts, Is.EqualTo(new IGhost[] { first }));
                 Assert.That(other.Ghosts, Is.EqualTo(new IGhost[] { second }));
-            }
-        }
-
-        private sealed class TestGhost : Ghost
-        {
-        }
-
-        [RequireComponent(typeof(Spatial))]
-        private sealed class AttachedGhost : Ghost
-        {
-        }
-
-        private sealed class Probe : PresenceDetector
-        {
-            internal TestGhost Publish(string id, Kind? kind = null)
-            {
-                return GetOrCreate<TestGhost>(id, kind ?? Kind, null, "Shared name");
-            }
-
-            internal Presence PublishMetadata(string id, Kind kind)
-            {
-                return Detect(id, kind, name: "Shared name");
-            }
-
-            internal void Delete(string id)
-            {
-                Disappear(Kind, id);
             }
         }
     }
