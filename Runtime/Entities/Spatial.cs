@@ -453,7 +453,14 @@ namespace Emas
             {
                 Double3 position = prediction != null
                     ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion) : Position;
-                pose = new PresentationPose(position, Rotation);
+                Quaternion rotation = Rotation;
+                if (_history.NewestRotationTime.HasValue)
+                {
+                    double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
+                    _history.SampleRotation(age, settings.MaximumExtrapolation, out rotation);
+                }
+
+                pose = new PresentationPose(position, rotation);
             }
 
             // Keep direct (disabled) channels current too, so enabling a trait has fresh filter history.
@@ -474,7 +481,7 @@ namespace Emas
                 observation = position;
                 if (prediction != null)
                 {
-                    position = prediction.ProjectBuffered(this, clock, timestamp, settings, position, offset, preview, out motion);
+                    position = prediction.ProjectTimestamped(this, settings.MaximumExtrapolation, position, offset, preview, out motion);
                 }
             }
             else if (prediction != null)

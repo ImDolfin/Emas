@@ -1524,6 +1524,100 @@ namespace Emas.Tests
             Assert.That(spatial.PositionTime, Is.EqualTo(lastObservationTime));
         }
 
+        /// <summary>Coherent SDK maneuvers revise prediction lead immediately while position noise stays filtered, with immediate and buffered playback and a rotating followed reference.</summary>
+        [Test]
+        public void TimestampedPrediction_ManeuversPreserveMotionWithoutSmoothingThePredictionLead()
+        {
+            TestGhost reference = _source.Publish("maneuvering reference");
+            Spatial spatial = reference.gameObject.AddComponent<Spatial>();
+            Prediction prediction = reference.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.1f;
+            reference.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.3f;
+            ReferenceFrame frame = new ReferenceFrame { FollowedGhost = reference.Key };
+            _realm.ReferenceFrame = frame;
+            Spatial witness = _source.Publish("current clock").gameObject.AddComponent<Spatial>();
+            TestGhost target = _source.PublishPosition("stationary target", new Double3(30, 0, 0));
+            foreach (float delay in new[] { 0f, 0.1f })
+            {
+                _realm.ResetSpatialTime();
+                _realm.InterpolationDelay = delay;
+                spatial.SetCartesianPosition(default(Double3), new Timestamp(0, 0));
+                spatial.SetSourceRotation(Quaternion.identity, new Timestamp(0, 0));
+                prediction.SetCartesianVelocity(new Double3(100, 0, 0), new Timestamp(0, 0));
+                prediction.ClearAcceleration();
+                witness.SetCartesianPosition(default(Double3), new Timestamp(1, 0));
+                _realm.Update();
+                Assert.That(frame.Position.X, Is.EqualTo(10).Within(0.001));
+
+                // These positions and endpoint velocities describe one coherent accelerated segment.
+                // The new acceleration changes the future lead without changing measurement error.
+                Timestamp turnTime = new Timestamp(0, 20000000);
+                Double3 position = new Double3(1.8, 0.2, 0);
+                Double3 velocity = new Double3(80, 20, 0);
+                Double3 acceleration = new Double3(-1000, 1000, 0);
+                spatial.SetCartesianPosition(position, turnTime);
+                spatial.SetSourceRotation(Quaternion.Euler(25, 0, 35), turnTime);
+                prediction.SetCartesianVelocity(velocity, turnTime);
+                prediction.SetCartesianAcceleration(acceleration, turnTime);
+                _realm.Update();
+                double horizon = prediction.MaximumExtrapolation;
+                Double3 expected = position + velocity * horizon + acceleration * (0.5 * horizon * horizon);
+                Assert.That(Double3.Distance(frame.Position, expected), Is.LessThan(0.001),
+                    "A known maneuver must not acquire the position filter's half-life lag.");
+                Assert.That(frame.TryToUnityPosition(target.GetComponent<Spatial>().Position, out Vector3 expectedTarget), Is.True);
+                AssertPosition(target.transform.position, expectedTarget, 0.001f);
+                AssertPosition(reference.transform.position, frame.UnityPosition);
+                Assert.That(spatial.Position, Is.EqualTo(position));
+
+                Timestamp nextTime = new Timestamp(0, 40000000);
+                Double3 nextVelocity = new Double3(60, 40, 0);
+                Double3 cleanPosition = new Double3(3.2, 0.8, 0);
+                spatial.SetCartesianPosition(cleanPosition + new Double3(0, 0, 2), nextTime);
+                prediction.SetCartesianVelocity(nextVelocity, nextTime);
+                prediction.SetCartesianAcceleration(acceleration, nextTime);
+                _realm.Update();
+                Assert.That(frame.Position.Z, Is.LessThan(1), "Position noise must still be smoothed.");
+                expected = cleanPosition + nextVelocity * horizon + acceleration * (0.5 * horizon * horizon);
+                Assert.That(frame.Position.X, Is.EqualTo(expected.X).Within(0.001));
+                Assert.That(frame.Position.Y, Is.EqualTo(expected.Y).Within(0.001));
+            }
+        }
+
+        /// <summary>Independent timed motion is sampled at the position observation, and orientation gaps share the prediction cap with immediate or buffered playback.</summary>
+        [Test]
+        public void TimestampedPrediction_IndependentMotionAndOrientationShareThePoseTimeline()
+        {
+            TestGhost ghost = _source.Publish("independent channels");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.05f;
+            Spatial witness = _source.Publish("current clock").gameObject.AddComponent<Spatial>();
+            foreach (float delay in new[] { 0f, 0.01f })
+            {
+                _realm.ResetSpatialTime();
+                _realm.InterpolationDelay = delay;
+                spatial.SetCartesianPosition(default(Double3), new Timestamp(2, 0));
+                spatial.SetSourceRotation(Quaternion.identity, new Timestamp(1, 0));
+                spatial.SetSourceRotation(Quaternion.AngleAxis(40, new Vector3(1, 0, 1).normalized), new Timestamp(2, 0));
+                prediction.SetCartesianVelocity(default(Double3), new Timestamp(1, 0));
+                prediction.SetCartesianVelocity(new Double3(200, 0, 0), new Timestamp(3, 0));
+                prediction.SetCartesianAcceleration(new Double3(4000, 0, 0), new Timestamp(2, 10000000));
+                witness.SetCartesianPosition(default(Double3), new Timestamp(4, 0));
+                _realm.Update();
+                AssertPosition(ghost.transform.position, new Vector3(5, 0, 0), 0.001f);
+                AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(42, new Vector3(1, 0, 1).normalized));
+                Assert.That(prediction.Velocity, Is.EqualTo(new Double3(200, 0, 0)), "Later input remains accepted without replacing earlier motion.");
+                Assert.That(prediction.Acceleration, Is.EqualTo(new Double3(4000, 0, 0)));
+
+                prediction.enabled = false;
+                spatial.ResetPresentation();
+                _realm.Update();
+                AssertPosition(ghost.transform.position, Vector3.zero);
+                AssertRotation(ghost.transform.rotation, spatial.Rotation);
+                prediction.enabled = true;
+            }
+        }
+
         /// <summary>Prediction derives velocity from timed position intervals, uses the same predicted reference for every root, and clock reset accepts restarted SDK timestamps without stale estimates.</summary>
         [Test]
         public void TimestampedPrediction_EstimatesMotionAndRecoversFromClockRestart()

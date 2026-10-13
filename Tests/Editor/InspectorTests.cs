@@ -96,6 +96,8 @@ namespace Emas.Editor.Tests
             internal Timestamp ObservedTime;
             internal double LastProjectionStarted;
             private double _sampleSeconds = -1;
+            private double _headingDegrees;
+            private double _angularSpeed;
 
             /// <summary>Supplies identical WGS84 observations travelling east at 100 metres per second.</summary>
             /// <param name="seconds">Elapsed SDK time, advanced by at least one microsecond for each new sample.</param>
@@ -103,7 +105,21 @@ namespace Emas.Editor.Tests
             /// <param name="headingCorrection">An optional heading correction in degrees.</param>
             internal void Publish(double seconds, double correction = 0, double headingCorrection = 0)
             {
-                _sampleSeconds = Math.Max(seconds, _sampleSeconds + 0.000001);
+                double nextSample = Math.Max(seconds, _sampleSeconds + 0.000001);
+                double heading = 30 * nextSample + headingCorrection;
+                double turn = (heading - _headingDegrees) % 360;
+                if (turn > 180)
+                {
+                    turn -= 360;
+                }
+                else if (turn < -180)
+                {
+                    turn += 360;
+                }
+
+                _angularSpeed = _sampleSeconds >= 0 ? turn / (nextSample - _sampleSeconds) : 0;
+                _sampleSeconds = nextSample;
+                _headingDegrees = heading;
                 GeoPosition position = new GeoPosition(0, (100 * _sampleSeconds + correction) / 6378137.0 * 180.0 / Math.PI, 0);
                 ObservedPosition = position.ToEarthCentered();
                 ObservedTime = Timestamp.FromSeconds(_sampleSeconds);
@@ -117,6 +133,11 @@ namespace Emas.Editor.Tests
 
                 ObservedRotation = Edited.GetComponent<Spatial>().Rotation;
                 ObservedVelocity = Edited.GetComponent<Prediction>().Velocity;
+            }
+
+            internal Quaternion PredictedRotation(float horizon)
+            {
+                return Quaternion.AngleAxis((float)((_headingDegrees + _angularSpeed * horizon) % 360), Vector3.up);
             }
 
             /// <summary>Creates the edited origin, its property-controlled twin and a parent-local attached part.</summary>
@@ -801,9 +822,10 @@ namespace Emas.Editor.Tests
             Prediction prediction = source.Control.GetComponent<Prediction>();
             float positionHalfLife = smoothing.enabled ? smoothing.PositionHalfLife : 0;
             float rotationHalfLife = smoothing.enabled ? smoothing.RotationHalfLife : 0;
-            Double3 target = source.ObservedPosition + source.ObservedVelocity * (prediction.enabled ? prediction.MaximumExtrapolation : 0);
+            float horizon = prediction.enabled ? prediction.MaximumExtrapolation : 0;
+            Double3 target = source.ObservedPosition + source.ObservedVelocity * horizon;
             double positionError = Double3.Distance(position, target);
-            double rotationError = Quaternion.Angle(rotation, source.ObservedRotation);
+            double rotationError = Quaternion.Angle(rotation, source.PredictedRotation(horizon));
 
             edit();
             AssertLiveTuningUpdate(realm, source, context);
@@ -829,7 +851,7 @@ namespace Emas.Editor.Tests
                 "Live settings must converge to their new prediction behavior instead of retaining the previous offset.");
             if (checkRotation)
             {
-                Assert.That(Quaternion.Angle(realm.ReferenceFrame.Rotation, source.ObservedRotation), Is.LessThan(0.1),
+                Assert.That(Quaternion.Angle(realm.ReferenceFrame.Rotation, source.PredictedRotation(horizon)), Is.LessThan(0.1),
                     "Live rotation settings must converge without retaining a permanent presentation offset.");
             }
         }

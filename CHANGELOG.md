@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Apply changes in timestamped SDK prediction lead without position smoothing lag during known maneuvers, while retaining position-noise filtering and held-packet caps. Sample motion at the pose timestamp with immediate or buffered playback, preserving exact timestamp boundaries and excluding later acceleration. Extend timed orientation prediction to zero interpolation delay. Clarify geographic ENU versus aircraft body motion and cover pitch/roll reference projection, independent channel timing and live orientation tuning.
+
 - Preserve SDK motion assistance across newly accepted packets after the prediction horizon is reached, with immediate or buffered playback. Track the previously presented source time instead of reconstructing it from the newest packet; held packets still stop at the cap and live-tuning previews do not advance history. Cover delayed 560 kt input with zero interpolation delay, 0.3-second position half-lives and a 50 ms horizon, including sustained noisy geographic reference following.
 
 - Add optional shared timestamped pose buffering through `Realm.InterpolationDelay` and Realm Setup. Interpolate position and orientation on one timeline for the followed reference and its peers, then filter noise using SDK velocity from that playback time. Bound linear and angular prediction to gaps after buffered observations. Preserve burst samples, raw inputs, live tuning and clock-reset recovery. Configure Relative World with a 100 ms buffer and 50 ms gap horizon, and cover noisy 360 km/h motion, packet jitter and abrupt stops/restarts.

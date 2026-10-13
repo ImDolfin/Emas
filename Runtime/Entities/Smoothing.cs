@@ -7,7 +7,8 @@ namespace Emas
     /// <remarks>Author beside Spatial on the same root. Position and rotation have independent half-lives;
     /// no SDK binding is needed. Filters raw observations independently of Prediction. Supplied SDK velocity can
     /// compensate motion between timed observations even with extrapolation disabled. With prediction enabled,
-    /// also smooths its extrapolated result and advances between packets within its configured horizon.
+    /// advances between packets within its configured horizon. With timed SDK velocity, changes in predicted
+    /// position lead apply directly while position measurement error remains filtered.
     /// With a positive <see cref="Realm.InterpolationDelay"/>, filters buffered observations and uses SDK velocity
     /// from their playback time for continuous motion assistance, independently of the Prediction toggle.</remarks>
     [DisallowMultipleComponent]
@@ -30,6 +31,8 @@ namespace Emas
         /// Supplied SDK velocity in Prediction reduces motion lag even when Prediction is disabled; without it,
         /// ordinary position filtering produces speed-dependent lag. Raw input and timestamps are retained.
         /// Buffered playback samples that velocity at the same delayed time as the pose, preserving observed maneuvers.
+        /// With timed SDK velocity, changes in prediction lead bypass this half-life, including supplied acceleration
+        /// changes; position noise remains filtered. Live setting edits retain their separate transition.
         /// New timed observations retain motion assistance after earlier packets reach the prediction horizon;
         /// a held observation at its limit adds no further motion.
         /// Live edits retain history and blend the setting-induced displacement over 0.25 seconds of real time,

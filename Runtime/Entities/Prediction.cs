@@ -3,13 +3,15 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Optional Ghost trait that predicts position using timestamped observations and optional SDK motion.</summary>
+    /// <summary>Optional Ghost trait that predicts pose using timestamped observations and optional SDK linear motion.</summary>
     /// <remarks>Author beside Spatial; Smoothing is independently optional. ENU vectors use an explicit SDK tangent origin.
     /// Without SDK velocity, consecutive timestamped positions estimate it. No SDK binding is needed on this behavior trait.
     /// Disabling extrapolation retains supplied SDK motion for Smoothing between newly accepted timed observations;
     /// held observations do not advance from that motion while prediction is disabled. With a positive
     /// Realm.InterpolationDelay, pose and SDK motion are sampled on the shared buffered timeline. Prediction
-    /// only covers gaps after the newest buffered observation, including orientation from its last timed arc.
+    /// only covers gaps after the newest buffered observation. Timed orientation extends its last observed arc
+    /// with immediate or buffered playback. Timed SDK motion is sampled at the position observation's time;
+    /// changes to its predicted lead are applied without the position smoothing half-life.
     /// The horizon limits future extrapolation; newly accepted timed poses still contribute SDK motion to
     /// Smoothing after earlier packets have reached that limit.</remarks>
     [DisallowMultipleComponent]
@@ -33,9 +35,9 @@ namespace Emas
         private bool _hasEstimatedVelocity;
         private double? _projectionTime;
         private double _elapsed;
-        private Double3 _observationMotion;
         private Timestamp? _motionSampleTime;
         private double _motionOffset;
+        private Double3 _motionPrediction;
 
         /// <summary>Gets or sets the maximum extrapolated sample age in seconds; defaults to 0.15, independently of smoothing.</summary>
         /// <value>A finite, nonnegative horizon in seconds. Zero disables extrapolation, retaining SDK motion assistance for smoothing new observations.</value>
@@ -92,6 +94,8 @@ namespace Emas
         /// <param name="velocity">The finite local east/north/up velocity in metres per second.</param>
         /// <param name="origin">The SDK tangent origin defining the velocity axes; its height does not affect the conversion.</param>
         /// <param name="sampleTime">The original SDK observation time; older or duplicate timed velocity samples are ignored.</param>
+        /// <remarks>ENU axes are geographic tangent directions, independent of aircraft pitch or roll. Convert body-frame
+        /// velocity into those directions using the raw SDK attitude at the motion observation's time before calling this.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The origin or velocity is invalid, or conversion produces a nonfinite coordinate.</exception>
         public void SetGeographicVelocity(Double3 velocity, GeoPosition origin, Timestamp? sampleTime = null)
         {
@@ -134,6 +138,8 @@ namespace Emas
         /// <param name="acceleration">Finite east/north/up linear acceleration in metres per second squared.</param>
         /// <param name="origin">The SDK tangent origin defining the acceleration axes; its height does not affect the conversion.</param>
         /// <param name="sampleTime">The original SDK observation time; older or duplicate timed acceleration samples are ignored.</param>
+        /// <remarks>ENU axes are geographic tangent directions, independent of aircraft pitch or roll. Convert body-frame
+        /// linear acceleration using the raw SDK attitude at the motion observation's time; remove gravity before supplying it.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The origin or acceleration is invalid, or conversion produces a nonfinite coordinate.</exception>
         public void SetGeographicAcceleration(Double3 acceleration, GeoPosition origin, Timestamp? sampleTime = null)
         {
@@ -162,14 +168,13 @@ namespace Emas
             _previousTime = null;
             _hasEstimatedVelocity = false;
             _projectionTime = null;
-            _observationMotion = default(Double3);
             _motionSampleTime = null;
             _motionOffset = 0;
+            _motionPrediction = default(Double3);
         }
 
         internal void Prepare(Spatial spatial, double timestamp)
         {
-            _observationMotion = default(Double3);
             ObservePosition(spatial);
             _elapsed = _projectionTime.HasValue ? Math.Max(0d, timestamp - _projectionTime.Value) : 0d;
             _projectionTime = timestamp;
@@ -185,43 +190,33 @@ namespace Emas
                 return spatial.Position;
             }
 
-            if (!spatial.PositionTime.HasValue && !preview)
+            double age = clock.Age(spatial.PositionTime, spatial.PositionReceivedTime, timestamp);
+            if (spatial.PositionTime.HasValue)
+            {
+                return ProjectTimestamped(spatial, maximumExtrapolation,
+                    spatial.Position, age, preview, out motion);
+            }
+
+            if (!preview)
             {
                 _motionSampleTime = null;
+                _motionPrediction = default(Double3);
             }
 
             if (maximumExtrapolation <= 0 || (!_hasVelocity && !_hasEstimatedVelocity))
             {
-                motion = DirectMotion(spatial, clock, timestamp, preview);
                 return spatial.Position;
             }
 
-            double age = clock.Age(spatial.PositionTime, spatial.PositionReceivedTime, timestamp);
             double horizon = Math.Min(age, maximumExtrapolation);
-            // Estimated or untimed motion advances only inside this observation's remaining horizon.
-            // Timed SDK motion below instead tracks actual source endpoints across newly accepted packets.
+            // Untimed motion advances only inside this observation's remaining horizon.
             double step = Math.Min(_elapsed, Math.Max(0d, maximumExtrapolation - Math.Max(0d, age - _elapsed)));
             Double3 velocity = _hasVelocity ? _velocity : _estimatedVelocity;
             Double3 acceleration = _hasAcceleration ? _acceleration : default(Double3);
             try
             {
-                // Reconcile a separately timed velocity with the position observation's time.
-                if (_hasVelocity)
-                {
-                    velocity = VelocityAtObservation(spatial, acceleration);
-                }
-
                 Double3 predicted = spatial.Position + velocity * horizon + acceleration * (0.5d * horizon * horizon);
                 motion = velocity * step + acceleration * (step * (horizon - 0.5d * step));
-                if (spatial.PositionTime.HasValue)
-                {
-                    Double3 suppliedMotion = TimedMotion(spatial, clock, timestamp, 0, horizon, velocity, acceleration, preview);
-                    if (_hasVelocity)
-                    {
-                        motion = suppliedMotion;
-                    }
-                }
-
                 return predicted;
             }
             catch (ArgumentOutOfRangeException)
@@ -239,12 +234,12 @@ namespace Emas
             Reset();
         }
 
-        internal Double3 ProjectBuffered(Spatial spatial, SpatialClock clock, double timestamp,
-            PresentationSettings settings, Double3 position, double offset, bool preview, out Double3 motion)
+        internal Double3 ProjectTimestamped(Spatial spatial, float maximumExtrapolation,
+            Double3 position, double offset, bool preview, out Double3 motion)
         {
             motion = default(Double3);
-            bool suppliedVelocity = HasBufferedVelocityAt(spatial.History, spatial.History.NewestPositionTime.Value);
-            double maximum = suppliedVelocity || _hasEstimatedVelocity ? settings.MaximumExtrapolation : 0d;
+            bool suppliedVelocity = HasVelocityAt(spatial.History, spatial.PositionTime.Value);
+            double maximum = suppliedVelocity || _hasEstimatedVelocity ? maximumExtrapolation : 0d;
             double oldest = spatial.History.OldestPositionTime.Value.ElapsedSince(spatial.PositionTime.Value);
             double endpoint = Math.Max(oldest, Math.Min(offset, maximum));
 
@@ -256,13 +251,13 @@ namespace Emas
                 Double3 acceleration = default(Double3);
                 if (suppliedVelocity || (_hasEstimatedVelocity && horizon > 0))
                 {
-                    GapMotion(spatial.History, clock, timestamp - offset, settings.InterpolationDelay, suppliedVelocity,
+                    GapMotion(spatial.History, spatial.PositionTime.Value, suppliedVelocity,
                         out velocity, out acceleration);
                 }
 
-                motion = TimedMotion(spatial, clock, timestamp, settings.InterpolationDelay,
-                    endpoint, velocity, acceleration, preview);
-                return position + velocity * horizon + acceleration * (0.5d * horizon * horizon);
+                Double3 predicted = position + velocity * horizon + acceleration * (0.5d * horizon * horizon);
+                motion = TimedMotion(spatial, endpoint, velocity, acceleration, preview);
+                return predicted;
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -283,35 +278,21 @@ namespace Emas
             Reset();
         }
 
-        private Double3 DirectMotion(Spatial spatial, SpatialClock clock, double timestamp, bool preview)
-        {
-            if (!spatial.PositionTime.HasValue)
-            {
-                return _observationMotion;
-            }
-
-            try
-            {
-                Double3 acceleration = _hasAcceleration ? _acceleration : default(Double3);
-                Double3 velocity = _hasVelocity ? VelocityAtObservation(spatial, acceleration) : default(Double3);
-                return TimedMotion(spatial, clock, timestamp, 0, 0, velocity, acceleration, preview);
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return default(Double3);
-            }
-        }
-
-        private Double3 TimedMotion(Spatial spatial, SpatialClock clock, double timestamp,
-            double delay, double endpoint, Double3 gapVelocity, Double3 gapAcceleration, bool preview)
+        private Double3 TimedMotion(Spatial spatial, double endpoint,
+            Double3 gapVelocity, Double3 gapAcceleration, bool preview)
         {
             Timestamp sampleTime = spatial.PositionTime.Value;
             bool hasPrevious = _motionSampleTime.HasValue;
-            double start = hasPrevious ? _motionSampleTime.Value.ElapsedSince(sampleTime) + _motionOffset : endpoint;
+            double end = Math.Min(endpoint, 0d);
+            double start = hasPrevious ? _motionSampleTime.Value.ElapsedSince(sampleTime) + _motionOffset : end;
+            Double3 previousPrediction = _motionPrediction;
+            double horizon = Math.Max(endpoint, 0d);
+            Double3 prediction = gapVelocity * horizon + gapAcceleration * (0.5d * horizon * horizon);
             if (!preview)
             {
                 _motionSampleTime = sampleTime;
-                _motionOffset = endpoint;
+                _motionOffset = end;
+                _motionPrediction = prediction;
             }
 
             if (!_hasVelocity || !hasPrevious)
@@ -324,10 +305,10 @@ namespace Emas
                 // Before the first supplied velocity there is no known SDK motion to assist this filter.
                 double oldest = spatial.History.OldestVelocityTime.Value.ElapsedSince(sampleTime);
                 start = Math.Max(start, oldest);
-                endpoint = Math.Max(endpoint, oldest);
+                end = Math.Max(end, oldest);
             }
 
-            if (endpoint == start)
+            if (end == start && prediction == previousPrediction)
             {
                 // A held sample at its cap, or the reference's duplicate preparation, contributes no motion.
                 return default(Double3);
@@ -335,11 +316,10 @@ namespace Emas
 
             try
             {
-                // Retain the PREVIOUS bounded source instant. Clamping both endpoints against a new packet
-                // discards its legitimate motion once age exceeds the cap, producing speed-dependent filter lag.
-                double offset = clock.OffsetFrom(sampleTime, timestamp, delay);
-                return BufferedDisplacement(spatial.History, clock, timestamp - offset,
-                    delay, start, endpoint, gapVelocity, gapAcceleration);
+                // Integrate SDK motion between the observed playback poses, then replace the old future lead.
+                // Filtering a revised velocity/acceleration lead as position noise delays known maneuvers;
+                // differencing raw positions here would instead pass measurement noise straight through.
+                return IntegrateVelocity(spatial.History, sampleTime, start, end) + prediction - previousPrediction;
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -347,65 +327,31 @@ namespace Emas
             }
         }
 
-        private Double3 BufferedDisplacement(PoseHistory history, SpatialClock clock,
-            double observationTime, double delay, double start, double end, Double3 gapVelocity, Double3 gapAcceleration)
+        private void GapMotion(PoseHistory history, Timestamp observationTime,
+            bool suppliedVelocity, out Double3 velocity, out Double3 acceleration)
         {
-            if (start > end)
-            {
-                // Live delay/horizon changes can move the target time backwards. Preview and commit
-                // use the same previous endpoint, and the presentation transition blends this change.
-                return BufferedDisplacement(history, clock, observationTime, delay,
-                    end, start, gapVelocity, gapAcceleration) * -1d;
-            }
-
-            Double3 motion = default(Double3);
-            if (start < 0)
-            {
-                double recordedEnd = Math.Min(0d, end);
-                motion = IntegrateBufferedVelocity(history, clock, observationTime + start,
-                    observationTime + recordedEnd, delay);
-            }
-
-            if (end > 0)
-            {
-                // Freeze the gap model at the newest position, exactly as target prediction does.
-                // Later motion observations must not push the filter along a different trajectory.
-                motion += GapDisplacement(gapVelocity, gapAcceleration, Math.Max(0d, start), end);
-            }
-
-            return motion;
+            velocity = suppliedVelocity ? VelocityAt(history, observationTime) : _estimatedVelocity;
+            acceleration = AccelerationAt(history, observationTime);
         }
 
-        private static Double3 GapDisplacement(Double3 velocity, Double3 acceleration, double start, double end)
-        {
-            return velocity * (end - start) + acceleration * (0.5d * (end * end - start * start));
-        }
-
-        private void GapMotion(PoseHistory history, SpatialClock clock, double observationTime,
-            double delay, bool suppliedVelocity, out Double3 velocity, out Double3 acceleration)
-        {
-            velocity = suppliedVelocity ? BufferedVelocity(history, clock, observationTime, delay) : _estimatedVelocity;
-            acceleration = BufferedAcceleration(history, clock, observationTime, delay);
-        }
-
-        private bool HasBufferedVelocityAt(PoseHistory history, Timestamp time)
+        private bool HasVelocityAt(PoseHistory history, Timestamp time)
         {
             return _hasVelocity && (!history.OldestVelocityTime.HasValue
                 || time.CompareTo(history.OldestVelocityTime.Value) >= 0);
         }
 
-        private Double3 IntegrateBufferedVelocity(PoseHistory history, SpatialClock clock,
-            double startTime, double endTime, double delay)
+        private Double3 IntegrateVelocity(PoseHistory history, Timestamp observationTime, double start, double end)
         {
             if (!history.NewestVelocityTime.HasValue)
             {
-                return _velocity * (endTime - startTime);
+                return _velocity * (end - start);
             }
 
-            double start = clock.OffsetFrom(history.NewestVelocityTime.Value, startTime, delay);
-            double end = clock.OffsetFrom(history.NewestVelocityTime.Value, endTime, delay);
+            // Compare SDK timestamp parts directly. Reconstructing the observation through the local
+            // clock can place an exactly matching sample just before history and lose its motion.
+            double offset = observationTime.ElapsedSince(history.NewestVelocityTime.Value);
             Double3 motion;
-            if (!history.IntegrateVelocity(start, end, out motion))
+            if (!history.IntegrateVelocity(offset + start, offset + end, out motion))
             {
                 return default(Double3);
             }
@@ -416,39 +362,39 @@ namespace Emas
             return motion;
         }
 
-        private Double3 BufferedVelocity(PoseHistory history, SpatialClock clock, double timestamp, double delay)
+        private Double3 VelocityAt(PoseHistory history, Timestamp observationTime)
         {
             if (!history.NewestVelocityTime.HasValue)
             {
                 return _velocity;
             }
 
-            double offset = clock.OffsetFrom(history.NewestVelocityTime.Value, timestamp, delay);
+            double offset = observationTime.ElapsedSince(history.NewestVelocityTime.Value);
             Double3 velocity;
             history.SampleVelocity(offset, out velocity);
             if (offset > 0 && _hasAcceleration)
             {
-                velocity += BufferedAcceleration(history, clock, timestamp, delay) * offset;
+                velocity += AccelerationAt(history, observationTime) * offset;
             }
 
             return velocity;
         }
 
-        private Double3 BufferedAcceleration(PoseHistory history, SpatialClock clock, double timestamp, double delay)
+        private Double3 AccelerationAt(PoseHistory history, Timestamp observationTime)
         {
             if (!history.NewestAccelerationTime.HasValue)
             {
                 return _hasAcceleration ? _acceleration : default(Double3);
             }
 
-            if (clock.OffsetFrom(history.OldestAccelerationTime.Value, timestamp, delay) < 0)
+            if (observationTime.CompareTo(history.OldestAccelerationTime.Value) < 0)
             {
                 // A separately timed acceleration may describe a later maneuver that playback has not reached.
                 return default(Double3);
             }
 
             Double3 acceleration;
-            double offset = clock.OffsetFrom(history.NewestAccelerationTime.Value, timestamp, delay);
+            double offset = observationTime.ElapsedSince(history.NewestAccelerationTime.Value);
             history.SampleAcceleration(offset, out acceleration);
             return acceleration;
         }
@@ -466,7 +412,6 @@ namespace Emas
                 double elapsed = spatial.PositionTime.Value.ElapsedSince(_previousTime.Value);
                 if (elapsed > 0)
                 {
-                    _observationMotion = ObservationMotion(spatial, elapsed);
                     try
                     {
                         _estimatedVelocity = (spatial.Position - _previousPosition) * (1d / elapsed);
@@ -482,34 +427,6 @@ namespace Emas
             _positionVersion = spatial.PositionVersion;
             _previousPosition = spatial.Position;
             _previousTime = spatial.PositionTime;
-        }
-
-        private Double3 ObservationMotion(Spatial spatial, double elapsed)
-        {
-            if (!_hasVelocity)
-            {
-                // Position-derived velocity would copy observation noise straight into the filter's motion step.
-                return default(Double3);
-            }
-
-            try
-            {
-                Double3 acceleration = _hasAcceleration ? _acceleration : default(Double3);
-                Double3 velocity = VelocityAtObservation(spatial, acceleration);
-                // The supplied velocity belongs to the NEW sample. Integrate backwards over the interval
-                // between observations, rather than projecting either observation into the future.
-                return velocity * elapsed - acceleration * (0.5d * elapsed * elapsed);
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return default(Double3);
-            }
-        }
-
-        private Double3 VelocityAtObservation(Spatial spatial, Double3 acceleration)
-        {
-            return _hasAcceleration && spatial.PositionTime.HasValue && _velocityTime.HasValue
-                ? _velocity + acceleration * spatial.PositionTime.Value.ElapsedSince(_velocityTime.Value) : _velocity;
         }
 
         private void StoreVelocity(Double3 velocity, Timestamp? sampleTime)
