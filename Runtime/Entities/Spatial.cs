@@ -336,7 +336,7 @@ namespace Emas
         }
 
         // Compose optional behavior only after all SDK readers, before capturing the shared reference.
-        internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay)
+        internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
         {
             if (!enabled || AttachedTo.HasValue)
             {
@@ -355,10 +355,10 @@ namespace Emas
             PresentationPose previous = default(PresentationPose);
             if (_tuning.Changed(settings))
             {
-                previous = PreparePose(clock, timestamp, prediction, smoothing, _tuning.Settings, true, out _);
+                previous = PreparePose(clock, timestamp, prediction, smoothing, sourceAxes, _tuning.Settings, true, out _);
             }
 
-            PresentationPose current = PreparePose(clock, timestamp, prediction, smoothing, settings, false, out _presentationObservation);
+            PresentationPose current = PreparePose(clock, timestamp, prediction, smoothing, sourceAxes, settings, false, out _presentationObservation);
             current = _tuning.Apply(previous, current, settings, timestamp);
             _presentationPosition = current.Position;
             _presentationRotation = current.Rotation;
@@ -440,14 +440,14 @@ namespace Emas
         }
 
         private PresentationPose PreparePose(SpatialClock clock, double timestamp, Prediction prediction,
-            Smoothing smoothing, PresentationSettings settings, bool preview, out Double3 observation)
+            Smoothing smoothing, CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 observation)
         {
             Double3 motion = default(Double3);
             observation = Position;
             PresentationPose pose;
             if (settings.InterpolationDelay > 0)
             {
-                pose = BufferedPose(clock, timestamp, prediction, settings, preview, out motion, out observation);
+                pose = BufferedPose(clock, timestamp, prediction, sourceAxes, settings, preview, out motion, out observation);
             }
             else
             {
@@ -460,6 +460,12 @@ namespace Emas
                     _history.SampleRotation(age, settings.MaximumExtrapolation, out rotation);
                 }
 
+                if (prediction != null && HasRotation)
+                {
+                    double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
+                    rotation = prediction.ProjectRotation(this, rotation, age, settings.MaximumExtrapolation, sourceAxes);
+                }
+
                 pose = new PresentationPose(position, rotation);
             }
 
@@ -468,7 +474,7 @@ namespace Emas
         }
 
         private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Prediction prediction,
-            PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
+            CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
         {
             Double3 position = Position;
             Quaternion rotation = Rotation;
@@ -494,6 +500,15 @@ namespace Emas
             {
                 double offset = clock.OffsetFrom(_history.NewestRotationTime.Value, timestamp, settings.InterpolationDelay);
                 _history.SampleRotation(offset, settings.MaximumExtrapolation, out rotation);
+                if (prediction != null)
+                {
+                    rotation = prediction.ProjectRotation(this, rotation, offset, settings.MaximumExtrapolation, sourceAxes);
+                }
+            }
+            else if (prediction != null && HasRotation)
+            {
+                double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
+                rotation = prediction.ProjectRotation(this, rotation, age, settings.MaximumExtrapolation, sourceAxes);
             }
 
             return new PresentationPose(position, rotation);

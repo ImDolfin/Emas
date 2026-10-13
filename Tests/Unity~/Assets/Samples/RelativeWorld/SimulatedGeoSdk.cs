@@ -103,7 +103,8 @@ namespace Emas.RelativeWorld
                         _releasedFeet.Add(reading.Id, new GeoPoseReading(reading.Id, reading.Label, reading.Kind,
                             reading.Variant, reading.LatitudeDegrees, reading.LongitudeDegrees, reading.AltitudeMeters,
                             reading.YawDegrees, reading.PitchDegrees, reading.RollDegrees,
-                            eastNorthUpVelocity: default(Double3), sampleTime: reading.SampleTime));
+                            eastNorthUpVelocity: default(Double3), sampleTime: reading.SampleTime,
+                            bodyAngularVelocity: default(Double3)));
                     }
                 }
             }
@@ -195,10 +196,16 @@ namespace Emas.RelativeWorld
                 1.5, north, 0.0, new Double3(0.0, _speedMetersPerSecond, 0.0));
 
             double orbit = sampleTime * OrbitRadiansPerSecond;
+            const double birdRollDegrees = -20.0;
+            double rollRadians = birdRollDegrees * Math.PI / 180.0;
+            // Constant heading rate at a bank has both body pitch and yaw components. Body rates
+            // therefore differ from the named Euler-angle derivatives even with zero pitch.
+            Double3 birdAngularVelocity = new Double3(0,
+                -OrbitRadiansPerSecond * Math.Sin(rollRadians), -OrbitRadiansPerSecond * Math.Cos(rollRadians));
             GeoPoseReading bird = CreateReading(sampleTime, "bird", "Circling bird", GeoSource.BirdKind, new Variant("bird"),
                 1.5 + 4.0 * Math.Cos(orbit), north + 4.0 * Math.Sin(orbit),
                 -orbit * 180.0 / Math.PI, new Double3(-4.0 * OrbitRadiansPerSecond * Math.Sin(orbit),
-                    _speedMetersPerSecond + 4.0 * OrbitRadiansPerSecond * Math.Cos(orbit), 0.0), 3.2, -20.0);
+                    _speedMetersPerSecond + 4.0 * OrbitRadiansPerSecond * Math.Cos(orbit), 0.0), 3.2, birdRollDegrees, birdAngularVelocity);
             // Parts are reported before their parent to demonstrate attachment by identity rather than a live root.
             AddFoot(captured, "bird-left-foot", "Bird left foot", bird, new Vector3(0.02f, -0.085f, 0.09f));
             AddFoot(captured, "bird-right-foot", "Bird right foot", bird, new Vector3(0.02f, 0.085f, 0.09f));
@@ -238,7 +245,8 @@ namespace Emas.RelativeWorld
                 captured.Add(id, new GeoPoseReading(id, label, GeoSource.BirdFootKind, released.Variant,
                     released.LatitudeDegrees, released.LongitudeDegrees, released.AltitudeMeters,
                     released.YawDegrees, released.PitchDegrees, released.RollDegrees,
-                    eastNorthUpVelocity: default(Double3), sampleTime: bird.SampleTime));
+                    eastNorthUpVelocity: default(Double3), sampleTime: bird.SampleTime,
+                    bodyAngularVelocity: default(Double3)));
                 return;
             }
 
@@ -264,11 +272,13 @@ namespace Emas.RelativeWorld
             captured.Add(id, new GeoPoseReading(id, label, GeoSource.BirdFootKind, new Variant("foot"),
                 position.LatitudeDegrees, position.LongitudeDegrees, position.HeightMeters,
                 bird.YawDegrees, bird.PitchDegrees, bird.RollDegrees, bird.Id, bird.Kind, bodyOffset,
-                eastNorthUpVelocity: bird.EastNorthUpVelocity, sampleTime: bird.SampleTime));
+                eastNorthUpVelocity: bird.EastNorthUpVelocity, sampleTime: bird.SampleTime,
+                bodyAngularVelocity: bird.BodyAngularVelocity));
         }
 
         private GeoPoseReading CreateReading(double sampleTime, string id, string label, Kind kind, Variant variant,
-            double east, double north, double yaw, Double3 velocity, double up = 0.0, double roll = 0.0)
+            double east, double north, double yaw, Double3 velocity, double up = 0.0, double roll = 0.0,
+            Double3? bodyAngularVelocity = null)
         {
             if (_simulateJitterAndDelay)
             {
@@ -294,7 +304,8 @@ namespace Emas.RelativeWorld
                 * Math.Cos(latitude * radiansPerDegree)) / radiansPerDegree;
             double altitude = roadHeight + up;
             return new GeoPoseReading(id, label, kind, variant, latitude, longitude, altitude, yaw, 0.0, roll,
-                eastNorthUpVelocity: velocity, sampleTime: Timestamp.FromSeconds(sampleTime));
+                eastNorthUpVelocity: velocity, sampleTime: Timestamp.FromSeconds(sampleTime),
+                bodyAngularVelocity: bodyAngularVelocity ?? default(Double3));
         }
 
         private void ApplyObservationNoise(double sampleTime, string id, ref double east, ref double north, ref double yaw)

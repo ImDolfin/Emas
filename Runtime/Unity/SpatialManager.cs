@@ -109,7 +109,7 @@ namespace Emas
 
                 if (spatial != null)
                 {
-                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay);
+                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay, frame.Coordinates);
                 }
 
                 frame.UpdateFollowedPose(spatial);
@@ -120,14 +120,14 @@ namespace Emas
                 : frame.Capture();
         }
 
-        private void PreparePresentation(Record record, double timestamp, float interpolationDelay)
+        private void PreparePresentation(Record record, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
         {
             if (CanProject(record))
             {
                 Spatial spatial = record.Ghost.GetComponent<Spatial>();
                 if (spatial != null)
                 {
-                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay);
+                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay, sourceAxes);
                 }
             }
         }
@@ -183,7 +183,7 @@ namespace Emas
             for (int index = _chain.Count - 1; index >= 0 && !_realm.IsDisposed; index--)
             {
                 Record item = _chain[index];
-                PreparePresentation(item, timestamp, interpolationDelay);
+                PreparePresentation(item, timestamp, interpolationDelay, projection.Coordinates);
                 Project(item, projection);
                 _projected.Add(item);
             }

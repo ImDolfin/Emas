@@ -9,7 +9,7 @@ Open `RelativeWorld.unity` and press Play. The green origin drives north at **10
 - **Environment / Road Motion** references that Realm Setup and the authored road markings. It scrolls them using the reference frame's actual northward travel, wrapping the repeating five-metre pattern.
 - `Manifestations/RelativeBird.asset` maps `relative.bird` to the saved `BirdView.prefab` through its inline `bird` variant. It reuses the same spatial Ghost root and traits as the cars.
 - `Manifestations/RelativeBirdFoot.asset` maps `relative.bird-foot` to `BirdFootView.prefab`. Its `RelativeBirdFoot.prefab` root adds `GeoAttachmentTrait` beside the absolute position and orientation traits.
-- `Manifestations/RelativeCar.asset` selects a Ghost root with `Spatial`, position/orientation/velocity readers, `Prediction` and `Smoothing`. Its inline `origin` and `target` variant rows select the green driving and orange parked views. The bird shares this root prefab; the foot root has the same behaviors plus attachment handling.
+- `Manifestations/RelativeCar.asset` selects a Ghost root with `Spatial`, position/orientation/velocity/angular-velocity readers, `Prediction` and `Smoothing`. Its inline `origin` and `target` variant rows select the green driving and orange parked views. The bird shares this root prefab; the foot root has the same behaviors plus attachment handling.
 
 The road, markings, camera, light, tracking prefab and vehicle prefabs are saved assets or scene objects. No bootstrap creates the scene. Disable and re-enable Tracking to restart the drive. Restarting just Geo Source also resets the Realm's spatial clock before publishing from the restarted SDK; this sample has one shared SDK clock.
 
@@ -51,6 +51,19 @@ Measure noise and motion cadence separately when comparing settings. Positional 
 ## Timestamped observations
 
 `GeoPoseReading.SampleTime` preserves the shared SDK seconds/nanoseconds time through position and orientation Traits; the mock SDK supplies elapsed observation time. The Realm aligns that clock from arrivals and uses one estimated presentation time across entities, without assuming access to SDK “now” or knowing absolute transport latency. Optional `GeoVelocityTrait` and `GeoAccelerationTrait` require Prediction; `GeoInitializer` binds each when present. Their nullable ENU vectors use X east, Y north, Z up, in metres per second and metres per second squared, at the observation's WGS84 location. Acceleration must have gravity removed. Prediction can also derive velocity from consecutive timestamped positions when SDK velocity is unavailable. Call `Spatial.ResetPresentation()` for teleports and `Realm.ResetSpatialTime()` before publishing from a restarted SDK clock. See [spatial behavior and tuning](../../Documentation~/Spatial.md#choose-spatial-behavior-per-ghost).
+
+`GeoAngularVelocityTrait` is enabled on both Ghost root prefabs and bound by `GeoInitializer` when present.
+Its nullable `GeoPoseReading.BodyAngularVelocity` contains true aircraft **X-forward, Y-right, Z-down** body
+rates in **radians per second**, using the same original `SampleTime` as the pose. It calls
+`Prediction.SetBodyAngularVelocity`; unavailable input clears that channel and restores rotation-history
+prediction. Supplying zero holds attitude through a gap even when earlier noisy orientations suggest spinning.
+
+The fake SDK supplies analytical body rates for the circling bird and zero rates for the straight-driving
+origin, parked cars and detached feet. At the bird's constant bank, its heading rate produces both body pitch
+and body yaw components: `(0, headingRate * sin(bank), headingRate * cos(bank))`. Those body components differ
+from its Euler-angle derivatives. Attached feet receive the bird's rate but inherit the parent's processed
+pose; they resume their own cached absolute attitude and zero rate on release. Angular prediction uses the
+same short gap horizon, while rotation smoothing retains its independently authored half-life.
 
 `SimulatedGeoSdk` supplies complete WGS84 snapshots: latitude/longitude in degrees, ellipsoidal altitude in metres and attitude in degrees. The origin advances along a level road. Parking bays are fixed 80 m apart, alternating left and right; the first is 24 m ahead. The SDK includes parked cars from 38 m ahead to 22 m behind the origin, leaving gaps between encounters. Each bay has a stable `parked-N` identity and a fixed geographic pose.
 

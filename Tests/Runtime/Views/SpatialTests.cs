@@ -1618,6 +1618,134 @@ namespace Emas.Tests
             }
         }
 
+        /// <summary>One timed attitude and supplied aircraft body rates predict pitch and roll with the same horizon in Cartesian, geographic and body-to-ECEF rotation conventions.</summary>
+        [Test]
+        public void BodyAngularVelocity_PredictsSingleAttitudesAcrossRotationConventions()
+        {
+            TestGhost ghost = _source.Publish("angular input");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.2f;
+            Spatial witness = _source.Publish("current angular clock").gameObject.AddComponent<Spatial>();
+            Timestamp sampleTime = new Timestamp(2, 0);
+            Quaternion attitude = Quaternion.Euler(15, 25, -20);
+            foreach (CoordinateSystem coordinates in new[] { CoordinateSystem.Unity, CoordinateSystem.NorthEastDown })
+            {
+                _realm.ResetSpatialTime();
+                ReferenceFrame frame = new ReferenceFrame { Coordinates = coordinates, Position = default(Double3) };
+                _realm.ReferenceFrame = frame;
+                spatial.SetCartesianPosition(default(Double3), sampleTime);
+                spatial.SetSourceRotation(frame.ToSimulationRotation(attitude), sampleTime);
+                prediction.SetBodyAngularVelocity(new Double3(0, Math.PI / 2, 0), sampleTime: sampleTime);
+                witness.SetCartesianPosition(default(Double3), new Timestamp(3, 0));
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, attitude * Quaternion.AngleAxis(-18, Vector3.right));
+                Assert.That(prediction.AngularVelocity, Is.EqualTo(new Double3(-Math.PI / 2, 0, 0)));
+                Assert.That(prediction.HasAngularVelocity, Is.True);
+                AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+            }
+
+            GeoPosition origin = new GeoPosition(52, 13, 40);
+            foreach (bool earthCentered in new[] { false, true })
+            {
+                _realm.ResetSpatialTime();
+                ReferenceFrame frame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = origin };
+                _realm.ReferenceFrame = frame;
+                spatial.SetGeographicPosition(origin, sampleTime);
+                if (earthCentered)
+                {
+                    spatial.SetEarthCenteredRotation(frame.ToEarthCenteredRotation(attitude), sampleTime: sampleTime);
+                }
+                else
+                {
+                    spatial.SetGeographicRotation(25, 15, -20, sampleTime);
+                    attitude = spatial.Rotation;
+                }
+
+                prediction.SetBodyAngularVelocity(new Double3(Math.PI / 2, 0, 0), sampleTime: sampleTime);
+                witness.SetGeographicPosition(origin, new Timestamp(3, 0));
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, attitude * Quaternion.AngleAxis(-18, Vector3.forward));
+                AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+            }
+        }
+
+        /// <summary>Angular samples use the rotation's own time with immediate or buffered playback, reject stale rates, allow zero overrides and clear back to rotation-history estimation after recovery.</summary>
+        [Test]
+        public void BodyAngularVelocity_UsesRotationTimeAndRecoversAfterClearingAndClockReset()
+        {
+            TestGhost ghost = _source.Publish("angular ordering");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.05f;
+            Spatial witness = _source.Publish("current angular clock").gameObject.AddComponent<Spatial>();
+            foreach (float delay in new[] { 0f, 0.1f })
+            {
+                _realm.ResetSpatialTime();
+                _realm.InterpolationDelay = delay;
+                spatial.SetCartesianPosition(default(Double3), new Timestamp(2, 0));
+                spatial.SetSourceRotation(Quaternion.identity, new Timestamp(1, 0));
+                Quaternion rotation = Quaternion.AngleAxis(40, Vector3.forward);
+                spatial.SetSourceRotation(rotation, new Timestamp(2, 0));
+                prediction.SetBodyAngularVelocity(new Double3(0, 0, Math.PI), sampleTime: new Timestamp(1, 0));
+                prediction.SetBodyAngularVelocity(default(Double3), sampleTime: new Timestamp(3, 0));
+                prediction.SetBodyAngularVelocity(new Double3(100, 0, 0), sampleTime: new Timestamp(2, 0));
+                prediction.SetBodyAngularVelocity(new Double3(100, 0, 0), sampleTime: new Timestamp(3, 0));
+                witness.SetCartesianPosition(default(Double3), new Timestamp(4, 0));
+                _realm.Update();
+                Assert.That(prediction.AngularVelocity, Is.EqualTo(default(Double3)), "Older and duplicate samples cannot replace the accepted raw rate.");
+                AssertRotation(ghost.transform.rotation, rotation * Quaternion.AngleAxis(4.5f, Vector3.up));
+                AssertRotation(spatial.Rotation, rotation);
+
+                prediction.ClearAngularVelocity();
+                _realm.Update();
+                Assert.That(prediction.HasAngularVelocity, Is.False);
+                AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(42, Vector3.forward));
+                prediction.SetBodyAngularVelocity(default(Double3), sampleTime: new Timestamp(2, 10000000));
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(42, Vector3.forward));
+                prediction.ClearAngularVelocity();
+                prediction.SetBodyAngularVelocity(default(Double3), sampleTime: new Timestamp(2, 0));
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, rotation);
+                Assert.That(prediction.HasAngularVelocity, Is.True, "Supplied zero motion overrides the observed arc.");
+                Assert.Throws<ArgumentException>(() => prediction.SetBodyAngularVelocity(new Double3(1, 0, 0), default(CoordinateSystem)));
+                Assert.That(prediction.AngularVelocity, Is.EqualTo(default(Double3)), "Invalid axes leave accepted motion intact.");
+
+                prediction.SetBodyAngularVelocity(new Double3(0, Math.PI / 2, 0), CoordinateSystem.Unity);
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, rotation * Quaternion.AngleAxis(4.5f, Vector3.up));
+                prediction.enabled = false;
+                spatial.ResetPresentation();
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, rotation);
+                prediction.enabled = true;
+
+                _realm.ResetSpatialTime();
+                spatial.SetCartesianPosition(default(Double3), new Timestamp(0, 0));
+                spatial.SetSourceRotation(Quaternion.identity, new Timestamp(0, 0));
+                prediction.SetBodyAngularVelocity(new Double3(0, 0, Math.PI / 2), sampleTime: new Timestamp(0, 0));
+                witness.SetCartesianPosition(default(Double3), new Timestamp(1, 0));
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(4.5f, Vector3.up));
+                prediction.Reset();
+                _realm.Update();
+                Assert.That(prediction.HasAngularVelocity, Is.True, "Presentation resets retain supplied angular motion.");
+                AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(4.5f, Vector3.up));
+                prediction.MaximumExtrapolation = 2;
+                prediction.SetBodyAngularVelocity(new Double3(1e308, 1e308, 1e308));
+                witness.SetCartesianPosition(default(Double3), new Timestamp(4, 0));
+                spatial.ResetPresentation();
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, Quaternion.identity);
+                prediction.MaximumExtrapolation = 0.05f;
+                prediction.SetBodyAngularVelocity(new Double3(0, 0, Math.PI / 2));
+                spatial.ResetPresentation();
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(4.5f, Vector3.up));
+            }
+        }
+
         /// <summary>Prediction derives velocity from timed position intervals, uses the same predicted reference for every root, and clock reset accepts restarted SDK timestamps without stale estimates.</summary>
         [Test]
         public void TimestampedPrediction_EstimatesMotionAndRecoversFromClockRestart()

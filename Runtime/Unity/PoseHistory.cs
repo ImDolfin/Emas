@@ -220,6 +220,7 @@ namespace Emas
         private readonly VectorHistory _positions = new VectorHistory();
         private readonly VectorHistory _velocities = new VectorHistory();
         private readonly VectorHistory _accelerations = new VectorHistory();
+        private readonly VectorHistory _angularVelocities = new VectorHistory();
         private readonly RotationSample[] _rotations = new RotationSample[Capacity];
         private int _rotationStart;
         private int _rotationCount;
@@ -238,6 +239,10 @@ namespace Emas
         internal Timestamp? NewestAccelerationTime => _accelerations.NewestTime;
 
         internal Timestamp? OldestAccelerationTime => _accelerations.OldestTime;
+
+        internal Timestamp? NewestAngularVelocityTime => _angularVelocities.NewestTime;
+
+        internal Timestamp? OldestAngularVelocityTime => _angularVelocities.OldestTime;
 
         internal void AddPosition(Double3 position, Timestamp time)
         {
@@ -273,6 +278,11 @@ namespace Emas
             _accelerations.Add(acceleration, time);
         }
 
+        internal void AddAngularVelocity(Double3 angularVelocity, Timestamp time)
+        {
+            _angularVelocities.Add(angularVelocity, time);
+        }
+
         // Offsets are playback time minus this channel's newest timestamp. Negative values sample
         // recorded history; positive values hold the latest vector for the caller's bounded prediction.
         internal bool SamplePosition(double offsetFromNewest, out Double3 position)
@@ -295,6 +305,17 @@ namespace Emas
         internal bool SampleAcceleration(double offsetFromNewest, out Double3 acceleration)
         {
             return _accelerations.Sample(offsetFromNewest, out acceleration);
+        }
+
+        internal bool SampleAngularVelocity(Timestamp time, out Double3 angularVelocity)
+        {
+            angularVelocity = default(Double3);
+            if (!_angularVelocities.OldestTime.HasValue || time.CompareTo(_angularVelocities.OldestTime.Value) < 0)
+            {
+                return false;
+            }
+
+            return _angularVelocities.Sample(time.ElapsedSince(_angularVelocities.NewestTime.Value), out angularVelocity);
         }
 
         internal bool SampleRotation(double offsetFromNewest, double maximumExtrapolation, out Quaternion rotation)
@@ -367,12 +388,18 @@ namespace Emas
             _accelerations.Clear();
         }
 
+        internal void ClearAngularVelocity()
+        {
+            _angularVelocities.Clear();
+        }
+
         internal void Clear()
         {
             ClearPosition();
             ClearRotation();
             ClearVelocity();
             ClearAcceleration();
+            ClearAngularVelocity();
         }
 
         private Quaternion ExtrapolateRotation(RotationSample newest, double offset, double maximumExtrapolation)

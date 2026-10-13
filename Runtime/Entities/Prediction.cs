@@ -3,14 +3,15 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Optional Ghost trait that predicts pose using timestamped observations and optional SDK linear motion.</summary>
+    /// <summary>Optional Ghost trait that predicts pose using timestamped observations and optional SDK linear and angular motion.</summary>
     /// <remarks>Author beside Spatial; Smoothing is independently optional. ENU vectors use an explicit SDK tangent origin.
     /// Without SDK velocity, consecutive timestamped positions estimate it. No SDK binding is needed on this behavior trait.
     /// Disabling extrapolation retains supplied SDK motion for Smoothing between newly accepted timed observations;
     /// held observations do not advance from that motion while prediction is disabled. With a positive
     /// Realm.InterpolationDelay, pose and SDK motion are sampled on the shared buffered timeline. Prediction
-    /// only covers gaps after the newest buffered observation. Timed orientation extends its last observed arc
-    /// with immediate or buffered playback. Timed SDK motion is sampled at the position observation's time;
+    /// only covers gaps after the newest buffered observation. Orientation uses supplied body angular velocity,
+    /// or extends its last timed arc when unavailable, with immediate or buffered playback.
+    /// Timed SDK linear motion is sampled at the position observation's time;
     /// changes to its predicted lead are applied without the position smoothing half-life.
     /// The horizon limits future extrapolation; newly accepted timed poses still contribute SDK motion to
     /// Smoothing after earlier packets have reached that limit.</remarks>
@@ -24,10 +25,13 @@ namespace Emas
         [SerializeField] private float _maximumExtrapolation = 0.15f;
         private Double3 _velocity;
         private Double3 _acceleration;
+        private Double3 _angularVelocity;
         private bool _hasVelocity;
         private bool _hasAcceleration;
+        private bool _hasAngularVelocity;
         private Timestamp? _velocityTime;
         private Timestamp? _accelerationTime;
+        private Timestamp? _angularVelocityTime;
         private long _positionVersion = -1;
         private Double3 _previousPosition;
         private Timestamp? _previousTime;
@@ -71,6 +75,15 @@ namespace Emas
         /// <summary>Gets whether optional SDK linear acceleration is available.</summary>
         /// <value>True after an acceleration setter accepts a sample, until acceleration is cleared.</value>
         public bool HasAcceleration => _hasAcceleration;
+
+        /// <summary>Gets the last supplied body angular velocity after conversion to Unity body quaternion axes, in radians per second.</summary>
+        /// <value>X is body right, Y up and Z forward, with signs matching Quaternion.AngleAxis; meaningful while HasAngularVelocity is true.</value>
+        /// <remarks>With the default aircraft input axes, this is (-pitch rate, yaw rate, -roll rate). These are true body rates, not Euler-angle derivatives.</remarks>
+        public Double3 AngularVelocity => _angularVelocity;
+
+        /// <summary>Gets whether optional SDK body angular velocity is available for orientation prediction.</summary>
+        /// <value>True after an angular velocity setter accepts a sample, until the channel is cleared or unbound.</value>
+        public bool HasAngularVelocity => _hasAngularVelocity;
 
         /// <summary>Supplies velocity in shared Cartesian source units per second; older or duplicate timed observations are ignored.</summary>
         /// <param name="velocity">Finite velocity in the same source axes and distance units as the Cartesian position.</param>
@@ -160,6 +173,58 @@ namespace Emas
             }
         }
 
+        /// <summary>Supplies optional body angular velocity in radians per second for bounded orientation prediction.</summary>
+        /// <param name="angularVelocity">Finite true body angular rates in the specified SDK axes; these are not yaw/pitch/roll Euler-angle derivatives.</param>
+        /// <param name="bodyAxes">Signed SDK body axes mapped to model right/up/forward. Null uses X forward, Y right, Z down: roll, pitch and yaw rates.</param>
+        /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
+        /// <remarks>Positive rates use the source quaternion rotation convention. Converts and stores body rates independently of pose-reader order.
+        /// Uses the rate sampled at the latest rotation's timestamp, before applying the shared prediction horizon. A supplied zero rate overrides
+        /// rotation-history estimation. Clearing the channel restores that estimation. Angular velocity never changes linear motion or raw pose.
+        /// Rotation smoothing retains its independent half-life; this input supplies prediction, rather than angular filter motion assistance.</remarks>
+        /// <exception cref="ArgumentException">The body-axis mapping is invalid.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An angular velocity coordinate or its converted value is not finite.</exception>
+        public void SetBodyAngularVelocity(Double3 angularVelocity, CoordinateSystem? bodyAxes = null, Timestamp? sampleTime = null)
+        {
+            ReferenceFrame.ValidatePosition(angularVelocity, nameof(angularVelocity));
+            CoordinateSystem axes = bodyAxes ?? CoordinateSystem.NorthEastDown;
+            string error = axes.GetConfigurationError();
+            if (error != null)
+            {
+                throw new ArgumentException(error, nameof(bodyAxes));
+            }
+
+            Double3 converted = axes.ToUnityAngularVelocity(angularVelocity);
+            if (PoseData.Accepts(_angularVelocityTime, sampleTime))
+            {
+                _angularVelocity = converted;
+                _angularVelocityTime = sampleTime;
+                _hasAngularVelocity = true;
+                PoseHistory history = GetComponent<Spatial>().History;
+                if (sampleTime.HasValue)
+                {
+                    history.AddAngularVelocity(converted, sampleTime.Value);
+                }
+                else
+                {
+                    history.ClearAngularVelocity();
+                }
+            }
+        }
+
+        /// <summary>Clears supplied angular velocity, restoring prediction from consecutive timed rotations when available.</summary>
+        /// <remarks>Also clears angular timestamp ordering and playback history; linear velocity, acceleration and pose remain unchanged.</remarks>
+        public void ClearAngularVelocity()
+        {
+            _hasAngularVelocity = false;
+            _angularVelocity = default(Double3);
+            _angularVelocityTime = null;
+            Spatial spatial = GetComponent<Spatial>();
+            if (spatial != null)
+            {
+                spatial.History.ClearAngularVelocity();
+            }
+        }
+
         /// <summary>Clears estimated motion history after a teleport while retaining supplied SDK motion and prediction settings.</summary>
         /// <remarks>Use <see cref="Spatial.ResetPresentation"/> when smoothing history must be reset at the same time.</remarks>
         public void Reset()
@@ -231,7 +296,46 @@ namespace Emas
         {
             _velocityTime = null;
             _accelerationTime = null;
+            _angularVelocityTime = null;
             Reset();
+        }
+
+        internal Quaternion ProjectRotation(Spatial spatial, Quaternion rotation, double offset,
+            float maximumExtrapolation, CoordinateSystem sourceAxes)
+        {
+            if (!_hasAngularVelocity || offset <= 0 || maximumExtrapolation <= 0)
+            {
+                return rotation;
+            }
+
+            Double3 angularVelocity = _angularVelocity;
+            if (spatial.RotationTime.HasValue && _angularVelocityTime.HasValue
+                && !spatial.History.SampleAngularVelocity(spatial.RotationTime.Value, out angularVelocity))
+            {
+                // A future-only rate cannot describe an older orientation; retain its observed-arc estimate.
+                return rotation;
+            }
+
+            try
+            {
+                Quaternion displacement = SpatialMath.AngularDisplacement(angularVelocity, Math.Min(offset, maximumExtrapolation));
+                if (spatial.RotationSpace == RotationSpace.Source)
+                {
+                    displacement = sourceAxes.ToSourceRotation(displacement);
+                }
+                else if (spatial.RotationSpace == RotationSpace.EarthCentered)
+                {
+                    displacement = spatial.EarthCenteredBodyAxes.Value.ToSourceRotation(displacement);
+                }
+
+                // Body rates compose on the right of the raw attitude. Applying them to the already
+                // predicted or projected pose would extrapolate twice or include reference cancellation.
+                return SpatialMath.NormalizeRotation(spatial.Rotation * displacement, nameof(angularVelocity));
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return spatial.Rotation;
+            }
         }
 
         internal Double3 ProjectTimestamped(Spatial spatial, float maximumExtrapolation,
@@ -275,6 +379,7 @@ namespace Emas
         {
             ClearVelocity();
             ClearAcceleration();
+            ClearAngularVelocity();
             Reset();
         }
 

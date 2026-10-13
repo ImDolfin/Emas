@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Add optional timestamped body angular velocity to Prediction with explicit SDK body axes and radians-per-second units. Sample rates at the attitude observation's time, bound orientation gaps by the existing horizon, preserve zero overrides and restore rotation-history estimation on clear. Add Relative World's GeoAngularVelocityTrait, analytical banked-bird body rates and stationary zero rates to its readings, initializer and Ghost prefabs, with matching imported samples and focused API/integration coverage.
+
 - Apply changes in timestamped SDK prediction lead without position smoothing lag during known maneuvers, while retaining position-noise filtering and held-packet caps. Sample motion at the pose timestamp with immediate or buffered playback, preserving exact timestamp boundaries and excluding later acceleration. Extend timed orientation prediction to zero interpolation delay. Clarify geographic ENU versus aircraft body motion and cover pitch/roll reference projection, independent channel timing and live orientation tuning.
 
 - Preserve SDK motion assistance across newly accepted packets after the prediction horizon is reached, with immediate or buffered playback. Track the previously presented source time instead of reconstructing it from the newest packet; held packets still stop at the cap and live-tuning previews do not advance history. Cover delayed 560 kt input with zero interpolation delay, 0.3-second position half-lives and a 50 ms horizon, including sustained noisy geographic reference following.

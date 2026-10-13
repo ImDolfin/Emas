@@ -72,6 +72,10 @@ namespace Emas.RelativeWorld
         /// <value>Supplied linear acceleration, or null when no acceleration observation is available.</value>
         public Double3? EastNorthUpAcceleration { get; }
 
+        /// <summary>Gets optional true aircraft body angular velocity in radians per second, using X forward, Y right and Z down.</summary>
+        /// <value>Right-handed roll, pitch and yaw body rates, or null when unavailable; these are not Euler-angle derivatives.</value>
+        public Double3? BodyAngularVelocity { get; }
+
         /// <summary>Gets the SDK sample time shared by pose and motion channels, or null when unavailable.</summary>
         /// <value>The original observation time, preserved through packet delay; this is not the packet's arrival time.</value>
         public Timestamp? SampleTime { get; }
@@ -95,12 +99,14 @@ namespace Emas.RelativeWorld
         /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for prediction and motion-assisted smoothing.</param>
         /// <param name="eastNorthUpAcceleration">Optional local ENU linear acceleration in metres per second squared, with gravity removed.</param>
         /// <param name="sampleTime">Optional observation time in the SDK's shared seconds/nanoseconds clock.</param>
+        /// <param name="bodyAngularVelocity">Optional true roll/pitch/yaw body rates in radians per second, using aircraft X-forward, Y-right, Z-down axes.</param>
         /// <exception cref="ArgumentException">The entity ID is blank, or an attached reading has a blank parent ID or invalid parent Kind.</exception>
         /// <exception cref="ArgumentOutOfRangeException">A pose or body-offset component is non-finite, or latitude or longitude is outside its geographic range.</exception>
         public GeoPoseReading(string id, string label, Kind kind, Variant variant, double latitudeDegrees,
             double longitudeDegrees, double altitudeMeters, double yawDegrees, double pitchDegrees,
             double rollDegrees, string parentId = null, Kind parentKind = default, Vector3 bodyOffset = default,
-            Double3? eastNorthUpVelocity = null, Double3? eastNorthUpAcceleration = null, Timestamp? sampleTime = null)
+            Double3? eastNorthUpVelocity = null, Double3? eastNorthUpAcceleration = null, Timestamp? sampleTime = null,
+            Double3? bodyAngularVelocity = null)
         {
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -136,6 +142,7 @@ namespace Emas.RelativeWorld
             BodyOffset = bodyOffset;
             EastNorthUpVelocity = eastNorthUpVelocity;
             EastNorthUpAcceleration = eastNorthUpAcceleration;
+            BodyAngularVelocity = bodyAngularVelocity;
             SampleTime = sampleTime;
         }
 

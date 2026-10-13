@@ -22,6 +22,12 @@ namespace Emas.RelativeWorld
             {
                 acceleration.Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
             }
+            GeoAngularVelocityTrait angularVelocity;
+            if (root.TryGet<GeoAngularVelocityTrait>(out angularVelocity))
+            {
+                angularVelocity.Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
+            }
+
             GeoAttachmentTrait attachment;
             if (root.TryGet<GeoAttachmentTrait>(out attachment))
             {

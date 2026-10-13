@@ -380,6 +380,11 @@ namespace Emas.Tests.Samples
                 Assert.That(origin.GetRequired<Smoothing>().enabled, Is.True);
                 Assert.That(origin.GetRequired<Smoothing>().RotationHalfLife, Is.GreaterThan(0));
                 Assert.That(bird.GetRequired<Prediction>().HasVelocity, Is.True);
+                Assert.That(origin.GetRequired<Prediction>().HasAngularVelocity, Is.True);
+                Assert.That(origin.GetRequired<Prediction>().AngularVelocity, Is.EqualTo(default(Double3)));
+                Assert.That(bird.GetRequired<Prediction>().HasAngularVelocity, Is.True);
+                Assert.That(Double3.Distance(bird.GetRequired<Prediction>().AngularVelocity, default(Double3)),
+                    Is.EqualTo(System.Math.PI / 4).Within(0.000001), "The fake SDK supplies the bird's analytical body turn rate.");
                 AssertOriginPose(origin);
                 AssertFeetAttached(bird, Foot(realm, "bird-left-foot"), Foot(realm, "bird-right-foot"));
                 Assert.That(realm.ReferenceFrame.TryToUnityPosition(bird.GetRequired<Spatial>().Position,
@@ -611,15 +616,16 @@ namespace Emas.Tests.Samples
             }
         }
 
-        /// <summary>Separate optional motion traits convert the same packet's ENU basis independently of pose-reader order and clear unavailable channels.</summary>
+        /// <summary>Separate optional motion traits convert ENU linear motion and aircraft body angular rates independently of pose-reader order and clear unavailable channels.</summary>
         [Test]
-        public void GeoMotionReaders_ApplyOptionalEnuVelocityAndAccelerationThroughRealmTraitUpdates()
+        public void GeoMotionReaders_ApplyOptionalLinearAndAngularMotionThroughRealmTraitUpdates()
         {
             GameObject prefab = new GameObject("optional velocity root");
             prefab.SetActive(false);
             Ghost root = prefab.AddComponent<Ghost>();
             prefab.AddComponent<Emas.RelativeWorld.GeoVelocityTrait>();
             prefab.AddComponent<Emas.RelativeWorld.GeoAccelerationTrait>();
+            prefab.AddComponent<Emas.RelativeWorld.GeoAngularVelocityTrait>();
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             try
             {
@@ -633,6 +639,7 @@ namespace Emas.Tests.Samples
                     {
                         ghost.GetRequired<Emas.RelativeWorld.GeoVelocityTrait>().Bind(() => reading);
                         ghost.GetRequired<Emas.RelativeWorld.GeoAccelerationTrait>().Bind(() => reading);
+                        ghost.GetRequired<Emas.RelativeWorld.GeoAngularVelocityTrait>().Bind(() => reading);
                     });
                     VelocityDetector detector = new VelocityDetector();
                     realm.GetOrCreateAnchor("sdk", detector);
@@ -650,14 +657,17 @@ namespace Emas.Tests.Samples
                     realm.Update();
                     Assert.That(prediction.HasVelocity, Is.False);
                     Assert.That(prediction.HasAcceleration, Is.False);
+                    Assert.That(prediction.HasAngularVelocity, Is.False);
                     reading = new Emas.RelativeWorld.GeoPoseReading("optional", "Optional motion", CarKind,
                         default, 0, 90, 40, 0, 0, 0, eastNorthUpVelocity: new Double3(1, 2, 3),
-                        eastNorthUpAcceleration: new Double3(4, 5, 6));
+                        eastNorthUpAcceleration: new Double3(4, 5, 6), bodyAngularVelocity: new Double3(1, 2, 3));
                     realm.Update();
                     Assert.That(prediction.HasVelocity, Is.True);
                     Assert.That(Double3.Distance(prediction.Velocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12));
                     Assert.That(prediction.HasAcceleration, Is.True);
                     Assert.That(Double3.Distance(prediction.Acceleration, new Double3(-4, 6, 5)), Is.LessThan(1e-12));
+                    Assert.That(prediction.HasAngularVelocity, Is.True);
+                    Assert.That(prediction.AngularVelocity, Is.EqualTo(new Double3(-2, 3, -1)));
                     Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()), "Motion traits do not overwrite pose or use its location implicitly.");
                     prediction.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
                     Assert.That(prediction.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
@@ -665,6 +675,7 @@ namespace Emas.Tests.Samples
                     realm.Update();
                     Assert.That(prediction.HasVelocity, Is.False);
                     Assert.That(prediction.HasAcceleration, Is.False);
+                    Assert.That(prediction.HasAngularVelocity, Is.False);
                     Assert.That(spatial.IsInRange, Is.True);
                     AssertOriginPose(ghost);
                 }

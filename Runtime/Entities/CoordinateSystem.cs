@@ -118,6 +118,12 @@ namespace Emas
             return new Double3(SourceComponent(value, 0), SourceComponent(value, 1), SourceComponent(value, 2));
         }
 
+        internal Double3 ToUnityAngularVelocity(Double3 value)
+        {
+            // Angular velocity is an axial vector: reflections also reverse its rotation sense.
+            return ToUnity(value) * Determinant;
+        }
+
         internal Quaternion ToUnityRotation(Quaternion value)
         {
             Double3 vector = ToUnity(new Double3(value.x, value.y, value.z));

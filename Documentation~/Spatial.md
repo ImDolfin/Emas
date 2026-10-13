@@ -151,11 +151,36 @@ Changing settings moves presentation gradually toward the new lead or lag. For e
 
 The estimate uses `position + velocity × age + acceleration × age² / 2`, with age capped by the prediction limit. If SDK velocity is missing, consecutive timestamped positions observed during projection estimate velocity. Without either source of velocity, presentation holds the supplied position; acceleration alone does not invent an initial velocity. After a gap reaches the limit, the predicted destination stops advancing rather than drifting indefinitely. Disabling Prediction blends toward raw positioning over the live-tuning transition, with any enabled Smoothing continuing to filter observations.
 
-Timed orientation is predicted with **zero or positive interpolation delay**. The last two accepted rotations
-define a shortest quaternion arc, extended beyond the newest rotation for at most `MaximumExtrapolation`.
-One rotation cannot define an angular rate. Prediction disabled or a zero horizon holds the latest orientation;
-rotation smoothing still applies its independent half-life. This estimates angular motion from orientation
-observations; there is no SDK angular-velocity setter. Orientation does not rotate world velocity or acceleration.
+Orientation is predicted with **zero or positive interpolation delay**. Optional SDK body angular velocity
+can extend a single attitude observation for at most `MaximumExtrapolation`. Without an applicable supplied
+rate, the last two timed rotations define a shortest quaternion arc for gap prediction; one rotation alone
+cannot estimate that rate. Prediction disabled or a zero horizon holds the latest orientation. Rotation
+smoothing still applies its independent half-life. Angular prediction does not change linear motion.
+
+Supply true body angular velocity in **radians per second**:
+
+```csharp
+prediction.SetBodyAngularVelocity(
+    new Double3(rollRate, pitchRate, yawRate),
+    CoordinateSystem.NorthEastDown,
+    angularVelocityTime);
+```
+
+The default input axes are aircraft **X forward, Y right, Z down**, matching the named roll, pitch and yaw
+body rates above. These are true body angular rates; yaw/pitch/roll Euler-angle derivatives require conversion
+when the attitude is pitched or banked. A different SDK body convention can use an explicit `CoordinateSystem`
+mapping to model right/up/forward. Angular velocity transforms as an axial vector, preserving rotation sense
+through handedness changes. The `AngularVelocity` getter exposes the converted Unity-body quaternion rates
+(X right, Y up, Z forward), so default aircraft input is returned as `(-pitchRate, yawRate, -rollRate)`.
+
+Timed rates ignore duplicate or older samples and are sampled at the **rotation's own observation timestamp**,
+independently of the position channel. A future-only rate leaves an older orientation's history estimate intact.
+Buffered playback still interpolates recorded rotations; the supplied body rate fills only a gap after the
+newest attitude. Untimed rates apply to the latest raw attitude. A supplied zero overrides inferred spinning.
+`HasAngularVelocity` reports availability; `ClearAngularVelocity()` clears ordering/history and restores
+rotation-history estimation. SDK clock resets retain supplied rates while resetting timestamp ordering.
+Use `Spatial.ResetPresentation()` after a teleport. Rotation smoothing remains an ordinary angular error
+filter; supplying angular velocity does not add rotation filter motion assistance.
 
 Supply Cartesian motion in shared source axes/units through `Prediction.SetCartesianVelocity` and `SetCartesianAcceleration`. Geographic integrations can use ECEF XYZ metres through the EarthCentered setters, or **ENU** (X east, Y north, Z up) through the Geographic setters. The explicit `GeoPosition tangentOrigin` is the entity location for entity-local ENU, or your SDK's fixed origin for a shared ENU frame; it is independent of the presentation reference. `GeoPosition.ToEarthCenteredVector(enu)` performs the same vector rotation without translation. Supply gravity-free linear acceleration in metres per second squared. Publish matching motion and pose times together; recorded velocity is sampled at the position time, or advanced from an older velocity using acceleration available at that time.
 

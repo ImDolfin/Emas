@@ -86,6 +86,27 @@ namespace Emas
                     + ((zz + ww - xx - yy) / squaredLength) * vector.Z);
         }
 
+        internal static Quaternion AngularDisplacement(Double3 angularVelocity, double seconds)
+        {
+            double largest = Math.Max(Math.Abs(angularVelocity.X), Math.Max(Math.Abs(angularVelocity.Y), Math.Abs(angularVelocity.Z)));
+            if (largest == 0 || seconds == 0)
+            {
+                return Quaternion.identity;
+            }
+
+            // Scaling before taking the norm avoids squaring extreme but finite SDK rates.
+            Double3 scaled = new Double3(angularVelocity.X / largest, angularVelocity.Y / largest, angularVelocity.Z / largest);
+            double length = Math.Sqrt(scaled.X * scaled.X + scaled.Y * scaled.Y + scaled.Z * scaled.Z);
+            double radians = largest * seconds * length;
+            if (!IsFinite(radians))
+            {
+                throw new ArgumentOutOfRangeException(nameof(angularVelocity), "The angular displacement must be finite.");
+            }
+
+            Vector3 axis = new Vector3((float)(scaled.X / length), (float)(scaled.Y / length), (float)(scaled.Z / length));
+            return Quaternion.AngleAxis((float)((radians % (2d * Math.PI)) * 180d / Math.PI), axis);
+        }
+
         internal static bool TryToVector3(Double3 value, out Vector3 result)
         {
             if (!IsFinite(value)

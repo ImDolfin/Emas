@@ -103,6 +103,7 @@ namespace Emas.Tests.Samples
                         Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.08f));
                         Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.04f));
                         Assert.That(blueprint.GhostPrefab.GetRequired<Emas.RelativeWorld.GeoVelocityTrait>().enabled, Is.True);
+                        Assert.That(blueprint.GhostPrefab.GetRequired<Emas.RelativeWorld.GeoAngularVelocityTrait>().enabled, Is.True);
                     }
 
                     SerializedProperty variants = new SerializedObject(blueprint).FindProperty("_variants");

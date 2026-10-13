@@ -26,6 +26,8 @@ namespace Emas
             private readonly Vector3 _unityPosition;
             private readonly double? _maxDistance;
 
+            internal CoordinateSystem Coordinates => _coordinates;
+
             internal Projection(bool hasPosition, Double3 position, Vector3 unityPosition, Quaternion alignment, CoordinateSystem coordinates, double? maxDistance,
                 ReferenceSpace space = ReferenceSpace.Cartesian)
             {

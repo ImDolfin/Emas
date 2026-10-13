@@ -168,6 +168,7 @@ Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` 
 | `Smoothing.PositionHalfLife` / `RotationHalfLife` | Optional behavior Trait with independent seconds-to-halve-error controls; defaults 0.08/0, Inspector range 0–0.5 seconds |
 | `Prediction.MaximumExtrapolation` | Optional behavior Trait with a separate sample-age limit (default 0.15 seconds); SDK motion or timestamp-derived velocity supports prediction |
 | `Prediction.SetCartesianVelocity` / `SetEarthCenteredVelocity` / `SetGeographicVelocity` | Optional timestamped velocity in Cartesian, ECEF or explicit-origin ENU axes; matching acceleration setters accept gravity-free linear acceleration |
+| `Prediction.SetBodyAngularVelocity` / `AngularVelocity` / `HasAngularVelocity` / `ClearAngularVelocity` | Optional timestamped body angular rates in radians per second, with explicit body axes (default forward/right/down); predict orientation from one sample, or clear to restore timed rotation-history estimation |
 | `Smoothing.Reset()` / `Prediction.Reset()` / `Spatial.ResetPresentation()` | Reset filter and/or estimated motion history while retaining input and settings; use after a teleport |
 | `Realm.ResetSpatialTime()` | Restart shared clock alignment and per-channel timestamp ordering before an SDK clock reset/replay |
 | `ReferenceFrame.Coordinates` | Cartesian pose axes or geographic source quaternion axes; named geographic angles and ECEF inputs have explicit conventions |
