@@ -132,9 +132,9 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Consumers can enumerate disabled root traits, resolve them by type, and retain an immutable membership
-        /// snapshot while traits are added or removed. Each trait resolves its own root Ghost even while inactive;
-        /// a view's child traits do not participate or borrow the parent's Ghost.
+        /// Consumers can retrieve disabled root traits directly and retain immutable membership snapshots through
+        /// component changes. Required trait access rejects missing or ambiguous matches and recovers after removal.
+        /// Each trait resolves its own root Ghost while inactive; child traits do not participate in root lookup.
         /// </summary>
         [Test]
         public void Traits_ExposeRootTraitsAsReadOnlyMembershipSnapshots()
@@ -156,6 +156,8 @@ namespace Emas.Tests
                 child.transform.SetParent(concrete.transform, false);
                 PipelineArticulationTrait childTrait = child.AddComponent<PipelineArticulationTrait>();
                 Assert.That(childTrait.Ghost, Is.Null);
+                InvalidOperationException missing = Assert.Throws<InvalidOperationException>(() => ghost.Trait<PipelineArticulationTrait>());
+                Assert.That(missing.Message, Does.Contain(ghost.Key.ToString()).And.Contain("found 0 matching root components"));
                 Ghost childGhost = child.AddComponent<Ghost>();
                 Assert.That(childGhost.Anchor, Is.Null);
                 Assert.That(childTrait.Ghost, Is.SameAs(childGhost));
@@ -166,7 +168,8 @@ namespace Emas.Tests
                 IReadOnlyList<Trait> original = ghost.Traits;
                 Assert.That(original, Is.EqualTo(new Trait[] { position }));
                 Assert.That(empty, Is.Empty);
-                Assert.That(ghost.GetRequired<PipelinePositionTrait>(), Is.SameAs(position));
+                Assert.That(ghost.Trait<PipelinePositionTrait>(), Is.SameAs(position));
+                Assert.That(concrete.Trait<PipelinePositionTrait>().enabled, Is.False);
                 Assert.Throws<NotSupportedException>(() => ((IList<Trait>)original).Clear());
 
                 PipelineActionTrait action = concrete.gameObject.AddComponent<PipelineActionTrait>();
@@ -179,6 +182,15 @@ namespace Emas.Tests
                 Assert.That(original.Count, Is.EqualTo(1));
                 Assert.That(ghost.TryGet<PipelinePositionTrait>(out PipelinePositionTrait removed), Is.False);
                 Assert.That(removed, Is.Null);
+                Assert.Throws<InvalidOperationException>(() => ghost.Trait<PipelinePositionTrait>());
+
+                PipelineActionTrait duplicate = concrete.gameObject.AddComponent<PipelineActionTrait>();
+                LogAssert.Expect(LogType.Error, new Regex(Regex.Escape(ghost.Key.ToString()) + ".*" + Regex.Escape(typeof(PipelineActionTrait).FullName)));
+                InvalidOperationException ambiguous = Assert.Throws<InvalidOperationException>(() => ghost.Trait<PipelineActionTrait>());
+                Assert.That(ambiguous.Message, Does.Contain(ghost.Key.ToString()).And.Contain("found 2 matching root components")
+                    .And.Contain(typeof(PipelineActionTrait).FullName));
+                UnityEngine.Object.DestroyImmediate(duplicate);
+                Assert.That(ghost.Trait<PipelineActionTrait>(), Is.SameAs(action));
             }
         }
     }

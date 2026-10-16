@@ -100,6 +100,7 @@ Detector failure or removal deletes its population immediately and discards its 
 | `Presence.Capabilities` / `HasCapability<T>()` | Snapshot and exact-interface check of SDK-reported capabilities |
 | `Ghost.Anchor` / `IGhost.Anchor` | Owning Anchor; navigate through `Anchor.Realm` to access its reference frame |
 | `Ghost.Traits` / `IGhost.Traits` | Read-only membership snapshot of root traits, including disabled and unbound components |
+| `Ghost.Trait<TTrait>()` / `IGhost.Trait<TTrait>()` | Retrieve a required root trait directly; throw when the match is missing or ambiguous |
 | `Trait.Ghost` | Access the Ghost on this trait's GameObject, including while inactive or disabled |
 | `IGhost.TryGet<T>(out part)` / `GetRequired<T>()` | Resolve root MonoBehaviour interfaces for consumers; these are separate from reported capabilities |
 
@@ -109,7 +110,7 @@ A Presence is stable from its first detection or report until final removal. Its
 
 Emas names each created Ghost root GameObject exactly `Key.EntityId`, including prefab instances, before application initialization. `Ghost.Name` remains separate SDK display metadata; changing it does not rename the GameObject. Active roots are accessible through `GameObject.Find("bird-left-foot")`. Entity IDs can repeat across Kinds, Anchors and Realms, so a global Unity name lookup can be ambiguous. `anchor.Transform.Find("bird-left-foot")` scopes hierarchy lookup to an Anchor and can find inactive retained roots; use `Realm.TryGetGhost(key, out ghost)` when the full identity is needed. Prepared or unavailable roots are inactive and are excluded from `GameObject.Find`.
 
-Declare SDK capabilities as interface types through `Detect`'s optional `capabilities` argument. Emas validates and snapshots the types and removes duplicates. A changed set reruns the initializer, which can use `presence.HasCapability<T>()` to bind or enable Ghost traits. Capability metadata does not add components. Configure traits on the Ghost and access them through `ghost.Traits`, `ghost.GetRequired<TTrait>()` or `ghost.TryGet<TTrait>(out trait)`.
+Declare SDK capabilities as interface types through `Detect`'s optional `capabilities` argument. Emas validates and snapshots the types and removes duplicates. A changed set reruns the initializer, which can use `presence.HasCapability<T>()` to bind or enable Ghost traits. Capability metadata does not add components. Configure traits on the Ghost and access them through `ghost.Traits`, `ghost.Trait<TTrait>()` or `ghost.TryGet<TTrait>(out trait)`.
 
 Subclass `Trait<TData>` and implement `Apply(TData data)` using source-independent values. In the initializer, call `root.GetRequired<PositionTrait>().Bind(() => ((SdkProxy)presence.Source).Position)`. The Ghost determines which traits exist; the initializer knows the SDK and supplies the readers. For immutable SDK snapshots, read the current lookup entry on every invocation. Bindings are released on disappearance, handover and removal. A retained Ghost reconnects when its initializer runs again. For a viewless entity, leave its blueprint unassigned.
 
@@ -122,14 +123,14 @@ public override void Apply(GeoPosition position)
 }
 ```
 
-`Traits` is available on both concrete `Ghost` roots and queried `IGhost` instances. Each access observes the current root components. Previously returned lists keep their membership, while their trait instances remain live Unity components that can be edited, disabled or destroyed. Child and view traits are excluded; `Spatial` is a separate component and is accessible through `GetRequired<Spatial>()`. Use `GetRequired<TTrait>()` for one required trait or `TryGet<TTrait>()` for an optional one; both reject duplicate providers.
+`Traits` is available on both concrete `Ghost` roots and queried `IGhost` instances. Each access observes the current root components. Previously returned lists keep their membership, while their trait instances remain live Unity components that can be edited, disabled or destroyed. Child and view traits are excluded; `Spatial` is a separate component and is accessible through `GetRequired<Spatial>()`. Use `Trait<TTrait>()` for one required trait or `TryGet<TTrait>()` for an optional one; both reject duplicate providers. `Trait<TTrait>()` requires a type derived from `Emas.Trait` and returns the concrete component, so consumers can chain member access such as `Entity.Trait<GeoPositionTrait>().MyInternalData` when that application trait exposes the member. It works before activation and includes disabled or unbound traits. Missing or duplicate matches throw `InvalidOperationException` with the same diagnostics as `GetRequired<T>()`; no component is added. Check `IsAvailable` before treating retained data as current.
 
 ```csharp
 foreach (Trait trait in ghost.Traits)
 {
     Debug.Log(trait.GetType().Name);
 }
-PositionTrait position = ghost.GetRequired<PositionTrait>();
+PositionTrait position = ghost.Trait<PositionTrait>();
 ```
 
 `InactivityTimeout` defaults to null. Each detection resets the individual identity's inactivity deadline. Choose a timeout longer than the feed's normal interval; feeds that publish only changed values should normally leave it disabled. `DisappearanceGracePeriod` defaults to zero. An explicit `Disappear` or inactivity expiry makes the presence unavailable immediately; with positive grace, its stable Presence and Ghost root remain inactive until the deadline. A detection before that deadline restores them and retains an existing manifestation request. Repeated disappearances do not extend the deadline. Query subscriptions see a departure on availability loss. Once grace expires, the realm removes the root and view; a later detection creates a new Presence. Detector failure, anchor removal and realm disposal bypass grace. Trait reads do not refresh presence deadlines; arrival/departure feeds should leave inactivity expiry disabled.

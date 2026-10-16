@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Add `Ghost.Trait<TTrait>()` and `IGhost.Trait<TTrait>()` for direct access to a required root trait and its members. Include disabled and unbound traits on inactive roots, and preserve descriptive missing/duplicate errors and recovery after component changes.
+
 - Expose read-only `Ghost.Anchor` and `IGhost.Anchor` for navigation to the owning Realm and its reference frame. Bind before application initialization, retain ownership across preparation, disappearance grace, detector handover and scene reparenting, and clear it before final removal callbacks.
 
 - Add geographic ENU and ECEF world angular-velocity inputs in radians per second. Apply world rates before attitude and body rates after it, preserve timestamp ordering and keep their histories separate. Extend the Relative World trait, readings and fake bird data to demonstrate world ENU input alongside body rates; cover non-level attitudes, source handedness, ECEF body mappings and reader order.

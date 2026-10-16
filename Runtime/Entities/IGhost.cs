@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -74,7 +75,7 @@ namespace Emas
         /// <remarks>
         /// Each access observes added or removed root traits; previously returned snapshots retain their membership.
         /// Trait instances remain live Unity components and may later be destroyed. Child and view traits are excluded.
-        /// Use TryGet&lt;TTrait&gt; or GetRequired&lt;TTrait&gt; for typed access to a single root trait.
+        /// Use Trait&lt;TTrait&gt; for direct access to a required root trait or TryGet&lt;TTrait&gt; for optional access.
         /// </remarks>
         IReadOnlyList<Trait> Traits
         {
@@ -99,5 +100,17 @@ namespace Emas
         /// contextual error once until a lookup observes a non-ambiguous result. No component is added.
         /// </remarks>
         bool TryGet<T>(out T part) where T : class;
+
+        /// <summary>Gets the single required trait of the requested type on this Ghost root.</summary>
+        /// <typeparam name="TTrait">The trait component class to retrieve.</typeparam>
+        /// <returns>The single matching root trait, including disabled or unbound traits.</returns>
+        /// <remarks>
+        /// Read on Unity's main thread. Works while the root is inactive; does not search children or create components.
+        /// The returned trait is a live component; check IsAvailable before treating its data as current.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// No root trait or multiple root traits match the requested type. The error identifies the Ghost and matching components.
+        /// </exception>
+        TTrait Trait<TTrait>() where TTrait : Trait;
     }
 }

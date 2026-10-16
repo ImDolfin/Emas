@@ -131,6 +131,21 @@ namespace Emas
             return _partResolver.TryGet(this, out part);
         }
 
+        /// <summary>Gets the single required trait of the requested type on this Ghost root.</summary>
+        /// <typeparam name="TTrait">The trait component class to retrieve.</typeparam>
+        /// <returns>The single matching root trait, including disabled or unbound traits.</returns>
+        /// <remarks>
+        /// Read on Unity's main thread. Works while the root is inactive; does not search children or create components.
+        /// The returned trait is a live component; check IsAvailable before treating its data as current.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// No root trait or multiple root traits match the requested type. The error identifies the Ghost and matching components.
+        /// </exception>
+        public TTrait Trait<TTrait>() where TTrait : Trait
+        {
+            return this.GetRequired<TTrait>();
+        }
+
         internal void Tick()
         {
             OnUpdate();
