@@ -98,11 +98,14 @@ Detector failure or removal deletes its population immediately and discards its 
 | `Presence.Key` / `Name` / `Variant` | Stable identity, per-entity label and visual variant |
 | `Presence.IsAvailable` / `IsRemoved` / `Root` | Detection availability, final removal state and the initialized Ghost root |
 | `Presence.Capabilities` / `HasCapability<T>()` | Snapshot and exact-interface check of SDK-reported capabilities |
+| `Ghost.Anchor` / `IGhost.Anchor` | Owning Anchor; navigate through `Anchor.Realm` to access its reference frame |
 | `Ghost.Traits` / `IGhost.Traits` | Read-only membership snapshot of root traits, including disabled and unbound components |
 | `Trait.Ghost` | Access the Ghost on this trait's GameObject, including while inactive or disabled |
 | `IGhost.TryGet<T>(out part)` / `GetRequired<T>()` | Resolve root MonoBehaviour interfaces for consumers; these are separate from reported capabilities |
 
 A Presence is stable from its first detection or report until final removal. Its Key combines anchor ID, Kind and SDK entity ID; the same key in a different realm identifies a different Presence. `TryGetPresence` can return an unavailable Presence, so check `IsAvailable` before treating its data as current. `IsRemoved` becomes true after final removal, and a later report creates a new handle. `Root` holds the invisible Ghost even when no view has been requested. `Prepare<TGhost>` creates only an unavailable Ghost; `TryGetPresence` stays false until a detector first reports that identity. Consumers still use `IGhost` queries and root interfaces.
+
+`Ghost.Anchor` and `IGhost.Anchor` expose the actual owning Anchor on Unity's main thread. Use `ghost.Anchor.Realm.ReferenceFrame` to access the realm's current projection settings; a null reference frame means identity Cartesian projection. The Anchor is assigned before application initialization, including for prepared roots, and retained during disappearance grace, detector restart and replacement. Scene reparenting does not change it. It is null before realm initialization and cleared on final removal before view or root cleanup callbacks, including Anchor or Realm disposal.
 
 Emas names each created Ghost root GameObject exactly `Key.EntityId`, including prefab instances, before application initialization. `Ghost.Name` remains separate SDK display metadata; changing it does not rename the GameObject. Active roots are accessible through `GameObject.Find("bird-left-foot")`. Entity IDs can repeat across Kinds, Anchors and Realms, so a global Unity name lookup can be ambiguous. `anchor.Transform.Find("bird-left-foot")` scopes hierarchy lookup to an Anchor and can find inactive retained roots; use `Realm.TryGetGhost(key, out ghost)` when the full identity is needed. Prepared or unavailable roots are inactive and are excluded from `GameObject.Find`.
 

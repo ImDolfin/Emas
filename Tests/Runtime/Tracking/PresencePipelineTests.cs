@@ -105,7 +105,8 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Preparation exposes a reusable root to identity lookup; detection claims it, and only an update makes it queryable.
+        /// Preparation exposes a reusable root and owning anchor to identity lookup; detection claims it,
+        /// and only an update makes it queryable.
         /// </summary>
         [Test]
         public void Prepare_DoesNotExposePresenceUntilDetection()
@@ -118,6 +119,8 @@ namespace Emas.Tests
             Assert.That(prepared.IsAvailable, Is.False);
             Assert.That(_realm.TryGetGhost(key, out IGhost found), Is.True);
             Assert.That(found, Is.SameAs(prepared));
+            Assert.That(prepared.Anchor, Is.SameAs(anchor));
+            Assert.That(found.Anchor.Realm, Is.SameAs(_realm));
             Assert.That(_realm.Query().Count, Is.Zero);
 
             Detector detector = new Detector();
@@ -135,7 +138,7 @@ namespace Emas.Tests
 
         /// <summary>
         /// Ghost-defined traits read the latest mapped values without additional detections,
-        /// and all initial values are ready before query consumers see the entity.
+        /// and the owning anchor is ready during initialization before query consumers see the entity.
         /// </summary>
         [Test]
         public void Traits_UpdateFromBoundReadersWithoutDetectorReports()
@@ -145,6 +148,8 @@ namespace Emas.Tests
             _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
             {
                 initializations++;
+                Assert.That(root.Anchor.Realm, Is.SameAs(_realm));
+                Assert.That(root.Anchor.Id, Is.EqualTo(presence.Key.AnchorId));
                 root.GetComponent<PipelinePositionTrait>().Bind(() => ((Reading)presence.Source).Position);
                 root.GetComponent<PipelineArticulationTrait>().Bind(() => ((Reading)presence.Source).Articulation);
             });
@@ -270,7 +275,7 @@ namespace Emas.Tests
 
         /// <summary>
         /// A trait can be disabled and rebound; a returning presence reconnects its existing
-        /// components after grace without reading the departed proxy.
+        /// components and owning anchor after grace without reading the departed proxy.
         /// </summary>
         [Test]
         public void Traits_StopWhileDisabledOrMissingAndRebindOnReturn()
@@ -307,6 +312,7 @@ namespace Emas.Tests
             Assert.That(reads, Is.EqualTo(1));
             Assert.That(presence.IsAvailable, Is.False);
             Assert.That(presence.Source, Is.Null);
+            Assert.That(presence.Root.Anchor, Is.SameAs(detector.Anchor));
             proxy = new Reading(new Double3(10, 11, 12), 0);
             Assert.That(detector.Arrive("one", proxy), Is.SameAs(presence));
             _realm.Update();
@@ -318,7 +324,7 @@ namespace Emas.Tests
 
         /// <summary>
         /// A replacement SDK can bind the same Ghost traits from a different proxy shape,
-        /// preserving roots and reconnecting their inputs before the new attachment activates.
+        /// preserving roots and their owning anchor and reconnecting inputs before the new attachment activates.
         /// </summary>
         [Test]
         public void SourceReplacement_RebindsExistingTraitsToAnotherSdk()
@@ -344,9 +350,18 @@ namespace Emas.Tests
             Assert.That(_realm.TryGetPresence(new Key("sdk", TrackedKind, "one"), out Presence presence), Is.True);
             Ghost root = presence.Root;
             PipelinePositionTrait originalTrait = root.GetComponent<PipelinePositionTrait>();
-            anchor.ReplaceDetector(first, new Detector { Starting = detector => detector.Arrive("one", secondSdk) });
+            anchor.ReplaceDetector(first, new Detector
+            {
+                Starting = detector =>
+                {
+                    Assert.That(root.IsAvailable, Is.False);
+                    Assert.That(root.Anchor, Is.SameAs(anchor));
+                    detector.Arrive("one", secondSdk);
+                }
+            });
             Assert.That(presence.Source, Is.SameAs(secondSdk));
             Assert.That(presence.Root, Is.SameAs(root));
+            Assert.That(root.Anchor, Is.SameAs(anchor));
             Assert.That(root.GetComponent<PipelinePositionTrait>(), Is.SameAs(originalTrait));
             Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(4, 5, 6)));
             Assert.That(initializations, Is.EqualTo(2));
@@ -386,29 +401,35 @@ namespace Emas.Tests
 
         /// <summary>
         /// Reporting an identity from its old root's removal callback creates a distinct presence.
-        /// Stale publication and delayed Unity destruction cannot replace or remove the new entity.
+        /// Ownership is cleared before the callback; stale publication and delayed Unity destruction cannot affect the new entity.
         /// </summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
         public IEnumerator RemovalCallback_CanRediscoverIdentityWithoutOldCleanupRemovingIt()
         {
             Detector detector = new Detector();
-            _realm.GetOrCreateAnchor("sdk", detector);
+            Anchor anchor = _realm.GetOrCreateAnchor("sdk", detector);
             Presence original = detector.PublishMetadata("one", "Original entity");
             Ghost originalRoot = original.Root;
             _realm.Update();
             Presence replacement = null;
             RemovalCallback callback = originalRoot.gameObject.AddComponent<RemovalCallback>();
-            callback.Disabled = () => replacement = detector.PublishMetadata("one", "Replacement entity");
+            callback.Disabled = () =>
+            {
+                Assert.That(originalRoot.Anchor, Is.Null);
+                replacement = detector.PublishMetadata("one", "Replacement entity");
+            };
 
             detector.Lose("one");
 
             Assert.That(original.IsRemoved, Is.True);
             Assert.That(original.Root, Is.Null);
+            Assert.That(originalRoot.Anchor, Is.Null);
             Assert.That(replacement, Is.Not.Null.And.Not.SameAs(original));
             Assert.That(replacement.Key, Is.EqualTo(original.Key));
             Ghost replacementRoot = replacement.Root;
             Assert.That(replacementRoot, Is.Not.SameAs(originalRoot));
+            Assert.That(replacementRoot.Anchor, Is.SameAs(anchor));
             Assert.Throws<ArgumentException>(() => detector.PublishCached(originalRoot));
             Assert.That(_realm.TryGetPresence(original.Key, out Presence found), Is.True);
             Assert.That(found, Is.SameAs(replacement));

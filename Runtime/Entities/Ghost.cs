@@ -104,6 +104,18 @@ namespace Emas
             }
         }
 
+        /// <summary>Gets the anchor that owns this root.</summary>
+        /// <value>The owning anchor, or null before realm initialization or after final removal.</value>
+        /// <remarks>
+        /// Assigned before application initialization and retained while prepared, unavailable or handed to another detector.
+        /// Scene reparenting does not change ownership. Read on Unity's main thread; use Anchor.Realm.ReferenceFrame to access projection settings.
+        /// </remarks>
+        public Anchor Anchor
+        {
+            get;
+            private set;
+        }
+
         /// <summary>Resolves a single root component that implements the requested contract.</summary>
         /// <typeparam name="T">The interface or MonoBehaviour class to resolve.</typeparam>
         /// <param name="part">The matching component, or null when no unique match exists.</param>
@@ -124,9 +136,17 @@ namespace Emas
             OnUpdate();
         }
 
+        internal void ClearAnchor()
+        {
+            Anchor = null;
+        }
+
         /// <summary>
         /// Initializes Emas-owned identity and metadata.
         /// </summary>
+        /// <param name="anchor">
+        /// The anchor that owns this root independently of its scene parenting.
+        /// </param>
         /// <param name="key">
         /// The ghost key.
         /// </param>
@@ -136,8 +156,9 @@ namespace Emas
         /// <param name="variantValue">
         /// The visual variant.
         /// </param>
-        internal void Initialize(Key key, string nameValue, Variant variantValue)
+        internal void Initialize(Anchor anchor, Key key, string nameValue, Variant variantValue)
         {
+            Anchor = anchor;
             _anchorId = key.AnchorId;
             _entityId = key.EntityId;
             _kindId = key.Kind.Id;

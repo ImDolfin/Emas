@@ -17,11 +17,11 @@ namespace Emas
             /// <param name="key">The full anchor, kind and entity identity.</param>
             /// <param name="variant">The requested appearance, or null to retain the existing value.</param>
             /// <param name="name">The display name, or null to retain the existing value.</param>
-            /// <param name="anchorTransform">The scene parent for a newly created root.</param>
+            /// <param name="anchor">The owning anchor and scene parent for a newly created root.</param>
             /// <param name="blueprint">The captured root and view configuration, or null when none is registered.</param>
             /// <returns>The compatible root currently assigned to this identity.</returns>
             Ghost GetOrCreate(Population population, PresenceDetector detector, Key key, Variant? variant,
-                string name, Transform anchorTransform, ManifestationBlueprintSnapshot blueprint);
+                string name, Anchor anchor, ManifestationBlueprintSnapshot blueprint);
 
             /// <summary>Binds the configured root's traits to the detected source.</summary>
             /// <param name="presence">The presence whose root and weak source are ready for binding.</param>
@@ -45,14 +45,14 @@ namespace Emas
             /// <param name="key">The full anchor, kind and entity identity.</param>
             /// <param name="variant">The requested appearance, or null to retain the existing value.</param>
             /// <param name="name">The display name, or null to retain the existing value.</param>
-            /// <param name="anchorTransform">The scene parent for a newly created root.</param>
+            /// <param name="anchor">The owning anchor and scene parent for a newly created root.</param>
             /// <param name="blueprint">The captured root and view configuration, or null when none is registered.</param>
             /// <returns>The compatible root currently assigned to this identity.</returns>
             public Ghost GetOrCreate(Population population, PresenceDetector detector, Key key, Variant? variant,
-                string name, Transform anchorTransform, ManifestationBlueprintSnapshot blueprint)
+                string name, Anchor anchor, ManifestationBlueprintSnapshot blueprint)
             {
                 return population.GetOrCreate<TGhost>(detector, key.AnchorId, key.EntityId, key.Kind, variant,
-                    name, anchorTransform, blueprint);
+                    name, anchor, blueprint);
             }
 
             /// <summary>
@@ -173,7 +173,7 @@ namespace Emas
             Kind kind,
             Variant? variant,
             string nameValue,
-            Transform anchorTransform,
+            Anchor anchor,
             ManifestationBlueprintSnapshot blueprint) where TGhost : Ghost
         {
             if (_realm.IsDisposed)
@@ -199,23 +199,23 @@ namespace Emas
                 return ReuseRoot<TGhost>(record, owner, variant, nameValue, blueprint);
             }
 
-            return CreateRoot<TGhost>(owner, key, variant, nameValue, anchorTransform, blueprint);
+            return CreateRoot<TGhost>(owner, key, variant, nameValue, anchor, blueprint);
         }
 
         internal Presence ApplyPresenceDetection(PresenceDetector detector, string anchorId, string entityId,
             Kind kind, string name, Variant? variant, List<Type> capabilitySnapshot, object source,
-            Transform anchorTransform, ManifestationBlueprintSnapshot blueprint, Action<Presence, Ghost> localInitializer)
+            Anchor anchor, ManifestationBlueprintSnapshot blueprint, Action<Presence, Ghost> localInitializer)
         {
             Key key = new Key(anchorId, kind, entityId);
             IPresenceInitializer initializer = null;
             Ghost root;
             if (localInitializer == null && _presenceInitializers.TryGetValue(kind.Id, out initializer))
             {
-                root = initializer.GetOrCreate(this, detector, key, variant, name, anchorTransform, blueprint);
+                root = initializer.GetOrCreate(this, detector, key, variant, name, anchor, blueprint);
             }
             else
             {
-                root = GetOrCreate<Ghost>(detector, anchorId, entityId, kind, variant, name, anchorTransform, blueprint);
+                root = GetOrCreate<Ghost>(detector, anchorId, entityId, kind, variant, name, anchor, blueprint);
             }
 
             Record record = _identities.Find(root);
@@ -472,6 +472,12 @@ namespace Emas
                 return;
             }
 
+            if (record.Ghost != null)
+            {
+                // Clear ownership before cleanup callbacks can observe the removed root or rediscover its identity.
+                record.Ghost.ClearAnchor();
+            }
+
             if (record.Presence != null)
             {
                 record.Presence.MarkRemoved();
@@ -667,13 +673,15 @@ namespace Emas
         }
 
         private TGhost CreateRoot<TGhost>(PresenceDetector owner, Key key, Variant? variant, string nameValue,
-            Transform anchorTransform, ManifestationBlueprintSnapshot blueprint) where TGhost : Ghost
+            Anchor anchor, ManifestationBlueprintSnapshot blueprint) where TGhost : Ghost
         {
             Ghost prefab = blueprint == null ? null : blueprint.GhostPrefab;
-            if (anchorTransform == null)
+            if (anchor == null || anchor.Transform == null)
             {
                 throw new InvalidOperationException("The anchor '" + key.AnchorId + "' does not exist.");
             }
+
+            Transform anchorTransform = anchor.Transform;
 
             // Keep the root inactive until its identity and initial data are ready.
             GameObject staging = new GameObject("[Emas Staging]");
@@ -701,7 +709,7 @@ namespace Emas
 
                 typed.gameObject.name = key.EntityId;
                 typed.gameObject.SetActive(false);
-                typed.Initialize(key, nameValue ?? key.EntityId, variant ?? Variant.None);
+                typed.Initialize(anchor, key, nameValue ?? key.EntityId, variant ?? Variant.None);
                 typed.transform.SetParent(anchorTransform, false);
                 typed.gameObject.SetActive(false);
             }

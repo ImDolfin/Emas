@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Expose read-only `Ghost.Anchor` and `IGhost.Anchor` for navigation to the owning Realm and its reference frame. Bind before application initialization, retain ownership across preparation, disappearance grace, detector handover and scene reparenting, and clear it before final removal callbacks.
+
 - Add geographic ENU and ECEF world angular-velocity inputs in radians per second. Apply world rates before attitude and body rates after it, preserve timestamp ordering and keep their histories separate. Extend the Relative World trait, readings and fake bird data to demonstrate world ENU input alongside body rates; cover non-level attitudes, source handedness, ECEF body mappings and reader order.
 
 - Expand query documentation with a README introduction and complete scope/filter/result/subscription guide. Demonstrate immutable variant filters and root-contract reads in Example, and parked-car arrivals/departures plus measured bird separation in Relative World. Author the geographic query consumer in its tracking prefab, dispose/rebind sample subscriptions across disable and Realm restart, and cover both consumers in the imported sample scenarios.

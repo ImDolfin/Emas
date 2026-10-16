@@ -23,6 +23,17 @@ namespace Emas
             get;
         }
 
+        /// <summary>Gets the anchor that owns this root.</summary>
+        /// <value>The owning anchor, or null before realm initialization or after final removal.</value>
+        /// <remarks>
+        /// Assigned before application initialization and retained while prepared, unavailable or handed to another detector.
+        /// Scene reparenting does not change ownership. Read on Unity's main thread; use Anchor.Realm.ReferenceFrame to access projection settings.
+        /// </remarks>
+        Anchor Anchor
+        {
+            get;
+        }
+
         /// <summary>
         /// Gets the display name.
         /// </summary>

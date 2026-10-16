@@ -201,6 +201,7 @@ namespace Emas.Tests
             _realm.Update();
             ManifestationBlueprint blueprint = CreateManifestationBlueprint();
             _realm.Dispose();
+            Assert.That(ghost.Anchor, Is.Null);
             Assert.Throws<ObjectDisposedException>(() => _realm.GetOrCreateAnchor("late"));
             Assert.Throws<ObjectDisposedException>(() => _realm.RegisterManifestationBlueprint(blueprint));
             Assert.Throws<ObjectDisposedException>(() => _realm.Prepare<ProbeGhost>("anchor", Kind, "late"));
@@ -225,6 +226,7 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("anchor", source);
             ProbeGhost prepared = _realm.Prepare<ProbeGhost>("anchor", Kind, "prepared");
             anchor.Dispose();
+            Assert.That(prepared.Anchor, Is.Null);
             IGhost found;
             Assert.That(_realm.TryGetGhost(prepared.Key, out found), Is.False);
             Assert.That(found, Is.Null);
@@ -253,6 +255,7 @@ namespace Emas.Tests
                 throw new InvalidOperationException("replacement failed");
             };
             Assert.Throws<InvalidOperationException>(() => anchor.ReplaceDetector(source, failed));
+            Assert.That(ghost.Anchor, Is.Null);
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(ghost.gameObject.activeSelf, Is.False);
             Assert.That(_realm.Query().Count, Is.EqualTo(0));

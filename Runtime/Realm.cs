@@ -841,7 +841,7 @@ namespace Emas
             try
             {
                 return _population.ApplyPresenceDetection(detector, anchorId, entityId, kind, name, variant, capabilitySnapshot, source,
-                    GetAnchorTransform(anchorId), ResolveManifestationBlueprint(kind), _anchors[anchorId].InitializeGhost);
+                    GetAnchor(anchorId), ResolveManifestationBlueprint(kind), _anchors[anchorId].InitializeGhost);
             }
             catch (Exception exception)
             {
@@ -887,7 +887,7 @@ namespace Emas
             }
 
             return _population.GetOrCreate<TGhost>(owner, anchorId, entityId, kind, variant, nameValue,
-                GetAnchorTransform(anchorId), ResolveManifestationBlueprint(kind));
+                GetAnchor(anchorId), ResolveManifestationBlueprint(kind));
         }
 
         internal void MarkPublished(PresenceDetector owner, IGhost ghost)
@@ -1093,10 +1093,10 @@ namespace Emas
             }
         }
 
-        private Transform GetAnchorTransform(string anchorId)
+        private Anchor GetAnchor(string anchorId)
         {
             Anchor anchor;
-            return _anchors.TryGetValue(anchorId, out anchor) ? anchor.Transform : null;
+            return _anchors.TryGetValue(anchorId, out anchor) ? anchor : null;
         }
 
         private void RefreshView(Record record)

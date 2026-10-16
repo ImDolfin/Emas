@@ -33,6 +33,44 @@ namespace Emas.Tests
         }
 
         /// <summary>
+        /// Ghost ownership distinguishes identical keys in separate realms and survives scene reparenting;
+        /// consumers can reach the current reference frame until the owning realm removes the root.
+        /// </summary>
+        [Test]
+        public void Anchor_RetainsOwningRealmAfterReparenting()
+        {
+            using (Realm realm = new Realm())
+            using (Realm otherRealm = new Realm())
+            {
+                realm.ReferenceFrame = new ReferenceFrame();
+                otherRealm.ReferenceFrame = new ReferenceFrame();
+                Probe source = new Probe();
+                Anchor anchor = realm.GetOrCreateAnchor("simulation", source);
+                Anchor otherAnchor = otherRealm.GetOrCreateAnchor("simulation");
+                Ghost concrete = source.Publish("42");
+                Ghost other = otherRealm.Prepare<Ghost>("simulation", concrete.Key.Kind, "42");
+                IGhost ghost = concrete;
+                Assert.That(ghost.Key, Is.EqualTo(other.Key));
+                Assert.That(concrete.Anchor, Is.SameAs(anchor));
+                Assert.That(ghost.Anchor.Realm.ReferenceFrame, Is.SameAs(realm.ReferenceFrame));
+
+                concrete.enabled = false;
+                concrete.transform.SetParent(otherAnchor.Transform, false);
+                realm.Update();
+                Assert.That(ghost.Anchor, Is.SameAs(anchor));
+                Assert.That(ghost.Anchor.Realm, Is.SameAs(realm));
+                Assert.That(other.Anchor, Is.SameAs(otherAnchor));
+                ReferenceFrame replacement = new ReferenceFrame();
+                realm.ReferenceFrame = replacement;
+                Assert.That(ghost.Anchor.Realm.ReferenceFrame, Is.SameAs(replacement));
+
+                realm.Dispose();
+                Assert.That(ghost.Anchor, Is.Null);
+                Assert.That(other.Anchor, Is.SameAs(otherAnchor));
+            }
+        }
+
+        /// <summary>
         /// Lookup refuses an ambiguous contract, required access identifies both matching components, and removal resolves the remaining provider.
         /// This prevents prefab composition from silently selecting the wrong application component.
         /// </summary>
@@ -119,6 +157,7 @@ namespace Emas.Tests
                 PipelineArticulationTrait childTrait = child.AddComponent<PipelineArticulationTrait>();
                 Assert.That(childTrait.Ghost, Is.Null);
                 Ghost childGhost = child.AddComponent<Ghost>();
+                Assert.That(childGhost.Anchor, Is.Null);
                 Assert.That(childTrait.Ghost, Is.SameAs(childGhost));
                 UnityEngine.Object.DestroyImmediate(childGhost);
                 Assert.That(childTrait.Ghost, Is.Null);
