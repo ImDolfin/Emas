@@ -687,6 +687,12 @@ namespace Emas.Tests.Samples
                     Assert.That(prediction.HasAngularVelocity, Is.True);
                     Assert.That(prediction.AngularVelocity, Is.EqualTo(new Double3(-2, 3, -1)));
                     Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()), "Motion traits do not overwrite pose or use its location implicitly.");
+                    reading = new Emas.RelativeWorld.GeoPoseReading("optional", "World angular motion", CarKind,
+                        default, 0, 90, 40, 0, 0, 0, bodyAngularVelocity: new Double3(100, 0, 0),
+                        eastNorthUpAngularVelocity: new Double3(1, 2, 3));
+                    realm.Update();
+                    Assert.That(Double3.Distance(prediction.AngularVelocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12),
+                        "World ENU input uses the reading's origin and takes precedence over optional body input.");
                     prediction.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
                     Assert.That(prediction.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
                     reading = null;

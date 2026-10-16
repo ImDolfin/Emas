@@ -9,7 +9,7 @@ namespace Emas
     /// Disabling extrapolation retains supplied SDK motion for Smoothing between newly accepted timed observations;
     /// held observations do not advance from that motion while prediction is disabled. With a positive
     /// Realm.InterpolationDelay, pose and SDK motion are sampled on the shared buffered timeline. Prediction
-    /// only covers gaps after the newest buffered observation. Orientation uses supplied body angular velocity,
+    /// only covers gaps after the newest buffered observation. Orientation uses supplied body or geographic world angular velocity,
     /// or extends its last timed arc when unavailable, with immediate or buffered playback.
     /// Timed SDK linear motion is sampled at the position observation's time;
     /// changes to its predicted lead are applied without the position smoothing half-life.
@@ -26,6 +26,7 @@ namespace Emas
         private Double3 _velocity;
         private Double3 _acceleration;
         private Double3 _angularVelocity;
+        private bool _angularVelocityIsWorld;
         private bool _hasVelocity;
         private bool _hasAcceleration;
         private bool _hasAngularVelocity;
@@ -76,12 +77,13 @@ namespace Emas
         /// <value>True after an acceleration setter accepts a sample, until acceleration is cleared.</value>
         public bool HasAcceleration => _hasAcceleration;
 
-        /// <summary>Gets the last supplied body angular velocity after conversion to Unity body quaternion axes, in radians per second.</summary>
-        /// <value>X is body right, Y up and Z forward, with signs matching Quaternion.AngleAxis; meaningful while HasAngularVelocity is true.</value>
-        /// <remarks>With the default aircraft input axes, this is (-pitch rate, yaw rate, -roll rate). These are true body rates, not Euler-angle derivatives.</remarks>
+        /// <summary>Gets the accepted angular velocity in radians per second.</summary>
+        /// <value>Converted Unity-body quaternion rates or right-handed ECEF XYZ rates; meaningful while HasAngularVelocity is true.</value>
+        /// <remarks>Body input uses X right, Y up and Z forward with Quaternion.AngleAxis signs; default aircraft input becomes
+        /// (-pitch rate, yaw rate, -roll rate). Geographic ENU input is converted to ECEF. These are angular vectors, not Euler-angle derivatives.</remarks>
         public Double3 AngularVelocity => _angularVelocity;
 
-        /// <summary>Gets whether optional SDK body angular velocity is available for orientation prediction.</summary>
+        /// <summary>Gets whether optional SDK angular velocity is available for orientation prediction.</summary>
         /// <value>True after an angular velocity setter accepts a sample, until the channel is cleared or unbound.</value>
         public bool HasAngularVelocity => _hasAngularVelocity;
 
@@ -178,6 +180,7 @@ namespace Emas
         /// <param name="bodyAxes">Signed SDK body axes mapped to model right/up/forward. Null uses X forward, Y right, Z down: roll, pitch and yaw rates.</param>
         /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
         /// <remarks>Positive rates use the source quaternion rotation convention. Converts and stores body rates independently of pose-reader order.
+        /// The axes describe directions fixed to the aircraft; world ENU angular velocity must use SetGeographicAngularVelocity instead.
         /// Uses the rate sampled at the latest rotation's timestamp, before applying the shared prediction horizon. A supplied zero rate overrides
         /// rotation-history estimation. Clearing the channel restores that estimation. Angular velocity never changes linear motion or raw pose.
         /// Rotation smoothing retains its independent half-life; this input supplies prediction, rather than angular filter motion assistance.</remarks>
@@ -193,22 +196,35 @@ namespace Emas
                 throw new ArgumentException(error, nameof(bodyAxes));
             }
 
-            Double3 converted = axes.ToUnityAngularVelocity(angularVelocity);
-            if (PoseData.Accepts(_angularVelocityTime, sampleTime))
-            {
-                _angularVelocity = converted;
-                _angularVelocityTime = sampleTime;
-                _hasAngularVelocity = true;
-                PoseHistory history = GetComponent<Spatial>().History;
-                if (sampleTime.HasValue)
-                {
-                    history.AddAngularVelocity(converted, sampleTime.Value);
-                }
-                else
-                {
-                    history.ClearAngularVelocity();
-                }
-            }
+            StoreAngularVelocity(axes.ToUnityAngularVelocity(angularVelocity), world: false, sampleTime: sampleTime);
+        }
+
+        /// <summary>Supplies world angular velocity in right-handed ECEF XYZ axes, in radians per second.</summary>
+        /// <param name="angularVelocity">Finite Earth-centered, Earth-fixed angular vector; positive rotation follows the right-hand rule.</param>
+        /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
+        /// <remarks>Use a Geographic reference with geographic/ECEF positions. World rates act before the raw attitude;
+        /// they are not body rates or Euler-angle derivatives. Shares ordering, availability and clearing with SetBodyAngularVelocity.
+        /// Accepted frame changes discard angular history so world and body samples are never interpolated together.
+        /// Samples at the attitude's observation time and uses the existing prediction horizon without changing linear motion.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">An angular velocity coordinate is not finite.</exception>
+        public void SetEarthCenteredAngularVelocity(Double3 angularVelocity, Timestamp? sampleTime = null)
+        {
+            ReferenceFrame.ValidatePosition(angularVelocity, nameof(angularVelocity));
+            StoreAngularVelocity(angularVelocity, world: true, sampleTime: sampleTime);
+        }
+
+        /// <summary>Supplies world ENU angular velocity in radians per second at an explicit SDK tangent origin.</summary>
+        /// <param name="angularVelocity">Finite angular vector with X east, Y north and Z up; positive rotation follows the right-hand rule.</param>
+        /// <param name="origin">The SDK tangent origin defining the ENU axes; height does not affect the conversion.</param>
+        /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
+        /// <remarks>Converts to ECEF without using aircraft attitude, independently of trait-reader order. Use a Geographic reference
+        /// with geographic/ECEF positions. These are world angular rates, not aircraft body rates or Euler-angle derivatives.
+        /// Shares ordering and clearing with the other angular setters. AngularVelocity exposes the converted ECEF vector.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The origin or angular vector is invalid, or conversion produces a nonfinite coordinate.</exception>
+        /// <example><code>prediction.SetGeographicAngularVelocity(enuAngularVelocity, sdkTangentOrigin, sampleTime);</code></example>
+        public void SetGeographicAngularVelocity(Double3 angularVelocity, GeoPosition origin, Timestamp? sampleTime = null)
+        {
+            SetEarthCenteredAngularVelocity(origin.ToEarthCenteredVector(angularVelocity), sampleTime);
         }
 
         /// <summary>Clears supplied angular velocity, restoring prediction from consecutive timed rotations when available.</summary>
@@ -217,6 +233,7 @@ namespace Emas
         {
             _hasAngularVelocity = false;
             _angularVelocity = default(Double3);
+            _angularVelocityIsWorld = false;
             _angularVelocityTime = null;
             Spatial spatial = GetComponent<Spatial>();
             if (spatial != null)
@@ -318,19 +335,33 @@ namespace Emas
 
             try
             {
+                if (_angularVelocityIsWorld && spatial.RotationSpace != RotationSpace.EarthCentered)
+                {
+                    if (!spatial.HasPosition)
+                    {
+                        return rotation;
+                    }
+
+                    // ECEF is right-handed; the local east/up/north presentation basis is left-handed.
+                    // Angular velocity is axial, so changing this handedness also reverses its sign.
+                    GeographicBasis basis = new GeographicBasis(GeoPosition.FromEarthCentered(spatial.Position));
+                    angularVelocity = basis.ToLocal(angularVelocity) * -1d;
+                }
+
                 Quaternion displacement = SpatialMath.AngularDisplacement(angularVelocity, Math.Min(offset, maximumExtrapolation));
                 if (spatial.RotationSpace == RotationSpace.Source)
                 {
                     displacement = sourceAxes.ToSourceRotation(displacement);
                 }
-                else if (spatial.RotationSpace == RotationSpace.EarthCentered)
+                else if (!_angularVelocityIsWorld && spatial.RotationSpace == RotationSpace.EarthCentered)
                 {
                     displacement = spatial.EarthCenteredBodyAxes.Value.ToSourceRotation(displacement);
                 }
 
-                // Body rates compose on the right of the raw attitude. Applying them to the already
-                // predicted or projected pose would extrapolate twice or include reference cancellation.
-                return SpatialMath.NormalizeRotation(spatial.Rotation * displacement, nameof(angularVelocity));
+                // Local rates compose on the right, world rates on the left. Always start from raw
+                // attitude so neither repeated projection nor reference cancellation adds another lead.
+                return SpatialMath.NormalizeRotation(_angularVelocityIsWorld ? displacement * spatial.Rotation
+                    : spatial.Rotation * displacement, nameof(angularVelocity));
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -429,6 +460,29 @@ namespace Emas
             catch (ArgumentOutOfRangeException)
             {
                 return default(Double3);
+            }
+        }
+
+        private void StoreAngularVelocity(Double3 angularVelocity, bool world, Timestamp? sampleTime)
+        {
+            if (!PoseData.Accepts(_angularVelocityTime, sampleTime))
+            {
+                return;
+            }
+
+            PoseHistory history = GetComponent<Spatial>().History;
+            if (_angularVelocityIsWorld != world || !sampleTime.HasValue)
+            {
+                history.ClearAngularVelocity();
+            }
+
+            _angularVelocity = angularVelocity;
+            _angularVelocityIsWorld = world;
+            _angularVelocityTime = sampleTime;
+            _hasAngularVelocity = true;
+            if (sampleTime.HasValue)
+            {
+                history.AddAngularVelocity(angularVelocity, sampleTime.Value);
             }
         }
 

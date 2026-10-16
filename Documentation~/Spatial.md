@@ -151,13 +151,39 @@ Changing settings moves presentation gradually toward the new lead or lag. For e
 
 The estimate uses `position + velocity × age + acceleration × age² / 2`, with age capped by the prediction limit. If SDK velocity is missing, consecutive timestamped positions observed during projection estimate velocity. Without either source of velocity, presentation holds the supplied position; acceleration alone does not invent an initial velocity. After a gap reaches the limit, the predicted destination stops advancing rather than drifting indefinitely. Disabling Prediction blends toward raw positioning over the live-tuning transition, with any enabled Smoothing continuing to filter observations.
 
-Orientation is predicted with **zero or positive interpolation delay**. Optional SDK body angular velocity
+Orientation is predicted with **zero or positive interpolation delay**. Optional SDK body or world angular velocity
 can extend a single attitude observation for at most `MaximumExtrapolation`. Without an applicable supplied
 rate, the last two timed rotations define a shortest quaternion arc for gap prediction; one rotation alone
 cannot estimate that rate. Prediction disabled or a zero horizon holds the latest orientation. Rotation
 smoothing still applies its independent half-life. Angular prediction does not change linear motion.
 
-Supply true body angular velocity in **radians per second**:
+All angular-velocity setters use **radians per second**, never degrees per second. Choose the setter for
+the vector's reference frame; matching axis names alone does not make world rates into body rates.
+
+| SDK angular vector | Setter |
+| --- | --- |
+| World ENU: X east, Y north, Z up | `SetGeographicAngularVelocity(vector, origin, time)` |
+| World ECEF: X/Y/Z | `SetEarthCenteredAngularVelocity(vector, time)` |
+| Rotating aircraft body axes | `SetBodyAngularVelocity(vector, bodyAxes, time)` |
+
+For world ENU data, use the same SDK tangent origin as the other geographic vectors:
+
+```csharp
+prediction.SetGeographicAngularVelocity(
+    new Double3(eastAngularRate, northAngularRate, upAngularRate),
+    sdkTangentOrigin,
+    angularVelocityTime);
+```
+
+The origin is the aircraft location for aircraft-local ENU, or the SDK's fixed origin for shared ENU.
+World rates use the right-hand rule: positive ENU up rotates north toward west, opposite to positive
+clockwise geographic heading. These are angular-vector components, not heading/pitch/roll derivatives.
+The geographic setter converts to ECEF without needing aircraft attitude, so traits may run in any order.
+Use a Geographic reference with geographic/ECEF positions. `AngularVelocity` exposes the converted ECEF
+vector in this mode. World rates compose **before** attitude; body rates compose **after** it. The two
+operations differ when the aircraft is pitched or banked.
+
+For true body angular velocity:
 
 ```csharp
 prediction.SetBodyAngularVelocity(
@@ -169,15 +195,20 @@ prediction.SetBodyAngularVelocity(
 The default input axes are aircraft **X forward, Y right, Z down**, matching the named roll, pitch and yaw
 body rates above. These are true body angular rates; yaw/pitch/roll Euler-angle derivatives require conversion
 when the attitude is pitched or banked. A different SDK body convention can use an explicit `CoordinateSystem`
-mapping to model right/up/forward. Angular velocity transforms as an axial vector, preserving rotation sense
-through handedness changes. The `AngularVelocity` getter exposes the converted Unity-body quaternion rates
+mapping to model right/up/forward. `bodyAxes` only describes directions attached to the aircraft; passing
+`CoordinateSystem.EastNorthUp` there does not convert a world ENU vector to body space.
+Angular velocity transforms as an axial vector, preserving rotation sense through handedness changes.
+For body input, the `AngularVelocity` getter exposes the converted Unity-body quaternion rates
 (X right, Y up, Z forward), so default aircraft input is returned as `(-pitchRate, yawRate, -rollRate)`.
 
 Timed rates ignore duplicate or older samples and are sampled at the **rotation's own observation timestamp**,
 independently of the position channel. A future-only rate leaves an older orientation's history estimate intact.
-Buffered playback still interpolates recorded rotations; the supplied body rate fills only a gap after the
+Buffered playback still interpolates recorded rotations; the supplied angular rate fills only a gap after the
 newest attitude. Untimed rates apply to the latest raw attitude. A supplied zero overrides inferred spinning.
-`HasAngularVelocity` reports availability; `ClearAngularVelocity()` clears ordering/history and restores
+All angular setters share one channel and timestamp ordering. An accepted body/world frame change
+clears angular history to prevent mixing incompatible vectors;
+a duplicate or older sample cannot switch frames. `HasAngularVelocity` reports availability;
+`ClearAngularVelocity()` clears ordering/history and restores
 rotation-history estimation. SDK clock resets retain supplied rates while resetting timestamp ordering.
 Use `Spatial.ResetPresentation()` after a teleport. Rotation smoothing remains an ordinary angular error
 filter; supplying angular velocity does not add rotation filter motion assistance.

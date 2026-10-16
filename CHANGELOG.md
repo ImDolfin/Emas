@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Add geographic ENU and ECEF world angular-velocity inputs in radians per second. Apply world rates before attitude and body rates after it, preserve timestamp ordering and keep their histories separate. Extend the Relative World trait, readings and fake bird data to demonstrate world ENU input alongside body rates; cover non-level attitudes, source handedness, ECEF body mappings and reader order.
+
 - Expand query documentation with a README introduction and complete scope/filter/result/subscription guide. Demonstrate immutable variant filters and root-contract reads in Example, and parked-car arrivals/departures plus measured bird separation in Relative World. Author the geographic query consumer in its tracking prefab, dispose/rebind sample subscriptions across disable and Realm restart, and cover both consumers in the imported sample scenarios.
 
 - Add optional timestamped body angular velocity to Prediction with explicit SDK body axes and radians-per-second units. Sample rates at the attitude observation's time, bound orientation gaps by the existing horizon, preserve zero overrides and restore rotation-history estimation on clear. Add Relative World's GeoAngularVelocityTrait, analytical banked-bird body rates and stationary zero rates to its readings, initializer and Ghost prefabs, with matching imported samples and focused API/integration coverage.

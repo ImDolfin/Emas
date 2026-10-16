@@ -1670,6 +1670,81 @@ namespace Emas.Tests
             }
         }
 
+        /// <summary>ENU world rates use their explicit tangent origin, act before a non-level attitude in every geographic rotation convention, and keep body/world samples separate across frame changes.</summary>
+        [Test]
+        public void WorldAngularVelocity_UsesEnuAndEcefBeforeTheAttitudeAcrossRotationConventions()
+        {
+            TestGhost ghost = _source.Publish("world angular input");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Prediction prediction = ghost.gameObject.AddComponent<Prediction>();
+            prediction.MaximumExtrapolation = 0.2f;
+            Spatial witness = _source.Publish("world angular clock").gameObject.AddComponent<Spatial>();
+            GeoPosition position = new GeoPosition(0, 0, 40);
+            GeoPosition sdkOrigin = new GeoPosition(0, 90, 0);
+            Double3 enuRate = new Double3(0.1, 0.2, 0.3);
+            Double3 earthRate = new Double3(-0.1, 0.3, 0.2);
+            Quaternion attitude = Quaternion.AngleAxis(70, Vector3.up)
+                * Quaternion.AngleAxis(-35, Vector3.right) * Quaternion.AngleAxis(-40, Vector3.forward);
+            // At (0, 0), ECEF (-0.1, 0.3, 0.2) maps to Unity's axial vector (-0.3, 0.1, -0.2).
+            Vector3 worldAxis = new Vector3(-0.3f, 0.1f, -0.2f);
+            Quaternion displacement = Quaternion.AngleAxis(worldAxis.magnitude * 0.2f * Mathf.Rad2Deg, worldAxis);
+            Quaternion expected = displacement * attitude;
+            Assert.That(Quaternion.Angle(expected, attitude * displacement), Is.GreaterThan(1f),
+                "The non-level attitude must distinguish world composition from body composition.");
+            Timestamp sampleTime = new Timestamp(2, 0);
+            foreach (RotationSpace space in new[] { RotationSpace.Source, RotationSpace.Geographic, RotationSpace.EarthCentered })
+            {
+                _realm.ResetSpatialTime();
+                ReferenceFrame frame = new ReferenceFrame
+                {
+                    Space = ReferenceSpace.Geographic,
+                    Coordinates = CoordinateSystem.NorthEastDown,
+                    GeographicPosition = position
+                };
+                _realm.ReferenceFrame = frame;
+                // Supplying motion before pose verifies that reader order does not bind it to an old attitude.
+                prediction.SetGeographicAngularVelocity(enuRate, sdkOrigin, sampleTime);
+                spatial.SetGeographicPosition(position, sampleTime);
+                if (space == RotationSpace.Source)
+                {
+                    spatial.SetSourceRotation(frame.ToSimulationRotation(attitude), sampleTime);
+                }
+                else if (space == RotationSpace.Geographic)
+                {
+                    spatial.SetGeographicRotation(70, 35, 40, sampleTime);
+                }
+                else
+                {
+                    spatial.SetEarthCenteredRotation(frame.ToEarthCenteredRotation(attitude, CoordinateSystem.EastNorthUp),
+                        CoordinateSystem.EastNorthUp, sampleTime);
+                }
+
+                witness.SetGeographicPosition(position, new Timestamp(3, 0));
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, expected);
+                Assert.That(Double3.Distance(prediction.AngularVelocity, earthRate), Is.LessThan(1e-12));
+                Assert.That(prediction.HasAngularVelocity, Is.True);
+                prediction.SetBodyAngularVelocity(new Double3(100, 0, 0), sampleTime: sampleTime);
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, expected);
+                Assert.That(Double3.Distance(prediction.AngularVelocity, earthRate), Is.LessThan(1e-12),
+                    "A duplicate sample cannot change the accepted rate's reference frame.");
+                prediction.SetEarthCenteredAngularVelocity(earthRate, new Timestamp(2, 100000000));
+                _realm.Update();
+                AssertRotation(ghost.transform.rotation, expected);
+                Assert.Throws<ArgumentOutOfRangeException>(() =>
+                    prediction.SetGeographicAngularVelocity(new Double3(double.NaN, 0, 0), sdkOrigin));
+                Assert.That(Double3.Distance(prediction.AngularVelocity, earthRate), Is.LessThan(1e-12));
+
+                prediction.SetBodyAngularVelocity(new Double3(Math.PI / 2, 0, 0), sampleTime: new Timestamp(2, 200000000));
+                _realm.Update();
+                Assert.That(Quaternion.Angle(ghost.transform.rotation, attitude), Is.LessThan(0.05f),
+                    "A new body-only history must not interpolate with the former world-rate history.");
+                prediction.ClearAngularVelocity();
+                Assert.That(prediction.HasAngularVelocity, Is.False);
+            }
+        }
+
         /// <summary>Angular samples use the rotation's own time with immediate or buffered playback, reject stale rates, allow zero overrides and clear back to rotation-history estimation after recovery.</summary>
         [Test]
         public void BodyAngularVelocity_UsesRotationTimeAndRecoversAfterClearingAndClockReset()
