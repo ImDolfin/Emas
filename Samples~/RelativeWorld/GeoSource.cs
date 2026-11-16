@@ -50,7 +50,7 @@ namespace Emas.RelativeWorld
         /// <remarks>
         /// Automatic time is independent of Unity time scale and frame-duration clamping. Changing modes preserves
         /// SDK positions and queued observation timestamps, but rebases this sample's shared Realm clock so a manual
-        /// pause or jump cannot leave resumed packets permanently older than the prediction clock.
+        /// pause or jump cannot leave resumed packets permanently older than the extrapolation clock.
         /// </remarks>
         public bool AutomaticAdvance
         {

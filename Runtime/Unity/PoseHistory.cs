@@ -143,7 +143,7 @@ namespace Emas
                 if (end > 0)
                 {
                     // Sampling holds the latest value beyond its timestamp. Acceleration-based
-                    // extrapolation, when requested, is added separately by the prediction model.
+                    // extrapolation, when requested, is added separately by the extrapolation model.
                     double tailStart = Math.Max(start, 0d);
                     result = newest.Value * (end - tailStart);
                     end = tailStart;
@@ -284,7 +284,7 @@ namespace Emas
         }
 
         // Offsets are playback time minus this channel's newest timestamp. Negative values sample
-        // recorded history; positive values hold the latest vector for the caller's bounded prediction.
+        // recorded history; positive values hold the latest vector for the caller's bounded extrapolation.
         internal bool SamplePosition(double offsetFromNewest, out Double3 position)
         {
             return _positions.Sample(offsetFromNewest, out position);
@@ -318,7 +318,7 @@ namespace Emas
             return _angularVelocities.Sample(time.ElapsedSince(_angularVelocities.NewestTime.Value), out angularVelocity);
         }
 
-        internal bool SampleRotation(double offsetFromNewest, double maximumExtrapolation, out Quaternion rotation)
+        internal bool SampleRotation(double offsetFromNewest, out Quaternion rotation)
         {
             rotation = Quaternion.identity;
             if (_rotationCount == 0 || !SpatialMath.IsFinite(offsetFromNewest))
@@ -335,7 +335,6 @@ namespace Emas
 
             if (offsetFromNewest >= 0)
             {
-                rotation = ExtrapolateRotation(newest, offsetFromNewest, maximumExtrapolation);
                 return true;
             }
 
@@ -402,31 +401,46 @@ namespace Emas
             ClearAngularVelocity();
         }
 
-        private Quaternion ExtrapolateRotation(RotationSample newest, double offset, double maximumExtrapolation)
+        internal bool EstimateAngularVelocity(Timestamp? time, out Double3 rate)
         {
-            if (offset <= 0 || !SpatialMath.IsFinite(maximumExtrapolation) || maximumExtrapolation <= 0)
+            rate = default(Double3);
+            int newestIndex = _rotationCount - 1;
+            while (newestIndex >= 0 && time.HasValue && RotationAt(newestIndex).Time.CompareTo(time.Value) > 0)
             {
-                return newest.Value;
+                newestIndex--;
             }
 
-            RotationSample previous = RotationAt(_rotationCount - 2);
+            if (newestIndex < 1)
+            {
+                return false;
+            }
+
+            RotationSample newest = RotationAt(newestIndex);
+            RotationSample previous = RotationAt(newestIndex - 1);
             double elapsed = newest.Time.ElapsedSince(previous.Time);
-            double amount = 1d + Math.Min(offset, maximumExtrapolation) / elapsed;
-            if (!SpatialMath.IsFinite(amount) || amount > float.MaxValue)
-            {
-                return newest.Value;
-            }
-
             try
             {
-                // Extend the shortest observed quaternion arc, freezing at the capped future pose
-                // once the gap exceeds the horizon. One observation cannot define an angular rate.
-                return SpatialMath.NormalizeRotation(
-                    Quaternion.SlerpUnclamped(previous.Value, newest.Value, (float)amount), nameof(newest));
+                // Express the shortest observed arc as a body angular vector so the same strategy
+                // handles supplied and estimated rates. One observation cannot define a rate.
+                Quaternion arc = Quaternion.Inverse(previous.Value) * newest.Value;
+                if (arc.w < 0)
+                {
+                    arc = new Quaternion(-arc.x, -arc.y, -arc.z, -arc.w);
+                }
+
+                double length = Math.Sqrt((double)arc.x * arc.x + (double)arc.y * arc.y + (double)arc.z * arc.z);
+                if (length > 0)
+                {
+                    // atan2 retains tiny turns when the float scalar component has rounded to one.
+                    // acos(w), including Quaternion.ToAngleAxis, would lose their angular rate entirely.
+                    rate = new Double3(arc.x, arc.y, arc.z) * (2d * Math.Atan2(length, arc.w) / (length * elapsed));
+                }
+
+                return true;
             }
             catch (ArgumentOutOfRangeException)
             {
-                return newest.Value;
+                return false;
             }
         }
 

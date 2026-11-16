@@ -15,7 +15,7 @@ namespace Emas
     /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished
     /// when inactivity expiry is enabled. Disable this component to release spatial placement and range suppression.
     /// Supply channels on Unity's main thread; setters store input for the next realm projection.
-    /// Add optional Smoothing and Prediction traits on the same Ghost root to modify presentation.
+    /// Add optional Smoothing and Extrapolation traits on the same Ghost root to modify presentation.
     /// Timed inputs share one SDK clock; duplicate or older timestamps are ignored per channel.
     /// A positive Realm.InterpolationDelay buffers accepted timed poses for shared position/rotation playback.
     /// Timestamped stationary updates refresh sample age; untimed identical cached positions do not.
@@ -51,7 +51,7 @@ namespace Emas
         /// <summary>
         /// Gets the last Cartesian source position or absolute ECEF metres after geographic/ECEF input; valid after HasPosition is true.
         /// </summary>
-        /// <value>The raw accepted position, unaffected by prediction, smoothing or the projected Unity transform.</value>
+        /// <value>The raw accepted position, unaffected by extrapolation, smoothing or the projected Unity transform.</value>
         public Double3 Position
         {
             get
@@ -135,7 +135,7 @@ namespace Emas
 
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
-        /// <summary>Resets smoothing, estimated prediction and live-tuning transitions after an intentional discontinuity.</summary>
+        /// <summary>Resets smoothing, estimated extrapolation and live-tuning transitions after an intentional discontinuity.</summary>
         /// <remarks>Retains raw pose, supplied motion and component settings. Clears pose playback history and seeds
         /// it with the current observation. Supply the new pose before calling this.</remarks>
         public void ResetPresentation()
@@ -149,10 +149,10 @@ namespace Emas
                 smoothing.Reset();
             }
 
-            Prediction prediction = GetComponent<Prediction>();
-            if (prediction != null)
+            Extrapolation extrapolation = GetComponent<Extrapolation>();
+            if (extrapolation != null)
             {
-                prediction.Reset();
+                extrapolation.Reset();
             }
         }
 
@@ -344,21 +344,21 @@ namespace Emas
                 return;
             }
 
-            Prediction prediction = GetComponent<Prediction>();
+            Extrapolation extrapolation = GetComponent<Extrapolation>();
             Smoothing smoothing = GetComponent<Smoothing>();
-            PresentationSettings settings = new PresentationSettings(prediction, smoothing, interpolationDelay);
-            if (prediction != null)
+            PresentationSettings settings = new PresentationSettings(extrapolation, smoothing, interpolationDelay);
+            if (extrapolation != null)
             {
-                prediction.Prepare(this, timestamp);
+                extrapolation.Prepare(this, timestamp);
             }
 
             PresentationPose previous = default(PresentationPose);
             if (_tuning.Changed(settings))
             {
-                previous = PreparePose(clock, timestamp, prediction, smoothing, sourceAxes, _tuning.Settings, true, out _);
+                previous = PreparePose(clock, timestamp, extrapolation, smoothing, sourceAxes, _tuning.Settings, true, out _);
             }
 
-            PresentationPose current = PreparePose(clock, timestamp, prediction, smoothing, sourceAxes, settings, false, out _presentationObservation);
+            PresentationPose current = PreparePose(clock, timestamp, extrapolation, smoothing, sourceAxes, settings, false, out _presentationObservation);
             current = _tuning.Apply(previous, current, settings, timestamp);
             _presentationPosition = current.Position;
             _presentationRotation = current.Rotation;
@@ -370,10 +370,10 @@ namespace Emas
             _data.ResetTime(timestamp);
             _history.Clear();
             ResetPresentation();
-            Prediction prediction = GetComponent<Prediction>();
-            if (prediction != null)
+            Extrapolation extrapolation = GetComponent<Extrapolation>();
+            if (extrapolation != null)
             {
-                prediction.ResetTime();
+                extrapolation.ResetTime();
             }
         }
 
@@ -383,7 +383,7 @@ namespace Emas
             Vector3 position = default(Vector3);
             // Check the unfiltered observation at playback time. Comparing the latest packet with a delayed
             // reference can cull even the origin when speed times buffer delay exceeds the range limit.
-            // Prediction and smoothing still cannot bring an out-of-range observation into presentation.
+            // Extrapolation and smoothing still cannot bring an out-of-range observation into presentation.
             Double3 observation = _hasPresentation ? _presentationObservation : Position;
             bool observationVisible = HasPosition && projection.TryToUnityPosition(observation, out position);
             bool visible = observationVisible && projection.TryToUnityPosition(PresentationPosition, out position);
@@ -439,7 +439,7 @@ namespace Emas
             _suppression.SetInRange(this, value);
         }
 
-        private PresentationPose PreparePose(SpatialClock clock, double timestamp, Prediction prediction,
+        private PresentationPose PreparePose(SpatialClock clock, double timestamp, Extrapolation extrapolation,
             Smoothing smoothing, CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 observation)
         {
             Double3 motion = default(Double3);
@@ -447,23 +447,23 @@ namespace Emas
             PresentationPose pose;
             if (settings.InterpolationDelay > 0)
             {
-                pose = BufferedPose(clock, timestamp, prediction, sourceAxes, settings, preview, out motion, out observation);
+                pose = BufferedPose(clock, timestamp, extrapolation, sourceAxes, settings, preview, out motion, out observation);
             }
             else
             {
-                Double3 position = prediction != null
-                    ? prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion) : Position;
+                Double3 position = extrapolation != null
+                    ? extrapolation.Project(this, clock, timestamp, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion) : Position;
                 Quaternion rotation = Rotation;
                 if (_history.NewestRotationTime.HasValue)
                 {
                     double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
-                    _history.SampleRotation(age, settings.MaximumExtrapolation, out rotation);
+                    _history.SampleRotation(age, out rotation);
                 }
 
-                if (prediction != null && HasRotation)
+                if (extrapolation != null && HasRotation)
                 {
                     double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
-                    rotation = prediction.ProjectRotation(this, rotation, age, settings.MaximumExtrapolation, sourceAxes);
+                    rotation = extrapolation.ProjectRotation(this, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
                 }
 
                 pose = new PresentationPose(position, rotation);
@@ -473,7 +473,7 @@ namespace Emas
             return smoothing != null ? smoothing.Prepare(this, pose, timestamp, motion, settings, preview) : pose;
         }
 
-        private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Prediction prediction,
+        private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Extrapolation extrapolation,
             CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
         {
             Double3 position = Position;
@@ -485,30 +485,30 @@ namespace Emas
                 double offset = clock.OffsetFrom(_history.NewestPositionTime.Value, timestamp, settings.InterpolationDelay);
                 _history.SamplePosition(offset, out position);
                 observation = position;
-                if (prediction != null)
+                if (extrapolation != null)
                 {
-                    position = prediction.ProjectTimestamped(this, settings.MaximumExtrapolation, position, offset, preview, out motion);
+                    position = extrapolation.ProjectTimestamped(this, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, position, offset, preview, out motion);
                 }
             }
-            else if (prediction != null)
+            else if (extrapolation != null)
             {
                 // An untimed channel has no SDK history to interpolate; preserve its arrival-timed behavior.
-                position = prediction.Project(this, clock, timestamp, settings.MaximumExtrapolation, preview, out motion);
+                position = extrapolation.Project(this, clock, timestamp, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion);
             }
 
             if (_history.NewestRotationTime.HasValue)
             {
                 double offset = clock.OffsetFrom(_history.NewestRotationTime.Value, timestamp, settings.InterpolationDelay);
-                _history.SampleRotation(offset, settings.MaximumExtrapolation, out rotation);
-                if (prediction != null)
+                _history.SampleRotation(offset, out rotation);
+                if (extrapolation != null)
                 {
-                    rotation = prediction.ProjectRotation(this, rotation, offset, settings.MaximumExtrapolation, sourceAxes);
+                    rotation = extrapolation.ProjectRotation(this, rotation, offset, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
                 }
             }
-            else if (prediction != null && HasRotation)
+            else if (extrapolation != null && HasRotation)
             {
                 double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
-                rotation = prediction.ProjectRotation(this, rotation, age, settings.MaximumExtrapolation, sourceAxes);
+                rotation = extrapolation.ProjectRotation(this, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
             }
 
             return new PresentationPose(position, rotation);

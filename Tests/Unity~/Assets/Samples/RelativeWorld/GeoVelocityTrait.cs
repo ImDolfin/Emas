@@ -2,8 +2,8 @@ using UnityEngine;
 
 namespace Emas.RelativeWorld
 {
-    /// <summary>Optionally supplies timestamped SDK ENU velocity to the Prediction behavior trait.</summary>
-    [RequireComponent(typeof(Prediction))]
+    /// <summary>Optionally supplies timestamped SDK ENU velocity to the Extrapolation behavior trait.</summary>
+    [RequireComponent(typeof(Extrapolation))]
     public sealed class GeoVelocityTrait : Trait<GeoPoseReading>
     {
         /// <summary>Converts optional ENU metres per second at the reading's location, or clears unavailable velocity.</summary>
@@ -11,15 +11,15 @@ namespace Emas.RelativeWorld
         /// <remarks>The observation carries its own geographic basis, so velocity conversion does not depend on position-trait order.</remarks>
         public override void Apply(GeoPoseReading value)
         {
-            Prediction prediction = Ghost.GetRequired<Prediction>();
+            Extrapolation extrapolation = Ghost.GetRequired<Extrapolation>();
             if (value != null && value.EastNorthUpVelocity.HasValue)
             {
-                prediction.SetGeographicVelocity(value.EastNorthUpVelocity.Value,
+                extrapolation.SetGeographicVelocity(value.EastNorthUpVelocity.Value,
                     new GeoPosition(value.LatitudeDegrees, value.LongitudeDegrees, value.AltitudeMeters), value.SampleTime);
             }
             else
             {
-                prediction.ClearVelocity();
+                extrapolation.ClearVelocity();
             }
         }
     }

@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Emas.AircraftFormation
 {
-    /// <summary>Applies a coherent aircraft packet to authored Spatial and optional Prediction components.</summary>
+    /// <summary>Applies a coherent aircraft packet to authored Spatial and optional Extrapolation components.</summary>
     [RequireComponent(typeof(Spatial))]
     public sealed class FlightPoseTrait : Trait<FlightReading>
     {
@@ -13,11 +13,11 @@ namespace Emas.AircraftFormation
             Spatial spatial = GetComponent<Spatial>();
             spatial.SetCartesianPosition(data.Position, data.SampleTime);
             spatial.SetSourceRotation(data.Rotation, data.SampleTime);
-            Prediction prediction = GetComponent<Prediction>();
-            if (prediction != null)
+            Extrapolation extrapolation = GetComponent<Extrapolation>();
+            if (extrapolation != null)
             {
-                prediction.SetCartesianVelocity(data.Velocity, data.SampleTime);
-                prediction.SetBodyAngularVelocity(data.BodyAngularVelocity, CoordinateSystem.Unity, data.SampleTime);
+                extrapolation.SetCartesianVelocity(data.Velocity, data.SampleTime);
+                extrapolation.SetBodyAngularVelocity(data.BodyAngularVelocity, CoordinateSystem.Unity, data.SampleTime);
             }
         }
     }

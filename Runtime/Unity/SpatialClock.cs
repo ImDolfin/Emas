@@ -12,7 +12,7 @@ namespace Emas
         internal void Observe(Timestamp sampleTime, double receivedTime)
         {
             // A smaller arrival-minus-source offset can only advance the estimated SDK clock.
-            // Slower packets must not move that clock backwards or reset every entity's prediction age.
+            // Slower packets must not move that clock backwards or reset every entity's extrapolation age.
             if (!_hasAnchor || sampleTime.ElapsedSince(_sourceAnchor) > receivedTime - _localAnchor)
             {
                 _sourceAnchor = sampleTime;

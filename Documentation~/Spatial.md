@@ -17,19 +17,19 @@ Position and attitude arrive independently. Setters store data; the Realm applie
 
 ## Choose spatial behavior per Ghost
 
-Author these components on the **same Ghost root**, not on child transforms. `Spatial` applies raw poses through the reference frame and owns attachments and range suppression. It has no smoothing or prediction controls. Add either or both optional behavior Traits:
+Author these components on the **same Ghost root**, not on child transforms. `Spatial` applies raw poses through the reference frame and owns attachments and range suppression. It has no smoothing or extrapolation controls. Add either or both optional behavior Traits:
 
 | Root components | Result |
 | --- | --- |
 | `Spatial` | Direct reference-relative placement |
 | `Spatial` + `Smoothing` | Reduce positional/angular jitter without extrapolation |
-| `Spatial` + `Prediction` | Extrapolate motion to the shared estimated presentation time, within a separate limit |
+| `Spatial` + `Extrapolation` | Extrapolate motion to the shared estimated presentation time, within a separate limit |
 | All three | Predict motion and smooth correction errors |
 
 A positive `realm.InterpolationDelay` changes timestamped channels to buffered playback before these optional
 traits run. It applies to the whole Realm, including the followed reference; the default is zero.
 
-`Smoothing` and `Prediction` are built-in Traits without SDK readers; the Realm evaluates them after every data Trait and Ghost hook has run. They appear in `Ghost.Traits` and the Ghost Inspector. Disabling either behavior bypasses it on the next projection. Adding a behavior component requires `Spatial` automatically. Attached parts inherit their parent's processed world pose and bypass their own filters, avoiding a second smoothing pass.
+`Smoothing` and `Extrapolation` are built-in Traits without SDK readers; the Realm evaluates them after every data Trait and Ghost hook has run. They appear in `Ghost.Traits` and the Ghost Inspector. Disabling either behavior bypasses it on the next projection. Adding a behavior component requires `Spatial` automatically. Attached parts inherit their parent's processed world pose and bypass their own filters, avoiding a second smoothing pass.
 
 Views requested from the Realm update's query notifications use that update's already projected pose. Creating a view does not advance one predicted entity or attachment parent beyond the rest of that frame. Standalone view requests outside those notifications still apply current spatial input immediately.
 
@@ -43,11 +43,11 @@ Spatial spatial = ghost.GetRequired<Spatial>();
 spatial.SetGeographicPosition(location, time);
 spatial.SetGeographicRotation(yaw, pitch, roll, time);
 
-Prediction prediction;
-if (ghost.TryGet<Prediction>(out prediction))
+Extrapolation extrapolation;
+if (ghost.TryGet<Extrapolation>(out extrapolation))
 {
-    prediction.SetGeographicVelocity(enuVelocity, tangentOrigin, time);
-    prediction.SetGeographicAcceleration(enuAcceleration, tangentOrigin, time);
+    extrapolation.SetGeographicVelocity(enuVelocity, tangentOrigin, time);
+    extrapolation.SetGeographicAcceleration(enuAcceleration, tangentOrigin, time);
 }
 ```
 
@@ -55,7 +55,7 @@ if (ghost.TryGet<Prediction>(out prediction))
 
 Each position, orientation, velocity and acceleration channel ignores older and duplicate timed packets. A newer timestamp refreshes a stationary position's age even when coordinates are unchanged. Optional timestamps let existing arrival-timed readers continue working: identical untimed cached positions do not refresh age. Switching a channel to untimed input clears its previous timestamp ordering guard. `Spatial.PositionTime` and `RotationTime` expose accepted sample times; `Position` and `Rotation` remain raw input.
 
-When the SDK cannot provide its current time, the Realm estimates a source-to-Unity clock alignment from received observations. It retains the arrival with the smallest observed relative delay, then advances using Unity's unscaled clock. Every root and the followed reference use the same captured presentation time per spatial pass. Older packets therefore have more prediction age than newer packets, even when both were read in the same Unity frame. This estimates relative packet age; **absolute transport latency is unknown** and is not automatically recovered. Prediction is an estimate, not guaranteed current truth.
+When the SDK cannot provide its current time, the Realm estimates a source-to-Unity clock alignment from received observations. It retains the arrival with the smallest observed relative delay, then advances using Unity's unscaled clock. Every root and the followed reference use the same captured presentation time per spatial pass. Older packets therefore have more extrapolation age than newer packets, even when both were read in the same Unity frame. This estimates relative packet age; **absolute transport latency is unknown** and is not automatically recovered. Extrapolation is an estimate, not guaranteed current truth.
 
 If the SDK clock restarts or a replay changes its time origin, call `realm.ResetSpatialTime()` **before** supplying samples from the new clock. This clears clock alignment, sample ordering and filter/estimated-motion history while retaining raw poses, supplied motion and component settings. Use separate Realms or application-side clock conversion for unrelated SDK clocks.
 
@@ -72,7 +72,7 @@ shared delay**. Position uses double-precision linear interpolation; rotation fo
 arc. Original timestamps are retained, including multiple observations supplied between Realm updates.
 At 60 Hz input and 90 Hz presentation, the intermediate updates therefore advance along the recorded motion
 instead of holding and jumping at each packet. The moving reference is sampled before projection at the same
-time as its peers, even when their Prediction toggles differ. Attached parts inherit their parent's result.
+time as its peers, even when their Extrapolation toggles differ. Attached parts inherit their parent's result.
 
 This adds the configured playback latency to the existing transport latency. It does not recover unknown
 absolute latency. Choose enough delay to cover packet delivery variation, while keeping it acceptable for
@@ -81,31 +81,31 @@ and up to 40 ms of delivery jitter. **Playback > Interpolation delay** on Realm 
 `Realm.InterpolationDelay` can be changed directly while running and blends the resulting pose difference over
 0.25 seconds.
 
-If playback reaches the newest available pose, enabled Prediction extrapolates for at most its
+If playback reaches the newest available pose, enabled Extrapolation extrapolates for at most its
 `MaximumExtrapolation` **beyond that observation**, rather than predicting through the buffer. Supplied velocity
 and optional acceleration predict position; the last two timed rotations provide a short angular extrapolation.
-Prediction off or a zero horizon holds the newest pose. Before enough history arrives, playback holds the
+Extrapolation off or a zero horizon holds the newest pose. Before enough history arrives, playback holds the
 oldest available pose. Each channel stores at most 128 observations (about 2.1 seconds at 60 Hz); excessive
 buffer delays hold the oldest retained observation. Untimed channels continue using arrival-time behavior.
 
-Range eligibility uses the unfiltered observation at playback time, before prediction and smoothing. It
+Range eligibility uses the unfiltered observation at playback time, before extrapolation and smoothing. It
 therefore compares a buffered entity with its buffered reference, rather than culling the origin because
 its newest raw packet has already travelled beyond the configured radius.
 
 Smoothing then filters the remaining measurement error separately. With supplied SDK velocity, it advances
 the position filter using velocity from the **buffered playback time**, including through turns and stops, even
-when Prediction is off. It never uses a noisy position difference as this motion step. A held pose after the
+when Extrapolation is off. It never uses a noisy position difference as this motion step. A held pose after the
 gap horizon contributes no further motion. Rotation half-life still adds angular response lag; use matching,
 small values on the reference and peers when their relative attitude matters. Without SDK velocity, position
 smoothing retains the usual low-pass motion lag described below.
 
 Recorded motion integrates each supplied velocity segment, including across a long render frame. Gap
-prediction samples velocity and acceleration at the newest position's timestamp with both immediate and
+extrapolation samples velocity and acceleration at the newest position's timestamp with both immediate and
 buffered playback. Motion timestamps are compared directly, preserving samples exactly at that instant.
 A later acceleration does not apply to an earlier pose; recorded velocity samples interpolate across their
 own timestamps. Acceleration is used for gap extrapolation, rather than applied retroactively over recorded motion.
 
-A buffer cannot reconstruct a maneuver that has not arrived, and a long prediction horizon can still overshoot
+A buffer cannot reconstruct a maneuver that has not arrived, and a long extrapolation horizon can still overshoot
 a stop or turn during a sustained outage. Start with a short gap horizon such as `0.05` seconds. Call
 `Spatial.ResetPresentation()` after a teleport; it clears pose playback history and seeds the new pose.
 
@@ -122,40 +122,92 @@ a stop or turn during a sustained outage. Start with a short gap horizon such as
 
 The Inspector sliders offer `0–0.5 s` with these tradeoffs in their tooltips. Larger finite values remain supported in code if a deliberately slow response is useful. Position filtering stays in double-precision source coordinates; rotation uses the shortest quaternion arc. Both advance in unscaled time even between packets. Changing half-lives retains filter history. `Smoothing.Reset()` explicitly discards both histories and any live-tuning transition.
 
-**Smoothing works with prediction disabled or absent.** When supplied SDK velocity is available in `Prediction`, a new pair of timed position observations advances the filter by the expected motion between their original timestamps. Only the remaining measurement error is filtered. This assistance remains available when `Prediction.enabled` is false or its horizon is zero; it does not extrapolate the target beyond the latest observation. Held, duplicate or older packets add no motion. Recorded motion integrates supplied velocity segments; optional acceleration reconciles separately timed velocity and predicts gaps. Position-derived velocity is not used for this path because it would pass position noise directly into the filter.
+**Smoothing works with extrapolation disabled or absent.** When supplied SDK velocity is available in `Extrapolation`, a new pair of timed position observations advances the filter by the expected motion between their original timestamps. Only the remaining measurement error is filtered. This assistance remains available when `Extrapolation.enabled` is false or its horizon is zero; it does not extrapolate the target beyond the latest observation. Held, duplicate or older packets add no motion. Recorded motion integrates supplied velocity segments; optional acceleration reconciles separately timed velocity and predicts gaps. Position-derived velocity is not used for this path because it would pass position noise directly into the filter.
 
-With prediction enabled and supplied SDK velocity, motion assistance integrates motion between the observed playback poses and applies the **change in predicted lead** separately. A new velocity or acceleration can therefore revise the future trajectory immediately while position measurement corrections retain their half-life. Smoothing the entire revised lead would delay a known turn and leave a sideways position error; following a pitching or rolling reference can make that error appear to circle the origin. Motion assistance uses SDK vectors rather than raw position differences, so position noise remains filtered. Live setting changes still use the separate 0.25-second transition.
+With extrapolation enabled and supplied SDK velocity, motion assistance integrates motion between the observed playback poses and applies the **change in predicted lead** separately. A new velocity or acceleration can therefore revise the future trajectory immediately while position measurement corrections retain their half-life. Smoothing the entire revised lead would delay a known turn and leave a sideways position error; following a pitching or rolling reference can make that error appear to circle the origin. Motion assistance uses SDK vectors rather than raw position differences, so position noise remains filtered. Live setting changes still use the separate 0.25-second transition.
 
-Reaching the horizon stops a held packet's motion; accepting another timed pose still advances the filter by its known SDK motion. This applies with `InterpolationDelay = 0` as well as buffered playback. For example, 560 kt motion with a `0.3 s` position half-life and a `0.05 s` prediction horizon should not acquire the ordinary low-pass filter's roughly 125 m trailing error merely because packet age exceeds the horizon. Measurement noise, noisy SDK motion and unobserved maneuvers can still produce correction error.
+Reaching the horizon stops a held packet's motion; accepting another timed pose still advances the filter by its known SDK motion. This applies with `InterpolationDelay = 0` as well as buffered playback. For example, 560 kt motion with a `0.3 s` position half-life and a `0.05 s` extrapolation horizon should not acquire the ordinary low-pass filter's roughly 125 m trailing error merely because packet age exceeds the horizon. Measurement noise, noisy SDK motion and unobserved maneuvers can still produce correction error.
 
-Without supplied SDK velocity or a pair of timed observations, position smoothing remains an ordinary low-pass filter. A steadily moving input then has approximately `speed × half-life / ln(2)` of trailing error: at 100 m/s, about 11.5 m for `0.08 s` and 72 m for `0.5 s`. Increasing smoothing without motion data therefore increases visible lag. With motion assistance and prediction disabled, a bird can still trail a predicted reference by the packet age; use comparable prediction settings when both should represent the same presentation time.
+Without supplied SDK velocity or a pair of timed observations, position smoothing remains an ordinary low-pass filter. A steadily moving input then has approximately `speed × half-life / ln(2)` of trailing error: at 100 m/s, about 11.5 m for `0.08 s` and 72 m for `0.5 s`. Increasing smoothing without motion data therefore increases visible lag. With motion assistance and extrapolation disabled, a bird can still trail a predicted reference by the packet age; use comparable extrapolation settings when both should represent the same presentation time.
 
-Tune live roots through **Ghost → Traits** during Play Mode. Serialized edits, Undo/Redo and property assignments use the same continuous transition, including half-lives of zero, prediction limits and either trait's enabled toggle. On the next projection, Emas evaluates the previous and new settings at the same update time. It preserves the previous behavior's pose and blends away the difference over **0.25 seconds of real time**, independently for position and rotation. Repeated slider edits continue normal motion and rebase the remaining correction; they do not restart from an old rendered pose. Initial settings apply directly without a transition.
+Tune live roots through **Ghost → Traits** during Play Mode. Serialized edits, Undo/Redo and property assignments use the same continuous transition, including half-lives of zero, extrapolation limits and either trait's enabled toggle. On the next projection, Emas evaluates the previous and new settings at the same update time. It preserves the previous behavior's pose and blends away the difference over **0.25 seconds of real time**, independently for position and rotation. Repeated slider edits continue normal motion and rebase the remaining correction; they do not restart from an old rendered pose. Initial settings apply directly without a transition.
 
-The edit correction reaches zero exactly after 0.25 seconds; any remaining observation error follows the selected smoothing half-life. The correction is never fed back into prediction or smoothing, so it cannot accumulate permanent displacement. Raw poses, original SDK timestamps, supplied velocity/acceleration and the shared clock remain unchanged. Prediction-only roots receive the same transition. A followed origin supplies one resulting pose for the entire frame, including attached entities.
+The edit correction reaches zero exactly after 0.25 seconds; any remaining observation error follows the selected smoothing half-life. The correction is never fed back into extrapolation or smoothing, so it cannot accumulate permanent displacement. Raw poses, original SDK timestamps, supplied velocity/acceleration and the shared clock remain unchanged. Extrapolation-only roots receive the same transition. A followed origin supplies one resulting pose for the entire frame, including attached entities.
 
-Changing settings moves presentation gradually toward the new lead or lag. For example, at 100 m/s a 0.1-second reduction in the prediction age removes 10 m of lead over the transition instead of snapping backward. Some previous lead can remain during that transition. Zero half-life and disabled smoothing become direct after the blend completes. For an intentional teleport or an immediate switch, supply the new pose and call `Spatial.ResetPresentation()` to bypass the blend and reset both behaviors.
+Changing settings moves presentation gradually toward the new lead or lag. For example, at 100 m/s a 0.1-second reduction in the extrapolation age removes 10 m of lead over the transition instead of snapping backward. Some previous lead can remain during that transition. Zero half-life and disabled smoothing become direct after the blend completes. For an intentional teleport or an immediate switch, supply the new pose and call `Spatial.ResetPresentation()` to bypass the blend and reset both behaviors.
 
 **Rotation half-life defaults to zero.** When `ReferenceFrame.FollowRotation` is enabled, the followed Ghost's rotation filter also determines how quickly reference orientation repositions every other Ghost. Leave it at zero for immediate scene repositioning while smoothing reference position independently. Other Ghosts' position filters process their own source motion and add no lag to reference changes. With FollowRotation disabled, the reference Ghost's rotation does not affect their positions.
 
-## Predict motion independently
+## Extrapolate motion independently
 
-`Prediction.MaximumExtrapolation` is the **maximum sample age used to project motion forward**. It defaults to `0.15 s` and is independent of either smoothing half-life. Prediction alone works without Smoothing. With both enabled, the smoother follows predicted motion and blends correction error in every direction; there is no direction rejection or minimum speed. Disabling extrapolation retains supplied SDK velocity for smoothing the motion between newly accepted observations.
+Choose **Ghost → Traits → Extrapolation → Strategy** before or during Play Mode, or assign the root's strategy in code:
+
+```csharp
+Extrapolation extrapolation = ghost.Trait<Extrapolation>();
+extrapolation.Strategy = new ConstantVelocityExtrapolation();
+extrapolation.MaximumExtrapolation = 0.1f;
+```
+
+| Strategy | Gap behavior |
+| --- | --- |
+| `ConstantAccelerationExtrapolation` (default) | Extend supplied or estimated linear velocity with optional acceleration; extend supplied or estimated angular velocity |
+| `ConstantVelocityExtrapolation` | Extend linear and angular velocity; ignore linear acceleration during the gap |
+| `NoExtrapolation` | Hold the newest pose after recorded observations; retain buffered interpolation and SDK motion assistance for smoothing |
+
+Changing `Strategy` keeps observations, original timestamps, motion channels and filter history. The resulting
+presentation difference blends over the same 0.25-second live-tuning transition as the horizon. Assign a new
+instance when changing custom strategy settings to get this transition; edits within an existing instance
+take effect directly. Strategies act only beyond observations; buffered interpolation and coordinate conversion
+remain the responsibility of Emas. Disabling Extrapolation or setting a zero horizon bypasses every strategy.
+
+These are **extrapolation algorithms**: they extend observed motion beyond the newest observation to produce
+a predicted pose. The `Extrapolation` component manages that presentation behavior;
+`NoExtrapolation` is the explicit baseline that contributes no future offset.
+
+Implement `IExtrapolationStrategy` to add an application model. Both `ExtrapolateDisplacement` and
+`ExtrapolateRotation` receive an `ExtrapolationContext` and bounded seconds. The context contains:
+
+- The latest accepted position and orientation, each with its original timestamp.
+- The current channel's `ObservationTime`: position time for linear extrapolation, rotation time for angular extrapolation.
+- Linear velocity, acceleration and angular velocity sampled at that time, with null for unavailable motion.
+- Flags distinguishing supplied rates from estimates and world angular velocity from body angular velocity.
+- The newest SDK motion timestamps, reference space, source coordinate convention, rotation space and ECEF body-axis mapping.
+
+Motion channels remain independently timed. A newer SDK sample may be recorded in the timestamp metadata
+while the effective motion is interpolated at the older pose time. Future-only motion is unavailable there;
+an applicable estimate can still be used. Supplied zero motion remains available and overrides estimation.
+The pose properties keep their own observation times rather than pretending that separately timed poses
+were captured together. A custom model can use cross-channel information, including inferring an orientation
+from linear motion when no angular rate is available. The built-in constant-acceleration model still requires
+a linear velocity before extrapolating position; acceleration alone does not invent that velocity.
+
+`ExtrapolateDisplacement` returns a source-space displacement; `ExtrapolateRotation` returns a quaternion
+offset. Body angular vectors use model right/up/forward axes; world vectors use ECEF for EarthCentered
+rotation or local east/up/north otherwise. Emas handles body/world composition and axis conversion.
+Both methods must return zero displacement or identity at zero
+seconds and remain deterministic without mutating state: live tuning can evaluate the old and new model
+at the same update time. Finite-result overflows reported as `ArgumentOutOfRangeException` fall back to the
+observed pose. Other application exceptions propagate. A `[Serializable]` concrete class with a public
+parameterless constructor appears in the Inspector selector, including its serialized fields. Runtime-only
+implementations need no serialization attribute. Null assignment is rejected; missing serialized strategy
+references use the default model.
+
+`Extrapolation.MaximumExtrapolation` is the **maximum sample age used to project motion forward**. It defaults to `0.15 s` and is independent of either smoothing half-life. Extrapolation alone works without Smoothing. With both enabled, the smoother follows predicted motion and blends correction error in every direction; there is no direction rejection or minimum speed. Disabling extrapolation retains supplied SDK velocity for smoothing the motion between newly accepted observations.
 
 | Maximum extrapolation | Starting-point tradeoff |
 | --- | --- |
-| `0` | Bypass prediction |
+| `0` | Bypass extrapolation |
 | `0.05–0.1 s` | Conservative correction for small gaps |
 | `0.1–0.25 s` | Bridge short packet gaps; default `0.15 s` |
 | `0.25–0.5 s` | Bridge longer gaps, with more overshoot risk when entities stop or turn |
 
-The estimate uses `position + velocity × age + acceleration × age² / 2`, with age capped by the prediction limit. If SDK velocity is missing, consecutive timestamped positions observed during projection estimate velocity. Without either source of velocity, presentation holds the supplied position; acceleration alone does not invent an initial velocity. After a gap reaches the limit, the predicted destination stops advancing rather than drifting indefinitely. Disabling Prediction blends toward raw positioning over the live-tuning transition, with any enabled Smoothing continuing to filter observations.
+The default constant-acceleration estimate uses `position + velocity × age + acceleration × age² / 2`, with age capped by the extrapolation limit. If SDK velocity is missing, consecutive timestamped positions observed during projection estimate velocity. Without either source of velocity, presentation holds the supplied position; acceleration alone does not invent an initial velocity. After a gap reaches the limit, the predicted destination stops advancing rather than drifting indefinitely. Disabling Extrapolation blends toward raw positioning over the live-tuning transition, with any enabled Smoothing continuing to filter observations.
 
 Orientation is predicted with **zero or positive interpolation delay**. Optional SDK body or world angular velocity
 can extend a single attitude observation for at most `MaximumExtrapolation`. Without an applicable supplied
-rate, the last two timed rotations define a shortest quaternion arc for gap prediction; one rotation alone
-cannot estimate that rate. Prediction disabled or a zero horizon holds the latest orientation. Rotation
-smoothing still applies its independent half-life. Angular prediction does not change linear motion.
+rate, the last two timed rotations define a shortest quaternion arc for gap extrapolation; one rotation alone
+cannot estimate that rate. Extrapolation disabled or a zero horizon holds the latest orientation. Rotation
+smoothing still applies its independent half-life. Angular extrapolation does not change linear motion.
 
 All angular-velocity setters use **radians per second**, never degrees per second. Choose the setter for
 the vector's reference frame; matching axis names alone does not make world rates into body rates.
@@ -169,7 +221,7 @@ the vector's reference frame; matching axis names alone does not make world rate
 For world ENU data, use the same SDK tangent origin as the other geographic vectors:
 
 ```csharp
-prediction.SetGeographicAngularVelocity(
+extrapolation.SetGeographicAngularVelocity(
     new Double3(eastAngularRate, northAngularRate, upAngularRate),
     sdkTangentOrigin,
     angularVelocityTime);
@@ -186,7 +238,7 @@ operations differ when the aircraft is pitched or banked.
 For true body angular velocity:
 
 ```csharp
-prediction.SetBodyAngularVelocity(
+extrapolation.SetBodyAngularVelocity(
     new Double3(rollRate, pitchRate, yawRate),
     CoordinateSystem.NorthEastDown,
     angularVelocityTime);
@@ -213,28 +265,28 @@ rotation-history estimation. SDK clock resets retain supplied rates while resett
 Use `Spatial.ResetPresentation()` after a teleport. Rotation smoothing remains an ordinary angular error
 filter; supplying angular velocity does not add rotation filter motion assistance.
 
-Supply Cartesian motion in shared source axes/units through `Prediction.SetCartesianVelocity` and `SetCartesianAcceleration`. Geographic integrations can use ECEF XYZ metres through the EarthCentered setters, or **ENU** (X east, Y north, Z up) through the Geographic setters. The explicit `GeoPosition tangentOrigin` is the entity location for entity-local ENU, or your SDK's fixed origin for a shared ENU frame; it is independent of the presentation reference. `GeoPosition.ToEarthCenteredVector(enu)` performs the same vector rotation without translation. Supply gravity-free linear acceleration in metres per second squared. Publish matching motion and pose times together; recorded velocity is sampled at the position time, or advanced from an older velocity using acceleration available at that time.
+Supply Cartesian motion in shared source axes/units through `Extrapolation.SetCartesianVelocity` and `SetCartesianAcceleration`. Geographic integrations can use ECEF XYZ metres through the EarthCentered setters, or **ENU** (X east, Y north, Z up) through the Geographic setters. The explicit `GeoPosition tangentOrigin` is the entity location for entity-local ENU, or your SDK's fixed origin for a shared ENU frame; it is independent of the presentation reference. `GeoPosition.ToEarthCenteredVector(enu)` performs the same vector rotation without translation. Supply gravity-free linear acceleration in metres per second squared. Publish matching motion and pose times together; recorded velocity is sampled at the position time, or advanced from an older velocity using acceleration available at that time.
 
 ENU describes a geographic tangent frame, rather than the aircraft's rotating forward/right/down axes.
 For true ENU input, preserve the SDK component order and origin:
 
 ```csharp
-prediction.SetGeographicVelocity(new Double3(eastSpeed, northSpeed, upSpeed), sdkTangentOrigin, velocityTime);
-prediction.SetGeographicAcceleration(new Double3(eastAcceleration, northAcceleration, upAcceleration), sdkTangentOrigin, accelerationTime);
+extrapolation.SetGeographicVelocity(new Double3(eastSpeed, northSpeed, upSpeed), sdkTangentOrigin, velocityTime);
+extrapolation.SetGeographicAcceleration(new Double3(eastAcceleration, northAcceleration, upAcceleration), sdkTangentOrigin, accelerationTime);
 spatial.SetGeographicRotation(headingDegrees, pitchDegrees, rollDegrees, orientationTime);
 ```
 
 Pitch and roll do not change the interpretation of those ENU vectors. If the SDK instead supplies body-frame
 vectors, convert them into world axes using its raw attitude at each motion sample's timestamp before calling
-the motion setters. The projected Ghost transform contains reference alignment, prediction and smoothing,
+the motion setters. The projected Ghost transform contains reference alignment, extrapolation and smoothing,
 so it does not represent that raw conversion. Incorrect axes or an acceleration containing gravity can
-produce maneuver-dependent prediction offsets even when timestamps are correct.
+produce maneuver-dependent extrapolation offsets even when timestamps are correct.
 
-`Prediction.Velocity`, `Acceleration`, `HasVelocity` and `HasAcceleration` expose supplied SDK channels, including while extrapolation is disabled. `ClearVelocity()` releases that supplied channel; timestamp-derived velocity may still be available for enabled prediction. `ClearAcceleration()` retains velocity. `Prediction.Reset()` clears estimated motion after a discontinuity, retaining supplied motion. For a teleport, supply the new pose with a fresh timestamp (or untimed override), update motion and call `spatial.ResetPresentation()` to reset both optional behaviors. Missing or out-of-range raw observations clear history so source recovery starts fresh. If only the filtered presentation lies outside range, it stays hidden while its existing filter continues settling; culling does not repeatedly reset and snap that presentation back to the raw pose. Re-enabling Spatial restarts presentation history.
+`Extrapolation.Velocity`, `Acceleration`, `HasVelocity` and `HasAcceleration` expose supplied SDK channels, including while extrapolation is disabled. `ClearVelocity()` releases that supplied channel; timestamp-derived velocity may still be available for enabled extrapolation. `ClearAcceleration()` retains velocity. `Extrapolation.Reset()` clears estimated motion after a discontinuity, retaining supplied motion. For a teleport, supply the new pose with a fresh timestamp (or untimed override), update motion and call `spatial.ResetPresentation()` to reset both optional behaviors. Missing or out-of-range raw observations clear history so source recovery starts fresh. If only the filtered presentation lies outside range, it stays hidden while its existing filter continues settling; culling does not repeatedly reset and snap that presentation back to the raw pose. Re-enabling Spatial restarts presentation history.
 
-The Relative World sample reads a nullable `GeoPoseReading.SampleTime` with pose and motion from the same observation. Its `GeoVelocityTrait` and optional `GeoAccelerationTrait` require Prediction and supply nullable ENU vectors at that reading's location, independently of reader order. They clear their supplied channel when a vector is unavailable. The saved sample Ghost prefabs enable Prediction and Smoothing, with analytical SDK velocity and configurable observation noise and delivery delay. The Geo Source Inspector can disable those input impairments for comparison; see the [sample controls and correction troubleshooting](../Samples~/RelativeWorld/README.md#try-noisy-and-delayed-packets).
+The Relative World sample reads a nullable `GeoPoseReading.SampleTime` with pose and motion from the same observation. Its `GeoVelocityTrait` and optional `GeoAccelerationTrait` require Extrapolation and supply nullable ENU vectors at that reading's location, independently of reader order. They clear their supplied channel when a vector is unavailable. The saved sample Ghost prefabs enable Extrapolation and Smoothing, with analytical SDK velocity and configurable observation noise and delivery delay. The Geo Source Inspector can disable those input impairments for comparison; see the [sample controls and correction troubleshooting](../Samples~/RelativeWorld/README.md#try-noisy-and-delayed-packets).
 
-This implementation uses shared buffered pose interpolation, bounded kinematic/angular prediction and
+This implementation uses shared buffered pose interpolation, bounded kinematic/angular extrapolation and
 exponential correction smoothing. A Kalman filter would additionally need suitable process and measurement
 noise models, ideally SDK accuracy estimates; timestamps alone do not provide those.
 

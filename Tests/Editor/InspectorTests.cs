@@ -128,11 +128,11 @@ namespace Emas.Editor.Tests
                     Spatial spatial = ghost.GetComponent<Spatial>();
                     spatial.SetGeographicPosition(position, ObservedTime);
                     spatial.SetGeographicRotation(30 * _sampleSeconds + headingCorrection, 0, 0, ObservedTime);
-                    ghost.GetComponent<Prediction>().SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
+                    ghost.GetComponent<Extrapolation>().SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
                 }
 
                 ObservedRotation = Edited.GetComponent<Spatial>().Rotation;
-                ObservedVelocity = Edited.GetComponent<Prediction>().Velocity;
+                ObservedVelocity = Edited.GetComponent<Extrapolation>().Velocity;
             }
 
             internal Quaternion PredictedRotation(float horizon)
@@ -160,7 +160,7 @@ namespace Emas.Editor.Tests
                 Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
                 smoothing.PositionHalfLife = 0.4f;
                 smoothing.RotationHalfLife = 0.4f;
-                ghost.gameObject.AddComponent<Prediction>();
+                ghost.gameObject.AddComponent<Extrapolation>();
                 return ghost;
             }
         }
@@ -590,7 +590,7 @@ namespace Emas.Editor.Tests
         /// <summary>
         /// Live serialized tuning preserves continuous presentation, matches public setters and converges without changing SDK observations or attachments.
         /// </summary>
-        /// <returns>An iterator that advances moving geographic observations and held prediction samples in Play Mode.</returns>
+        /// <returns>An iterator that advances moving geographic observations and held extrapolation samples in Play Mode.</returns>
         [UnityTest]
         public IEnumerator SerializedLiveTuning_MatchesPropertyEditsAndPreservesSharedPresentation()
         {
@@ -629,7 +629,7 @@ namespace Emas.Editor.Tests
                 AssertLiveTuningTarget(realm, source, 0.15f, false);
 
                 AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_maximumExtrapolation", 0.03f),
-                    "Reducing the capped prediction horizon");
+                    "Reducing the capped extrapolation horizon");
                 yield return HoldLiveTuningSample(realm, source, 0.25 + 8 * 0.08);
                 AssertLiveTuningTarget(realm, source, 0.03f, false);
                 AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_rotationHalfLife", 0.06f),
@@ -648,7 +648,7 @@ namespace Emas.Editor.Tests
                 yield return HoldLiveTuningSample(realm, source, 0.35);
                 AssertLiveTuningTarget(realm, source, 0.03f);
                 AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_maximumExtrapolation", 0),
-                    "Zero prediction horizon");
+                    "Zero extrapolation horizon");
                 yield return HoldLiveTuningSample(realm, source, 0.35);
                 AssertLiveTuningTarget(realm, source, 0);
 
@@ -664,21 +664,21 @@ namespace Emas.Editor.Tests
                 yield return HoldLiveTuningSample(realm, source, 0.35);
                 AssertLiveTuningTarget(realm, source, 0.25f);
                 AssertContinuousLiveTuning(realm, source, () => SetLiveTuningEnabled(source, true, false),
-                    "Disabling prediction");
+                    "Disabling extrapolation");
                 yield return HoldLiveTuningSample(realm, source, 0.35);
                 AssertLiveTuningTarget(realm, source, 0);
                 AssertContinuousLiveTuning(realm, source, () => SetLiveTuningEnabled(source, true, true),
-                    "Re-enabling prediction");
+                    "Re-enabling extrapolation");
                 yield return HoldLiveTuningSample(realm, source, 0.35);
                 AssertLiveTuningTarget(realm, source, 0.25f);
 
                 yield return DragLiveTuningWhileMoving(realm, source);
                 yield return HoldLiveTuningSample(realm, source, 0.35);
-                AssertLiveTuningTarget(realm, source, source.Control.GetComponent<Prediction>().MaximumExtrapolation);
+                AssertLiveTuningTarget(realm, source, source.Control.GetComponent<Extrapolation>().MaximumExtrapolation);
                 AssertContinuousLiveTuning(realm, source, () => SetLiveTuningEnabled(source, false, true),
                     "Re-enabling smoothing");
                 yield return HoldLiveTuningSample(realm, source, 0.35);
-                AssertLiveTuningTarget(realm, source, source.Control.GetComponent<Prediction>().MaximumExtrapolation);
+                AssertLiveTuningTarget(realm, source, source.Control.GetComponent<Extrapolation>().MaximumExtrapolation);
             }
         }
 
@@ -694,10 +694,10 @@ namespace Emas.Editor.Tests
             root.SetActive(false);
             Spatial spatial = root.AddComponent<Spatial>();
             Smoothing smoothing = root.AddComponent<Smoothing>();
-            Prediction prediction = root.AddComponent<Prediction>();
+            Extrapolation extrapolation = root.AddComponent<Extrapolation>();
             InspectorTrait custom = root.AddComponent<InspectorTrait>();
             smoothing.enabled = false;
-            prediction.enabled = false;
+            extrapolation.enabled = false;
             custom.enabled = false;
             smoothing.hideFlags = HideFlags.DontUnloadUnusedAsset;
             yield return WaitForTraitVisibility(root, false);
@@ -709,13 +709,13 @@ namespace Emas.Editor.Tests
                 inspector = UnityEditor.Editor.CreateEditor(ghost);
                 AssertGhostAuthoringMetadata(ghost);
                 yield return WaitForTraitVisibility(root, true);
-                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction, custom }));
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, extrapolation, custom }));
                 Assert.That(spatial.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.None));
                 Assert.That(smoothing.hideFlags & HideFlags.DontUnloadUnusedAsset, Is.EqualTo(HideFlags.DontUnloadUnusedAsset));
-                AssertTraitSettingsSupportUndo(smoothing, prediction, custom);
+                AssertTraitSettingsSupportUndo(smoothing, extrapolation, custom);
 
                 Undo.DestroyObjectImmediate(custom);
-                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction }));
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, extrapolation }));
                 custom = Undo.AddComponent<InspectorTrait>(root);
                 custom.enabled = false;
                 yield return WaitForTraitVisibility(root, true);
@@ -730,11 +730,11 @@ namespace Emas.Editor.Tests
 
                 ghost = Undo.AddComponent<InspectorGhost>(root);
                 yield return WaitForTraitVisibility(root, true);
-                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, prediction, custom }));
+                Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, extrapolation, custom }));
                 Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset | HideFlags.HideInInspector));
                 Assert.That(spatial.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.None));
                 Assert.That(smoothing.enabled, Is.True);
-                Assert.That(prediction.enabled, Is.True);
+                Assert.That(extrapolation.enabled, Is.True);
                 Assert.That(custom.enabled, Is.False);
             }
             finally
@@ -763,14 +763,14 @@ namespace Emas.Editor.Tests
             root.SetActive(false);
             Ghost ghost = root.AddComponent<Ghost>();
             Smoothing smoothing = root.AddComponent<Smoothing>();
-            Prediction prediction = root.AddComponent<Prediction>();
+            Extrapolation extrapolation = root.AddComponent<Extrapolation>();
             string path = AssetDatabase.GenerateUniqueAssetPath("Assets/EmasTraitAuthoring.prefab");
             GameObject contents = null;
             UnityEditor.Editor inspector = null;
             try
             {
                 inspector = UnityEditor.Editor.CreateEditor(ghost);
-                SetSerializedTraitSettings(smoothing, prediction, false);
+                SetSerializedTraitSettings(smoothing, extrapolation, false);
                 Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
                 UnityEngine.Object.DestroyImmediate(inspector);
                 inspector = null;
@@ -778,16 +778,17 @@ namespace Emas.Editor.Tests
                 contents = PrefabUtility.LoadPrefabContents(path);
                 Ghost restored = contents.GetComponent<Ghost>();
                 Smoothing restoredSmoothing = contents.GetComponent<Smoothing>();
-                Prediction restoredPrediction = contents.GetComponent<Prediction>();
+                Extrapolation restoredExtrapolation = contents.GetComponent<Extrapolation>();
                 inspector = UnityEditor.Editor.CreateEditor(restored);
-                Assert.That(restored.Traits, Is.EquivalentTo(new Trait[] { restoredSmoothing, restoredPrediction }));
+                Assert.That(restored.Traits, Is.EquivalentTo(new Trait[] { restoredSmoothing, restoredExtrapolation }));
                 Assert.That(restoredSmoothing.PositionHalfLife, Is.EqualTo(0.15f));
                 Assert.That(restoredSmoothing.RotationHalfLife, Is.EqualTo(0.03f));
-                Assert.That(restoredPrediction.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(restoredExtrapolation.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(restoredExtrapolation.Strategy, Is.TypeOf<ConstantVelocityExtrapolation>());
                 Assert.That(restoredSmoothing.enabled, Is.False);
-                Assert.That(restoredPrediction.enabled, Is.False);
+                Assert.That(restoredExtrapolation.enabled, Is.False);
                 Assert.That(restoredSmoothing.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
-                Assert.That(restoredPrediction.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
+                Assert.That(restoredExtrapolation.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
             }
             finally
             {
@@ -802,14 +803,14 @@ namespace Emas.Editor.Tests
                 }
 
                 Undo.ClearUndo(smoothing);
-                Undo.ClearUndo(prediction);
+                Undo.ClearUndo(extrapolation);
                 AssetDatabase.DeleteAsset(path);
             }
         }
 
         /// <summary>Rejects tuning jumps while allowing the old filter's ordinary progress during the elapsed projection interval.</summary>
         /// <param name="realm">The realm whose followed reference exposes absolute presentation.</param>
-        /// <param name="source">The paired source holding an observation past its previous prediction cap.</param>
+        /// <param name="source">The paired source holding an observation past its previous extrapolation cap.</param>
         /// <param name="edit">The equivalent serialized and public configuration edits.</param>
         /// <param name="context">The configuration change described by assertion failures.</param>
         private static void AssertContinuousLiveTuning(Realm realm, LiveTuningDetector source, Action edit, string context)
@@ -819,10 +820,10 @@ namespace Emas.Editor.Tests
             Quaternion rotation = frame.Rotation;
             double previousProjection = source.LastProjectionStarted;
             Smoothing smoothing = source.Control.GetComponent<Smoothing>();
-            Prediction prediction = source.Control.GetComponent<Prediction>();
+            Extrapolation extrapolation = source.Control.GetComponent<Extrapolation>();
             float positionHalfLife = smoothing.enabled ? smoothing.PositionHalfLife : 0;
             float rotationHalfLife = smoothing.enabled ? smoothing.RotationHalfLife : 0;
-            float horizon = prediction.enabled ? prediction.MaximumExtrapolation : 0;
+            float horizon = extrapolation.enabled ? extrapolation.MaximumExtrapolation : 0;
             Double3 target = source.ObservedPosition + source.ObservedVelocity * horizon;
             double positionError = Double3.Distance(position, target);
             double rotationError = Quaternion.Angle(rotation, source.PredictedRotation(horizon));
@@ -842,13 +843,13 @@ namespace Emas.Editor.Tests
         /// <summary>Checks convergence to the held observation's requested cap after filter and tuning-transition time has elapsed.</summary>
         /// <param name="realm">The realm whose followed reference exposes absolute presentation.</param>
         /// <param name="source">The source whose original observation remains unchanged.</param>
-        /// <param name="horizon">The expected capped prediction age, or zero for disabled prediction.</param>
+        /// <param name="horizon">The expected capped extrapolation age, or zero for disabled extrapolation.</param>
         /// <param name="checkRotation">Whether the independent rotation channel has also been allowed to settle.</param>
         private static void AssertLiveTuningTarget(Realm realm, LiveTuningDetector source, float horizon, bool checkRotation = true)
         {
             Double3 target = source.ObservedPosition + source.ObservedVelocity * horizon;
             Assert.That(Double3.Distance(realm.ReferenceFrame.Position, target), Is.LessThan(0.1),
-                "Live settings must converge to their new prediction behavior instead of retaining the previous offset.");
+                "Live settings must converge to their new extrapolation behavior instead of retaining the previous offset.");
             if (checkRotation)
             {
                 Assert.That(Quaternion.Angle(realm.ReferenceFrame.Rotation, source.PredictedRotation(horizon)), Is.LessThan(0.1),
@@ -883,21 +884,21 @@ namespace Emas.Editor.Tests
 
         /// <summary>Compares serialized float controls with their corresponding public property setters.</summary>
         /// <param name="source">The paired ghosts receiving identical timestamped observations.</param>
-        /// <param name="property">The serialized position, rotation or prediction setting to change.</param>
+        /// <param name="property">The serialized position, rotation or extrapolation setting to change.</param>
         /// <param name="value">The new setting applied to both authoring paths.</param>
         private static void EditLiveTuning(LiveTuningDetector source, string property, float value)
         {
-            bool prediction = property == "_maximumExtrapolation";
-            Trait edited = prediction ? (Trait)source.Edited.GetComponent<Prediction>() : source.Edited.GetComponent<Smoothing>();
+            bool extrapolation = property == "_maximumExtrapolation";
+            Trait edited = extrapolation ? (Trait)source.Edited.GetComponent<Extrapolation>() : source.Edited.GetComponent<Smoothing>();
             using (SerializedObject settings = new SerializedObject(edited))
             {
                 settings.FindProperty(property).floatValue = value;
                 settings.ApplyModifiedProperties();
             }
 
-            if (prediction)
+            if (extrapolation)
             {
-                source.Control.GetComponent<Prediction>().MaximumExtrapolation = value;
+                source.Control.GetComponent<Extrapolation>().MaximumExtrapolation = value;
             }
             else if (property == "_positionHalfLife")
             {
@@ -911,12 +912,12 @@ namespace Emas.Editor.Tests
 
         /// <summary>Compares the Inspector enabled toggle with the equivalent public component toggle.</summary>
         /// <param name="source">The paired ghosts being tuned.</param>
-        /// <param name="prediction">True for Prediction; false for Smoothing.</param>
+        /// <param name="extrapolation">True for Extrapolation; false for Smoothing.</param>
         /// <param name="enabled">The enabled state applied to both traits.</param>
-        private static void SetLiveTuningEnabled(LiveTuningDetector source, bool prediction, bool enabled)
+        private static void SetLiveTuningEnabled(LiveTuningDetector source, bool extrapolation, bool enabled)
         {
-            Trait edited = prediction ? (Trait)source.Edited.GetComponent<Prediction>() : source.Edited.GetComponent<Smoothing>();
-            Trait control = prediction ? (Trait)source.Control.GetComponent<Prediction>() : source.Control.GetComponent<Smoothing>();
+            Trait edited = extrapolation ? (Trait)source.Edited.GetComponent<Extrapolation>() : source.Edited.GetComponent<Smoothing>();
+            Trait control = extrapolation ? (Trait)source.Control.GetComponent<Extrapolation>() : source.Control.GetComponent<Smoothing>();
             using (SerializedObject settings = new SerializedObject(edited))
             {
                 settings.FindProperty("m_Enabled").boolValue = enabled;
@@ -937,13 +938,13 @@ namespace Emas.Editor.Tests
             foreach (Ghost ghost in new[] { source.Edited, source.Control })
             {
                 Spatial spatial = ghost.GetComponent<Spatial>();
-                Prediction prediction = ghost.GetComponent<Prediction>();
+                Extrapolation extrapolation = ghost.GetComponent<Extrapolation>();
                 Assert.That(spatial.Position, Is.EqualTo(source.ObservedPosition), context);
                 Assert.That(spatial.Rotation, Is.EqualTo(source.ObservedRotation), context);
                 Assert.That(spatial.PositionTime, Is.EqualTo(source.ObservedTime), context);
                 Assert.That(spatial.RotationTime, Is.EqualTo(source.ObservedTime), context);
-                Assert.That(prediction.Velocity, Is.EqualTo(source.ObservedVelocity), context);
-                Assert.That(prediction.HasVelocity, Is.True, context);
+                Assert.That(extrapolation.Velocity, Is.EqualTo(source.ObservedVelocity), context);
+                Assert.That(extrapolation.HasVelocity, Is.True, context);
             }
 
             ReferenceFrame frame = realm.ReferenceFrame;
@@ -961,7 +962,7 @@ namespace Emas.Editor.Tests
         /// <summary>Checks bounded presentation while the SDK holds an unchanged timestamped sample.</summary>
         /// <param name="realm">The isolated realm to advance.</param>
         /// <param name="source">The source whose latest observation remains unchanged.</param>
-        /// <param name="seconds">The minimum elapsed real time to let prediction reach its cap.</param>
+        /// <param name="seconds">The minimum elapsed real time to let extrapolation reach its cap.</param>
         /// <returns>An iterator that advances public Realm updates across Unity frames.</returns>
         private static IEnumerator HoldLiveTuningSample(Realm realm, LiveTuningDetector source, double seconds)
         {
@@ -1027,9 +1028,9 @@ namespace Emas.Editor.Tests
 
         /// <summary>Edits hidden traits through the same serialized controls used by the Ghost Inspector.</summary>
         /// <param name="smoothing">The trait receiving position and rotation half-lives.</param>
-        /// <param name="prediction">The trait receiving its extrapolation horizon.</param>
+        /// <param name="extrapolation">The trait receiving its extrapolation horizon.</param>
         /// <param name="enabled">The enabled state authored for both traits.</param>
-        private static void SetSerializedTraitSettings(Smoothing smoothing, Prediction prediction, bool enabled)
+        private static void SetSerializedTraitSettings(Smoothing smoothing, Extrapolation extrapolation, bool enabled)
         {
             using (SerializedObject settings = new SerializedObject(smoothing))
             {
@@ -1039,9 +1040,10 @@ namespace Emas.Editor.Tests
                 settings.ApplyModifiedProperties();
             }
 
-            using (SerializedObject settings = new SerializedObject(prediction))
+            using (SerializedObject settings = new SerializedObject(extrapolation))
             {
                 settings.FindProperty("_maximumExtrapolation").floatValue = 0.2f;
+                settings.FindProperty("_strategy").managedReferenceValue = new ConstantVelocityExtrapolation();
                 settings.FindProperty("m_Enabled").boolValue = enabled;
                 settings.ApplyModifiedProperties();
             }
@@ -1049,15 +1051,15 @@ namespace Emas.Editor.Tests
 
         /// <summary>Verifies that one serialized edit group restores built-in and application trait settings and toggles.</summary>
         /// <param name="smoothing">The initially disabled smoothing trait with default settings.</param>
-        /// <param name="prediction">The initially disabled prediction trait with default settings.</param>
+        /// <param name="extrapolation">The initially disabled extrapolation trait with default settings.</param>
         /// <param name="custom">The initially disabled application trait with its default value.</param>
-        private static void AssertTraitSettingsSupportUndo(Smoothing smoothing, Prediction prediction, InspectorTrait custom)
+        private static void AssertTraitSettingsSupportUndo(Smoothing smoothing, Extrapolation extrapolation, InspectorTrait custom)
         {
             Undo.IncrementCurrentGroup();
             int group = Undo.GetCurrentGroup();
             try
             {
-                SetSerializedTraitSettings(smoothing, prediction, true);
+                SetSerializedTraitSettings(smoothing, extrapolation, true);
                 using (SerializedObject settings = new SerializedObject(custom))
                 {
                     settings.FindProperty("_customValue").intValue = 23;
@@ -1070,25 +1072,27 @@ namespace Emas.Editor.Tests
                 Undo.PerformUndo();
                 Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.08f));
                 Assert.That(smoothing.RotationHalfLife, Is.Zero);
-                Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.15f));
+                Assert.That(extrapolation.MaximumExtrapolation, Is.EqualTo(0.15f));
+                Assert.That(extrapolation.Strategy, Is.TypeOf<ConstantAccelerationExtrapolation>());
                 Assert.That(custom.Value, Is.EqualTo(7));
                 Assert.That(smoothing.enabled, Is.False);
-                Assert.That(prediction.enabled, Is.False);
+                Assert.That(extrapolation.enabled, Is.False);
                 Assert.That(custom.enabled, Is.False);
 
                 Undo.PerformRedo();
                 Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.15f));
                 Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.03f));
-                Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(extrapolation.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(extrapolation.Strategy, Is.TypeOf<ConstantVelocityExtrapolation>());
                 Assert.That(custom.Value, Is.EqualTo(23));
                 Assert.That(smoothing.enabled, Is.True);
-                Assert.That(prediction.enabled, Is.True);
+                Assert.That(extrapolation.enabled, Is.True);
                 Assert.That(custom.enabled, Is.True);
             }
             finally
             {
                 Undo.ClearUndo(smoothing);
-                Undo.ClearUndo(prediction);
+                Undo.ClearUndo(extrapolation);
                 Undo.ClearUndo(custom);
             }
         }

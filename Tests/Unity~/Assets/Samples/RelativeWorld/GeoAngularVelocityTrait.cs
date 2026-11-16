@@ -2,8 +2,8 @@ using UnityEngine;
 
 namespace Emas.RelativeWorld
 {
-    /// <summary>Optionally supplies timestamped SDK world ENU or aircraft body angular velocity to Prediction.</summary>
-    [RequireComponent(typeof(Prediction))]
+    /// <summary>Optionally supplies timestamped SDK world ENU or aircraft body angular velocity to Extrapolation.</summary>
+    [RequireComponent(typeof(Extrapolation))]
     public sealed class GeoAngularVelocityTrait : Trait<GeoPoseReading>
     {
         /// <summary>Supplies world ENU angular velocity when available, otherwise true aircraft body rates; clears unavailable input.</summary>
@@ -12,19 +12,19 @@ namespace Emas.RelativeWorld
         /// Both paths are independent of pose-reader order. Euler-angle derivatives require conversion to an angular vector first.</remarks>
         public override void Apply(GeoPoseReading value)
         {
-            Prediction prediction = Ghost.GetRequired<Prediction>();
+            Extrapolation extrapolation = Ghost.GetRequired<Extrapolation>();
             if (value != null && value.EastNorthUpAngularVelocity.HasValue)
             {
                 GeoPosition origin = new GeoPosition(value.LatitudeDegrees, value.LongitudeDegrees, value.AltitudeMeters);
-                prediction.SetGeographicAngularVelocity(value.EastNorthUpAngularVelocity.Value, origin, value.SampleTime);
+                extrapolation.SetGeographicAngularVelocity(value.EastNorthUpAngularVelocity.Value, origin, value.SampleTime);
             }
             else if (value != null && value.BodyAngularVelocity.HasValue)
             {
-                prediction.SetBodyAngularVelocity(value.BodyAngularVelocity.Value, CoordinateSystem.NorthEastDown, value.SampleTime);
+                extrapolation.SetBodyAngularVelocity(value.BodyAngularVelocity.Value, CoordinateSystem.NorthEastDown, value.SampleTime);
             }
             else
             {
-                prediction.ClearAngularVelocity();
+                extrapolation.ClearAngularVelocity();
             }
         }
     }

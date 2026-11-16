@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Filters presentation error independently of input storage and optional motion prediction.
+    // Filters presentation error independently of input storage and optional motion extrapolation.
     internal struct PoseSmoother
     {
         private const double LogTwo = 0.6931471805599453;

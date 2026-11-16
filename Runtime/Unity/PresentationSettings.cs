@@ -7,25 +7,27 @@ namespace Emas
         internal readonly float PositionHalfLife;
         internal readonly float RotationHalfLife;
         internal readonly float InterpolationDelay;
+        internal readonly IExtrapolationStrategy Strategy;
 
-        internal PresentationSettings(Prediction prediction, Smoothing smoothing, float interpolationDelay)
+        internal PresentationSettings(Extrapolation extrapolation, Smoothing smoothing, float interpolationDelay)
         {
-            MaximumExtrapolation = prediction != null && prediction.enabled ? ValidTime(prediction.MaximumExtrapolation) : 0;
+            MaximumExtrapolation = extrapolation != null && extrapolation.enabled ? ValidTime(extrapolation.MaximumExtrapolation) : 0;
             PositionHalfLife = smoothing != null && smoothing.enabled ? ValidTime(smoothing.PositionHalfLife) : 0;
             RotationHalfLife = smoothing != null && smoothing.enabled ? ValidTime(smoothing.RotationHalfLife) : 0;
             InterpolationDelay = ValidTime(interpolationDelay);
+            Strategy = extrapolation != null ? extrapolation.Strategy : null;
         }
 
         internal bool SamePosition(PresentationSettings other)
         {
             return MaximumExtrapolation.Equals(other.MaximumExtrapolation) && PositionHalfLife.Equals(other.PositionHalfLife)
-                && InterpolationDelay.Equals(other.InterpolationDelay);
+                && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy);
         }
 
         internal bool SameRotation(PresentationSettings other)
         {
             return RotationHalfLife.Equals(other.RotationHalfLife) && MaximumExtrapolation.Equals(other.MaximumExtrapolation)
-                && InterpolationDelay.Equals(other.InterpolationDelay);
+                && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy);
         }
 
         private static float ValidTime(float value)

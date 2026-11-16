@@ -65,7 +65,7 @@ namespace Emas.RelativeWorld
         public Vector3 BodyOffset { get; }
 
         /// <summary>Gets optional X-east, Y-north, Z-up velocity in metres per second at this reading's location.</summary>
-        /// <value>Supplied linear velocity, or null when prediction must estimate it from timestamped positions.</value>
+        /// <value>Supplied linear velocity, or null when extrapolation must estimate it from timestamped positions.</value>
         public Double3? EastNorthUpVelocity { get; }
 
         /// <summary>Gets optional X-east, Y-north, Z-up linear acceleration in metres per second squared, with gravity removed.</summary>
@@ -100,7 +100,7 @@ namespace Emas.RelativeWorld
         /// <param name="parentId">The parent entity ID while attached; null for absolute placement.</param>
         /// <param name="parentKind">The attached parent's category.</param>
         /// <param name="bodyOffset">Parent-local metres in SDK axes: X forward, Y right and Z down.</param>
-        /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for prediction and motion-assisted smoothing.</param>
+        /// <param name="eastNorthUpVelocity">Optional local ENU velocity in metres per second for extrapolation and motion-assisted smoothing.</param>
         /// <param name="eastNorthUpAcceleration">Optional local ENU linear acceleration in metres per second squared, with gravity removed.</param>
         /// <param name="sampleTime">Optional observation time in the SDK's shared seconds/nanoseconds clock.</param>
         /// <param name="bodyAngularVelocity">Optional true roll/pitch/yaw body rates in radians per second, using aircraft X-forward, Y-right, Z-down axes.</param>

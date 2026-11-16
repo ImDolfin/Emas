@@ -23,7 +23,7 @@ namespace Emas
                 return false;
             }
 
-            // Fresh stationary observations refresh prediction age. Re-reading an unchanged untimed cache does not.
+            // Fresh stationary observations refresh extrapolation age. Re-reading an unchanged untimed cache does not.
             if (!HasPosition || Position != position || sampleTime.HasValue || PositionTime.HasValue)
             {
                 PositionReceivedTime = receivedTime;

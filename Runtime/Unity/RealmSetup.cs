@@ -22,7 +22,7 @@ namespace Emas
         [SerializeField]
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
-        [Tooltip("Shared playback delay in seconds for timestamped position and rotation. 0: immediate. Start at 0.1 for noisy 60 Hz packets. Prediction only fills gaps beyond buffered observations; all roots and the reference use the same time.")]
+        [Tooltip("Shared playback delay in seconds for timestamped position and rotation. 0: immediate. Start at 0.1 for noisy 60 Hz packets. Extrapolation only fills gaps beyond buffered observations; all roots and the reference use the same time.")]
         [Min(0)]
         [SerializeField]
         private float _interpolationDelay;

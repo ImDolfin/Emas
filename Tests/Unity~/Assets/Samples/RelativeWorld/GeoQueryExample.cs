@@ -32,7 +32,7 @@ namespace Emas.RelativeWorld
 
         /// <summary>Gets the SDK-observed ECEF chord distance between the bird and the driving reference in metres.</summary>
         /// <value>The raw-pose separation in metres, or null until both available roots have position observations.</value>
-        /// <remarks>The sample captures both poses together. This is measured separation, independent of prediction, smoothing and projected visibility.</remarks>
+        /// <remarks>The sample captures both poses together. This is measured separation, independent of extrapolation, smoothing and projected visibility.</remarks>
         public double? BirdDistanceMeters
         {
             get

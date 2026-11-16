@@ -144,8 +144,8 @@ namespace Emas
         /// <value>A finite, nonnegative delay in seconds; zero, the default, uses immediate presentation.</value>
         /// <remarks>
         /// A positive delay interpolates recorded observations at one SDK time for every root and the followed
-        /// reference. Choose enough delay to cover relative packet jitter. Prediction only extrapolates beyond
-        /// the newest buffered observation, within its own limit; disabled prediction holds that observation.
+        /// reference. Choose enough delay to cover relative packet jitter. Extrapolation only extrapolates beyond
+        /// the newest buffered observation, within its own limit; disabled extrapolation holds that observation.
         /// Untimed channels retain immediate behavior. Absolute transport latency is additional and unknown.
         /// Live changes blend presentation differences over 0.25 seconds. Attached parts inherit their parent's pose.
         /// </remarks>

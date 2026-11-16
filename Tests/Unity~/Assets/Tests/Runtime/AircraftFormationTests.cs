@@ -36,7 +36,7 @@ namespace Emas.Tests.Samples
             foreach (IGhost entity in realm.Ghosts)
             {
                 Ghost ghost = (Ghost)entity;
-                ghost.GetRequired<Prediction>().enabled = false;
+                ghost.GetRequired<Extrapolation>().enabled = false;
                 ghost.GetRequired<Smoothing>().enabled = false;
                 ghost.GetRequired<Spatial>().ResetPresentation();
             }
@@ -71,9 +71,9 @@ namespace Emas.Tests.Samples
                     Assert.That(Vector3.Distance(wingman.transform.position, expected), Is.LessThan(0.002f));
                     Assert.That(wingman.transform.position.z, Is.GreaterThan(200));
                     Assert.That(spatial.PositionTime, Is.EqualTo(reference.PositionTime));
-                    Prediction prediction = wingman.GetRequired<Prediction>();
-                    Assert.That(Double3.Distance(default(Double3), prediction.Velocity), Is.EqualTo(343).Within(0.00001));
-                    Assert.That(prediction.HasAngularVelocity, Is.True);
+                    Extrapolation extrapolation = wingman.GetRequired<Extrapolation>();
+                    Assert.That(Double3.Distance(default(Double3), extrapolation.Velocity), Is.EqualTo(343).Within(0.00001));
+                    Assert.That(extrapolation.HasAngularVelocity, Is.True);
                 }
             }
             Assert.That(maximumTurn, Is.GreaterThan(35), "The scenario must actually exercise combined angular motion.");

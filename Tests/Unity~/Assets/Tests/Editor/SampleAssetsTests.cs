@@ -97,10 +97,10 @@ namespace Emas.Tests.Samples
 
                     if (sample == "RelativeWorld")
                     {
-                        Prediction prediction = blueprint.GhostPrefab.GetRequired<Prediction>();
+                        Extrapolation extrapolation = blueprint.GhostPrefab.GetRequired<Extrapolation>();
                         Smoothing smoothing = blueprint.GhostPrefab.GetRequired<Smoothing>();
-                        Assert.That(prediction.enabled, Is.True);
-                        Assert.That(prediction.MaximumExtrapolation, Is.EqualTo(0.05f));
+                        Assert.That(extrapolation.enabled, Is.True);
+                        Assert.That(extrapolation.MaximumExtrapolation, Is.EqualTo(0.05f));
                         Assert.That(smoothing.enabled, Is.True);
                         Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.08f));
                         Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.04f));

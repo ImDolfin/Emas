@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Fade only the difference introduced by an edit. Never feed this correction back into prediction or smoothing.
+    // Fade only the difference introduced by an edit. Never feed this correction back into extrapolation or smoothing.
     internal sealed class PresentationTuning
     {
         private const double Duration = 0.25d;

@@ -3,12 +3,12 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Optional Ghost trait that predicts pose using timestamped observations and optional SDK linear and angular motion.</summary>
+    /// <summary>Optional Ghost trait that extrapolates pose using timestamped observations and optional SDK linear and angular motion.</summary>
     /// <remarks>Author beside Spatial; Smoothing is independently optional. ENU vectors use an explicit SDK tangent origin.
     /// Without SDK velocity, consecutive timestamped positions estimate it. No SDK binding is needed on this behavior trait.
     /// Disabling extrapolation retains supplied SDK motion for Smoothing between newly accepted timed observations;
-    /// held observations do not advance from that motion while prediction is disabled. With a positive
-    /// Realm.InterpolationDelay, pose and SDK motion are sampled on the shared buffered timeline. Prediction
+    /// held observations do not advance from that motion while extrapolation is disabled. With a positive
+    /// Realm.InterpolationDelay, pose and SDK motion are sampled on the shared buffered timeline. Extrapolation
     /// only covers gaps after the newest buffered observation. Orientation uses supplied body or geographic world angular velocity,
     /// or extends its last timed arc when unavailable, with immediate or buffered playback.
     /// Timed SDK linear motion is sampled at the position observation's time;
@@ -17,10 +17,12 @@ namespace Emas
     /// Smoothing after earlier packets have reached that limit.</remarks>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Spatial))]
-    [AddComponentMenu("Emas/Prediction")]
-    public sealed class Prediction : Trait
+    [AddComponentMenu("Emas/Extrapolation")]
+    public sealed class Extrapolation : Trait
     {
-        [Tooltip("Maximum extrapolation beyond the newest observation, in seconds. With buffered playback, only fills gaps after recorded poses. 0: no prediction. 0.05-0.1: conservative; 0.1-0.25: bridges short packet gaps; 0.25-0.5: may overshoot stops or turns. Independent of smoothing half-life.")]
+        [Tooltip("Gap extrapolation model. Change at runtime to compare methods without losing observations or supplied motion.")]
+        [SerializeReference] private IExtrapolationStrategy _strategy = new ConstantAccelerationExtrapolation();
+        [Tooltip("Maximum extrapolation beyond the newest observation, in seconds. With buffered playback, only fills gaps after recorded poses. 0: no extrapolation. 0.05-0.1: conservative; 0.1-0.25: bridges short packet gaps; 0.25-0.5: may overshoot stops or turns. Independent of smoothing half-life.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _maximumExtrapolation = 0.15f;
         private Double3 _velocity;
@@ -42,7 +44,29 @@ namespace Emas
         private double _elapsed;
         private Timestamp? _motionSampleTime;
         private double _motionOffset;
-        private Double3 _motionPrediction;
+        private Double3 _motionExtrapolation;
+
+        /// <summary>Gets or sets the linear and angular gap extrapolation model on Unity's main thread.</summary>
+        /// <value>A non-null strategy; defaults to <see cref="ConstantAccelerationExtrapolation"/>.</value>
+        /// <remarks>Replacing the instance blends the presentation difference over 0.25 seconds without
+        /// clearing observations, supplied motion or smoothing. Strategies may be shared when immutable;
+        /// in-place configuration changes require assigning a new instance to start that transition.
+        /// Serializable implementations persist with the component; ordinary implementations can be assigned at runtime.</remarks>
+        /// <exception cref="ArgumentNullException">The assigned strategy is null.</exception>
+        public IExtrapolationStrategy Strategy
+        {
+            get
+            {
+                // Also recover if Unity loads a missing managed-reference type or an authored null.
+                if (_strategy == null)
+                {
+                    _strategy = new ConstantAccelerationExtrapolation();
+                }
+
+                return _strategy;
+            }
+            set => _strategy = value ?? throw new ArgumentNullException(nameof(value));
+        }
 
         /// <summary>Gets or sets the maximum extrapolated sample age in seconds; defaults to 0.15, independently of smoothing.</summary>
         /// <value>A finite, nonnegative horizon in seconds. Zero disables extrapolation, retaining SDK motion assistance for smoothing new observations.</value>
@@ -83,7 +107,7 @@ namespace Emas
         /// (-pitch rate, yaw rate, -roll rate). Geographic ENU input is converted to ECEF. These are angular vectors, not Euler-angle derivatives.</remarks>
         public Double3 AngularVelocity => _angularVelocity;
 
-        /// <summary>Gets whether optional SDK angular velocity is available for orientation prediction.</summary>
+        /// <summary>Gets whether optional SDK angular velocity is available for orientation extrapolation.</summary>
         /// <value>True after an angular velocity setter accepts a sample, until the channel is cleared or unbound.</value>
         public bool HasAngularVelocity => _hasAngularVelocity;
 
@@ -162,7 +186,7 @@ namespace Emas
         }
 
         /// <summary>Clears acceleration while retaining supplied or estimated velocity.</summary>
-        /// <remarks>Also clears the acceleration timestamp; acceleration alone never starts position prediction.</remarks>
+        /// <remarks>Also clears the acceleration timestamp; acceleration alone never starts position extrapolation.</remarks>
         public void ClearAcceleration()
         {
             _hasAcceleration = false;
@@ -175,15 +199,15 @@ namespace Emas
             }
         }
 
-        /// <summary>Supplies optional body angular velocity in radians per second for bounded orientation prediction.</summary>
+        /// <summary>Supplies optional body angular velocity in radians per second for bounded orientation extrapolation.</summary>
         /// <param name="angularVelocity">Finite true body angular rates in the specified SDK axes; these are not yaw/pitch/roll Euler-angle derivatives.</param>
         /// <param name="bodyAxes">Signed SDK body axes mapped to model right/up/forward. Null uses X forward, Y right, Z down: roll, pitch and yaw rates.</param>
         /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
         /// <remarks>Positive rates use the source quaternion rotation convention. Converts and stores body rates independently of pose-reader order.
         /// The axes describe directions fixed to the aircraft; world ENU angular velocity must use SetGeographicAngularVelocity instead.
-        /// Uses the rate sampled at the latest rotation's timestamp, before applying the shared prediction horizon. A supplied zero rate overrides
+        /// Uses the rate sampled at the latest rotation's timestamp, before applying the shared extrapolation horizon. A supplied zero rate overrides
         /// rotation-history estimation. Clearing the channel restores that estimation. Angular velocity never changes linear motion or raw pose.
-        /// Rotation smoothing retains its independent half-life; this input supplies prediction, rather than angular filter motion assistance.</remarks>
+        /// Rotation smoothing retains its independent half-life; this input supplies extrapolation, rather than angular filter motion assistance.</remarks>
         /// <exception cref="ArgumentException">The body-axis mapping is invalid.</exception>
         /// <exception cref="ArgumentOutOfRangeException">An angular velocity coordinate or its converted value is not finite.</exception>
         public void SetBodyAngularVelocity(Double3 angularVelocity, CoordinateSystem? bodyAxes = null, Timestamp? sampleTime = null)
@@ -205,7 +229,7 @@ namespace Emas
         /// <remarks>Use a Geographic reference with geographic/ECEF positions. World rates act before the raw attitude;
         /// they are not body rates or Euler-angle derivatives. Shares ordering, availability and clearing with SetBodyAngularVelocity.
         /// Accepted frame changes discard angular history so world and body samples are never interpolated together.
-        /// Samples at the attitude's observation time and uses the existing prediction horizon without changing linear motion.</remarks>
+        /// Samples at the attitude's observation time and uses the existing extrapolation horizon without changing linear motion.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">An angular velocity coordinate is not finite.</exception>
         public void SetEarthCenteredAngularVelocity(Double3 angularVelocity, Timestamp? sampleTime = null)
         {
@@ -221,13 +245,13 @@ namespace Emas
         /// with geographic/ECEF positions. These are world angular rates, not aircraft body rates or Euler-angle derivatives.
         /// Shares ordering and clearing with the other angular setters. AngularVelocity exposes the converted ECEF vector.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The origin or angular vector is invalid, or conversion produces a nonfinite coordinate.</exception>
-        /// <example><code>prediction.SetGeographicAngularVelocity(enuAngularVelocity, sdkTangentOrigin, sampleTime);</code></example>
+        /// <example><code>extrapolation.SetGeographicAngularVelocity(enuAngularVelocity, sdkTangentOrigin, sampleTime);</code></example>
         public void SetGeographicAngularVelocity(Double3 angularVelocity, GeoPosition origin, Timestamp? sampleTime = null)
         {
             SetEarthCenteredAngularVelocity(origin.ToEarthCenteredVector(angularVelocity), sampleTime);
         }
 
-        /// <summary>Clears supplied angular velocity, restoring prediction from consecutive timed rotations when available.</summary>
+        /// <summary>Clears supplied angular velocity, restoring extrapolation from consecutive timed rotations when available.</summary>
         /// <remarks>Also clears angular timestamp ordering and playback history; linear velocity, acceleration and pose remain unchanged.</remarks>
         public void ClearAngularVelocity()
         {
@@ -242,7 +266,7 @@ namespace Emas
             }
         }
 
-        /// <summary>Clears estimated motion history after a teleport while retaining supplied SDK motion and prediction settings.</summary>
+        /// <summary>Clears estimated motion history after a teleport while retaining supplied SDK motion and extrapolation settings.</summary>
         /// <remarks>Use <see cref="Spatial.ResetPresentation"/> when smoothing history must be reset at the same time.</remarks>
         public void Reset()
         {
@@ -252,7 +276,7 @@ namespace Emas
             _projectionTime = null;
             _motionSampleTime = null;
             _motionOffset = 0;
-            _motionPrediction = default(Double3);
+            _motionExtrapolation = default(Double3);
         }
 
         internal void Prepare(Spatial spatial, double timestamp)
@@ -263,7 +287,7 @@ namespace Emas
         }
 
         internal Double3 Project(Spatial spatial, SpatialClock clock, double timestamp,
-            float maximumExtrapolation, bool preview, out Double3 motion)
+            float maximumExtrapolation, IExtrapolationStrategy strategy, CoordinateSystem sourceAxes, bool preview, out Double3 motion)
         {
             // Old and new tuning settings use identical observations and elapsed time without advancing history twice.
             motion = default(Double3);
@@ -276,16 +300,16 @@ namespace Emas
             if (spatial.PositionTime.HasValue)
             {
                 return ProjectTimestamped(spatial, maximumExtrapolation,
-                    spatial.Position, age, preview, out motion);
+                    strategy, sourceAxes, spatial.Position, age, preview, out motion);
             }
 
             if (!preview)
             {
                 _motionSampleTime = null;
-                _motionPrediction = default(Double3);
+                _motionExtrapolation = default(Double3);
             }
 
-            if (maximumExtrapolation <= 0 || (!_hasVelocity && !_hasEstimatedVelocity))
+            if (maximumExtrapolation <= 0)
             {
                 return spatial.Position;
             }
@@ -293,12 +317,12 @@ namespace Emas
             double horizon = Math.Min(age, maximumExtrapolation);
             // Untimed motion advances only inside this observation's remaining horizon.
             double step = Math.Min(_elapsed, Math.Max(0d, maximumExtrapolation - Math.Max(0d, age - _elapsed)));
-            Double3 velocity = _hasVelocity ? _velocity : _estimatedVelocity;
-            Double3 acceleration = _hasAcceleration ? _acceleration : default(Double3);
             try
             {
-                Double3 predicted = spatial.Position + velocity * horizon + acceleration * (0.5d * horizon * horizon);
-                motion = velocity * step + acceleration * (step * (horizon - 0.5d * step));
+                ExtrapolationContext context = CreateContext(spatial, sourceAxes, null);
+                Double3 lead = strategy.ExtrapolateDisplacement(context, horizon);
+                Double3 predicted = spatial.Position + lead;
+                motion = lead - strategy.ExtrapolateDisplacement(context, Math.Max(0d, horizon - step));
                 return predicted;
             }
             catch (ArgumentOutOfRangeException)
@@ -318,50 +342,31 @@ namespace Emas
         }
 
         internal Quaternion ProjectRotation(Spatial spatial, Quaternion rotation, double offset,
-            float maximumExtrapolation, CoordinateSystem sourceAxes)
+            float maximumExtrapolation, IExtrapolationStrategy strategy, CoordinateSystem sourceAxes)
         {
-            if (!_hasAngularVelocity || offset <= 0 || maximumExtrapolation <= 0)
+            if (offset <= 0 || maximumExtrapolation <= 0)
             {
-                return rotation;
-            }
-
-            Double3 angularVelocity = _angularVelocity;
-            if (spatial.RotationTime.HasValue && _angularVelocityTime.HasValue
-                && !spatial.History.SampleAngularVelocity(spatial.RotationTime.Value, out angularVelocity))
-            {
-                // A future-only rate cannot describe an older orientation; retain its observed-arc estimate.
                 return rotation;
             }
 
             try
             {
-                if (_angularVelocityIsWorld && spatial.RotationSpace != RotationSpace.EarthCentered)
-                {
-                    if (!spatial.HasPosition)
-                    {
-                        return rotation;
-                    }
-
-                    // ECEF is right-handed; the local east/up/north presentation basis is left-handed.
-                    // Angular velocity is axial, so changing this handedness also reverses its sign.
-                    GeographicBasis basis = new GeographicBasis(GeoPosition.FromEarthCentered(spatial.Position));
-                    angularVelocity = basis.ToLocal(angularVelocity) * -1d;
-                }
-
-                Quaternion displacement = SpatialMath.AngularDisplacement(angularVelocity, Math.Min(offset, maximumExtrapolation));
+                ExtrapolationContext context = CreateContext(spatial, sourceAxes, spatial.RotationTime);
+                Quaternion displacement = SpatialMath.NormalizeRotation(
+                    strategy.ExtrapolateRotation(context, Math.Min(offset, maximumExtrapolation)), nameof(strategy));
                 if (spatial.RotationSpace == RotationSpace.Source)
                 {
                     displacement = sourceAxes.ToSourceRotation(displacement);
                 }
-                else if (!_angularVelocityIsWorld && spatial.RotationSpace == RotationSpace.EarthCentered)
+                else if (!context.AngularVelocityIsWorld && spatial.RotationSpace == RotationSpace.EarthCentered)
                 {
                     displacement = spatial.EarthCenteredBodyAxes.Value.ToSourceRotation(displacement);
                 }
 
                 // Local rates compose on the right, world rates on the left. Always start from raw
                 // attitude so neither repeated projection nor reference cancellation adds another lead.
-                return SpatialMath.NormalizeRotation(_angularVelocityIsWorld ? displacement * spatial.Rotation
-                    : spatial.Rotation * displacement, nameof(angularVelocity));
+                return SpatialMath.NormalizeRotation(context.AngularVelocityIsWorld ? displacement * spatial.Rotation
+                    : spatial.Rotation * displacement, nameof(strategy));
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -370,28 +375,21 @@ namespace Emas
         }
 
         internal Double3 ProjectTimestamped(Spatial spatial, float maximumExtrapolation,
-            Double3 position, double offset, bool preview, out Double3 motion)
+            IExtrapolationStrategy strategy, CoordinateSystem sourceAxes, Double3 position, double offset, bool preview, out Double3 motion)
         {
             motion = default(Double3);
-            bool suppliedVelocity = HasVelocityAt(spatial.History, spatial.PositionTime.Value);
-            double maximum = suppliedVelocity || _hasEstimatedVelocity ? maximumExtrapolation : 0d;
             double oldest = spatial.History.OldestPositionTime.Value.ElapsedSince(spatial.PositionTime.Value);
-            double endpoint = Math.Max(oldest, Math.Min(offset, maximum));
+            double endpoint = Math.Max(oldest, Math.Min(offset, maximumExtrapolation));
 
             try
             {
                 // Extrapolation begins at the newest POSITION observation, never at a future motion sample.
                 double horizon = Math.Max(0d, endpoint);
-                Double3 velocity = default(Double3);
-                Double3 acceleration = default(Double3);
-                if (suppliedVelocity || (_hasEstimatedVelocity && horizon > 0))
-                {
-                    GapMotion(spatial.History, spatial.PositionTime.Value, suppliedVelocity,
-                        out velocity, out acceleration);
-                }
-
-                Double3 predicted = position + velocity * horizon + acceleration * (0.5d * horizon * horizon);
-                motion = TimedMotion(spatial, endpoint, velocity, acceleration, preview);
+                Double3 lead = horizon > 0
+                    ? strategy.ExtrapolateDisplacement(CreateContext(spatial, sourceAxes, spatial.PositionTime), horizon)
+                    : default(Double3);
+                Double3 predicted = position + lead;
+                motion = TimedMotion(spatial, endpoint, lead, preview);
                 return predicted;
             }
             catch (ArgumentOutOfRangeException)
@@ -414,21 +412,118 @@ namespace Emas
             Reset();
         }
 
-        private Double3 TimedMotion(Spatial spatial, double endpoint,
-            Double3 gapVelocity, Double3 gapAcceleration, bool preview)
+        private ExtrapolationContext CreateContext(Spatial spatial, CoordinateSystem sourceAxes, Timestamp? observationTime)
+        {
+            PoseHistory history = spatial.History;
+            bool suppliedVelocity = _hasVelocity && (!observationTime.HasValue || HasVelocityAt(history, observationTime.Value));
+            bool estimatedVelocity = !suppliedVelocity && _hasEstimatedVelocity
+                && (!observationTime.HasValue || !spatial.PositionTime.HasValue
+                    || spatial.PositionTime.Value.CompareTo(observationTime.Value) <= 0);
+            Double3? velocity = null;
+            Double3? acceleration = null;
+            try
+            {
+                if (suppliedVelocity)
+                {
+                    velocity = observationTime.HasValue ? VelocityAt(history, observationTime.Value) : _velocity;
+                }
+                else if (estimatedVelocity)
+                {
+                    velocity = _estimatedVelocity;
+                }
+
+                if (_hasAcceleration && (!observationTime.HasValue || !history.OldestAccelerationTime.HasValue
+                    || observationTime.Value.CompareTo(history.OldestAccelerationTime.Value) >= 0))
+                {
+                    acceleration = observationTime.HasValue ? AccelerationAt(history, observationTime.Value) : _acceleration;
+                }
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // An overflowing linear channel must not disable otherwise valid orientation extrapolation.
+                velocity = null;
+                acceleration = null;
+                estimatedVelocity = false;
+            }
+
+            Double3? angularVelocity = AngularMotion(spatial, sourceAxes, observationTime,
+                out bool estimatedAngularVelocity, out bool worldAngularVelocity);
+            return new ExtrapolationContext(spatial, sourceAxes, observationTime, velocity, acceleration,
+                angularVelocity, estimatedVelocity, estimatedAngularVelocity, worldAngularVelocity,
+                _velocityTime, _accelerationTime, _angularVelocityTime);
+        }
+
+        private Double3? AngularMotion(Spatial spatial, CoordinateSystem sourceAxes, Timestamp? observationTime,
+            out bool estimated, out bool world)
+        {
+            estimated = false;
+            world = false;
+            Double3 rate = _angularVelocity;
+            bool supplied = _hasAngularVelocity && (!observationTime.HasValue || !_angularVelocityTime.HasValue
+                || spatial.History.SampleAngularVelocity(observationTime.Value, out rate));
+            try
+            {
+                if (!supplied)
+                {
+                    if (!spatial.History.EstimateAngularVelocity(observationTime, out rate))
+                    {
+                        return null;
+                    }
+
+                    // Observed arcs are expressed in the stored rotation's body basis. Convert them
+                    // back to model axes so supplied and estimated body rates have one public convention.
+                    if (spatial.RotationSpace == RotationSpace.Source)
+                    {
+                        rate = sourceAxes.ToUnityAngularVelocity(rate);
+                    }
+                    else if (spatial.RotationSpace == RotationSpace.EarthCentered)
+                    {
+                        rate = spatial.EarthCenteredBodyAxes.Value.ToUnityAngularVelocity(rate);
+                    }
+
+                    estimated = true;
+                }
+                else if (_angularVelocityIsWorld)
+                {
+                    world = true;
+                    if (spatial.RotationSpace != RotationSpace.EarthCentered)
+                    {
+                        if (!spatial.HasPosition)
+                        {
+                            world = false;
+                            return null;
+                        }
+
+                        // Angular vectors reverse sign when ECEF's right-handed basis becomes
+                        // the left-handed local east/up/north quaternion basis.
+                        GeographicBasis basis = new GeographicBasis(GeoPosition.FromEarthCentered(spatial.Position));
+                        rate = basis.ToLocal(rate) * -1d;
+                    }
+                }
+
+                return rate;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // Keep invalid optional angular motion out of otherwise valid position extrapolation.
+                estimated = false;
+                world = false;
+                return null;
+            }
+        }
+
+        private Double3 TimedMotion(Spatial spatial, double endpoint, Double3 extrapolation, bool preview)
         {
             Timestamp sampleTime = spatial.PositionTime.Value;
             bool hasPrevious = _motionSampleTime.HasValue;
             double end = Math.Min(endpoint, 0d);
             double start = hasPrevious ? _motionSampleTime.Value.ElapsedSince(sampleTime) + _motionOffset : end;
-            Double3 previousPrediction = _motionPrediction;
-            double horizon = Math.Max(endpoint, 0d);
-            Double3 prediction = gapVelocity * horizon + gapAcceleration * (0.5d * horizon * horizon);
+            Double3 previousExtrapolation = _motionExtrapolation;
             if (!preview)
             {
                 _motionSampleTime = sampleTime;
                 _motionOffset = end;
-                _motionPrediction = prediction;
+                _motionExtrapolation = extrapolation;
             }
 
             if (!_hasVelocity || !hasPrevious)
@@ -444,7 +539,7 @@ namespace Emas
                 end = Math.Max(end, oldest);
             }
 
-            if (end == start && prediction == previousPrediction)
+            if (end == start && extrapolation == previousExtrapolation)
             {
                 // A held sample at its cap, or the reference's duplicate preparation, contributes no motion.
                 return default(Double3);
@@ -455,7 +550,7 @@ namespace Emas
                 // Integrate SDK motion between the observed playback poses, then replace the old future lead.
                 // Filtering a revised velocity/acceleration lead as position noise delays known maneuvers;
                 // differencing raw positions here would instead pass measurement noise straight through.
-                return IntegrateVelocity(spatial.History, sampleTime, start, end) + prediction - previousPrediction;
+                return IntegrateVelocity(spatial.History, sampleTime, start, end) + extrapolation - previousExtrapolation;
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -484,13 +579,6 @@ namespace Emas
             {
                 history.AddAngularVelocity(angularVelocity, sampleTime.Value);
             }
-        }
-
-        private void GapMotion(PoseHistory history, Timestamp observationTime,
-            bool suppliedVelocity, out Double3 velocity, out Double3 acceleration)
-        {
-            velocity = suppliedVelocity ? VelocityAt(history, observationTime) : _estimatedVelocity;
-            acceleration = AccelerationAt(history, observationTime);
         }
 
         private bool HasVelocityAt(PoseHistory history, Timestamp time)
