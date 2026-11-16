@@ -152,6 +152,7 @@ extrapolation.MaximumExtrapolation = 0.1f;
 | --- | --- |
 | `ConstantAccelerationExtrapolation` (default) | Extend supplied or estimated linear velocity with optional acceleration; extend supplied or estimated angular velocity |
 | `ConstantVelocityExtrapolation` | Extend linear and angular velocity; ignore linear acceleration during the gap |
+| `CoordinatedTurnExtrapolation` | Quaternion rotating-body second-order dead reckoning, bank-derived coordinated-turn fallback and cubic packet correction |
 | `NoExtrapolation` | Hold the newest pose after recorded observations; retain buffered interpolation and SDK motion assistance for smoothing |
 
 Changing `Strategy` keeps observations, original timestamps, motion channels and filter history. The resulting
@@ -191,6 +192,59 @@ observed pose. Other application exceptions propagate. A `[Serializable]` concre
 parameterless constructor appears in the Inspector selector, including its serialized fields. Runtime-only
 implementations need no serialization attribute. Null assignment is rejected; missing serialized strategy
 references use the default model.
+
+### Aircraft body-frame dead reckoning and coordinated turns
+
+```csharp
+ghost.Trait<Extrapolation>().Strategy = new CoordinatedTurnExtrapolation
+{
+    PacketSmoothingDuration = 0.1f,
+    UseBankAngleWhenRatesUnavailable = true,
+    Gravity = 9.80665f
+};
+```
+
+Select the same class under **Ghost → Traits → Extrapolation → Strategy**. Its three settings are editable
+in the Inspector and persist in prefabs. The general extrapolation horizon still applies; selecting this
+model does not change the package default strategy or require an SDK-specific binding.
+
+The model integrates orientation with the quaternion exponential of constant body angular velocity.
+For translation, it transforms the time-aligned world velocity into the aircraft's right/up/forward body
+frame and integrates `R(t) * (vBody + aBody * t)` with closed-form rotating-vector integrals. This provides
+second-order translational dead reckoning without a render-step integrator. Small-rate Taylor limits keep
+nearly straight flight stable. Attitude at the position observation's time is interpolated or held from
+available history; a future-only attitude cannot turn an older position. Missing attitude falls back to
+world constant-acceleration extrapolation. Position still requires an available velocity.
+
+SDK acceleration remains **gravity-free inertial acceleration**, not the derivative of body velocity.
+The model converts it using `aBody = inverse(R) * aWorld - cross(omegaBody, vBody)`. This avoids adding
+centripetal acceleration twice. Missing acceleration instead means constant body velocity, producing a
+constant-speed turn. An explicitly supplied zero acceleration is an inertial zero, which is different.
+This interpretation follows the [Open-DIS body-frame dead-reckoning notes](https://github.com/open-dis/dis-tutorial/blob/master/DeadReckoningStateUpdate.md).
+
+Supplied or estimated angular rates take precedence, including a supplied zero. With neither available,
+the optional coordinated-turn fallback uses `yawRate = Gravity * tan(bank) / horizontalSpeed`, converts
+that world yaw vector into the aircraft body frame, and turns translation and attitude together. This
+assumes steady coordinated flight, negligible sideslip and no wind; ground speed substitutes for airspeed.
+See the [coordinated-turn equations in the FAA-hosted flight-simulation paper](https://www.faa.gov/sites/faa.gov/files/about/office_org/headquarters_offices/avs/MP-086-23.pdf).
+It does not infer a rate below 0.001 source units/second, for a nearly vertical heading, or at banks of
+85 degrees or more. `Gravity` must match Cartesian distance units; geographic input uses metres.
+Angular acceleration, aerodynamic forces and wind are not inferred.
+
+`PacketSmoothingDuration` defaults to **0.1 unscaled seconds**. Selecting this strategy automatically adds
+packet correction; no `Smoothing` component is required. Position uses a cubic Hermite error spline and
+orientation uses a spherical cubic Bezier correction with quaternion interpolation. Each accepted pose
+or motion update rebases from the presented pose continued along its last tangent. Repeated arrivals
+can interrupt a correction; held samples and rejected stale/duplicate timed samples do not restart it.
+The correction and its tangent reach zero at the end of the duration, joining the current bounded
+trajectory without permanently displacing raw input. Each root owns separate state, even if the strategy
+instance is shared. Resetting presentation or the SDK clock discards that state.
+
+Zero duration bypasses packet correction. A correction can finish after the extrapolation horizon, but
+its target remains capped. Optional `Smoothing` can retain its own filter history; its position motion
+assistance follows the corrected trajectory, so SDK lead changes cannot bypass the cubic correction.
+For cubic correction alone, omit `Smoothing` (or use zero half-lives). Strategies implementing
+`IPacketSmoothingStrategy` can request the same packet-correction pipeline.
 
 `Extrapolation.MaximumExtrapolation` is the **maximum sample age used to project motion forward**. It defaults to `0.15 s` and is independent of either smoothing half-life. Extrapolation alone works without Smoothing. With both enabled, the smoother follows predicted motion and blends correction error in every direction; there is no direction rejection or minimum speed. Disabling extrapolation retains supplied SDK velocity for smoothing the motion between newly accepted observations.
 

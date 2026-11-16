@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Add `CoordinatedTurnExtrapolation`: quaternion-based rotating-body second-order dead reckoning, independently timed attitude sampling, inertial-to-body acceleration conversion and optional bank/speed coordinated-turn fallback. Pair it with per-root cubic Hermite position and spherical cubic quaternion correction on accepted packet arrivals through `IPacketSmoothingStrategy`, retaining bounded extrapolation, shared buffering, runtime selection and reset behavior.
+
 - Rename the motion behavior component to `Extrapolation`, including its Add Component menu, Inspector labels, API examples and sample integrations. Preserve its script asset GUID so authored scenes and prefabs retain their component references.
 
 - Expose `Extrapolation.Strategy` and `IExtrapolationStrategy` with a full `ExtrapolationContext` for interchangeable linear and angular extrapolation using pose, independently timed motion, rate provenance and coordinate metadata, with constant acceleration (default), constant velocity and hold models. Select serializable strategies in the Ghost Inspector or replace them at runtime with continuous live transitions, preserving observations, supplied motion, buffered playback and smoothing history.

@@ -1264,6 +1264,168 @@ namespace Emas.Tests
             AssertPosition(ghost.transform.position, new Vector3(8, 0, 0));
         }
 
+        /// <summary>Rotating-body second-order motion agrees with an independent trajectory integral across Cartesian handedness, geographic attitude and ECEF body/world rates.</summary>
+        /// <param name="representation">Zero for Cartesian NED, one for local geographic attitude, two for body-to-ECEF with world rates.</param>
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void CoordinatedTurn_IntegratesBodyAccelerationAcrossCoordinateRepresentations(int representation)
+        {
+            GeoPosition origin = new GeoPosition(48, 11, 1200);
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Space = representation == 0 ? ReferenceSpace.Cartesian : ReferenceSpace.Geographic,
+                Position = representation == 0 ? new Double3(1e9, 0, 0) : origin.ToEarthCentered(),
+                Coordinates = CoordinateSystem.NorthEastDown
+            };
+            _realm.ReferenceFrame = frame;
+            _realm.InterpolationDelay = representation == 1 ? 0.1f : 0;
+            TestGhost ghost = _source.Publish("body second order");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
+            extrapolation.Strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0 };
+            extrapolation.MaximumExtrapolation = 0.4f;
+            Quaternion attitude = Quaternion.Euler(15, 20, -30);
+            Vector3 rate = new Vector3(0.1f, 0.6f, 0.2f);
+            Vector3 bodyVelocity = new Vector3(3, 2, 120);
+            Vector3 bodyAcceleration = new Vector3(0, 0, 2);
+            Vector3 velocity = attitude * bodyVelocity;
+            Vector3 acceleration = attitude * (bodyAcceleration + Vector3.Cross(rate, bodyVelocity));
+            Timestamp time = new Timestamp(1000, 0);
+            spatial.SetCartesianPosition(frame.Position, time);
+            if (representation == 2)
+            {
+                spatial.SetEarthCenteredRotation(frame.ToEarthCenteredRotation(attitude), sampleTime: time);
+                Vector3 worldRate = attitude * rate;
+                extrapolation.SetGeographicAngularVelocity(new Double3(-worldRate.x, -worldRate.z, -worldRate.y), origin, time);
+            }
+            else
+            {
+                spatial.SetSourceRotation(frame.ToSimulationRotation(attitude), time);
+                extrapolation.SetBodyAngularVelocity(new Double3(rate.x, rate.y, rate.z), CoordinateSystem.Unity, time);
+            }
+
+            Double3 sourceVelocity = frame.ToSimulationPosition(velocity) - frame.Position;
+            Double3 sourceAcceleration = frame.ToSimulationPosition(acceleration) - frame.Position;
+            extrapolation.SetCartesianVelocity(sourceVelocity, time);
+            extrapolation.SetCartesianAcceleration(sourceAcceleration, time);
+            _source.Publish("body clock").gameObject.AddComponent<Spatial>().SetCartesianPosition(frame.Position, new Timestamp(1002, 0));
+            _realm.Update();
+
+            const int steps = 4000;
+            double step = extrapolation.MaximumExtrapolation / (double)steps;
+            Double3 expected = default(Double3);
+            for (int index = 0; index < steps; index++)
+            {
+                double seconds = (index + 0.5d) * step;
+                Quaternion rotation = attitude * Quaternion.AngleAxis((float)(rate.magnitude * seconds * 180d / Math.PI), rate.normalized);
+                Vector3 current = rotation * (bodyVelocity + bodyAcceleration * (float)seconds);
+                expected += new Double3(current.x, current.y, current.z) * step;
+            }
+
+            AssertPosition(ghost.transform.position, new Vector3((float)expected.X, (float)expected.Y, (float)expected.Z), 0.004f);
+            Quaternion expectedRotation = attitude * Quaternion.AngleAxis(rate.magnitude * extrapolation.MaximumExtrapolation * Mathf.Rad2Deg, rate.normalized);
+            Assert.That(Quaternion.Angle(ghost.transform.rotation, expectedRotation), Is.LessThan(0.08f));
+            Assert.That(spatial.Position, Is.EqualTo(frame.Position));
+            Assert.That(extrapolation.Acceleration, Is.EqualTo(sourceAcceleration));
+        }
+
+        /// <summary>Missing rates use a coordinated bank turn; supplied zero overrides bank, straight second-order motion has a stable zero-rate limit, and extreme motion recovers without corrupting raw input.</summary>
+        [Test]
+        public void CoordinatedTurn_BankFallbackRespectsZeroOverridesAndRecovery()
+        {
+            TestGhost ghost = _source.Publish("bank turn");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
+            CoordinatedTurnExtrapolation strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0, Gravity = 19.6133f };
+            extrapolation.Strategy = strategy;
+            extrapolation.MaximumExtrapolation = 0.4f;
+            Timestamp time = new Timestamp(1000, 0);
+            Quaternion bank = Quaternion.Euler(0, 0, -45);
+            spatial.SetCartesianPosition(default(Double3), time);
+            spatial.SetSourceRotation(bank, time);
+            extrapolation.SetCartesianVelocity(new Double3(0, 0, 100), time);
+            _source.Publish("bank clock").gameObject.AddComponent<Spatial>().SetCartesianPosition(default(Double3), new Timestamp(1002, 0));
+            _realm.Update();
+            double horizon = extrapolation.MaximumExtrapolation;
+            double rate = strategy.Gravity / 100d;
+            AssertPosition(ghost.transform.position, new Vector3((float)(100d * (1d - Math.Cos(rate * horizon)) / rate), 0,
+                (float)(100d * Math.Sin(rate * horizon) / rate)), 0.001f);
+            AssertRotation(ghost.transform.rotation, Quaternion.Euler(0, (float)(rate * horizon * 180d / Math.PI), 0) * bank);
+
+            extrapolation.SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, time);
+            extrapolation.SetCartesianAcceleration(new Double3(2, 3, 4), time);
+            spatial.ResetPresentation();
+            _realm.Update();
+            Vector3 straight = new Vector3((float)(horizon * horizon), (float)(1.5d * horizon * horizon), (float)(100d * horizon + 2d * horizon * horizon));
+            AssertPosition(ghost.transform.position, straight, 0.001f);
+            AssertRotation(ghost.transform.rotation, bank);
+
+            extrapolation.SetBodyAngularVelocity(new Double3(0, 1e-8, 0), CoordinateSystem.Unity);
+            _realm.Update();
+            AssertPosition(ghost.transform.position, straight, 0.001f);
+            extrapolation.SetBodyAngularVelocity(new Double3(double.MaxValue, double.MaxValue, 0), CoordinateSystem.Unity);
+            extrapolation.MaximumExtrapolation = 1;
+            spatial.ResetPresentation();
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero);
+            AssertRotation(ghost.transform.rotation, bank);
+            extrapolation.ClearAngularVelocity();
+            strategy.UseBankAngleWhenRatesUnavailable = false;
+            extrapolation.MaximumExtrapolation = 0.4f;
+            spatial.ResetPresentation();
+            _realm.Update();
+            AssertPosition(ghost.transform.position, straight, 0.001f);
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Gravity = 0);
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.PacketSmoothingDuration = float.NaN);
+            Assert.That(strategy.Gravity, Is.EqualTo(19.6133f));
+        }
+
+        /// <summary>Future-only attitude cannot bend an older position, while a new matching position enables body-frame coordinated turns.</summary>
+        [Test]
+        public void CoordinatedTurn_UsesOnlyAttitudeAvailableAtThePositionTime()
+        {
+            GeoPosition origin = new GeoPosition(48, 11, 1200);
+            _realm.ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = origin };
+            TestGhost ghost = _source.Publish("independent aircraft channels");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
+            extrapolation.Strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0 };
+            extrapolation.MaximumExtrapolation = 0.1f;
+            spatial.SetGeographicPosition(origin, new Timestamp(1000, 0));
+            spatial.SetGeographicRotation(0, 0, 45, new Timestamp(1001, 0));
+            extrapolation.SetGeographicVelocity(new Double3(0, 100, 0), origin, new Timestamp(1000, 0));
+            _source.Publish("independent aircraft clock").gameObject.AddComponent<Spatial>()
+                .SetGeographicPosition(origin, new Timestamp(1002, 0));
+            _realm.Update();
+            Assert.That(ghost.transform.position.x, Is.EqualTo(0).Within(0.001f));
+            Assert.That(ghost.transform.position.z, Is.EqualTo(10).Within(0.001f));
+            spatial.SetGeographicPosition(origin, new Timestamp(1001, 0));
+            _realm.Update();
+            Assert.That(ghost.transform.position.x, Is.GreaterThan(0.04f));
+            Assert.That(ghost.transform.position.z, Is.EqualTo(10).Within(0.001f));
+        }
+
+        /// <summary>Cubic packet correction retains presentation at arrival, follows a cubic curve, rebases interrupted position/quaternion corrections, ignores stale packets and resets per root with immediate, buffered or untimed input.</summary>
+        /// <returns>An iterator that observes packet correction and exact convergence on unscaled time.</returns>
+        [UnityTest]
+        public IEnumerator CoordinatedTurn_CubicPacketCorrectionRebasesAndRemainsPerRoot()
+        {
+            float previousScale = Time.timeScale;
+            try
+            {
+                Time.timeScale = 0;
+                for (int mode = 0; mode < 3; mode++)
+                {
+                    yield return AssertCubicPackets(mode);
+                }
+            }
+            finally
+            {
+                Time.timeScale = previousScale;
+            }
+        }
+
         /// <summary>Consumers can switch built-in and application strategies on held observations without replacing traits or losing motion; immediate, buffered and untimed presentation converge through live transitions.</summary>
         /// <returns>An iterator that lets extrapolation caps and live-setting transitions complete.</returns>
         [UnityTest]
@@ -2191,6 +2353,83 @@ namespace Emas.Tests
         /// <param name="spatial">The buffered root projected relative to its billion-metre origin.</param>
         /// <param name="minimumPosition">The playback position when the clock-witness observation was received.</param>
         /// <param name="publishedAt">Local time immediately before the observation anchoring the current SDK clock.</param>
+        private IEnumerator AssertCubicPackets(int mode)
+        {
+            _realm.InterpolationDelay = mode == 1 ? 0.1f : 0;
+            TestGhost ghost = _source.Publish("cubic aircraft " + mode);
+            TestGhost peer = _source.Publish("independent aircraft " + mode);
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Spatial peerSpatial = peer.gameObject.AddComponent<Spatial>();
+            CoordinatedTurnExtrapolation strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0.2f };
+            Timestamp? time = mode == 2 ? (Timestamp?)null : new Timestamp(1000, 0);
+            foreach (TestGhost root in new[] { ghost, peer })
+            {
+                Extrapolation extrapolation = root.gameObject.AddComponent<Extrapolation>();
+                extrapolation.Strategy = strategy;
+                extrapolation.MaximumExtrapolation = 0.05f;
+                extrapolation.SetCartesianVelocity(default(Double3), time);
+                extrapolation.SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, time);
+            }
+
+            spatial.SetCartesianPosition(default(Double3), time);
+            spatial.SetSourceRotation(Quaternion.identity, time);
+            peerSpatial.SetCartesianPosition(new Double3(50, 0, 0), time);
+            peerSpatial.SetSourceRotation(Quaternion.identity, time);
+            _source.Publish("cubic clock " + mode).gameObject.AddComponent<Spatial>().SetCartesianPosition(default(Double3), new Timestamp(1005, 0));
+            _realm.Update();
+            spatial.SetCartesianPosition(new Double3(10, 0, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1001, 0));
+            spatial.SetSourceRotation(Quaternion.Euler(0, 60, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1001, 0));
+            double started = Time.realtimeSinceStartupAsDouble;
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero, 0.01f);
+            AssertRotation(ghost.transform.rotation, Quaternion.identity);
+            yield return AdvanceSmoothing(0.07d);
+            double u = Math.Min(1d, (Time.realtimeSinceStartupAsDouble - started) / strategy.PacketSmoothingDuration);
+            double weight = u * u * (3d - 2d * u);
+            Assert.That(ghost.transform.position.x, Is.EqualTo(10d * weight).Within(0.15d));
+            Assert.That(Quaternion.Angle(ghost.transform.rotation, Quaternion.Euler(0, (float)(60d * weight), 0)), Is.LessThan(1f));
+            Vector3 before = ghost.transform.position;
+            Quaternion beforeRotation = ghost.transform.rotation;
+            double beforeArrival = Time.realtimeSinceStartupAsDouble;
+            spatial.SetCartesianPosition(new Double3(-5, 0, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1002, 0));
+            spatial.SetSourceRotation(Quaternion.Euler(0, -30, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1002, 0));
+            _realm.Update();
+            double elapsed = Time.realtimeSinceStartupAsDouble - beforeArrival;
+            AssertPosition(ghost.transform.position, before, (float)(0.02d + 75d * elapsed));
+            Assert.That(Quaternion.Angle(ghost.transform.rotation, beforeRotation), Is.LessThan(0.1d + 450d * elapsed));
+            if (time.HasValue)
+            {
+                spatial.SetCartesianPosition(new Double3(1000, 0, 0), time);
+                spatial.SetSourceRotation(Quaternion.Euler(0, 150, 0), time);
+            }
+            yield return AdvanceSmoothing(0.3d);
+            AssertPosition(ghost.transform.position, new Vector3(-5, 0, 0), 0.001f);
+            AssertRotation(ghost.transform.rotation, Quaternion.Euler(0, -30, 0));
+            AssertPosition(peer.transform.position, new Vector3(50, 0, 0));
+            Assert.That(spatial.Position, Is.EqualTo(new Double3(-5, 0, 0)));
+            Assert.That(ghost.GetComponent<Smoothing>(), Is.Null, "The strategy supplies its own cubic packet correction.");
+
+            ghost.gameObject.AddComponent<Smoothing>();
+            _realm.Update();
+            ghost.GetComponent<Extrapolation>().SetCartesianVelocity(new Double3(70, 0, 0), new Timestamp(1002, 0));
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(-5, 0, 0), 0.02f);
+            yield return AdvanceSmoothing(0.35d);
+            AssertPosition(ghost.transform.position, new Vector3(-1.5f, 0, 0), 0.02f);
+            ghost.GetComponent<Extrapolation>().SetCartesianVelocity(default(Double3));
+
+            spatial.SetCartesianPosition(new Double3(20, 0, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1003, 0));
+            _realm.Update();
+            Assert.That(ghost.transform.position.x, Is.LessThan(19));
+            spatial.ResetPresentation();
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(20, 0, 0));
+            _realm.ResetSpatialTime();
+            spatial.SetCartesianPosition(new Double3(5, 0, 0), new Timestamp(0, 0));
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(5, 0, 0));
+        }
+
         private static void AssertBufferedCartesianPose(Spatial spatial, double minimumPosition, double publishedAt)
         {
             double elapsed = Time.realtimeSinceStartupAsDouble - publishedAt;

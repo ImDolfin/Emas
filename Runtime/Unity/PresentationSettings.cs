@@ -8,6 +8,7 @@ namespace Emas
         internal readonly float RotationHalfLife;
         internal readonly float InterpolationDelay;
         internal readonly IExtrapolationStrategy Strategy;
+        internal readonly float PacketSmoothingDuration;
 
         internal PresentationSettings(Extrapolation extrapolation, Smoothing smoothing, float interpolationDelay)
         {
@@ -16,18 +17,23 @@ namespace Emas
             RotationHalfLife = smoothing != null && smoothing.enabled ? ValidTime(smoothing.RotationHalfLife) : 0;
             InterpolationDelay = ValidTime(interpolationDelay);
             Strategy = extrapolation != null ? extrapolation.Strategy : null;
+            IPacketSmoothingStrategy packetSmoothing = Strategy as IPacketSmoothingStrategy;
+            PacketSmoothingDuration = extrapolation != null && extrapolation.enabled && MaximumExtrapolation > 0 && packetSmoothing != null
+                ? ValidTime(packetSmoothing.PacketSmoothingDuration) : 0;
         }
 
         internal bool SamePosition(PresentationSettings other)
         {
             return MaximumExtrapolation.Equals(other.MaximumExtrapolation) && PositionHalfLife.Equals(other.PositionHalfLife)
-                && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy);
+                && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy)
+                && PacketSmoothingDuration.Equals(other.PacketSmoothingDuration);
         }
 
         internal bool SameRotation(PresentationSettings other)
         {
             return RotationHalfLife.Equals(other.RotationHalfLife) && MaximumExtrapolation.Equals(other.MaximumExtrapolation)
-                && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy);
+                && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy)
+                && PacketSmoothingDuration.Equals(other.PacketSmoothingDuration);
         }
 
         private static float ValidTime(float value)

@@ -14,6 +14,7 @@ namespace Emas
         internal double PositionReceivedTime { get; private set; }
         internal double RotationReceivedTime { get; private set; }
         internal long PositionVersion { get; private set; }
+        internal long RotationVersion { get; private set; }
 
         internal bool SetPosition(Double3 position, Timestamp? sampleTime, double receivedTime)
         {
@@ -43,6 +44,11 @@ namespace Emas
                 return false;
             }
 
+            if (!HasRotation || Rotation != rotation || sampleTime.HasValue || RotationTime.HasValue)
+            {
+                RotationVersion++;
+            }
+
             Rotation = rotation;
             RotationTime = sampleTime;
             HasRotation = true;
@@ -57,6 +63,7 @@ namespace Emas
             PositionReceivedTime = receivedTime;
             RotationReceivedTime = receivedTime;
             PositionVersion++;
+            RotationVersion++;
         }
 
         internal static bool Accepts(Timestamp? previous, Timestamp? incoming)

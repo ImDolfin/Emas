@@ -129,6 +129,8 @@ namespace Emas
 
         internal long PositionVersion => _data.PositionVersion;
 
+        internal long RotationVersion => _data.RotationVersion;
+
         internal Double3 PresentationPosition => _hasPresentation ? _presentationPosition : Position;
 
         internal Quaternion PresentationRotation => _hasPresentation ? _presentationRotation : Rotation;
@@ -442,7 +444,45 @@ namespace Emas
         private PresentationPose PreparePose(SpatialClock clock, double timestamp, Extrapolation extrapolation,
             Smoothing smoothing, CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 observation)
         {
-            Double3 motion = default(Double3);
+            PresentationPose pose = SamplePose(clock, timestamp, extrapolation, sourceAxes, settings, preview, out Double3 motion, out observation);
+            if (extrapolation != null)
+            {
+                Double3 velocity = default(Double3);
+                Double3 angularVelocity = default(Double3);
+                if (settings.PacketSmoothingDuration > 0)
+                {
+                    // Sample the same bounded trajectory, including buffered playback. Preview calls do not
+                    // advance motion history; finite differences give tangents to any application strategy.
+                    const double step = 0.001d;
+                    PresentationPose before = SamplePose(clock, timestamp - step, extrapolation, sourceAxes, settings, true, out _, out _);
+                    PresentationPose after = SamplePose(clock, timestamp + step, extrapolation, sourceAxes, settings, true, out _, out _);
+                    try
+                    {
+                        velocity = (after.Position - before.Position) * (0.5d / step);
+                        angularVelocity = SpatialMath.RotationRate(before.Rotation, after.Rotation, 2d * step);
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        // Unrepresentable optional tangents must not invalidate the baseline pose.
+                    }
+                }
+
+                pose = extrapolation.SmoothPacket(this, pose, velocity, angularVelocity, timestamp, settings.PacketSmoothingDuration, preview, out Double3 packetMotion);
+                if (settings.PacketSmoothingDuration > 0)
+                {
+                    // SDK lead changes have already been corrected by the spline. Advancing a legacy
+                    // position filter with the uncorrected SDK lead would reintroduce the packet jump.
+                    motion = packetMotion;
+                }
+            }
+
+            return smoothing != null ? smoothing.Prepare(this, pose, timestamp, motion, settings, preview) : pose;
+        }
+
+        private PresentationPose SamplePose(SpatialClock clock, double timestamp, Extrapolation extrapolation,
+            CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
+        {
+            motion = default(Double3);
             observation = Position;
             PresentationPose pose;
             if (settings.InterpolationDelay > 0)
@@ -469,8 +509,7 @@ namespace Emas
                 pose = new PresentationPose(position, rotation);
             }
 
-            // Keep direct (disabled) channels current too, so enabling a trait has fresh filter history.
-            return smoothing != null ? smoothing.Prepare(this, pose, timestamp, motion, settings, preview) : pose;
+            return pose;
         }
 
         private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Extrapolation extrapolation,
@@ -534,6 +573,12 @@ namespace Emas
             // Corrections expressed in the former attitude basis cannot be reused in the new one.
             _tuning.ResetRotation();
             _history.ClearRotation();
+            Extrapolation extrapolation = GetComponent<Extrapolation>();
+            if (extrapolation != null)
+            {
+                extrapolation.ResetPacketRotation();
+            }
+
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)
             {

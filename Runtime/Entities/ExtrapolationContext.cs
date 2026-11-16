@@ -29,6 +29,15 @@ namespace Emas
         /// <value>PositionTime for linear extrapolation, RotationTime for angular extrapolation, or null for untimed input.</value>
         public Timestamp? ObservationTime { get; }
 
+        /// <summary>Gets position sampled at ObservationTime for body-frame and geographic calculations.</summary>
+        /// <value>A buffered position, the newest position when no later observation exists, or null when only future positions are available.</value>
+        public Double3? ObservationPosition { get; }
+
+        /// <summary>Gets orientation sampled at ObservationTime for coupled body-frame models.</summary>
+        /// <value>An interpolated or held orientation in RotationSpace, or null when only future orientations are available.</value>
+        /// <remarks>Unlike Rotation, this property excludes future-only timed attitude. Untimed attitude is treated as current.</remarks>
+        public Quaternion? ObservationRotation { get; }
+
         /// <summary>Gets velocity sampled at ObservationTime, or the available position-derived estimate.</summary>
         /// <value>Source distance units per second, or ECEF metres per second; null when unavailable.</value>
         public Double3? Velocity { get; }
@@ -94,6 +103,8 @@ namespace Emas
             PositionTime = spatial.PositionTime;
             RotationTime = spatial.RotationTime;
             ObservationTime = observationTime;
+            ObservationPosition = SamplePosition(spatial, observationTime);
+            ObservationRotation = SampleRotation(spatial, observationTime);
             Velocity = velocity;
             Acceleration = acceleration;
             AngularVelocity = angularVelocity;
@@ -109,6 +120,48 @@ namespace Emas
             Space = frame != null ? frame.Space : ReferenceSpace.Cartesian;
             SourceCoordinates = sourceCoordinates;
             EarthCenteredBodyAxes = spatial.EarthCenteredBodyAxes;
+        }
+
+        internal static Double3? SamplePosition(Spatial spatial, Timestamp? time)
+        {
+            if (!spatial.HasPosition)
+            {
+                return null;
+            }
+
+            if (!time.HasValue || !spatial.PositionTime.HasValue)
+            {
+                return spatial.Position;
+            }
+
+            if (!spatial.History.OldestPositionTime.HasValue || time.Value.CompareTo(spatial.History.OldestPositionTime.Value) < 0)
+            {
+                return null;
+            }
+
+            spatial.History.SamplePosition(time.Value.ElapsedSince(spatial.History.NewestPositionTime.Value), out Double3 position);
+            return position;
+        }
+
+        private static Quaternion? SampleRotation(Spatial spatial, Timestamp? time)
+        {
+            if (!spatial.HasRotation)
+            {
+                return null;
+            }
+
+            if (!time.HasValue || !spatial.RotationTime.HasValue)
+            {
+                return spatial.Rotation;
+            }
+
+            if (!spatial.History.OldestRotationTime.HasValue || time.Value.CompareTo(spatial.History.OldestRotationTime.Value) < 0)
+            {
+                return null;
+            }
+
+            spatial.History.SampleRotation(time.Value.ElapsedSince(spatial.History.NewestRotationTime.Value), out Quaternion rotation);
+            return rotation;
         }
     }
 }

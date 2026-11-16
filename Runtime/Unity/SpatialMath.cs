@@ -107,6 +107,19 @@ namespace Emas
             return Quaternion.AngleAxis((float)((radians % (2d * Math.PI)) * 180d / Math.PI), axis);
         }
 
+        internal static Double3 RotationRate(Quaternion before, Quaternion after, double seconds)
+        {
+            Quaternion arc = NormalizeRotation(after * Quaternion.Inverse(before), nameof(after));
+            if (arc.w < 0)
+            {
+                arc = new Quaternion(-arc.x, -arc.y, -arc.z, -arc.w);
+            }
+
+            double length = Math.Sqrt((double)arc.x * arc.x + (double)arc.y * arc.y + (double)arc.z * arc.z);
+            return length > 0 ? new Double3(arc.x, arc.y, arc.z) * (2d * Math.Atan2(length, arc.w) / (length * seconds))
+                : default(Double3);
+        }
+
         internal static bool TryToVector3(Double3 value, out Vector3 result)
         {
             if (!IsFinite(value)

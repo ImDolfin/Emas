@@ -232,6 +232,9 @@ namespace Emas
         internal Timestamp? NewestRotationTime => _rotationCount == 0
             ? (Timestamp?)null : RotationAt(_rotationCount - 1).Time;
 
+        internal Timestamp? OldestRotationTime => _rotationCount == 0
+            ? (Timestamp?)null : RotationAt(0).Time;
+
         internal Timestamp? NewestVelocityTime => _velocities.NewestTime;
 
         internal Timestamp? OldestVelocityTime => _velocities.OldestTime;

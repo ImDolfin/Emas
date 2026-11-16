@@ -45,6 +45,8 @@ namespace Emas
         private Timestamp? _motionSampleTime;
         private double _motionOffset;
         private Double3 _motionExtrapolation;
+        private PacketSmoother _packetSmoother;
+        private long _motionVersion;
 
         /// <summary>Gets or sets the linear and angular gap extrapolation model on Unity's main thread.</summary>
         /// <value>A non-null strategy; defaults to <see cref="ConstantAccelerationExtrapolation"/>.</value>
@@ -145,6 +147,11 @@ namespace Emas
         /// <remarks>Also clears the velocity timestamp so the next supplied sample starts a new timed channel.</remarks>
         public void ClearVelocity()
         {
+            if (_hasVelocity)
+            {
+                _motionVersion++;
+            }
+
             _hasVelocity = false;
             _velocity = default(Double3);
             _velocityTime = null;
@@ -189,6 +196,11 @@ namespace Emas
         /// <remarks>Also clears the acceleration timestamp; acceleration alone never starts position extrapolation.</remarks>
         public void ClearAcceleration()
         {
+            if (_hasAcceleration)
+            {
+                _motionVersion++;
+            }
+
             _hasAcceleration = false;
             _acceleration = default(Double3);
             _accelerationTime = null;
@@ -206,7 +218,8 @@ namespace Emas
         /// <remarks>Positive rates use the source quaternion rotation convention. Converts and stores body rates independently of pose-reader order.
         /// The axes describe directions fixed to the aircraft; world ENU angular velocity must use SetGeographicAngularVelocity instead.
         /// Uses the rate sampled at the latest rotation's timestamp, before applying the shared extrapolation horizon. A supplied zero rate overrides
-        /// rotation-history estimation. Clearing the channel restores that estimation. Angular velocity never changes linear motion or raw pose.
+        /// rotation-history estimation. Clearing the channel restores that estimation. Raw pose remains unchanged;
+        /// a coupled strategy such as CoordinatedTurnExtrapolation can also use angular velocity to turn linear motion.
         /// Rotation smoothing retains its independent half-life; this input supplies extrapolation, rather than angular filter motion assistance.</remarks>
         /// <exception cref="ArgumentException">The body-axis mapping is invalid.</exception>
         /// <exception cref="ArgumentOutOfRangeException">An angular velocity coordinate or its converted value is not finite.</exception>
@@ -255,6 +268,11 @@ namespace Emas
         /// <remarks>Also clears angular timestamp ordering and playback history; linear velocity, acceleration and pose remain unchanged.</remarks>
         public void ClearAngularVelocity()
         {
+            if (_hasAngularVelocity)
+            {
+                _motionVersion++;
+            }
+
             _hasAngularVelocity = false;
             _angularVelocity = default(Double3);
             _angularVelocityIsWorld = false;
@@ -266,7 +284,7 @@ namespace Emas
             }
         }
 
-        /// <summary>Clears estimated motion history after a teleport while retaining supplied SDK motion and extrapolation settings.</summary>
+        /// <summary>Clears estimated motion and packet-correction history after a teleport while retaining supplied SDK motion and extrapolation settings.</summary>
         /// <remarks>Use <see cref="Spatial.ResetPresentation"/> when smoothing history must be reset at the same time.</remarks>
         public void Reset()
         {
@@ -277,6 +295,7 @@ namespace Emas
             _motionSampleTime = null;
             _motionOffset = 0;
             _motionExtrapolation = default(Double3);
+            _packetSmoother = default(PacketSmoother);
         }
 
         internal void Prepare(Spatial spatial, double timestamp)
@@ -331,6 +350,24 @@ namespace Emas
                 motion = default(Double3);
                 return spatial.Position;
             }
+        }
+
+        internal PresentationPose SmoothPacket(Spatial spatial, PresentationPose pose, Double3 velocity,
+            Double3 angularVelocity, double timestamp, float duration, bool preview, out Double3 motion)
+        {
+            PacketSmoother smoother = _packetSmoother;
+            pose = smoother.Apply(spatial, pose, velocity, angularVelocity, _motionVersion, timestamp, duration, out motion);
+            if (!preview)
+            {
+                _packetSmoother = smoother;
+            }
+
+            return pose;
+        }
+
+        internal void ResetPacketRotation()
+        {
+            _packetSmoother.ResetRotation();
         }
 
         internal void ResetTime()
@@ -496,7 +533,14 @@ namespace Emas
 
                         // Angular vectors reverse sign when ECEF's right-handed basis becomes
                         // the left-handed local east/up/north quaternion basis.
-                        GeographicBasis basis = new GeographicBasis(GeoPosition.FromEarthCentered(spatial.Position));
+                        Double3? position = ExtrapolationContext.SamplePosition(spatial, observationTime);
+                        if (!position.HasValue)
+                        {
+                            world = false;
+                            return null;
+                        }
+
+                        GeographicBasis basis = new GeographicBasis(GeoPosition.FromEarthCentered(position.Value));
                         rate = basis.ToLocal(rate) * -1d;
                     }
                 }
@@ -566,6 +610,12 @@ namespace Emas
             }
 
             PoseHistory history = GetComponent<Spatial>().History;
+            if (!_hasAngularVelocity || _angularVelocity != angularVelocity || _angularVelocityIsWorld != world
+                || sampleTime.HasValue || _angularVelocityTime.HasValue)
+            {
+                _motionVersion++;
+            }
+
             if (_angularVelocityIsWorld != world || !sampleTime.HasValue)
             {
                 history.ClearAngularVelocity();
@@ -681,6 +731,11 @@ namespace Emas
             ReferenceFrame.ValidatePosition(velocity, nameof(velocity));
             if (PoseData.Accepts(_velocityTime, sampleTime))
             {
+                if (!_hasVelocity || _velocity != velocity || sampleTime.HasValue || _velocityTime.HasValue)
+                {
+                    _motionVersion++;
+                }
+
                 _velocity = velocity;
                 _velocityTime = sampleTime;
                 _hasVelocity = true;
@@ -701,6 +756,11 @@ namespace Emas
             ReferenceFrame.ValidatePosition(acceleration, nameof(acceleration));
             if (PoseData.Accepts(_accelerationTime, sampleTime))
             {
+                if (!_hasAcceleration || _acceleration != acceleration || sampleTime.HasValue || _accelerationTime.HasValue)
+                {
+                    _motionVersion++;
+                }
+
                 _acceleration = acceleration;
                 _accelerationTime = sampleTime;
                 _hasAcceleration = true;
