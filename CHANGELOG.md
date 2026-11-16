@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Add `SingerExtrapolation` with a configurable acceleration decay time constant and stable closed-form mean displacement. Preserve constant quaternion angular motion, independently timed SDK channels, buffered playback, runtime switching and smoothing; expose the strategy and its time constant in the Ghost Inspector and saved prefabs.
+
 - Add `CoordinatedTurnExtrapolation`: quaternion-based rotating-body second-order dead reckoning, independently timed attitude sampling, inertial-to-body acceleration conversion and optional bank/speed coordinated-turn fallback. Pair it with per-root cubic Hermite position and spherical cubic quaternion correction on accepted packet arrivals through `IPacketSmoothingStrategy`, retaining bounded extrapolation, shared buffering, runtime selection and reset behavior.
 
 - Rename the motion behavior component to `Extrapolation`, including its Add Component menu, Inspector labels, API examples and sample integrations. Preserve its script asset GUID so authored scenes and prefabs retain their component references.

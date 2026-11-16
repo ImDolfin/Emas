@@ -1264,6 +1264,101 @@ namespace Emas.Tests
             AssertPosition(ghost.transform.position, new Vector3(8, 0, 0));
         }
 
+        /// <summary>Singer acceleration follows an independently integrated decay curve, retains angular motion and raw observations, and approaches constant velocity/acceleration without numerical cancellation.</summary>
+        [Test]
+        public void Singer_DecaysAccelerationAndPreservesStableLimitingCases()
+        {
+            Double3 origin = new Double3(1e9, 0, 0);
+            _realm.ReferenceFrame = new ReferenceFrame { Position = origin };
+            TestGhost ghost = _source.Publish("Singer mean");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
+            SingerExtrapolation strategy = new SingerExtrapolation { ManeuverTimeConstant = 0.2f };
+            extrapolation.Strategy = strategy;
+            extrapolation.MaximumExtrapolation = 0.4f;
+            Timestamp time = new Timestamp(1000, 0);
+            Double3 velocity = new Double3(8, 3, -1);
+            Double3 acceleration = new Double3(4, -2, 1);
+            Quaternion attitude = Quaternion.Euler(12, 25, -15);
+            spatial.SetCartesianPosition(origin, time);
+            spatial.SetSourceRotation(attitude, time);
+            extrapolation.SetCartesianVelocity(velocity, time);
+            extrapolation.SetCartesianAcceleration(acceleration, time);
+            extrapolation.SetBodyAngularVelocity(new Double3(0, Math.PI / 2, 0), CoordinateSystem.Unity, time);
+            _source.Publish("Singer mean clock").gameObject.AddComponent<Spatial>().SetCartesianPosition(origin, new Timestamp(1002, 0));
+            _realm.Update();
+
+            double horizon = extrapolation.MaximumExtrapolation;
+            const int steps = 4000;
+            double step = horizon / steps;
+            double weight = 0;
+            for (int index = 0; index < steps; index++)
+            {
+                double seconds = (index + 0.5d) * step;
+                weight += (horizon - seconds) * Math.Exp(-seconds / strategy.ManeuverTimeConstant) * step;
+            }
+
+            Double3 expected = velocity * horizon + acceleration * weight;
+            AssertPosition(ghost.transform.position, new Vector3((float)expected.X, (float)expected.Y, (float)expected.Z), 0.0001f);
+            AssertRotation(ghost.transform.rotation, attitude * Quaternion.Euler(0, (float)(90 * horizon), 0));
+            Vector3 held = ghost.transform.position;
+            _realm.Update();
+            AssertPosition(ghost.transform.position, held);
+            Assert.That(spatial.Position, Is.EqualTo(origin));
+            Assert.That(spatial.PositionTime, Is.EqualTo(time));
+            Assert.That(extrapolation.Acceleration, Is.EqualTo(acceleration));
+
+            strategy.ManeuverTimeConstant = float.MaxValue;
+            _realm.Update();
+            expected = velocity * horizon + acceleration * (0.5d * horizon * horizon);
+            AssertPosition(ghost.transform.position, new Vector3((float)expected.X, (float)expected.Y, (float)expected.Z), 0.0001f);
+            strategy.ManeuverTimeConstant = float.Epsilon;
+            _realm.Update();
+            expected = velocity * horizon;
+            AssertPosition(ghost.transform.position, new Vector3((float)expected.X, (float)expected.Y, (float)expected.Z), 0.0001f);
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ManeuverTimeConstant = 0);
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ManeuverTimeConstant = float.NaN);
+            Assert.That(strategy.ManeuverTimeConstant, Is.EqualTo(float.Epsilon));
+        }
+
+        /// <summary>Singer uses only motion available at the buffered geographic position time; clearing optional channels restores velocity-only motion or a held pose.</summary>
+        [Test]
+        public void Singer_RespectsIndependentChannelsAndOptionalMotionInGeographicPlayback()
+        {
+            GeoPosition origin = new GeoPosition(48, 11, 1200);
+            _realm.ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = origin };
+            _realm.InterpolationDelay = 0.1f;
+            TestGhost ghost = _source.Publish("Singer channels");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
+            extrapolation.Strategy = new SingerExtrapolation { ManeuverTimeConstant = 0.1f };
+            extrapolation.MaximumExtrapolation = 0.2f;
+            Timestamp time = new Timestamp(1000, 0);
+            Timestamp later = new Timestamp(1002, 0);
+            spatial.SetGeographicPosition(origin, time);
+            extrapolation.SetGeographicVelocity(new Double3(10, 0, 0), origin, time);
+            extrapolation.SetGeographicAcceleration(new Double3(4, 0, 0), origin, later);
+            _source.Publish("Singer channels clock").gameObject.AddComponent<Spatial>().SetGeographicPosition(origin, new Timestamp(1003, 0));
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(2, 0, 0), 0.001f);
+
+            spatial.SetGeographicPosition(origin, later);
+            extrapolation.SetGeographicVelocity(new Double3(10, 0, 0), origin, later);
+            _realm.Update();
+            Assert.That(ghost.transform.position.x, Is.InRange(2.045f, 2.046f));
+            Assert.That(extrapolation.Acceleration, Is.EqualTo(origin.ToEarthCenteredVector(new Double3(4, 0, 0))));
+            extrapolation.ClearAcceleration();
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(2, 0, 0), 0.001f);
+            extrapolation.ClearVelocity();
+            extrapolation.SetGeographicAcceleration(new Double3(4, 0, 0), origin);
+            spatial.ResetPresentation();
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+            Assert.That(extrapolation.HasAcceleration, Is.True);
+            Assert.That(extrapolation.HasVelocity, Is.False);
+        }
+
         /// <summary>Rotating-body second-order motion agrees with an independent trajectory integral across Cartesian handedness, geographic attitude and ECEF body/world rates.</summary>
         /// <param name="representation">Zero for Cartesian NED, one for local geographic attitude, two for body-to-ECEF with world rates.</param>
         [TestCase(0)]
@@ -1458,11 +1553,11 @@ namespace Emas.Tests
 
                 IExtrapolationStrategy[] strategies =
                 {
-                    new ConstantVelocityExtrapolation(), new HalfSpeedExtrapolation(),
+                    new ConstantVelocityExtrapolation(), new SingerExtrapolation { ManeuverTimeConstant = 0.05f }, new HalfSpeedExtrapolation(),
                     new NoExtrapolation(), new ConstantAccelerationExtrapolation()
                 };
-                float[] distances = { 0.8f, 0.4f, 0, 0.82f };
-                float[] angles = { 9, 4.5f, 0, 9 };
+                float[] distances = { 0.8f, 0.8113534f, 0.4f, 0, 0.82f };
+                float[] angles = { 9, 9, 4.5f, 0, 9 };
                 for (int index = 0; index < strategies.Length; index++)
                 {
                     Vector3 before = ghost.transform.position;

@@ -152,6 +152,7 @@ extrapolation.MaximumExtrapolation = 0.1f;
 | --- | --- |
 | `ConstantAccelerationExtrapolation` (default) | Extend supplied or estimated linear velocity with optional acceleration; extend supplied or estimated angular velocity |
 | `ConstantVelocityExtrapolation` | Extend linear and angular velocity; ignore linear acceleration during the gap |
+| `SingerExtrapolation` | Extend velocity with exponentially decaying linear acceleration; keep angular velocity constant |
 | `CoordinatedTurnExtrapolation` | Quaternion rotating-body second-order dead reckoning, bank-derived coordinated-turn fallback and cubic packet correction |
 | `NoExtrapolation` | Hold the newest pose after recorded observations; retain buffered interpolation and SDK motion assistance for smoothing |
 
@@ -192,6 +193,46 @@ observed pose. Other application exceptions propagate. A `[Serializable]` concre
 parameterless constructor appears in the Inspector selector, including its serialized fields. Runtime-only
 implementations need no serialization attribute. Null assignment is rejected; missing serialized strategy
 references use the default model.
+
+### Singer acceleration
+
+```csharp
+ghost.Trait<Extrapolation>().Strategy = new SingerExtrapolation
+{
+    ManeuverTimeConstant = 0.5f
+};
+```
+
+Select **Singer Extrapolation** under **Ghost → Traits → Extrapolation → Strategy** to compare it at runtime.
+`ManeuverTimeConstant` is a finite, positive duration in seconds, defaulting to **1 second**. It is the time
+for acceleration to decay to approximately 37% of its observed value. It is independent of the extrapolation
+horizon and the smoothing half-life. Assign a new strategy instance to blend a setting change through the
+existing live-tuning transition; editing an existing instance takes effect directly.
+
+The strategy evaluates the deterministic mean of the [Singer acceleration model](https://www.mathworks.com/help/fusion/ref/singer.html):
+
+```text
+acceleration(t) = acceleration(0) * exp(-t / tau)
+velocity(t)     = velocity(0) + acceleration(0) * tau * (1 - exp(-t / tau))
+displacement(t) = velocity(0) * t
+                + acceleration(0) * tau * (t - tau * (1 - exp(-t / tau)))
+```
+
+Here `tau` is the maneuver time constant and `t` is the bounded gap after the position observation. Smaller
+time constants approach constant velocity; larger values approach constant acceleration. A small-ratio
+series avoids numerical cancellation near the constant-acceleration limit. Decay is evaluated from the
+observation's age on every projection; held packets do not restart it. Raw acceleration and SDK timestamps
+remain unchanged, and the existing sample-age horizon still stops a held trajectory.
+
+This model acts in Cartesian source axes or ECEF axes, using motion sampled at the position observation's
+time. Future-only acceleration is excluded. Missing acceleration gives constant velocity; missing both
+supplied and estimated velocity holds position. Angular motion retains constant body/world angular velocity
+and quaternion composition, without applying the linear decay to rotation. It does not infer coordinated
+turns or aircraft aerodynamics. Velocity approaches a finite changed velocity, rather than decaying to zero.
+
+This is a stateless mean-trajectory strategy, with no Kalman estimator or sampled process noise. Instances
+may be shared between roots. Optional `Smoothing` and buffered playback continue to work independently;
+Singer does not enable the coordinated-turn strategy's automatic cubic packet correction.
 
 ### Aircraft body-frame dead reckoning and coordinated turns
 

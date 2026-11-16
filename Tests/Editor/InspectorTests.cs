@@ -793,6 +793,24 @@ namespace Emas.Editor.Tests
                 Assert.That(restoredExtrapolation.enabled, Is.False);
                 Assert.That(restoredSmoothing.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
                 Assert.That(restoredExtrapolation.hideFlags & HideFlags.HideInInspector, Is.EqualTo(HideFlags.HideInInspector));
+
+                UnityEngine.Object.DestroyImmediate(inspector);
+                inspector = null;
+                PrefabUtility.UnloadPrefabContents(contents);
+                contents = null;
+                using (SerializedObject settings = new SerializedObject(extrapolation))
+                {
+                    SerializedProperty strategy = settings.FindProperty("_strategy");
+                    strategy.managedReferenceValue = new SingerExtrapolation();
+                    strategy.FindPropertyRelative("_maneuverTimeConstant").floatValue = 0.35f;
+                    settings.ApplyModifiedProperties();
+                }
+
+                Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
+                contents = PrefabUtility.LoadPrefabContents(path);
+                Extrapolation singerExtrapolation = contents.GetComponent<Extrapolation>();
+                Assert.That(singerExtrapolation.Strategy, Is.TypeOf<SingerExtrapolation>());
+                Assert.That(((SingerExtrapolation)singerExtrapolation.Strategy).ManeuverTimeConstant, Is.EqualTo(0.35f));
             }
             finally
             {
