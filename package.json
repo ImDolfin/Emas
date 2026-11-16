@@ -32,6 +32,11 @@
       "displayName": "Relative world",
       "description": "A driving reference, parked cars and a circling bird using double-precision positions and orientations.",
       "path": "Samples~/RelativeWorld"
+    },
+    {
+      "displayName": "Aircraft formation",
+      "description": "A Mach 1 cockpit reference with two equal-speed wingmen, independent delayed observations and angular-motion instruments.",
+      "path": "Samples~/AircraftFormation"
     }
   ],
   "license": "MIT"

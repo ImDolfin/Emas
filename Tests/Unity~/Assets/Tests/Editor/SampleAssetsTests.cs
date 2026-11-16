@@ -21,6 +21,7 @@ namespace Emas.Tests.Samples
         [TestCase("Minimal")]
         [TestCase("Example")]
         [TestCase("RelativeWorld")]
+        [TestCase("AircraftFormation")]
         public void ImportedSample_MatchesPackage(string sample)
         {
             PackageInfo package = PackageInfo.FindForAssembly(typeof(Realm).Assembly);
@@ -47,6 +48,7 @@ namespace Emas.Tests.Samples
         [TestCase("Minimal", "QuickStart.unity")]
         [TestCase("Example", "Scenes/Example.unity")]
         [TestCase("RelativeWorld", "RelativeWorld.unity")]
+        [TestCase("AircraftFormation", "AircraftFormation.unity")]
         public void SampleScene_UsesAuthoredTrackingAssets(string sample, string sceneFile)
         {
             string directory = "Assets/Samples/" + sample + "/";
@@ -63,8 +65,8 @@ namespace Emas.Tests.Samples
                     Does.StartWith(directory));
                 SerializedObject serializedSetup = new SerializedObject(setup);
                 Assert.That(serializedSetup.FindProperty("_interpolationDelay").floatValue,
-                    Is.EqualTo(sample == "RelativeWorld" ? 0.1f : 0f),
-                    "RelativeWorld authors a shared playback buffer; the introductory samples retain the immediate default.");
+                    Is.EqualTo(sample == "RelativeWorld" ? 0.1f : sample == "AircraftFormation" ? 0.15f : 0f),
+                    "Motion samples author a shared playback buffer; the introductory samples retain the immediate default.");
 
                 AnchorSetup[] anchors = setup.GetComponentsInChildren<AnchorSetup>(true);
                 Assert.That(anchors, Is.Not.Empty);

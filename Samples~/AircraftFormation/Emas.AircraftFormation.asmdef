@@ -1,0 +1,6 @@
+{
+  "name": "Emas.AircraftFormation",
+  "rootNamespace": "Emas.AircraftFormation",
+  "references": ["Emas.Runtime"],
+  "autoReferenced": false
+}

@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7ba9a72f58d0a8d46aebcb22b8a70771, type: 3}
+  m_Name: Aircraft
+  m_EditorClassIdentifier: 
+  _kindId: flight.aircraft
+  _ghostPrefab: {fileID: 2814145528525234499, guid: 10c6c51c05b547a47a844fefac7f97e5, type: 3}
+  _variants:
+  - _name: reference
+    _prefab: {fileID: 1774584103754846660, guid: 35d94384944433c4b82cb0d9c6087a5b, type: 3}
+  - _name: left
+    _prefab: {fileID: 2593514195157690591, guid: 9c68625bc2ed88241b8edbda9488665e, type: 3}
+  - _name: right
+    _prefab: {fileID: 3888409577380785368, guid: ca723233e0b770c46ba5f3aaf00dda9d, type: 3}
+  _fallbackViewPrefab: {fileID: 0}

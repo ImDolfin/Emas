@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Add the Aircraft formation sample: a camera-centered 343 m/s reference and two equal-speed wingmen through combined turns, pitch and bank. Include independent capture rates and phases, transport delay and jitter, position/attitude noise, live camera angular-speed and bearing instruments, clean-input and buffering comparisons, authored assets and focused imported-sample coverage.
+
 - Add `Ghost.Trait<TTrait>()` and `IGhost.Trait<TTrait>()` for direct access to a required root trait and its members. Include disabled and unbound traits on inactive roots, and preserve descriptive missing/duplicate errors and recovery after component changes.
 
 - Expose read-only `Ghost.Anchor` and `IGhost.Anchor` for navigation to the owning Realm and its reference frame. Bind before application initialization, retain ownership across preparation, disappearance grace, detector handover and scene reparenting, and clear it before final removal callbacks.

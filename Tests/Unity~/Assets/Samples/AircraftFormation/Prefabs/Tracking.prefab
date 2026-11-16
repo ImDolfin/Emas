@@ -1,0 +1,122 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8715201842509762995
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 419799714097239213}
+  - component: {fileID: 5756216688657724050}
+  - component: {fileID: 4557463299711992079}
+  - component: {fileID: 6813496592005760172}
+  - component: {fileID: 5280975356994717124}
+  m_Layer: 0
+  m_Name: Tracking
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &419799714097239213
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8715201842509762995}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5756216688657724050
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8715201842509762995}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0dc0ad5657534e5fbe65dcabc9d84ea9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _blueprints:
+  - {fileID: 11400000, guid: 3a3611b10f295b649bd1c0bcf5d034c0, type: 2}
+  _interpolationDelay: 0.15
+  _useReferenceFrame: 1
+  _referenceSpace: 0
+  _geographicPosition:
+    _latitudeDegrees: 0
+    _longitudeDegrees: 0
+    _heightMeters: 0
+  _coordinates:
+    _right: 1
+    _up: 2
+    _forward: 3
+  _followGhost: 1
+  _referenceAnchorId: aircraft-formation
+  _referenceKind:
+    _id: flight.aircraft
+  _referenceEntityId: reference
+  _position:
+    _x: 0
+    _y: 0
+    _z: 0
+  _rotation: {x: 0, y: 0, z: 0, w: 1}
+  _unityPosition: {x: 0, y: 0, z: 0}
+  _unityRotation: {x: 0, y: 0, z: 0, w: 1}
+  _followRotation: 1
+  _limitDistance: 1
+  _maxDistance: 2000
+--- !u!114 &4557463299711992079
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8715201842509762995}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9ea85fc665404e9b9e20cbc07c27f910, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _anchorId: aircraft-formation
+  _automaticViews: 1
+--- !u!114 &6813496592005760172
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8715201842509762995}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a08eeaf544e1e9748a58da01ee5ec8c0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _automaticAdvance: 1
+  _simulateJitterAndDelay: 1
+  _updatesPerSecond: {x: 60, y: 47, z: 53}
+  _packetDelay: 0.08
+  _delayJitter: 0.05
+  _positionJitter: 2
+  _attitudeJitter: 0.35
+--- !u!114 &5280975356994717124
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8715201842509762995}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 45f5dcbbf3c8f0247b2be114e98f7de7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

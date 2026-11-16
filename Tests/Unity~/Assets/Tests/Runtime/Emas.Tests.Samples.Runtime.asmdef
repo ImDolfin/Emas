@@ -4,7 +4,8 @@
   "references": [
     "Emas.Runtime",
     "Emas.Sample",
-    "Emas.RelativeWorld"
+    "Emas.RelativeWorld",
+    "Emas.AircraftFormation"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
