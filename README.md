@@ -133,6 +133,103 @@ Code setup stays the same: construct a plain `PresenceDetector` with injected de
 
 Choose **Geographic** under **Reference space**. **Source quaternion axes** describes input to `SetSourceRotation`: Unity means east/up/north, with ENU, NED and custom mappings also available. Direct `SetGeographicRotation` yaw/pitch/roll uses its documented angle convention regardless of this setting. For the moving origin, enable **Follow a Ghost** and enter entity `origin`, anchor `items`, Kind `tracked.item`. If the ID is known only at runtime, leave Entity ID empty and assign `realmSetup.Realm.ReferenceFrame.FollowedGhost = ghost.Key` after startup. For a fixed geographic reference, leave following off and enter latitude, longitude and ellipsoidal height, or assign `ReferenceFrame.GeographicPosition` by code. `Unity Position` chooses where the reference appears. For ordinary Cartesian data, choose **Cartesian** and use `Spatial.SetCartesianPosition(Double3)`. See [Spatial](Documentation~/Spatial.md) for projection and reference loss.
 
+## Choose an extrapolation strategy
+
+Configure each Ghost on Unity's main thread, for example inside the presence initializer above, where
+`root` is the tracked `Ghost`. Add the component once, then choose **one** of the strategy assignments below:
+
+```csharp
+Extrapolation extrapolation = root.GetComponent<Extrapolation>();
+if (extrapolation == null)
+{
+    extrapolation = root.gameObject.AddComponent<Extrapolation>();
+}
+
+extrapolation.enabled = true;
+extrapolation.MaximumExtrapolation = 0.15f; // Maximum gap to extrapolate, in seconds.
+```
+
+Adding `Extrapolation` also adds its required `Spatial` component. If it is already authored on the Ghost
+prefab, you can retrieve it directly with `root.Trait<Extrapolation>()`.
+
+### Constant velocity
+
+Extend the supplied or estimated linear velocity and angular rate. Linear acceleration is ignored.
+
+```csharp
+extrapolation.Strategy = new ConstantVelocityExtrapolation();
+```
+
+### Constant acceleration
+
+The default strategy extends linear velocity with optional acceleration and keeps the angular rate constant.
+
+```csharp
+extrapolation.Strategy = new ConstantAccelerationExtrapolation();
+```
+
+### Singer acceleration
+
+Gradually decay linear acceleration during a gap. The time constant defaults to 1 second; smaller values
+approach constant velocity, while larger values approach constant acceleration. Angular rates stay constant.
+
+```csharp
+extrapolation.Strategy = new SingerExtrapolation
+{
+    ManeuverTimeConstant = 0.5f // Seconds for acceleration to fall to about 37% of its observed value.
+};
+```
+
+### Coordinated turn
+
+Use quaternion body-frame second-order motion for aircraft, with cubic position and rotation correction
+on packet arrival. Supplied or estimated angular rates take precedence; otherwise the optional fallback
+estimates a turn from bank and speed. Default gravity assumes metres.
+
+```csharp
+extrapolation.Strategy = new CoordinatedTurnExtrapolation
+{
+    PacketSmoothingDuration = 0.1f, // 100 ms cubic packet correction.
+    UseBankAngleWhenRatesUnavailable = true
+};
+```
+
+### No extrapolation
+
+Hold the newest observed pose during gaps. Buffered interpolation and SDK motion assistance for smoothing remain active.
+
+```csharp
+extrapolation.Strategy = new NoExtrapolation();
+```
+
+### Supply motion and compare methods
+
+Feed observations from your data trait or SDK update callback. For the Geographic setup above,
+`sdkPosition` is a `GeoPosition`, `sampleTime` is the original SDK `Timestamp`, and the motion vectors are
+`Double3` values. Supply only the optional channels your SDK actually provides:
+
+```csharp
+Spatial spatial = root.GetRequired<Spatial>();
+spatial.SetGeographicPosition(sdkPosition, sampleTime);
+spatial.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees, sampleTime);
+extrapolation.SetGeographicVelocity(enuVelocity, sdkPosition, sampleTime);
+extrapolation.SetGeographicAcceleration(enuAcceleration, sdkPosition, sampleTime);
+extrapolation.SetBodyAngularVelocity(bodyRates, sampleTime: sampleTime);
+```
+
+ENU linear vectors use X east, Y north and Z up, in metres/second and metres/second squared; acceleration
+must have gravity removed. The body-rate setter above defaults to aircraft X forward, Y right and Z down,
+with roll/pitch/yaw rates in radians/second. All timestamps in a Realm must share the same SDK clock.
+Without supplied velocity, consecutive timestamped positions can estimate it. Call `ClearVelocity()`,
+`ClearAcceleration()` or `ClearAngularVelocity()` when a supplied channel becomes unavailable. A supplied
+zero angular rate overrides estimation and the coordinated-turn fallback.
+
+Replace `extrapolation.Strategy` with another instance at runtime to compare methods; the resulting pose
+difference blends over 0.25 seconds while observations are retained. The same choices are available under
+**Ghost → Traits → Extrapolation → Strategy**. Optional `Smoothing` filters independently; the coordinated-turn
+strategy includes its own cubic packet correction. To evaluate without a playback buffer, use
+`realm.InterpolationDelay = 0f` (the default). See [Spatial input, timing and strategy details](Documentation~/Spatial.md).
+
 ## Query available entities
 
 Queries select available Ghost roots independently of views and spatial visibility. Reuse an immutable
