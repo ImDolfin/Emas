@@ -1,17 +1,32 @@
 # Integration and contribution guidelines
 
-| Concern | Rule |
-| --- | --- |
-| Application contracts | Define small read-only interfaces on Ghost roots or trait components for query consumers. Reusable `Trait<TData>` components accept source-independent data. Consumers use `IGhost.TryGet<T>` or `GetRequired<T>()`; keep one root provider per contract. |
-| Presence setup | Configure traits on the Ghost prefab or through RequireComponent. Register `Realm.RegisterPresenceInitializer<TGhost>` to bind their readers before detectors attach. Scene integrations add a `GhostInitializer` beside the detector; code integrations keep the Realm registration. Initializers reconnect retained Ghosts after disappearance or handover. Detectors only announce membership with Detect and Disappear; trait readers own data updates. An unassigned blueprint keeps the root viewless. |
-| Coordinates | Define units and axes in application contracts. Ordinary sample positions are anchor-local. For large or moving-reference worlds, preserve global doubles in `Double3`, normalize SDK inputs in initializer-bound readers, and let traits apply the shared Cartesian values to root `Spatial` components. Use a prefab-configured `RealmSetup` reference frame or a code-configured `Realm.ReferenceFrame`. Projection assigns world poses and handles Anchor parent offsets. See [Spatial](Spatial.md). |
-| Spatial ownership | Keep the desired Unity reference near the scene origin and set an appropriate presentation range. Position and orientation are independent channels; articulation can use another application trait. Use one root transform writer: remove existing position behaviors from spatial roots, and integrate dynamic physics explicitly. Network scenery should share the same projection; a local cockpit may remain fixed. |
-| Ownership | Emas owns the lifetime of Presences, anchors, Ghost roots, installed traits, views and availability. Applications own SDK clients, trait types and prefab assets. Each `RealmSetup` owns an isolated realm, while each `AnchorSetup` attaches its colocated `PresenceDetectorComponent` (or a detector supplied by `IDetectorProvider`). The realm owns one blueprint mapping per Kind, shared by all its anchors; re-registration refreshes requested views throughout that realm while retaining roots. Detector cleanup unsubscribes but does not dispose a shared client. Dispose query subscriptions and clear retained membership when their consumer stops. |
-| Threading and payloads | Call Emas only on Unity's main thread, including detector report/remove callbacks and `Dispatch`. The application owns SDK threading and delivers events on that thread. Copy mutable or reused SDK payloads before queuing reports for a later realm update. Capture a dispatcher in `OnStart`, close SDK callbacks over it, and unsubscribe in `OnStop`. The dispatcher rejects calls from an old attachment. Order initial data with live events and undo partial subscriptions if startup throws. |
-| Failure and recovery | Read `LastErrorContext` and `LastError` on the detector; **Window > Emas** inspects all live Realms through a Realm selector. Set `detector.Name` to distinguish feeds. Detector failure removes its population. Fix the cause, then use `anchor.RestartDetector(detector)` or `ReplaceDetector` to populate it again. Successful restarts or replacements reuse compatible roots and Presences reported during startup handover and remove unreported roots afterward. There is no automatic retry. |
-| Disappearance and silent feeds | An explicit disappearance makes a Presence unavailable immediately. Set `detector.DisappearanceGracePeriod` before attachment to retain its inactive root and stable handle for a possible return; zero, the default, removes immediately. `InactivityTimeout` detects feeds that silently stop reporting and follows the same disappearance path. Set a positive timeout longer than the normal publication interval; leave it null for change-only feeds. Every successful report records activity, while direct integrations updating a cached Ghost can call `MarkPublished`. |
-| Presentation failures | A view creation or refresh failure removes that view and logs its Ghost and prefab context; tracking stays active. Fix the cause and call `Manifest`, or change the manifestation blueprint or variant to retry. Unchanged reports do not retry automatically. |
-| Extension choice | Implement an application-specific `PresenceDetector` subclass. Use `OnStart` for existing arrivals or membership subscriptions, `OnUpdate` for presence polling if needed, and `OnStop` for cleanup. Call `Detect` for identity and metadata; use `Disappear` for missing identities. Ghost traits read their initializer-bound values each realm update. Keep SDK types in the application mapping and out of reusable traits and consumers. |
-| Contributions | Use C# 8, Allman braces, XML docs and Unity metadata. Keep runtime independent of editor, sample and SDK assemblies. Cover public behavior with Unity tests, update the changelog, and synchronize shipped samples with `Tests/Unity~/Assets/Samples`. Change version or assembly names only as part of an explicit release decision. |
+## Integrate an SDK
 
-[API contracts](API.md) | [Architecture](Architecture.md) | [Test workflow and supported matrix](Validation.md)
+- **Keep SDK types in the mapping.** Detectors report membership. Initializers bind authored `Trait<TData>` components to source-independent values. Consumers use small read-only contracts on the Ghost root.
+- **Own the source.** Applications retain SDK clients/proxies; `Presence.Source` is weak. Resolve it inside readers and handle null. Detector cleanup releases subscriptions, not shared SDK clients.
+- **Use Unity's main thread.** All Emas calls, including `Dispatch`, require it. Capture a dispatcher per attachment in `OnStart`, retain exact event delegates and unsubscribe in `OnStop`. Copy reused payloads before deferred work.
+- **Choose expiry deliberately.** Leave inactivity timeout disabled for change-only feeds. For regularly reported entities, choose a timeout longer than the expected interval. Disappearance grace preserves unavailable roots for recovery; failure/removal bypasses grace.
+- **Bind before activation.** Traits must exist on the root prefab or through `RequireComponent`. Readers can run before initial activation; do not rely on `OnEnable` for binding dependencies. A scene `GhostInitializer` takes precedence over Realm registration for its Anchor.
+- **Dispose consumers.** Keep query subscription handles and clear retained membership when the consumer stops or its Realm changes. Query results contain available roots regardless of view or range.
+
+See [Getting started](GettingStarted.md) for setup and [API](API.md) for exact lifecycle contracts.
+
+## Own presentation clearly
+
+- Define units and axes in application contracts. Preserve large positions as doubles until projection; see [Spatial](Spatial.md).
+- Give each root one transform writer. Enabled Spatial owns its world pose; keep articulation on children and integrate dynamic physics explicitly.
+- Configure one reference per Realm. Keep its Unity placement near the origin and set a suitable presentation range. Attachments use same-Realm Keys and Unity-local offsets.
+- Treat buffering, smoothing and extrapolation as separate controls. Use original timestamps from one SDK clock. Clear unavailable motion channels rather than repeatedly supplying stale values.
+- Re-register edited blueprints. Each Realm keeps a configuration snapshot; root-prefab changes affect new roots. Variants select named appearances, including any application-controlled LODs.
+
+## Diagnose and recover
+
+Use **Window > Emas** or the Scene view **Emas** overlay to inspect existing Realms. Read a failed detector's `LastErrorContext` and `LastError`, fix the cause, then restart or replace it explicitly. There is no automatic retry.
+
+A view failure leaves tracking active. Fix its prefab/binding and call `Manifest`, or change the blueprint/Variant. Missing or ambiguous root contracts identify the Key, requested type and matching components; check the Ghost prefab for that Kind.
+
+## Contribute
+
+Use C# 8, Allman braces, one top-level type per file and Unity metadata. Keep Runtime independent of Editor, sample and SDK assemblies. Public APIs and protected extension points need concise XML summaries with caller-relevant units, lifecycle and validation constraints; detailed walkthroughs belong in the guides. Visible serialized settings need useful tooltips and clear units.
+
+Protect distinct public contracts with focused Unity tests. Update the changelog and synchronize modified samples with `Tests/Unity~/Assets/Samples`. Store execution reports under ignored `TestResults/`; keep [Validation](Validation.md) about setup and contract coverage. Version changes belong to an explicit release.

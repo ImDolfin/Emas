@@ -9,7 +9,7 @@
     "repository": {
       "url": "https://github.com/ImDolfin/Emas.git",
       "provider": "github",
-      "revision": "3e37839d358222566858617cb2655651685e0df0"
+      "revision": "fa63ab009df9e97c68a4e6f15704c38ae5d25c96"
     },
     "views": [
       {
@@ -63,7 +63,24 @@
         ],
         "note": "Availability precedes notification. View requests survive range suppression until Demanifest."
       }
-    ]
+    ],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": {
+          "label": "Application-facing"
+        },
+        "backend": {
+          "label": "Runtime logic"
+        },
+        "database": {
+          "label": "Authored assets"
+        },
+        "external": {
+          "label": "Application SDK"
+        }
+      }
+    }
   },
   "components": [
     {
@@ -82,8 +99,8 @@
       "sources": [
         {
           "path": "Samples~/Example/Sources/CarSource.cs",
-          "line": 15,
-          "end_line": 35,
+          "line": 44,
+          "end_line": 54,
           "label": "SDK feed integration"
         }
       ]
@@ -104,8 +121,8 @@
       "sources": [
         {
           "path": "Runtime/Tracking/PresenceDetector.cs",
-          "line": 91,
-          "end_line": 143,
+          "line": 486,
+          "end_line": 496,
           "label": "Detection contract"
         }
       ]
@@ -126,14 +143,14 @@
       "sources": [
         {
           "path": "Runtime/Realm.cs",
-          "line": 591,
-          "end_line": 642,
+          "line": 618,
+          "end_line": 672,
           "label": "Ordered update"
         },
         {
           "path": "Runtime/Realm.cs",
-          "line": 1023,
-          "end_line": 1052,
+          "line": 1117,
+          "end_line": 1151,
           "label": "Finalize data and views"
         }
       ]
@@ -154,14 +171,14 @@
       "sources": [
         {
           "path": "Runtime/Entities/Presence.cs",
-          "line": 6,
-          "end_line": 73,
-          "label": "Stable handle and weak source"
+          "line": 48,
+          "end_line": 65,
+          "label": "Weak application source"
         },
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 240,
-          "end_line": 283,
+          "line": 205,
+          "end_line": 246,
           "label": "Detection and binding"
         }
       ]
@@ -182,15 +199,15 @@
       "sources": [
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 198,
-          "end_line": 232,
+          "line": 675,
+          "end_line": 731,
           "label": "Create or clone root"
         },
         {
           "path": "Runtime/Entities/Ghost.cs",
-          "line": 6,
-          "end_line": 45,
-          "label": "Root contracts"
+          "line": 124,
+          "end_line": 132,
+          "label": "Root contract lookup"
         }
       ]
     },
@@ -210,14 +227,14 @@
       "sources": [
         {
           "path": "Runtime/Entities/TraitOfT.cs",
-          "line": 6,
-          "end_line": 58,
-          "label": "Bound readers and Apply"
+          "line": 9,
+          "end_line": 57,
+          "label": "Reader binding and application"
         },
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 608,
-          "end_line": 646,
+          "line": 500,
+          "end_line": 544,
           "label": "Refresh all trait inputs"
         }
       ]
@@ -238,15 +255,15 @@
       "sources": [
         {
           "path": "Runtime/Entities/Spatial.cs",
-          "line": 101,
-          "end_line": 144,
-          "label": "Geographic and ECEF channels"
+          "line": 249,
+          "end_line": 252,
+          "label": "WGS84 input"
         },
         {
           "path": "Runtime/Unity/SpatialManager.cs",
-          "line": 19,
-          "end_line": 83,
-          "label": "Capture and project"
+          "line": 23,
+          "end_line": 41,
+          "label": "Shared spatial pass"
         }
       ]
     },
@@ -266,14 +283,14 @@
       "sources": [
         {
           "path": "Runtime/Views/ViewManager.cs",
-          "line": 17,
-          "end_line": 118,
+          "line": 32,
+          "end_line": 108,
           "label": "Requests, gating and binding"
         },
         {
           "path": "Runtime/Realm.cs",
-          "line": 539,
-          "end_line": 555,
+          "line": 566,
+          "end_line": 582,
           "label": "Manifest request"
         }
       ]
@@ -294,14 +311,14 @@
       "sources": [
         {
           "path": "Runtime/Tracking/Anchor.cs",
-          "line": 6,
-          "end_line": 20,
-          "label": "Grouping and ownership"
+          "line": 73,
+          "end_line": 77,
+          "label": "Identity scope"
         },
         {
           "path": "Runtime/Tracking/Anchor.cs",
-          "line": 114,
-          "end_line": 159,
+          "line": 140,
+          "end_line": 180,
           "label": "Attach and start detectors"
         }
       ]
@@ -322,20 +339,20 @@
       "sources": [
         {
           "path": "Runtime/Realm.cs",
-          "line": 383,
-          "end_line": 416,
+          "line": 421,
+          "end_line": 424,
           "label": "Realm-scoped queries"
         },
         {
           "path": "Runtime/Realm.cs",
-          "line": 498,
-          "end_line": 555,
+          "line": 566,
+          "end_line": 582,
           "label": "Optional views"
         },
         {
           "path": "Runtime/Queries/Query.cs",
-          "line": 14,
-          "end_line": 65,
+          "line": 90,
+          "end_line": 93,
           "label": "Global queries"
         }
       ]
@@ -356,15 +373,15 @@
       "sources": [
         {
           "path": "Runtime/Views/ManifestationBlueprint.cs",
-          "line": 157,
-          "end_line": 195,
-          "label": "View selection"
+          "line": 142,
+          "end_line": 158,
+          "label": "Named and fallback views"
         },
         {
           "path": "Runtime/Views/ViewManager.cs",
-          "line": 57,
-          "end_line": 67,
-          "label": "Resolve a registered prefab"
+          "line": 32,
+          "end_line": 108,
+          "label": "Resolve registered appearance"
         }
       ]
     },
@@ -384,15 +401,15 @@
       "sources": [
         {
           "path": "Runtime/Tracking/ReferenceFrame.cs",
-          "line": 452,
-          "end_line": 509,
-          "label": "Follow and capture"
+          "line": 622,
+          "end_line": 654,
+          "label": "Followed reference"
         },
         {
           "path": "Runtime/Unity/GeographicBasis.cs",
-          "line": 6,
-          "end_line": 73,
-          "label": "ECEF tangent projection"
+          "line": 13,
+          "end_line": 27,
+          "label": "ECEF tangent basis"
         }
       ]
     },
@@ -412,14 +429,14 @@
       "sources": [
         {
           "path": "Runtime/Unity/GhostInitializer.cs",
-          "line": 6,
-          "end_line": 31,
-          "label": "Local reader binding"
+          "line": 49,
+          "end_line": 56,
+          "label": "Anchor-local reader binding"
         },
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 252,
-          "end_line": 282,
+          "line": 205,
+          "end_line": 246,
           "label": "Local then Realm fallback"
         }
       ]

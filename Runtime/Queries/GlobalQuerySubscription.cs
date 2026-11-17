@@ -26,9 +26,7 @@ namespace Emas
             _onLeave = onLeave;
         }
 
-        /// <summary>
-        /// Stops observing all realms without reporting departures.
-        /// </summary>
+        /// <summary>Stops observing all realms without reporting departures.</summary>
         public void Dispose()
         {
             if (_disposed)

@@ -135,9 +135,42 @@ namespace Emas.Editor
                         }
                     }
 
-                    DrawPropertiesExcluding(settings, "m_Script", "m_Enabled");
+                    DrawTraitSettings(settings);
                     settings.ApplyModifiedProperties();
                 }
+            }
+        }
+
+        private static void DrawTraitSettings(SerializedObject settings)
+        {
+            SerializedProperty property = settings.GetIterator();
+            bool enterChildren = true;
+            while (property.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+                if (property.name == "m_Script" || property.name == "m_Enabled")
+                {
+                    continue;
+                }
+
+                string label = property.displayName;
+                if (settings.targetObject is Extrapolation && property.name == "_maximumExtrapolation")
+                {
+                    label = "Prediction horizon (s)";
+                }
+                else if (settings.targetObject is Smoothing)
+                {
+                    if (property.name == "_positionHalfLife")
+                    {
+                        label = "Position half-life (s)";
+                    }
+                    else if (property.name == "_rotationHalfLife")
+                    {
+                        label = "Rotation half-life (s)";
+                    }
+                }
+
+                EditorGUILayout.PropertyField(property, new GUIContent(label, property.tooltip), true);
             }
         }
 

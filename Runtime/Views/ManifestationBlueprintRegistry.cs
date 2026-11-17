@@ -3,9 +3,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    /// <summary>
-    /// Tracks snapshots by kind and removes old keys when an asset is re-registered under another kind.
-    /// </summary>
+    /// <summary>Tracks snapshots by kind and removes old keys when an asset is re-registered under another kind.</summary>
     internal sealed class ManifestationBlueprintRegistry
     {
         private readonly Dictionary<string, ManifestationBlueprintSnapshot> _byKind = new Dictionary<string, ManifestationBlueprintSnapshot>(StringComparer.Ordinal);

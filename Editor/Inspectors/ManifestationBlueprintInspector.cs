@@ -5,18 +5,14 @@ using UnityEngine;
 
 namespace Emas.Editor
 {
-    /// <summary>
-    /// Edits a blueprint's named appearances as an inline table.
-    /// </summary>
+    /// <summary>Edits a blueprint's named appearances as an inline table.</summary>
     [CustomEditor(typeof(ManifestationBlueprint))]
     [CanEditMultipleObjects]
     public sealed class ManifestationBlueprintInspector : UnityEditor.Editor
     {
         private ReorderableList _variants;
 
-        /// <summary>
-        /// Draws blueprint settings, the Name/Prefab table and configuration errors.
-        /// </summary>
+        /// <summary>Draws blueprint settings, the Name/Prefab table and configuration errors.</summary>
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
@@ -63,7 +59,7 @@ namespace Emas.Editor
             Rect prefab;
             Columns(rect, out name, out prefab);
             EditorGUI.LabelField(name, new GUIContent("Name", "Case-sensitive Variant identifier used in code."));
-            EditorGUI.LabelField(prefab, "View Prefab");
+            EditorGUI.LabelField(prefab, new GUIContent("View Prefab", "Visual child instantiated for this named Variant."));
         }
 
         private void DrawVariant(Rect rect, int index, bool isActive, bool isFocused)
@@ -84,10 +80,13 @@ namespace Emas.Editor
             // The inserted name must be unused on every selected blueprint during multi-object editing.
             foreach (UnityEngine.Object value in targets)
             {
-                SerializedProperty variants = new SerializedObject(value).FindProperty("_variants");
-                for (int index = 0; index < variants.arraySize; index++)
+                using (SerializedObject blueprint = new SerializedObject(value))
                 {
-                    names.Add(variants.GetArrayElementAtIndex(index).FindPropertyRelative("_name").stringValue);
+                    SerializedProperty variants = blueprint.FindProperty("_variants");
+                    for (int index = 0; index < variants.arraySize; index++)
+                    {
+                        names.Add(variants.GetArrayElementAtIndex(index).FindPropertyRelative("_name").stringValue);
+                    }
                 }
             }
 

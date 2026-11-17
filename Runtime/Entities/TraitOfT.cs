@@ -2,17 +2,13 @@ using System;
 
 namespace Emas
 {
-    /// <summary>
-    /// Reads a source-independent value and applies it to a Ghost on each realm update.
-    /// </summary>
+    /// <summary>Reads a source-independent value and applies it to a Ghost on each realm update.</summary>
     /// <typeparam name="TData">The input value needed by this trait.</typeparam>
     public abstract class Trait<TData> : Trait
     {
         private Func<TData> _read;
 
-        /// <summary>
-        /// Connects this trait to a value reader without depending on the SDK's proxy type.
-        /// </summary>
+        /// <summary>Connects this trait to a value reader without depending on the SDK's proxy type.</summary>
         /// <param name="read">Reads the latest value on Unity's main thread.</param>
         /// <remarks>
         /// Bind in the registered Ghost initializer. Rebinding replaces the previous reader.
@@ -27,9 +23,7 @@ namespace Emas
             _read = read ?? throw new ArgumentNullException(nameof(read));
         }
 
-        /// <summary>
-        /// Applies a value without knowledge of where it came from.
-        /// </summary>
+        /// <summary>Applies a value without knowledge of where it came from.</summary>
         /// <param name="data">The source-independent trait input.</param>
         /// <remarks>The realm calls this after reading a bound, enabled trait. Direct calls require Unity's main thread.</remarks>
         public abstract void Apply(TData data);

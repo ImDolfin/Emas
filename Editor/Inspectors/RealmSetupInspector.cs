@@ -137,7 +137,7 @@ namespace Emas.Editor
         private static void DrawRuntime(RealmSetup setup)
         {
             Realm realm = setup.Realm;
-            using (InspectorLayout.Section("Live realm ? " + setup.name, "Read-only. Configuration above is captured when this Realm starts."))
+            using (InspectorLayout.Section("Live realm: " + setup.name, "Read-only. Configuration above is captured when this Realm starts."))
             {
                 InspectorLayout.ReadOnly("Anchors", realm.Anchors.Count.ToString());
                 InspectorLayout.ReadOnly("Available entities", realm.Query().Count.ToString());

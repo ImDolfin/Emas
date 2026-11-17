@@ -1,327 +1,161 @@
 # API reference
 
-Runtime APIs use the `Emas` namespace. All operations require Unity's main thread, including detector publish/disappear callbacks and protected `Dispatch`. Applications handle SDK threading before calling Emas; Emas provides no thread synchronization or marshalling. `Realm.Default` is updated automatically by Unity; an isolated `Realm` implements `IDisposable` and advances through explicit `Update()`.
+Runtime types use `Emas`; application assemblies reference `Emas.Runtime`. All calls require Unity's main thread. XML comments on each API provide parameter, unit and exception details. This guide explains how the APIs fit together.
+
+Examples assume `using Emas;`, `using System;` and `using UnityEngine;`. Variables such as `realm` and prefab references come from the calling integration.
 
 ## Fast integration
 
-| API | Contract |
+| Setup | Entry points |
 | --- | --- |
-| Application subclass of `PresenceDetector` | Observe SDK membership and call `Detect` or `Disappear` |
-| `Realm.RegisterPresenceInitializer<TGhost>(kind, initialize)` | Choose the Ghost root type and bind its configured traits before attaching detectors |
-| `Ghost.OnUpdate()` | Optional protected override, called once per realm update after traits and before spatial projection |
-| `Trait<TData>.Bind(read)` / `Apply(data)` | Bind a value reader in the initializer; the Ghost component applies that value on realm updates |
-| `PresenceDetectorComponent` | Attach a scene detector using the same lifecycle as a plain detector |
-| `GhostInitializer.Initialize(presence, ghost)` | Bind configured traits for this Anchor before availability |
-| `GhostInitializer.Anchor` / `Realm` | Access this initializer's bound context, including during initialization |
-| `PresenceDetector.Anchor` / `Realm` and component equivalents | Access the detector's attached context from application code and lifecycle callbacks |
-| `IRealmConfigurator.ConfigureRealm(realm)` | Optional Realm-wide registration before scene detectors attach |
-| `IDetectorProvider.CreateDetector()` | Create one new or detached detector for a prefab anchor whenever it starts |
-| `RealmSetup.Realm` | Access the isolated, automatically updated realm while the setup is running |
-| `RealmSetup.StartRealm()` / `StopRealm()` | Start from prefab settings or dispose the realm and its anchors |
-| `AnchorSetup.Anchor` | Access the live anchor for detector restart or replacement |
+| Scene-owned | `RealmSetup` owns an isolated Realm; child `AnchorSetup` components attach colocated detectors. |
+| Code-owned | Construct `Realm`, register bindings/blueprints, attach detectors, call `Update()` and `Dispose()`. |
+| Default world | `Realm.Default` updates automatically and is separate from scene-owned Realms. |
+| SDK membership | Derive `PresenceDetectorComponent` for scenes or `PresenceDetector` for code. |
+| Data binding | Derive `GhostInitializer` for an Anchor or register `Realm.RegisterPresenceInitializer<TGhost>`. |
+| Optional factories | `IDetectorProvider.CreateDetector()` supplies a detached detector; `IRealmConfigurator.ConfigureRealm()` registers Realm-wide configuration before attachment. |
 
-A detector identifies and labels arrivals and reports disappearances. The realm creates a stable Presence and its Ghost root, then runs the registered per-kind initializer to bind readers on the Ghost's configured traits. Register before any Ghost of that kind exists. For scenes, use a `GhostInitializer` beside the Anchor to supply local bindings. Traits belong on the Ghost prefab or in its `RequireComponent` declaration. Initialization runs again when the source object or capabilities change, after disappearance, and during source handover; bindings replace old readers without creating traits.
-
-Implement one small, application-specific `PresenceDetector` subclass for an SDK feed. Override `OnStart` to publish its initial state or subscribe, `OnUpdate` for any polling, and `OnStop` to release subscriptions. Pass the application-owned SDK client into its constructor. `OnStop` runs once per started attachment, including startup failure; it must be able to clean up partially initialized subscriptions. Do not dispose a shared SDK client there.
-
-`GhostInitializer`, `PresenceDetector` and `PresenceDetectorComponent` expose public `Anchor` and `Realm` properties. Inside their callbacks, use `Anchor.Id`, `Anchor.RestartDetector(...)` or `Realm.Ghosts` directly. Detector context is set before `OnStart`, remains available through `OnStop`, and clears on detachment. An attached detector that has stopped after an update or restart failure retains its context for retry. The selected initializer is bound before detectors start and remains bound for that Anchor's lifetime, including detector restarts and replacements; Anchor disposal clears it after detector cleanup. Both properties return null while unbound. Moving a live scene object under another Realm Setup preserves its current attachment until it is detached and reattached.
-
-Call protected `Detect(id, kind, name, variant, capabilities, source)` to announce identity and metadata. The optional capability list contains interface `Type` values: null preserves previous capabilities, while an empty collection clears them. Capabilities describe the SDK entity; the initializer decides which configured traits to bind or enable. The detector does not carry SDK data updates.
-
-The optional `source` argument supplies an application proxy, SDK client or other context object. It is assigned to `Presence.Source` before the initializer runs and held with `WeakReference<object>`. The property resolves the target and returns null for collected objects or destroyed Unity objects. Emas never disposes the source. Resolve Source inside readers instead of capturing its target strongly, and choose how the reader handles a missing target. Collection alone does not change detection membership. A different non-null source reference clears old trait bindings and reruns initialization on the same Ghost; null preserves the current source. Disappearance, source handover and removal release it, so supply it again on the next arrival.
-
-`Trait<TData>` is a Ghost-root component. Its `Bind(Func<TData>)` reader supplies exactly the value the trait needs, without a dependency on the SDK proxy. Enabled, bound traits read and apply their values during realm finalization before spatial projection, activation and query notifications. Unbound or disabled traits skip updates. Reader or Apply exceptions stop the owning detector and remove its population. Detect no longer carries data; there is no Report function. With no initializer or Ghost prefab, detection creates the silent `Ghost` root.
-
-Author every root trait in the Ghost Inspector's **Traits** section, including Smoothing and Extrapolation. Each row owns its serialized fields and enabled checkbox, with Unity Undo and prefab overrides. The row's **...** menu opens its script or removes the trait; add traits through Unity's **Add Component** menu. Use Undo or the prefab's Overrides menu to restore a removed trait. The editor hides their separate component cards while a Ghost is present and restores them if the Ghost is removed. This applies to application-defined traits too; other components such as Spatial retain their own inspectors.
-
-Custom Ghost subclasses can override `protected virtual void OnUpdate()` to combine their traits. The realm invokes enabled, owned Ghosts that are available or awaiting activation, after all trait readers finish and before capturing the reference pose. The hook can therefore run before the root first activates; it must not depend on `Start` having run. Prepared and disappeared Ghosts are skipped; viewless and spatially suppressed Ghosts still update. Disabling the Ghost component skips its hook without disabling its traits or spatial placement. There is no ordering guarantee between Ghost hooks. Startup finalization and explicit view requests do not invoke it; nested realm updates are rejected. An exception stops the owning detector and removes its population, with `Ghost.OnUpdate` and entity identity in the error context.
-
-For a polled SDK, call your read method from `OnStart` and `OnUpdate`. The detector decides its polling interval. If each read returns the complete current population, collect the current IDs, report its readings, then call `Disappear(kind, id)` for previously owned identities absent from that successful read. `OwnedPresences` supplies a membership snapshot for this comparison. Validate the SDK snapshot before applying it when malformed or duplicate entries should reject the read. A feed that returns only changes needs an explicit disappearance signal or an appropriate `InactivityTimeout`; an omitted ID alone does not remove anything in Emas.
-
-For SDK membership events, capture `Action<Action> dispatch = CaptureDispatcher()` in `OnStart`. Queue arrival callbacks with `dispatch(() => Detect(id, kind))` and departures with `dispatch(() => Disappear(kind, id))`. Retain the delegates for unsubscribe in `OnStop`. SDK data updates belong to the proxy or application lookup used by the trait readers.
-
-| Detector contract | Behavior |
-| --- | --- |
-| Identity | Repeated IDs update the same Presence; unknown disappearances are ignored |
-| Lifecycle | `OnStart` begins an attachment, `OnUpdate` runs during realm updates, and `OnStop` releases that attachment's resources |
-| Deferred work | Captured dispatchers bind queued work to one attachment; retained old callbacks cannot change a later attachment |
-| Failure | Exceptions escaping a lifecycle override or queued action stop the detector, remove its population and discard queued work |
-| Replacement | Compatible Ghost roots and manifestation requests survive when a replacement detector reports the same identities during handover |
-| Application responsibility | Choose polling and omission rules, order initial state with live events, copy mutable SDK data, and undo partial subscriptions |
-
-Put `RealmSetup` on the root, then `AnchorSetup` and a `PresenceDetectorComponent` subclass on each source object. Anchors need unique IDs within their Realm. The component forwards `OnStart`, `OnUpdate`, `OnStop`, `Detect`, `Disappear`, `Dispatch` and `CaptureDispatcher` to a plain detector. Its public `Detector` exposes diagnostics, detached timeout/grace configuration and a handle for `Anchor.RestartDetector` / `ReplaceDetector`. Disabling or destroying the component releases its Anchor; disabled components opt out of startup. Use the Realm lifecycle hooks instead of defining Unity enable/disable messages in a subclass.
-
-An optional, enabled `GhostInitializer` beside the Anchor overrides `Initialize(Presence presence, Ghost ghost)`. It replaces the Realm's per-Kind initializer on that Anchor. The blueprint selects the root and traits; without a blueprint, a plain Ghost is created. With no enabled local initializer, `Realm.RegisterPresenceInitializer<TGhost>` remains the fallback for both root type and binding. The selected initializer is captured at attachment: restart the Anchor after changing this configuration. Bindings read each Realm update, and initialization repeats after source or metadata changes and retained-root handover. Initializer exceptions use the same detector failure and rollback handling as code registrations.
-
-`IDetectorProvider.CreateDetector()` remains an alternative for factories returning a new or detached plain detector. Enabled `IRealmConfigurator` components register Realm defaults once per lifetime before detectors attach. Nested Realm Setups own their own configurators and Anchors. Reparenting a live Anchor retains its original owner until disabled and re-enabled.
-
-Assign blueprints on Realm Setup, at most one per Kind, shared by all its Anchors. Automatic views are optional per Anchor. Realm Setup starts on the first update after enable in Play Mode, updates its isolated Realm and disposes it on disable or `StopRealm()`. `StartRealm()` creates a fresh one. Direct `Realm.Default` and `new Realm()` integrations are unchanged.
+Author the Ghost's components before detection. Initializers bind readers; they do not add traits automatically. A colocated, enabled `GhostInitializer` overrides Realm registration for its Anchor. Restart that Anchor after changing initializer configuration. See [Getting started](GettingStarted.md).
 
 ## Tracking and lifecycle
 
-| Operation | Contract |
+| Realm member | Contract |
 | --- | --- |
-| `Realm.Anchors` / `Anchor.Detectors` | Copied, read-only membership snapshots; earlier snapshots stay unchanged and disposed owners return empty snapshots |
-| `Realm.Ghosts` | Copied, read-only snapshot of all live tracked roots, including prepared and unavailable Ghosts; supports LINQ |
-| `Realm.RegisterPresenceInitializer<TGhost>(kind, initialize)` | Register a root type and input bindings before a Ghost of this kind exists |
-| `Realm.RegisterManifestationBlueprint(blueprint)` | Register or replace the blueprint for a Kind across every anchor in this realm |
-| `GetOrCreateAnchor(id, params PresenceDetector[] sources)` | Create or reuse an anchor and attach supplied detectors; overload accepts a parent `Transform` |
-| `Prepare<TGhost>(anchorId, kind, entityId, variant = null)` | Optionally create an unavailable Ghost identity before detection |
-| `TryGetPresence(key, out presence)` | Find a stable Presence, including one unavailable during a grace period or handover |
-| `TryGetGhost(key, out ghost)` | Find its Ghost root, including unavailable and prepared roots |
-| `Query(partialName = null)` / `Query.All(partialName = null)` | Query available Ghosts in one realm or across all live realms |
-| `Query(description)` | Rebind an immutable query description to this realm |
-| `RemoveAnchor(id)` | Stop its detectors and remove its presences, Ghosts and prepared roots |
-| `Update()` | Advance an explicitly managed realm; the default realm advances automatically |
-| `realm.Dispose()` | Release the realm and all owned state |
+| `Anchors` / `Ghosts` | Read-only membership snapshots. Ghosts includes prepared and unavailable roots; component data remains live. |
+| `RegisterPresenceInitializer<TGhost>(kind, initialize)` | Register the root type and bindings before any root of that Kind exists. |
+| `RegisterManifestationBlueprint(blueprint)` | Snapshot one Kind mapping for every Anchor in this Realm. Re-register after asset edits. |
+| `GetOrCreateAnchor(id, sources)` | Reuse/create an Anchor and attach detectors. An overload accepts its scene-parent Transform. |
+| `Prepare<TGhost>(anchorId, kind, entityId, variant)` | Create an unowned, unavailable root before detection; no Presence exists yet. |
+| `TryGetPresence(key, out presence)` / `TryGetGhost(key, out ghost)` | Exact identity lookup, including unavailable entities. Check `IsAvailable` before consuming current source data. |
+| `Query()` / `Query(description)` | Select available roots or reuse another query's filters in this Realm. |
+| `RemoveAnchor(id)` | Stop its detectors and remove tracked/prepared objects. |
+| `Update()` | Advance an application-owned Realm. Reentrant updates are rejected; disposed Realms do nothing. |
+| `Dispose()` | Idempotent cleanup. Subsequent reads are empty; configuration and subscription mutations throw. |
 
-An `Anchor` exposes `Id`, `Transform`, `Realm`, `Detectors`, blueprint registration, `AddDetector`, `RemoveDetector`, `RestartDetector`, `ReplaceDetector` and `Dispose()`. Restart reuses an attached detector; replacement attaches a different instance. During successful handover, compatible Presence handles, Ghost roots and manifestation requests survive when identities are reported again. Roots are unavailable until republished. Identities still unreported after the first subsequent update and queued startup reports are removed.
+`Anchor` exposes `Id`, `Transform`, `Realm` and a `Detectors` snapshot. `AddDetector`, `RemoveDetector`, `RestartDetector` and `ReplaceDetector` manage attachments. A detector can belong to only one attachment. `Dispose()` removes the Anchor and its objects. Blueprint registration belongs to the Realm.
 
-Detector failure or removal deletes its population immediately and discards its queued callbacks, regardless of the configured disappearance grace period. Failed restart or replacement startup leaves that detector attached for retry. A detector removed and reattached during an update waits until the next update to tick. See [lifecycle rules](Architecture.md#failure-and-cleanup).
+Successful restart/replacement preserves compatible roots, Presence handles and view requests reported during startup handover. Unreported identities are removed after startup dispatch and the next update complete. Failure/removal bypasses grace and removes the population; failed restarts remain attached for explicit retry. See [failure and cleanup](Architecture.md#failure-and-cleanup).
 
 ## PresenceDetector, Presence and traits
 
-| Member | Use |
+| Detector member | Use |
 | --- | --- |
-| `PresenceDetector.IsAttached` / `IsActive` | Check whether an anchor owns the detector and whether its current registration accepts updates |
-| `PresenceDetector.Anchor` / `Realm` | Current attached context; null after detachment |
-| `PresenceDetector.Name` | Label the detector for diagnostics; it does not name its individual entities |
-| `PresenceDetector.LastError` / `LastErrorContext` | Read the first error and its anchor, detector and operation context from the latest attachment |
-| `PresenceDetector.OnStart` / `OnUpdate` / `OnStop` | Implement a custom SDK subscription or polling lifecycle |
-| `PresenceDetector.Detect(id, kind, name, variant, capabilities, source)` | Protected metadata-only detection; returns the stable Presence |
-| `PresenceDetector.Disappear(kind, id)` | Protected explicit disappearance signal for an owned identity |
-| `PresenceDetector.OwnedPresences` | Protected snapshot of monitored presences, including unavailable ones |
-| `PresenceDetector.InactivityTimeout` | Optional positive period without reports before a presence disappears; null disables expiry |
-| `PresenceDetector.DisappearanceGracePeriod` | Nonnegative period retaining a disappeared Presence and Ghost root while unavailable; zero removes immediately |
-| `PresenceDetector.Dispatch(action)` / `CaptureDispatcher()` | Queue Unity-thread work for the current registration; captured dispatchers reject stale callbacks |
-| `Presence.Source` | Resolves the weak application proxy or SDK object; null when missing, collected or destroyed |
-| `Presence.Key` / `Name` / `Variant` | Stable identity, per-entity label and visual variant |
-| `Presence.IsAvailable` / `IsRemoved` / `Root` | Detection availability, final removal state and the initialized Ghost root |
-| `Presence.Capabilities` / `HasCapability<T>()` | Snapshot and exact-interface check of SDK-reported capabilities |
-| `Ghost.Anchor` / `IGhost.Anchor` | Owning Anchor; navigate through `Anchor.Realm` to access its reference frame |
-| `Ghost.Traits` / `IGhost.Traits` | Read-only membership snapshot of root traits, including disabled and unbound components |
-| `Ghost.Trait<TTrait>()` / `IGhost.Trait<TTrait>()` | Retrieve a required root trait directly; throw when the match is missing or ambiguous |
-| `Trait.Ghost` | Access the Ghost on this trait's GameObject, including while inactive or disabled |
-| `IGhost.TryGet<T>(out part)` / `GetRequired<T>()` | Resolve root MonoBehaviour interfaces for consumers; these are separate from reported capabilities |
+| `Anchor` / `Realm` | Attachment context, bound before `OnStart`, available through `OnStop`, null after detachment. |
+| `IsAttached` / `IsActive` | Distinguish ownership from an attachment currently accepting work. |
+| `Name` | Diagnostic feed label, independent of entity names. |
+| `LastError` / `LastErrorContext` | First failure and captured attachment/operation context; cleanup errors do not replace it. |
+| `InactivityTimeout` | Optional positive TimeSpan since each entity's last report; null disables expiry. |
+| `DisappearanceGracePeriod` | Nonnegative retention TimeSpan after disappearance; zero removes immediately. |
+| `OnStart()` / `OnUpdate()` / `OnStop()` | Protected SDK lifecycle hooks. Stop also follows failed startup; clean up partial subscriptions. |
+| `Detect(id, kind, name, variant, capabilities, source)` | Protected identity/metadata report returning the stable Presence. Records activity. |
+| `Disappear(kind, id)` | Make an owned identity unavailable; apply configured grace. |
+| `OwnedPresences` / `OwnedGhosts` | Protected snapshots, including unavailable entities. |
+| `GetOrCreate<TGhost>()` / `MarkPublished(ghost)` | Direct-root integration when the detector deliberately writes state itself. Both record activity. |
+| `Dispatch(action)` / `CaptureDispatcher()` | Defer main-thread work. Captured dispatchers reject callbacks from old attachments. |
 
-A Presence is stable from its first detection or report until final removal. Its Key combines anchor ID, Kind and SDK entity ID; the same key in a different realm identifies a different Presence. `TryGetPresence` can return an unavailable Presence, so check `IsAvailable` before treating its data as current. `IsRemoved` becomes true after final removal, and a later report creates a new handle. `Root` holds the invisible Ghost even when no view has been requested. `Prepare<TGhost>` creates only an unavailable Ghost; `TryGetPresence` stays false until a detector first reports that identity. Consumers still use `IGhost` queries and root interfaces.
+Move SDK events to Unity's thread before calling Emas. Capture a dispatcher in each `OnStart` and unsubscribe exact delegates in `OnStop`. The update drains at most 256 actions present at entry; newly queued work waits. Shared SDK clients remain application-owned.
 
-`Ghost.Anchor` and `IGhost.Anchor` expose the actual owning Anchor on Unity's main thread. Use `ghost.Anchor.Realm.ReferenceFrame` to access the realm's current projection settings; a null reference frame means identity Cartesian projection. The Anchor is assigned before application initialization, including for prepared roots, and retained during disappearance grace, detector restart and replacement. Scene reparenting does not change it. It is null before realm initialization and cleared on final removal before view or root cleanup callbacks, including Anchor or Realm disposal.
+Repeated detection refreshes activity. Trait reads do not. Use inactivity expiry for regularly reported feeds, and explicit disappearances for change-only feeds. During grace the root is inactive and absent from queries; rediscovery reuses its handle. After removal, detection creates a new lifetime.
 
-Emas names each created Ghost root GameObject exactly `Key.EntityId`, including prefab instances, before application initialization. `Ghost.Name` remains separate SDK display metadata; changing it does not rename the GameObject. Active roots are accessible through `GameObject.Find("bird-left-foot")`. Entity IDs can repeat across Kinds, Anchors and Realms, so a global Unity name lookup can be ambiguous. `anchor.Transform.Find("bird-left-foot")` scopes hierarchy lookup to an Anchor and can find inactive retained roots; use `Realm.TryGetGhost(key, out ghost)` when the full identity is needed. Prepared or unavailable roots are inactive and are excluded from `GameObject.Find`.
+| Presence member | Contract |
+| --- | --- |
+| `Key` / `Name` / `Variant` | Full identity, display metadata and selected appearance. |
+| `Root` / `IsAvailable` / `IsRemoved` | Root reference, current availability and final lifetime state. |
+| `Source` | Weak application object; null when absent, collected or destroyed. Resolve inside readers. |
+| `Capabilities` / `HasCapability<T>()` | Validated, deduplicated interface metadata. Does not create components or guarantee root contracts. |
 
-Declare SDK capabilities as interface types through `Detect`'s optional `capabilities` argument. Emas validates and snapshots the types and removes duplicates. A changed set reruns the initializer, which can use `presence.HasCapability<T>()` to bind or enable Ghost traits. Capability metadata does not add components. Configure traits on the Ghost and access them through `ghost.Traits`, `ghost.Trait<TTrait>()` or `ghost.TryGet<TTrait>(out trait)`.
+Initializers rerun on source/capability changes, rediscovery and handover. Label/Variant changes alone do not. Existing readers are released on disappearance, handover and removal.
 
-Subclass `Trait<TData>` and implement `Apply(TData data)` using source-independent values. In the initializer, call `root.GetRequired<PositionTrait>().Bind(() => ((SdkProxy)presence.Source).Position)`. The Ghost determines which traits exist; the initializer knows the SDK and supplies the readers. For immutable SDK snapshots, read the current lookup entry on every invocation. Bindings are released on disappearance, handover and removal. A retained Ghost reconnects when its initializer runs again. For a viewless entity, leave its blueprint unassigned.
+| Ghost/trait member | Contract |
+| --- | --- |
+| `Ghost.Anchor` / `IGhost.Anchor` | Actual owner, independent of scene reparenting; cleared before final cleanup callbacks. |
+| `Traits` | Snapshot of root traits, including disabled/unbound ones; excludes children. |
+| `Trait<TTrait>()` / `GetRequired<T>()` | Resolve exactly one root component, including while inactive; throw for missing/ambiguous matches. |
+| `TryGet<T>(out value)` | Resolve an optional root contract; returns false for missing/ambiguous matches and logs ambiguity. |
+| `Trait.Ghost` | Same-GameObject root, resolved lazily; null when absent. |
+| `Trait<TData>.Bind(read)` | Replace the reader used during enabled trait updates. Bind before first activation. |
+| `Trait<TData>.Apply(data)` | Application implementation that updates root state from an SDK-independent value. |
+| `Ghost.OnUpdate()` | Optional protected behavior hook after all trait reads and before projection; may precede first activation. |
 
-Inside a trait, `Ghost` provides direct access to its root: use `Ghost.Key`, `Ghost.Traits` or `Ghost.GetRequired<Spatial>()`. The property resolves lazily and works before the root's first activation, without requiring `Awake` or `OnEnable`. It only searches the trait's own GameObject; no Ghost there returns null, and a later access retries after a missing or destroyed component. It does not add a Ghost automatically. Emas initializes identity before application initialization and trait reads. For example:
+For example, a `Trait<GeoPosition?>` can preserve its previous pose when the mapped SDK reading is unavailable:
 
 ```csharp
-public override void Apply(GeoPosition position)
+public override void Apply(GeoPosition? position)
 {
-    Ghost.GetRequired<Spatial>().SetGeographicPosition(position);
+    if (position.HasValue)
+    {
+        Ghost.GetRequired<Spatial>().SetGeographicPosition(position.Value);
+    }
 }
 ```
 
-`Traits` is available on both concrete `Ghost` roots and queried `IGhost` instances. Each access observes the current root components. Previously returned lists keep their membership, while their trait instances remain live Unity components that can be edited, disabled or destroyed. Child and view traits are excluded; `Spatial` is a separate component and is accessible through `GetRequired<Spatial>()`. Use `Trait<TTrait>()` for one required trait or `TryGet<TTrait>()` for an optional one; both reject duplicate providers. `Trait<TTrait>()` requires a type derived from `Emas.Trait` and returns the concrete component, so consumers can chain member access such as `Entity.Trait<GeoPositionTrait>().MyInternalData` when that application trait exposes the member. It works before activation and includes disabled or unbound traits. Missing or duplicate matches throw `InvalidOperationException` with the same diagnostics as `GetRequired<T>()`; no component is added. Check `IsAvailable` before treating retained data as current.
-
-```csharp
-foreach (Trait trait in ghost.Traits)
-{
-    Debug.Log(trait.GetType().Name);
-}
-PositionTrait position = ghost.Trait<PositionTrait>();
-```
-
-`InactivityTimeout` defaults to null. Each detection resets the individual identity's inactivity deadline. Choose a timeout longer than the feed's normal interval; feeds that publish only changed values should normally leave it disabled. `DisappearanceGracePeriod` defaults to zero. An explicit `Disappear` or inactivity expiry makes the presence unavailable immediately; with positive grace, its stable Presence and Ghost root remain inactive until the deadline. A detection before that deadline restores them and retains an existing manifestation request. Repeated disappearances do not extend the deadline. Query subscriptions see a departure on availability loss. Once grace expires, the realm removes the root and view; a later detection creates a new Presence. Detector failure, anchor removal and realm disposal bypass grace. Trait reads do not refresh presence deadlines; arrival/departure feeds should leave inactivity expiry disabled.
-
-The direct-Ghost path remains available: detectors can use protected `GetOrCreate<TGhost>`, `MarkPublished(ghost)` and `OwnedGhosts` when the integration deliberately writes root state itself. `GetOrCreate` and `MarkPublished` reset inactivity deadlines. Publishing cached data with `MarkPublished` during disappearance grace cancels removal and restores availability during finalization, retaining the same root and view request. Use `Detect` and Ghost-owned traits for the presence-only detector workflow.
-
-Capture a dispatcher in `OnStart` when subscribing to SDK callbacks and release the subscription in `OnStop`. The returned callback accepts an `Action` to run during a later realm update; calls retained from an earlier attachment are ignored. Calling `Dispatch` directly from an old callback instead targets the detector's current attachment. Move SDK events to Unity's main thread before using either mechanism.
-
-Use `IGhost.TryGet<T>` for optional application interfaces and `GetRequired<T>` when absence is a setup error. Both inspect only root MonoBehaviours, including disabled components. `GetRequired<T>` failures distinguish zero and multiple matches, identify the Ghost key and root GameObject, and list component types and instance IDs. A missing trait must be authored on the Ghost prefab selected for that entity's Kind or required by its Ghost subclass; traits on the Anchor, parents, children or views do not participate. An Anchor-local initializer runs for every detected Kind on that Anchor, so configure the required traits for each Kind it handles or branch by Kind for different compositions. Ambiguous providers are also logged with the Ghost key and component types. The Ghost Inspector keeps identity, spatial pose and trait sections open. Emas-owned metadata and cached/projected poses are read-only; application fields, trait enable switches and serialized trait settings remain editable. Each trait has a Select button to open its own component Inspector.
+Root GameObjects are named by `Key.EntityId`; `Ghost.Name` is separate display metadata. Use full-Key lookup for identity: Unity names can repeat across Kinds, Anchors and Realms. Root contract lookup never searches views or children.
 
 ## Spatial coordinates and reference frames
 
-`Spatial.Attach(parentKey, localPosition, localRotation)` selects a same-realm entity's projected pose with a Unity-local offset. The parent can arrive later; pending, unavailable and cyclic attachments suppress presentation while retaining identity. `Attach(parentKey, localPosition)` uses identity relative rotation. `AttachedTo` exposes the requested key; `Detach()` resumes the latest cached absolute channels on the next projection. Offsets use Unity axes and units independently of source-axis configuration, and Ghost roots retain their Anchor parents. See [entity attachment](Spatial.md#attach-and-detach-entities) for arrival, recovery and release-pose behavior.
-
-| Member | Use |
+| API | Purpose |
 | --- | --- |
-| `Realm.ReferenceFrame` | Optional reference configuration; null maps spatial poses directly to Unity world space |
-| `ReferenceFrame.Space` / `ReferenceSpace` | Cartesian projection (default) or Geographic WGS84 projection around the current reference |
-| `GeoPosition(latitudeDegrees, longitudeDegrees, heightMeters)` | WGS84 coordinates with ellipsoidal height; properties expose the same units |
-| `GeoPosition.ToEarthCentered()` / `FromEarthCentered(position)` | Convert between WGS84 and double-precision ECEF metres |
-| `Spatial.SetEarthCenteredRotation(rotation, bodyAxes)` | Publish active body-to-ECEF attitude for Geographic space; body axes default to forward/right/down |
-| `Spatial.RotationSpace` / `ReferenceFrame.RotationSpace` | Identify the cached quaternion basis: Source, Geographic (east/up/north), or EarthCentered (body-to-ECEF) |
-| `Spatial.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)` | Publish intrinsic heading clockwise from north, nose-up pitch, then right-wing-down bank; independent of Coordinates |
-| `ReferenceFrame.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)` | Set manual geographic reference attitude with the same degree convention |
-| `ReferenceFrame.SetEarthCenteredRotation(rotation, bodyAxes)` | Set manual body-to-ECEF reference attitude; assigning Rotation switches back to local/source attitude |
-| `ToUnityEarthCenteredRotation(rotation, bodyAxes)` / `ToEarthCenteredRotation(rotation, bodyAxes)` | Convert ECEF attitudes to/from Unity using a Geographic reference |
-| `Spatial.SetGeographicPosition(position)` | Publish WGS84 coordinates; `Spatial.Position` retains the ECEF value |
-| `Spatial.SetEarthCenteredPosition(position)` | Publish absolute ECEF XYZ metres for Geographic space |
-| `ReferenceFrame.GeographicPosition` | Manual or last followed WGS84 reference position, available in Geographic space |
-| `TryToUnityPosition(GeoPosition, out result)` / `ToGeographicPosition(Vector3)` | Geographic point projection and its inverse |
-| `ToUnityRotation(rotation, GeoPosition)` / `ToSimulationRotation(rotation, GeoPosition)` | Convert local attitude at the entity's own geographic location |
-| `Double3(x, y, z)` | Double-precision Cartesian position or displacement; preserve SDK double values |
-| `Double3.Distance(a, b)` | Distance between shared Cartesian positions in double precision |
-| `Spatial.SetCartesianPosition(position)` / `Position` / `HasPosition` | Publish shared Cartesian XYZ in Coordinates axes; Position exposes Cartesian input or ECEF storage after geographic input |
-| `Spatial.SetSourceRotation(rotation)` / `Rotation` / `HasRotation` | Publish a source quaternion in Coordinates axes; Rotation and RotationSpace identify stored attitude; without it root rotation is left alone |
-| `Spatial.IsInRange` | Whether the latest spatial projection can be presented |
-| `Timestamp(seconds, nanoseconds)` / `ElapsedSince(other)` | Shared SDK observation time with integer seconds and nanoseconds; preserve precision before calculating motion intervals |
-| `Spatial.PositionTime` / `RotationTime` | Latest accepted observation times; pose setters accept optional Timestamp, ignoring older/duplicate timed packets per channel |
-| `Smoothing.PositionHalfLife` / `RotationHalfLife` | Optional behavior Trait with independent seconds-to-halve-error controls; defaults 0.08/0, Inspector range 0–0.5 seconds |
-| `Extrapolation.MaximumExtrapolation` | Optional behavior Trait with a separate sample-age limit (default 0.15 seconds); SDK motion or timestamp-derived velocity supports extrapolation |
-| `Extrapolation.SetCartesianVelocity` / `SetEarthCenteredVelocity` / `SetGeographicVelocity` | Optional timestamped velocity in Cartesian, ECEF or explicit-origin ENU axes; matching acceleration setters accept gravity-free linear acceleration |
-| `Extrapolation.SetBodyAngularVelocity` / `AngularVelocity` / `HasAngularVelocity` / `ClearAngularVelocity` | Optional timestamped body angular rates in radians per second, with explicit body axes (default forward/right/down); predict orientation from one sample, or clear to restore timed rotation-history estimation |
-| `Extrapolation.Strategy` / `IExtrapolationStrategy` / `ExtrapolationContext` | Switch linear/angular gap extrapolation at runtime using full pose, time-aligned motion and coordinate metadata; built-ins are `ConstantAccelerationExtrapolation` (default), `ConstantVelocityExtrapolation`, `SingerExtrapolation`, `CoordinatedTurnExtrapolation` and `NoExtrapolation`; serializable custom strategies appear in the Ghost Inspector |
-| `CoordinatedTurnExtrapolation` | Quaternion rotating-body second-order motion with bank-derived coordinated-turn fallback; configure `Gravity`, `UseBankAngleWhenRatesUnavailable` and `PacketSmoothingDuration` |
-| `SingerExtrapolation.ManeuverTimeConstant` | Configure exponentially decaying linear acceleration with a finite, positive time constant in seconds (default 1); angular velocity remains constant |
-| `IPacketSmoothingStrategy.PacketSmoothingDuration` | Opt a strategy into per-root cubic position/quaternion correction on accepted packet arrivals; zero bypasses correction |
-| `ExtrapolationContext.ObservationPosition` / `ObservationRotation` | Pose sampled at the current channel's observation time; future-only timed pose is unavailable |
-| `Smoothing.Reset()` / `Extrapolation.Reset()` / `Spatial.ResetPresentation()` | Reset filter and/or estimated motion and packet-correction history while retaining input and settings; use after a teleport |
-| `Realm.ResetSpatialTime()` | Restart shared clock alignment and per-channel timestamp ordering before an SDK clock reset/replay |
-| `ReferenceFrame.Coordinates` | Cartesian pose axes or geographic source quaternion axes; named geographic angles and ECEF inputs have explicit conventions |
-| `CoordinateSystem.Unity` / `EastNorthUp` / `NorthEastDown` | Presets for Unity, ENU and NED source coordinates |
-| `new CoordinateSystem(right, up, forward)` | Custom signed source axes mapping to Unity directions; use each of X, Y and Z once via `Axis.PositiveX`, `Axis.NegativeX`, etc. |
-| `CoordinateSystem.Right` / `Up` / `Forward` | Read the source axis mapped to each Unity direction |
-| `ReferenceFrame.Position` / `Rotation` | Manual reference pose in shared Cartesian coordinates, or the latest resolved followed pose |
-| `ReferenceFrame.UnityPosition` / `UnityRotation` | Desired Unity world pose of the reference; defaults to zero/identity |
-| `ReferenceFrame.FollowedGhost` | Key to follow within this realm; assign or replace it at runtime. Null uses manual configuration or waits if no reference position exists |
-| `ReferenceFrame.FollowRotation` | Follow reference orientation as well as position; defaults to true |
-| `ReferenceFrame.MaxDistance` | Optional positive double presentation range; null disables the configured limit |
-| `ReferenceFrame.HasPosition` | Whether manual configuration or following has provided a usable cached reference position |
-| `ReferenceFrame.IsReferenceAvailable` | Whether the configured reference is currently available; loss preserves the last valid pose |
-| `TryToUnityPosition(position, out result)` | Project with reference initialization and presentation-range checks |
-| `ToSimulationPosition(position)` | Convert a Unity world position into shared Cartesian coordinates |
-| `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the frame mapping; in Geographic space these overloads use the reference location |
-| `DistanceTo(position)` | Double-precision distance from the cached reference |
+| `Spatial.SetCartesianPosition(Double3, sampleTime)` | Shared source XYZ in application units/axes. |
+| `SetGeographicPosition(GeoPosition, sampleTime)` / `SetEarthCenteredPosition(Double3, sampleTime)` | WGS84 or ECEF metres; stored Position is ECEF. |
+| `SetSourceRotation()` / `SetGeographicRotation()` / `SetEarthCenteredRotation()` | Explicit quaternion/angle input conventions. Geographic angles are degrees; ECEF body axes default to forward/right/down. |
+| `Position` / `Rotation` / `RotationSpace` / `PositionTime` / `RotationTime` | Last accepted raw channels and original SDK timestamps. |
+| `HasPosition` / `HasRotation` / `IsInRange` | Independent channel validity and presentation permission. |
+| `Attach(parentKey, localPosition, localRotation)` / `Detach()` | Same-Realm parent presentation with Unity-local offsets; absolute channels remain cached. |
+| `ResetPresentation()` | Discard presentation histories after a deliberate discontinuity; supply the new pose first. |
+| `Realm.ReferenceFrame` | Optional shared Cartesian/geographic projection; null is identity Cartesian placement. |
+| `ReferenceFrame.FollowedGhost` / `FollowRotation` | Follow position and optionally cancel full reference orientation. |
+| `ReferenceFrame.UnityPosition` / `UnityRotation` / `MaxDistance` | Scene placement/alignment and optional positive presentation radius. |
+| `Realm.InterpolationDelay` | Nonnegative shared playback delay in seconds for timed channels. |
+| `Realm.ResetSpatialTime()` | Reset SDK clock alignment and sample ordering before a restarted clock publishes. |
+| `Smoothing.PositionHalfLife` / `RotationHalfLife` | Independent nonnegative seconds to halve correction error; zero applies immediately. |
+| `Extrapolation.Strategy` / `MaximumExtrapolation` | Non-null gap algorithm and nonnegative prediction horizon in seconds. |
+| Extrapolation motion setters / `ClearVelocity`, `ClearAcceleration`, `ClearAngularVelocity` | Optional independently timed motion; clear channels when unavailable. |
 
-Add enabled `Spatial` components to participating Ghost roots. Geographic space stores ECEF positions and projects them into the moving reference's local tangent frame, including local geographic attitudes or explicit body-to-ECEF attitudes. Cartesian application traits supply poses in shared units/axes for the realm; `ReferenceFrame.Coordinates` maps that convention to Unity. Changing it reinterprets cached poses on the next update, while conversion helpers use it immediately. The realm subtracts the reference and maps axes in doubles before converting to Unity floats and projects the root in world space, accounting for Anchor parents. Reference movement reprojects all spatial ghosts without requiring another entity publication. Position, rotation and articulation updates remain independent; the spatial API emits no general data-change events.
+Enabled Spatial owns the root's world pose. Optional Smoothing/Extrapolation modify presentation only. Original timestamps share one SDK clock; older/duplicate timed samples are ignored per channel. Supplied zero motion overrides estimates. Missing references/attachment parents and range suppression affect presentation, not tracking membership.
 
-Before the first position, while an explicitly assigned reference is uninitialized, or outside the presentation range, spatial views and root rendering/colliders are suppressed while identity, availability and scripts remain active. Requested views return on range entry. Reference loss freezes its last valid pose and sets `IsReferenceAvailable` false; before any valid reference, presentation stays suppressed. With no reference frame, enabled `Spatial` components use identity projection with no distance limit; positions that cannot fit in finite Unity floats remain suppressed. Clearing `Realm.ReferenceFrame` returns to this default. Disable `Spatial` to release transform control. See [relative-world integration](Spatial.md) for complete setup, channel mapping and precision guidance.
+See [Spatial](Spatial.md) for input units/axes, strategy examples, conversion helpers, buffering, live-setting transitions and recovery. `GeoPosition`, `Double3`, `CoordinateSystem` and `Timestamp` retain the precision and conventions described there.
 
 ## Queries and subscriptions
 
-Use a Query to select available Ghosts, read root contracts, or observe result membership on Unity's main
-thread. The [query guide](Queries.md) provides the complete API reference, scope and lifetime rules, LINQ
-examples, and runnable sample links. A useful starting point is:
+See [Queries](Queries.md) for examples and the full filter/result/subscription reference. Filters return immutable descriptions and combine with AND; results contain available roots regardless of view/range.
 
 ```csharp
-Query cars = realm.Query().InAnchor("cars").OfKind(new Kind("vehicles.car"));
-Query positionedCars = cars.With<Spatial>();
-Query targets = positionedCars.WithVariant(new Variant("target"));
-int count = targets.Count;
-IGhost first = targets.FirstOrDefault();
+Query vehicles = realm.Query().OfKind(new Kind("vehicle")).With<Spatial>();
+Query compact = vehicles.WithVariant(new Variant("compact"));
+IDisposable subscription = compact.Observe(
+    ghost => Debug.Log("Arrived: " + ghost.Key),
+    key => Debug.Log("Left: " + key));
+// Dispose subscription when this consumer stops, and clear retained state.
 ```
 
-Each selection returns a new description; `cars` stays unchanged. Use your application's actual Anchor,
-Kind and Variant IDs. A component filter confirms a unique root provider; readiness such as
-`Spatial.HasPosition` is a separate application check. Query membership is independent of views and range.
-
-**Available query results and broader Ghost snapshots have different purposes.** Queries exclude prepared
-and unavailable roots. The lookup and snapshot APIs below support initialization and retained-root lookup:
-
-Use `TryGetGhost` when the full `Key` is known. It reads the realm registry without creating, activating or updating anything. Check `ghost.IsAvailable` before consuming its data; a found ghost may be prepared or awaiting publication during startup handover. Keys are case-sensitive and resolved only within the receiving realm. Removal stops lookup immediately, even before Unity finishes destroying the object.
-
-Use `realm.Ghosts` for list-style searches by partial entity ID, root type or trait data. The read-only snapshot includes all live tracked roots in that realm: prepared entities, entities awaiting activation and entities retained during disappearance grace or handover. It is available inside an initializer for roots created so far. Each access takes a fresh membership snapshot; earlier lists retain their membership, while their Unity components remain subject to removal and destruction. New snapshots exclude removed or destroyed roots, and disposed realms return an empty list. No ordering is guaranteed. Use `System.Linq` to filter it:
-
-```csharp
-using System.Linq;
-
-// Inside GhostInitializer.Initialize; select a parent already created on this Anchor.
-IGhost parent = Realm.Ghosts.SingleOrDefault(candidate =>
-    candidate.Key.AnchorId == Anchor.Id
-    && candidate.Key.Kind == new Kind("vehicles.aircraft")
-    && candidate.Key.EntityId.Contains("aircraft-main-"));
-
-if (parent != null)
-{
-    ghost.GetRequired<Spatial>().Attach(parent.Key, new Vector3(0f, -0.1f, 0f));
-}
-```
-
-`Contains` in this example performs a case-sensitive entity-ID substring match; `IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0` opts into case-insensitive matching. `SingleOrDefault` returns null for no match and rejects multiple matches, so scope the search by Anchor, Kind or another distinguishing property. `Where(...).ToList()` collects every match, and `OfType<MyGhost>()` selects a concrete Ghost subtype. Check `IsAvailable` before consuming source data. A parent discovered after the initializer cannot appear in the earlier snapshot; retry against a fresh `Ghosts` snapshot from your trait or use a query subscription for later available parents. Once an attachment has a complete parent Key, `Spatial.Attach` handles parent availability and rediscovery.
-
-Queries are immutable and combine all filters. They never create ghosts or components. `realm.Query()` searches one realm; `Query.All()` searches every live realm, including `Realm.Default`, realms created by code, and prefab-configured realms. An all-realm query also sees realms created after the query or subscription. Disposing a realm removes its matches. `realm.Query(Query.All().OfKind(kind))` applies that description to just `realm`.
-
-Queries also implement `IEnumerable<IGhost>` and support LINQ, such as `realm.Query().Where(ghost => ghost.Key.EntityId.Contains("aircraft-main-"))`. They continue to return only available roots. LINQ returns ordinary enumerable results; query subscription methods belong to the Emas `Query` description before applying LINQ.
-
-| Filter/result | Meaning |
-| --- | --- |
-| `Query(partialName)` / `WithExactName(name)` | Case-insensitive substring / exact display-name match |
-| `Realm.Query(description)` / `Query.All(partialName)` | Rebind retained filters into one Realm / select every live and future Realm without creating Realm.Default |
-| `OfKind(kind)` / `InAnchor(id)` / `WithVariant(variant)` | Exact, case-sensitive ID match |
-| `With<T>()` | Require exactly one live root provider; disabled components are eligible, children and capability metadata do not supply contracts |
-| Enumeration / `Count` | Copied current membership / freshly evaluated count; Ghost data remains live, and disposed scoped Realms yield empty results |
-| `FirstOrDefault()` | First match or null; no ordering guarantee |
-| `Single()` | Exactly one match; otherwise throws |
-| `OnAvailable(callback)` | Notify current and future complete matches; dispose the returned subscription to stop |
-| `Observe(onEnter, onLeave)` | Paired membership callbacks: `IGhost` on entry, `Key` on departure |
-| `ObserveWithRealm(onEnter, onLeave)` | Paired callbacks with the owning `Realm` on entry and departure, so matching keys in separate realms remain distinguishable |
-
-Within each realm, subscriptions notify once while a ghost remains a match. Availability loss permits a fresh notification on recovery. Outside that realm's detector, finalization and notification callbacks, current matches notify immediately. Inside those phases, notification is deferred; subscriptions created during notification wait for a later update in that realm. Cross-realm result and callback order is unspecified. Callback exceptions are isolated, and each match is rechecked before invoking the callback.
-
-Callbacks describe membership, rather than each frame's data changes. Initialize callback state before
-subscribing, keep the returned `IDisposable`, and dispose it when the consumer stops. A cached query is live
-when evaluated again; retaining an enumerator or LINQ array does not freeze availability or data. Filters
-combine with AND, repeated selectors replace that selector, and repeated `With<T>()` calls add requirements.
-`InAnchor(null)` and `WithExactName(null)` clear those selectors; `WithVariant(Variant.None)` selects unspecified
-appearances rather than clearing its filter. Invalid Kinds throw `ArgumentException`, null callbacks throw
-`ArgumentNullException`, and subscribing to a disposed scoped Realm throws `ObjectDisposedException`.
-
-`Observe` reports departure when a previously delivered ghost is removed, becomes unavailable or no longer matches. Departures run at the update notification phase, before that subscription's arrivals. Removal and availability loss remain observable even if the identity returns before the next update; filter changes are evaluated at notification time. A departure receives a `Key` because its Unity object may already be destroyed. Keys identify ghosts within a realm, so two realms may have the same key. Use `ObserveWithRealm` when a consumer must tell those departures apart. Disposing a realm reports departures for previously observed matches of an all-realm query; a realm-scoped subscription instead ends without synthetic departures. Disposing either subscription cancels pending callbacks; consumers clear their own retained state.
+`Count`, `FirstOrDefault`, `Single` and enumeration evaluate current membership; ordering is unspecified. Known identities use exact lookup instead. `Query.All()` spans live Realms; `ObserveWithRealm` distinguishes identical Keys across them. Entries may be synchronous, so initialize callback state before subscribing. Departures precede arrivals at notification. Disposal cancels pending callbacks without clearing application collections.
 
 ## Typed values
 
+Declare application constants for discoverability:
+
 ```csharp
-public static readonly Kind Car = new Kind("vehicles.car");
-public static readonly Variant SmallCar = new Variant("small-car");
+public static readonly Kind Vehicle = new Kind("vehicle");
+public static readonly Variant Compact = new Variant("compact");
 ```
 
-Declare named constants in application classes for autocomplete. Kinds and variants are distinct extensible value types; raw strings and kinds cannot be passed as variants. A variant does not enforce membership in a kind or guarantee a prefab mapping.
-
-| Value | Meaning |
-| --- | --- |
-| `Key` | Identity tuple: anchor ID, kind and entity ID |
-| Omitted/null variant in `Detect`, `Prepare` or `GetOrCreate` | Preserve the existing appearance |
-| `Variant.None` | Unspecified appearance; explicitly passing it clears the appearance |
-| `WithVariant(None)` | Match unspecified appearances; omitting the filter matches any appearance |
+Kinds and Variants are distinct case-sensitive value types. A Variant does not guarantee a blueprint mapping. Omitting a nullable variant in Detect/Prepare/GetOrCreate preserves the current value; explicitly passing `Variant.None` clears it. `WithVariant(Variant.None)` selects unspecified appearances; it does not clear the filter.
 
 ## Views and manifestation blueprints
 
-| Operation | Effect |
-| --- | --- |
-| `Manifest(presence)` or `Manifest(ghost)` | Request or refresh the view selected by the current variant; return the current view or null |
-| `Demanifest(presence)` or `Demanifest(ghost)` | Remove the view and cancel its request while retaining the Presence and Ghost root |
+`Manifest(presence)` or `Manifest(ghost)` requests/refreshes an optional visual child and returns it, or null while unavailable or unconfigured. Requests persist through temporary unavailability/range suppression. `Demanifest` cancels the request and removes only the view. `View.Ghost` exposes the owning root while bound.
 
-A `ManifestationBlueprint` describes one `Kind`: an optional Ghost root prefab, an inline table of named variants, and an optional fallback view prefab. Create it through **Assets > Create > Emas > Manifestation Blueprint**. Under **Variants**, use **+** to add a row, enter its **Name**, and assign its **View Prefab**. Drag rows to reorder them; select a row and use **?** to remove it. Adding a row creates a unique starter name and an empty prefab field. Names are case-sensitive and must be non-empty and unique within the blueprint. Each row requires a prefab. Row order does not affect selection.
+A blueprint configures one Kind. Its root prefab contains the Ghost and traits; inline variant rows map names to view prefabs. Unspecified/unknown Variants use the optional fallback. Missing view mappings remain visually silent. Names must be non-empty, unique and case-sensitive; row order does not affect selection. Appearance LODs are application-selected Variants.
 
-| Name | View Prefab |
-| --- | --- |
-| `small_car` | `SmallCar.prefab` |
-| `small_car_low` | `SmallCarLow.prefab` |
-| `truck` | `Truck.prefab` |
-
-Report `new Variant("small_car_low")` to select that appearance. Different LODs are ordinary named variants; Emas does not choose an LOD automatically. Renaming a row changes the identifier, so update the corresponding code value too. There are no separate variant assets.
-
-For code configuration, `new ManifestationVariant(name, prefab)` creates one serializable row. Its `Name`, `Variant` and `Prefab` properties expose that mapping:
+Create **Assets > Create > Emas > Manifestation Blueprint** and edit rows with **+** / **-**, or configure an asset in code:
 
 ```csharp
-blueprint.Configure(CarKind, ghostPrefab, new[]
+blueprint.Configure(Vehicle, ghostPrefab, new[]
 {
-    new ManifestationVariant("small_car", smallCarPrefab),
-    new ManifestationVariant("small_car_low", smallCarLowPrefab)
+    new ManifestationVariant("compact", compactViewPrefab),
+    new ManifestationVariant("compact-low", compactLowViewPrefab)
 }, fallbackViewPrefab);
+realm.RegisterManifestationBlueprint(blueprint);
 ```
 
-Each Kind resolves to one blueprint in its Realm, shared by all anchors. Assign it on `RealmSetup` or call `Realm.RegisterManifestationBlueprint`. Each registration copies the blueprint's variant rows. Editing the asset takes effect in that realm only after re-registration, which refreshes requested views across all its anchors without replacing existing Ghost roots. Other realms retain their own registration snapshots. Re-registering after a kind change releases the old kind. A new Ghost prefab applies only to newly created roots. `ResolveViewPrefab(variant)` selects a prefab; `FallbackViewPrefab` exposes the optional fallback.
-
-Selection is **exact variant name > fallback > no view**. `Variant.None` selects the fallback, if configured. Use `Demanifest` to hide a view. A configured blueprint with an unresolved requested view reports a diagnostic and removes any obsolete view. A kind with no assigned blueprint uses the built-in silent default. A report gets the initializer's Ghost type or `Ghost`; direct `GetOrCreate<TGhost>` calls get their requested Ghost type. The plain root has no view. An intentionally empty assigned blueprint is silent too; prefab setup skips automatic view requests for it.
-
-Views require an available ghost and an active manifestation request. View binding finishes before activation. Variant changes refresh an existing request; they do not create a new request after `Demanifest`. Requests inside detector reports or finalization defer refresh, so `Manifest` may return the previous view or null until that phase completes. Requests outside those phases refresh immediately.
-
-Emas catches view creation/refresh failures per ghost, cleans up the failed view and logs its key and prefab. The detector and Ghosts stay available. The view request survives: retry with `Manifest`, re-register the manifestation blueprint, or change the variant. Ordinary detector reports with unchanged appearance do not retry the failed view.
-
-Implementation: [detectors](../Runtime/Tracking/PresenceDetector.cs), [Presence](../Runtime/Entities/Presence.cs), [entity traits](../Runtime/Entities/Trait.cs), [realm](../Runtime/Realm.cs), [queries](../Runtime/Queries/Query.cs), [manifestation blueprints](../Runtime/Views/ManifestationBlueprint.cs) and [variants](../Runtime/Views/ManifestationVariant.cs).
-
-Integration policy: [Guidelines](Guidelines.md). Authoring errors appear in ManifestationBlueprint/RealmSetup/AnchorSetup Inspectors using the same validation as runtime registration. **Window > Emas** passively inspects every live Realm, including Realm Setup instances and realms created from code. Select a Realm, filter by Anchor or detector name, and inspect health, available/owned counts, timing in seconds and expandable failure details. The optional **Emas** Scene view overlay provides the same Realm selector and a compact health summary. Neither UI starts tracking.
+Registration copies settings into that Realm. Re-register after edits to refresh requested views across its Anchors; other Realms retain their mappings. Existing roots retain their components, so root-prefab changes affect new roots. A view failure logs context and leaves tracking active; fix the cause and call `Manifest` or change the mapping/Variant to retry.

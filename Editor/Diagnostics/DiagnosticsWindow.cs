@@ -29,7 +29,7 @@ namespace Emas.Editor
             }
             using (new EditorGUILayout.VerticalScope())
             {
-                InspectorLayout.Header("Emas diagnostics", "Live state ? read-only ? v" + Package.Version);
+                InspectorLayout.Header("Emas diagnostics", "Live state, read-only. Package version " + Package.Version);
                 EditorGUILayout.Space(6f);
                 _panel.Draw(false);
             }

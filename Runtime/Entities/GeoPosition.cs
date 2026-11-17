@@ -14,8 +14,11 @@ namespace Emas
         private const double EccentricitySquared = Flattening * (2.0 - Flattening);
         private const double RadiansPerDegree = Math.PI / 180.0;
 
+        [Tooltip("WGS84 latitude in degrees north, from -90 to 90.")]
         [SerializeField] private double _latitudeDegrees;
+        [Tooltip("WGS84 longitude in degrees east, from -180 to 180.")]
         [SerializeField] private double _longitudeDegrees;
+        [Tooltip("Height above the WGS84 ellipsoid in metres. Convert mean-sea-level altitude before supplying it.")]
         [SerializeField] private double _heightMeters;
 
         /// <summary>Gets latitude in degrees north.</summary>

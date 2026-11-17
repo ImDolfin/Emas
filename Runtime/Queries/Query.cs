@@ -4,15 +4,11 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    /// <summary>
-    /// Describes filters used to select tracked ghosts.
-    /// </summary>
+    /// <summary>Describes filters used to select tracked ghosts.</summary>
     /// <remarks>
-    /// Immutable filters evaluated on Unity's main thread. Results contain only available ghosts, with no ordering guarantee.
-    /// Each filter call returns a new description. Kind, anchor, exact name and variant selectors replace the corresponding
-    /// selector; repeated With calls add required contracts. View requests and spatial range do not affect membership.
-    /// Count and selection methods evaluate when called; each enumeration copies matching membership, while Ghost data
-    /// remains live. Subscriptions observe membership changes, not per-frame trait values. Keep and dispose their handles.
+    /// Filters are immutable and results contain available roots, regardless of views or spatial range. Each
+    /// enumeration snapshots membership; component data remains live. Results have no ordering guarantee.
+    /// Subscriptions report membership changes and must be disposed. All access requires Unity's main thread.
     /// </remarks>
     public sealed class Query : IEnumerable<IGhost>
     {
@@ -24,12 +20,8 @@ namespace Emas
         private readonly Variant? _variant;
         private readonly List<Func<IGhost, bool>> _parts;
 
-        /// <summary>
-        /// Gets the number of current matches.
-        /// </summary>
-        /// <value>
-        /// The freshly evaluated number of matching available ghosts; zero when a scoped query's Realm is disposed.
-        /// </value>
+        /// <summary>Gets the number of current matches.</summary>
+        /// <value>The freshly evaluated number of matching available ghosts; zero when a scoped query's Realm is disposed.</value>
         public int Count
         {
             get
@@ -77,12 +69,8 @@ namespace Emas
             _parts = parts;
         }
 
-        /// <summary>
-        /// Creates a query across every live realm, including realms created later.
-        /// </summary>
-        /// <param name="partialName">
-        /// The optional case-insensitive display-name substring; null leaves names unrestricted. This does not filter entity IDs.
-        /// </param>
+        /// <summary>Creates a query across every live realm, including realms created later.</summary>
+        /// <param name="partialName">The optional case-insensitive display-name substring; null leaves names unrestricted. This does not filter entity IDs.</param>
         /// <returns>A query that evaluates all live realms.</returns>
         /// <remarks>
         /// This does not create Realm.Default. Dispose subscriptions when their consumer stops.
@@ -92,18 +80,10 @@ namespace Emas
             return new Query(null, partialName);
         }
 
-        /// <summary>
-        /// Restricts the query to a kind.
-        /// </summary>
-        /// <param name="kind">
-        /// The required kind.
-        /// </param>
-        /// <returns>
-        /// A new query with this kind selector and all other filters retained.
-        /// </returns>
-        /// <exception cref="ArgumentException">
-        /// The kind is invalid.
-        /// </exception>
+        /// <summary>Restricts the query to a kind.</summary>
+        /// <param name="kind">The required kind.</param>
+        /// <returns>A new query with this kind selector and all other filters retained.</returns>
+        /// <exception cref="ArgumentException">The kind is invalid.</exception>
         public Query OfKind(Kind kind)
         {
             if (!kind.IsValid)
@@ -114,29 +94,17 @@ namespace Emas
             return Copy(_partialName, _exactName, _anchorId, kind, _variant, _parts);
         }
 
-        /// <summary>
-        /// Restricts the query to an anchor.
-        /// </summary>
-        /// <param name="anchorId">
-        /// The case-sensitive anchor identifier, or null to clear this filter.
-        /// </param>
-        /// <returns>
-        /// A new query with this anchor selector and all other filters retained.
-        /// </returns>
+        /// <summary>Restricts the query to an anchor.</summary>
+        /// <param name="anchorId">The case-sensitive anchor identifier, or null to clear this filter.</param>
+        /// <returns>A new query with this anchor selector and all other filters retained.</returns>
         public Query InAnchor(string anchorId)
         {
             return Copy(_partialName, _exactName, anchorId, _kind, _variant, _parts);
         }
 
-        /// <summary>
-        /// Adds a required root contract to the query.
-        /// </summary>
-        /// <typeparam name="T">
-        /// The interface or root MonoBehaviour class resolved through IGhost.TryGet.
-        /// </typeparam>
-        /// <returns>
-        /// A query containing the added filter.
-        /// </returns>
+        /// <summary>Adds a required root contract to the query.</summary>
+        /// <typeparam name="T">The interface or root MonoBehaviour class resolved through IGhost.TryGet.</typeparam>
+        /// <returns>A query containing the added filter.</returns>
         /// <remarks>
         /// Requires exactly one matching live component on the Ghost root. Disabled components remain eligible;
         /// child views do not supply contracts. Repeated calls add requirements without changing the original query.
@@ -148,44 +116,28 @@ namespace Emas
             return Copy(_partialName, _exactName, _anchorId, _kind, _variant, parts);
         }
 
-        /// <summary>
-        /// Restricts the query to one display name.
-        /// </summary>
+        /// <summary>Restricts the query to one display name.</summary>
         /// <param name="name">
         /// The case-insensitive exact display name, or null to clear this filter. Other name filters still apply.
         /// Matches Ghost.Name metadata, independently of Key.EntityId and the root GameObject name.
         /// </param>
-        /// <returns>
-        /// A new query with this exact name selector and all other filters retained.
-        /// </returns>
+        /// <returns>A new query with this exact name selector and all other filters retained.</returns>
         public Query WithExactName(string name)
         {
             return Copy(_partialName, name, _anchorId, _kind, _variant, _parts);
         }
 
-        /// <summary>
-        /// Restricts the query to one visual variant.
-        /// </summary>
-        /// <param name="variant">
-        /// The case-sensitive appearance identifier; Variant.None matches unspecified appearances and does not clear this selector.
-        /// </param>
-        /// <returns>
-        /// A new query with this variant selector and all other filters retained.
-        /// </returns>
+        /// <summary>Restricts the query to one visual variant.</summary>
+        /// <param name="variant">The case-sensitive appearance identifier; Variant.None matches unspecified appearances and does not clear this selector.</param>
+        /// <returns>A new query with this variant selector and all other filters retained.</returns>
         public Query WithVariant(Variant variant)
         {
             return Copy(_partialName, _exactName, _anchorId, _kind, variant, _parts);
         }
 
-        /// <summary>
-        /// Returns exactly one current match.
-        /// </summary>
-        /// <returns>
-        /// The single matching ghost.
-        /// </returns>
-        /// <exception cref="InvalidOperationException">
-        /// Thrown when the result is not exactly one ghost.
-        /// </exception>
+        /// <summary>Returns exactly one current match.</summary>
+        /// <returns>The single matching ghost.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the result is not exactly one ghost.</exception>
         /// <remarks>Evaluates current matches on every call. A disposed scoped Realm has zero matches and also causes this exception.</remarks>
         public IGhost Single()
         {
@@ -222,12 +174,8 @@ namespace Emas
             return first;
         }
 
-        /// <summary>
-        /// Returns the first current match, or null.
-        /// </summary>
-        /// <returns>
-        /// The first match, or null when no match exists.
-        /// </returns>
+        /// <summary>Returns the first current match, or null.</summary>
+        /// <returns>The first match, or null when no match exists.</returns>
         /// <remarks>No result ordering is guaranteed. A scoped query whose realm is disposed returns null.</remarks>
         public IGhost FirstOrDefault()
         {
@@ -253,27 +201,17 @@ namespace Emas
             return null;
         }
 
-        /// <summary>
-        /// Subscribes to ghosts that become matches.
-        /// </summary>
-        /// <param name="callback">
-        /// The callback invoked once per matching membership period, including current matches; this is not a per-frame data callback.
-        /// </param>
-        /// <returns>
-        /// A subscription that stops future callbacks when disposed.
-        /// </returns>
+        /// <summary>Subscribes to ghosts that become matches.</summary>
+        /// <param name="callback">The callback invoked once per matching membership period, including current matches; this is not a per-frame data callback.</param>
+        /// <returns>A subscription that stops future callbacks when disposed.</returns>
         /// <remarks>
         /// Current matches may notify synchronously. Each ghost notifies once while it remains a match; recovery can notify again.
         /// Dispose the returned subscription when the consumer stops. Callback exceptions are logged and isolated.
         /// Within each realm, initial notifications are deferred while that realm is processing a source callback,
         /// finalizing changes or notifying another subscription.
         /// </remarks>
-        /// <exception cref="ArgumentNullException">
-        /// The callback is null.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// A scoped query's realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentNullException">The callback is null.</exception>
+        /// <exception cref="ObjectDisposedException">A scoped query's realm was disposed.</exception>
         public IDisposable OnAvailable(Action<IGhost> callback)
         {
             if (callback == null)
@@ -289,34 +227,18 @@ namespace Emas
             return RealmRegistry.Subscribe(this, (realm, ghost) => callback(ghost), null);
         }
 
-        /// <summary>
-        /// Observes ghosts entering and leaving this query's results.
-        /// </summary>
-        /// <param name="onEnter">
-        /// Receives each available ghost when it begins matching, including current matches.
-        /// </param>
-        /// <param name="onLeave">
-        /// Receives the identity when a previously reported ghost is removed, becomes unavailable or stops matching.
-        /// </param>
-        /// <returns>
-        /// A subscription that cancels both callbacks when disposed.
-        /// </returns>
+        /// <summary>Observes ghosts entering and leaving this query's results.</summary>
+        /// <param name="onEnter">Receives each available ghost when it begins matching, including current matches.</param>
+        /// <param name="onLeave">Receives the identity when a previously reported ghost is removed, becomes unavailable or stops matching.</param>
+        /// <returns>A subscription that cancels both callbacks when disposed.</returns>
         /// <remarks>
-        /// Initial entries follow OnAvailable scheduling. Departures run in the realm update notification phase, before entries
-        /// for this subscription. A departure supplies a Key because the Unity object may already be destroyed.
-        /// Availability loss and recovery between updates still produce a departure followed by a fresh entry.
-        /// Filter changes are observed at notification time. For a global query, realm disposal reports departures;
-        /// duplicate Keys from different realms are indistinguishable here, so use ObserveWithRealm when needed.
-        /// Disposing the subscription or a scoped query's realm cancels pending
-        /// notifications without synthesizing departures; consumers must release their own retained state.
-        /// Callback exceptions are logged and isolated. Subscriptions created inside notifications wait for another update.
+        /// Initial entries follow OnAvailable scheduling. Departures precede entries at notification, including loss and
+        /// recovery between updates. Keys can outlive destroyed roots; use ObserveWithRealm to distinguish identical
+        /// global keys. Disposal cancels pending callbacks without departures, so clear retained state yourself.
+        /// Exceptions are logged and isolated; subscriptions created during notification wait for another update.
         /// </remarks>
-        /// <exception cref="ArgumentNullException">
-        /// Either callback is null.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// A scoped query's realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentNullException">Either callback is null.</exception>
+        /// <exception cref="ObjectDisposedException">A scoped query's realm was disposed.</exception>
         public IDisposable Observe(Action<IGhost> onEnter, Action<Key> onLeave)
         {
             if (onEnter == null)
@@ -338,9 +260,7 @@ namespace Emas
                 (realm, key) => onLeave(key));
         }
 
-        /// <summary>
-        /// Observes entries and departures with the owning realm supplied to both callbacks.
-        /// </summary>
+        /// <summary>Observes entries and departures with the owning realm supplied to both callbacks.</summary>
         /// <param name="onEnter">Receives the realm and each available matching ghost.</param>
         /// <param name="onLeave">Receives the realm and identity when a reported ghost leaves.</param>
         /// <returns>A subscription that cancels both callbacks when disposed.</returns>

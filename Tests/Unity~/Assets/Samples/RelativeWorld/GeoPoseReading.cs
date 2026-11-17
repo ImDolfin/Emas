@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace Emas.RelativeWorld
 {
-    /// <summary>
-    /// Represents one SDK spatial observation in WGS84 geographic coordinates.
-    /// </summary>
+    /// <summary>Represents one SDK spatial observation in WGS84 geographic coordinates.</summary>
     /// <remarks>
     /// Latitude, longitude and attitude are degrees. AltitudeMeters is height above the WGS84
     /// ellipsoid in metres, not mean sea level. Values are captured when this object is created.
@@ -84,9 +82,7 @@ namespace Emas.RelativeWorld
         /// <value>The original observation time, preserved through packet delay; this is not the packet's arrival time.</value>
         public Timestamp? SampleTime { get; }
 
-        /// <summary>
-        /// Creates an immutable geographic pose observation.
-        /// </summary>
+        /// <summary>Creates an immutable geographic pose observation.</summary>
         /// <param name="id">The stable SDK entity ID.</param>
         /// <param name="label">The entity display label.</param>
         /// <param name="kind">The observed entity category.</param>

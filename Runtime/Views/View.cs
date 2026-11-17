@@ -2,9 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Bookkeeping component attached to an instantiated view.
-    /// </summary>
+    /// <summary>Bookkeeping component attached to an instantiated view.</summary>
     /// <remarks>
     /// Emas binds the ghost before activating a view. Read application contracts through Ghost.TryGet in OnEnable or later.
     /// Awake can run before binding; Ghost is null on an unbound component or prefab.
@@ -15,9 +13,7 @@ namespace Emas
     {
         private IGhost _ghost;
 
-        /// <summary>
-        /// Gets the ghost represented by this view.
-        /// </summary>
+        /// <summary>Gets the ghost represented by this view.</summary>
         /// <value>The bound root handle, or null before binding and on an authored prefab.</value>
         public IGhost Ghost
         {

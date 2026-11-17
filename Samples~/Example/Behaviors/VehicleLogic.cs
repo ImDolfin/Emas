@@ -2,9 +2,7 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>
-    /// Applies a small view-only motion effect to a manifested vehicle.
-    /// </summary>
+    /// <summary>Applies a small view-only motion effect to a manifested vehicle.</summary>
 
     public sealed class VehicleLogic : MonoBehaviour
     {

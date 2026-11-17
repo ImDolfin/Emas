@@ -1,292 +1,112 @@
 # Emas
 
-A Unity 2022.3+ package that tracks SDK entities as stable Presences, creates invisible Ghost roots, and manifests optional views. Applications supply detectors, data traits, kinds, and view prefabs.
+Track SDK entities in Unity, keep their state on stable GameObject roots, and create visual views when needed.
 
-## Setup and Usage
+**Requires Unity 2022.3+ and C# 8.** Runtime APIs are in `Emas`; application assemblies reference `Emas.Runtime`.
 
-Add `package.json` through **Package Manager > Add package from disk**. This example uses a generic tracked item. Put each C# class in its own file; an application asmdef must reference `Emas.Runtime`.
+Emas provides entity identity and lifecycle, reusable data traits, queries, optional views, and double-precision spatial projection. Your application owns the SDK connection and maps its data into traits. Every Emas operation runs on Unity's main thread.
 
-The integration uses five roles:
+## Try it
 
-| Role | Responsibility |
+1. In **Window > Package Manager**, choose **Add package from disk** and select this package's `package.json`.
+2. Import **Quick start** from the package's Samples list.
+3. Open `QuickStart.unity` and press Play. A tracked marker moves; disabling the Tracking object cleans it up.
+
+The sample includes configured tracking, Ghost and view prefabs. Start with [Getting started](Documentation~/GettingStarted.md) to build the same integration.
+
+## The five roles
+
+| Role | What it does |
 | --- | --- |
-| `PresenceDetector` | Detects SDK entity arrivals, metadata, and disappearances. |
-| `Trait<TData>` | A component that reads a mapped value and updates entity state, with direct root access through `Ghost`. |
-| `Ghost` | The entity's Unity root, carrying its components and behavior independently of its view. |
-| `View` | An optional visual child of the Ghost, created when manifestation is requested. |
-| `Realm` | Owns tracked entities and coordinates detector updates, data application, and views. |
+| `Realm` | Owns tracking, updates, queries and presentation. |
+| `PresenceDetector` | Reports SDK arrivals, identity metadata and departures. |
+| `Ghost` | The entity's stable root, holding traits and behavior independently of visuals. |
+| `Trait<TData>` | Reads a mapped value and applies it to the root. |
+| `View` | An optional visual child selected by the entity's Kind and Variant. |
 
-### 1. Choose a Kind and its views
+A `Presence` is the stable tracking handle. Its `Key` combines Anchor ID, Kind and entity ID within a Realm. An Anchor groups detector attachments and identities.
 
-`Kind("tracked.item")` identifies the category. A `Variant("standard")` identifies an appearance within that Kind. The detector reports both IDs; asset filenames do not select them.
+## Connect your SDK
 
-Create **Assets > Create > Emas > Manifestation Blueprint** with **Kind Id** `tracked.item`. It holds an optional **Ghost Prefab**, a **Variants** table, and an optional **Fallback View Prefab**. Assign a Ghost prefab containing a plain `Ghost` and the traits from section 2. For metadata-only entities, leave Ghost Prefab empty: the Realm creates a plain Ghost without traits. Add a table row with **Name** `standard` and assign its **View Prefab**. Each row is stored inside the blueprint; no separate variant asset is needed. For a simpler appearance, add another row such as `standard_low` and report that variant from the detector. An unspecified or unknown name uses the fallback. With no blueprint, tracking still works but has no view.
+1. Author a Ghost prefab with its traits. Use a plain `Ghost` unless combined entity behavior needs a subclass.
+2. Create a **Manifestation Blueprint** for its Kind. Assign the root prefab and optional named view variants.
+3. Derive `PresenceDetectorComponent` for scene setup, or `PresenceDetector` for code setup. Report membership with `Detect` and `Disappear`.
+4. Bind the authored traits in `GhostInitializer.Initialize` or `Realm.RegisterPresenceInitializer<TGhost>`. Readers map SDK data; repeated data changes need no new detection.
+5. Add `RealmSetup` and child `AnchorSetup` components, or construct and update a `Realm` yourself.
 
-### 2. Define reusable traits on the Ghost
+`RealmSetup` owns an isolated Realm, updates it each frame and disposes it on disable. `Realm.Default` is a separate, automatically updated Realm. A directly constructed Realm requires `Update()` and `Dispose()`.
 
-The SDK reading keeps its raw WGS84 fields. The initializer maps these fields to a position reader; the trait accepts optional `GeoPosition` readings. Both the moving origin (`origin`) and another item (`item-1`) use the same reusable trait:
+Resolve `presence.Source` inside trait readers: Emas holds it weakly, and the application owns its lifetime. SDK callbacks must reach Unity's main thread before calling Emas. See [detector integration and recovery](Documentation~/GettingStarted.md#implement-your-sdk-detector).
+
+## Read tracked entities
+
+Use the Realm that owns your entities. This example selects available vehicles in the default Realm:
 
 ```csharp
 using Emas;
-using UnityEngine;
 
-/// <summary>Applies WGS84 positions when a reading is available.</summary>
-[RequireComponent(typeof(Spatial))]
-public sealed class PositionTrait : Trait<GeoPosition?>
-{
-    /// <summary>Updates the Ghost's shared position.</summary>
-    public override void Apply(GeoPosition? position)
-    {
-        if (position.HasValue)
-        {
-            Ghost.GetRequired<Spatial>().SetGeographicPosition(position.Value);
-        }
-    }
-}
-```
-
-`GeoPosition` accepts WGS84 latitude/longitude in degrees and ellipsoidal height in metres. Emas stores Earth-centered positions in doubles and derives local east/north/up from the followed reference each update. There is no separate static ENU origin. Convert mean-sea-level SDK altitude to ellipsoidal height before supplying it. If the SDK also supplies attitude, decode it into a quaternion in the selected local axes; see the [orientation example](Samples~/RelativeWorld/GeoInitializer.cs).
-
-For geographic attitude in degrees, call `spatial.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)`: heading clockwise from true north, nose-up pitch, then right-wing-down roll. Emas performs the conversion independently of the selected source quaternion axes. For an SDK already providing ECEF, use `spatial.SetEarthCenteredPosition(new Double3(x, y, z))` in metres and `spatial.SetEarthCenteredRotation(bodyToEcefRotation)`. The default quaternion body axes are forward/right/down; other right-handed body mappings can be supplied explicitly. Both inputs use Geographic reference mode. See [Spatial input contracts](Documentation~/Spatial.md#choose-the-input-contract).
-
-Save a prefab with **Emas > Ghost**, `PositionTrait` and `Spatial`, and assign it to the blueprint. No Ghost subclass is needed. Derive one only when the entity has additional behavior that combines its traits. Override `protected virtual void OnUpdate()` for that behavior: the Realm invokes it once per update after all trait readers finish and before spatial projection. It can run before initial activation, so use the initializer for required setup. Disabled or unavailable Ghosts are skipped, except roots awaiting their first activation; view requests do not trigger this hook.
-
-### 3. Connect the detector and realm
-
-Keep your SDK client or a proxy lookup in the application component. The detector only announces arrivals and departures. This example exposes two application-facing methods; call them from your SDK's membership callbacks on Unity's main thread:
-
-```csharp
-internal sealed class TrackedDetector : PresenceDetector
-{
-    internal static readonly Kind Kind = new Kind("tracked.item");
-
-    internal Presence Arrive(string id, object source, string name = null)
-    {
-        return Detect(id, Kind, name, variant: new Variant("standard"), source: source);
-    }
-
-    internal void Leave(string id)
-    {
-        Disappear(Kind, id);
-    }
-}
-```
-
-For an SDK that supplies membership events, subscribe in `OnStart`, capture a dispatcher with `CaptureDispatcher()`, and unsubscribe in `OnStop`. Queue detections and explicit disappearances through that captured dispatcher so callbacks retained from an older attachment are ignored. All detector operations and callbacks run on Unity's main thread; the application handles any thread transfer.
-
-Here `blueprint` is the asset from section 1 with the configured Ghost prefab. `SdkProxy` represents your SDK's proxy class; `originProxy` and `itemProxy` are objects already received during discovery. Supply them when announcing arrival:
-
-```csharp
-var detector = new TrackedDetector();
-Realm realm = new Realm();
-realm.RegisterPresenceInitializer<Ghost>(TrackedDetector.Kind, (presence, root) =>
-{
-    root.GetRequired<PositionTrait>().Bind(() =>
-    {
-        var proxy = presence.Source as SdkProxy;
-        return proxy == null ? (GeoPosition?)null : new GeoPosition(
-            proxy.LatitudeDegrees, proxy.LongitudeDegrees, proxy.AltitudeMeters);
-    });
-});
-realm.RegisterManifestationBlueprint(blueprint);
-
-realm.ReferenceFrame = new ReferenceFrame
-{
-    Space = ReferenceSpace.Geographic,
-    FollowedGhost = new Key("items", TrackedDetector.Kind, "origin"),
-    UnityPosition = Vector3.zero,
-    FollowRotation = false
-};
-realm.GetOrCreateAnchor("items", detector);
-detector.Arrive("origin", originProxy);
-detector.Arrive("item-1", itemProxy);
-```
-
-The Ghost prefab defines its traits as saved components. The initializer only binds their inputs, and runs again if a retained Ghost is rediscovered or handed to another detector. No data payload travels through the detector. Each realm update reads the enabled traits, applies both converted positions, and then projects them relative to `origin`. Updating a proxy requires no further detection call. `FollowRotation = false` follows position only; use `true` after binding a rotation trait.
-
-`Presence.Source` resolves a weak reference. It can hold a proxy, SDK client or another application source object. It returns null if collected or destroyed as a Unity object; the example preserves the last position in that case. Resolve Source inside the reader, as shown, to avoid a closure retaining the proxy strongly. The application owns its lifetime. Disappearance, handover and removal release the reference. Passing a different source for the same identity reruns initialization; omitting it preserves the current source.
-
-For snapshot SDKs, supply the SDK client or a stable proxy that exposes its current snapshot. The initializer can use that source directly; reusable traits still consume only their own input types.
-
-Call `realm.Update()` each frame and `realm.Dispose()` when done. `Realm.Default` updates automatically. To request a view for one available Presence:
-
-```csharp
-if (realm.TryGetPresence(new Key("items", TrackedDetector.Kind, "item-1"), out Presence item)
-    && item.IsAvailable)
-{
-    realm.Manifest(item);
-}
-```
-
-`realm.Demanifest(item)` removes only its view.
-
-### 4. Use a prefab instead
-
-```text
-World  (RealmSetup: blueprint; Use Reference Frame; Follow Ghost)
-  Items  (AnchorSetup: id "items"; SDK detector; Ghost initializer)
-```
-
-Put `RealmSetup` on the root and assign the optional blueprint. On `Items`, add `AnchorSetup`, your `PresenceDetectorComponent` subclass and an optional `GhostInitializer` subclass. Override the detector's `OnStart`, `OnUpdate` and `OnStop` to handle SDK membership. Override `GhostInitializer.Initialize(Presence, Ghost)` to bind the traits already authored on the Ghost prefab. Leave **Automatic Views** on for prefab-managed manifestations. Realm Setup handles updates and cleanup. The [samples](Samples~) ship with these components and assets already configured.
-
-Code setup stays the same: construct a plain `PresenceDetector` with injected dependencies, register `Realm.RegisterPresenceInitializer<TGhost>`, then call `Anchor.AddDetector`. A scene `GhostInitializer` takes precedence for its own Anchor; without one enabled at attachment, the Realm's Kind registration applies. `IDetectorProvider` and `IRealmConfigurator` remain optional integration hooks when an application needs a factory or Realm-wide setup.
-
-Choose **Geographic** under **Reference space**. **Source quaternion axes** describes input to `SetSourceRotation`: Unity means east/up/north, with ENU, NED and custom mappings also available. Direct `SetGeographicRotation` yaw/pitch/roll uses its documented angle convention regardless of this setting. For the moving origin, enable **Follow a Ghost** and enter entity `origin`, anchor `items`, Kind `tracked.item`. If the ID is known only at runtime, leave Entity ID empty and assign `realmSetup.Realm.ReferenceFrame.FollowedGhost = ghost.Key` after startup. For a fixed geographic reference, leave following off and enter latitude, longitude and ellipsoidal height, or assign `ReferenceFrame.GeographicPosition` by code. `Unity Position` chooses where the reference appears. For ordinary Cartesian data, choose **Cartesian** and use `Spatial.SetCartesianPosition(Double3)`. See [Spatial](Documentation~/Spatial.md) for projection and reference loss.
-
-## Choose an extrapolation strategy
-
-Configure each Ghost on Unity's main thread, for example inside the presence initializer above, where
-`root` is the tracked `Ghost`. Add the component once, then choose **one** of the strategy assignments below:
-
-```csharp
-Extrapolation extrapolation = root.GetComponent<Extrapolation>();
-if (extrapolation == null)
-{
-    extrapolation = root.gameObject.AddComponent<Extrapolation>();
-}
-
-extrapolation.enabled = true;
-extrapolation.MaximumExtrapolation = 0.15f; // Maximum gap to extrapolate, in seconds.
-```
-
-Adding `Extrapolation` also adds its required `Spatial` component. If it is already authored on the Ghost
-prefab, you can retrieve it directly with `root.Trait<Extrapolation>()`.
-
-### Constant velocity
-
-Extend the supplied or estimated linear velocity and angular rate. Linear acceleration is ignored.
-
-```csharp
-extrapolation.Strategy = new ConstantVelocityExtrapolation();
-```
-
-### Constant acceleration
-
-The default strategy extends linear velocity with optional acceleration and keeps the angular rate constant.
-
-```csharp
-extrapolation.Strategy = new ConstantAccelerationExtrapolation();
-```
-
-### Singer acceleration
-
-Gradually decay linear acceleration during a gap. The time constant defaults to 1 second; smaller values
-approach constant velocity, while larger values approach constant acceleration. Angular rates stay constant.
-
-```csharp
-extrapolation.Strategy = new SingerExtrapolation
-{
-    ManeuverTimeConstant = 0.5f // Seconds for acceleration to fall to about 37% of its observed value.
-};
-```
-
-### Coordinated turn
-
-Use quaternion body-frame second-order motion for aircraft, with cubic position and rotation correction
-on packet arrival. Supplied or estimated angular rates take precedence; otherwise the optional fallback
-estimates a turn from bank and speed. Default gravity assumes metres.
-
-```csharp
-extrapolation.Strategy = new CoordinatedTurnExtrapolation
-{
-    PacketSmoothingDuration = 0.1f, // 100 ms cubic packet correction.
-    UseBankAngleWhenRatesUnavailable = true
-};
-```
-
-### No extrapolation
-
-Hold the newest observed pose during gaps. Buffered interpolation and SDK motion assistance for smoothing remain active.
-
-```csharp
-extrapolation.Strategy = new NoExtrapolation();
-```
-
-### Supply motion and compare methods
-
-Feed observations from your data trait or SDK update callback. For the Geographic setup above,
-`sdkPosition` is a `GeoPosition`, `sampleTime` is the original SDK `Timestamp`, and the motion vectors are
-`Double3` values. Supply only the optional channels your SDK actually provides:
-
-```csharp
-Spatial spatial = root.GetRequired<Spatial>();
-spatial.SetGeographicPosition(sdkPosition, sampleTime);
-spatial.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees, sampleTime);
-extrapolation.SetGeographicVelocity(enuVelocity, sdkPosition, sampleTime);
-extrapolation.SetGeographicAcceleration(enuAcceleration, sdkPosition, sampleTime);
-extrapolation.SetBodyAngularVelocity(bodyRates, sampleTime: sampleTime);
-```
-
-ENU linear vectors use X east, Y north and Z up, in metres/second and metres/second squared; acceleration
-must have gravity removed. The body-rate setter above defaults to aircraft X forward, Y right and Z down,
-with roll/pitch/yaw rates in radians/second. All timestamps in a Realm must share the same SDK clock.
-Without supplied velocity, consecutive timestamped positions can estimate it. Call `ClearVelocity()`,
-`ClearAcceleration()` or `ClearAngularVelocity()` when a supplied channel becomes unavailable. A supplied
-zero angular rate overrides estimation and the coordinated-turn fallback.
-
-Replace `extrapolation.Strategy` with another instance at runtime to compare methods; the resulting pose
-difference blends over 0.25 seconds while observations are retained. The same choices are available under
-**Ghost → Traits → Extrapolation → Strategy**. Optional `Smoothing` filters independently; the coordinated-turn
-strategy includes its own cubic packet correction. To evaluate without a playback buffer, use
-`realm.InterpolationDelay = 0f` (the default). See [Spatial input, timing and strategy details](Documentation~/Spatial.md).
-
-## Query available entities
-
-Queries select available Ghost roots independently of views and spatial visibility. Reuse an immutable
-description to count, select, or enumerate the current matches on Unity's main thread:
-
-```csharp
-Query items = realm.Query()
-    .InAnchor("items")
-    .OfKind(new Kind("tracked.item"))
+Query vehicles = Realm.Default.Query()
+    .OfKind(new Kind("vehicle"))
     .With<Spatial>();
 
-Query standardItems = items.WithVariant(new Variant("standard"));
-int count = standardItems.Count;
-IGhost first = standardItems.FirstOrDefault(); // Null while waiting for a matching arrival.
-
-foreach (IGhost ghost in items)
+foreach (IGhost vehicle in vehicles)
 {
-    Spatial spatial;
-    if (ghost.TryGet<Spatial>(out spatial) && spatial.HasPosition)
+    Spatial spatial = vehicle.GetRequired<Spatial>();
+    if (spatial.HasPosition)
     {
-        Debug.Log(ghost.Key + ": " + spatial.Position);
+        UnityEngine.Debug.Log(vehicle.Key + ": " + spatial.Position);
     }
 }
 ```
 
-`With<T>()` can require a read-only interface implemented on the root, as demonstrated by the Example
-sample's `.With<I3DPosition>().With<IArticulate>()`. A filter returns a new Query; it does not change the
-original. Each enumeration copies current membership, while the returned Ghosts retain live data.
-`FirstOrDefault()` has no ordering guarantee; `Single()` throws unless exactly one entity matches.
-Name filters search display metadata, while known identities use `Realm.TryGetGhost(key, out ghost)`.
+Filters return new queries; results have no ordering guarantee. Views and spatial range do not affect membership. `Observe(onEnter, onLeave)` reports membership changes; keep and dispose its subscription. Use `TryGetPresence(key, out presence)` for an exact identity, including pending or temporarily unavailable entities. See [Queries](Documentation~/Queries.md).
 
-For ongoing membership, retain the handle returned by `query.Observe(onEnter, onLeave)`: entries receive
-an `IGhost`, departures a `Key`. Current entries can arrive synchronously. Dispose the handle and clear
-retained state when the consumer stops or its Realm changes. Callbacks report membership changes rather
-than every frame's trait values. `Query.All()` spans live Realms; `ObserveWithRealm` distinguishes duplicate
-Keys across those scopes.
+## Present positions and motion
 
-Both samples contain runnable query consumers: [Example](Samples~/Example/Behaviors/SampleStatus.cs) shows
-small-car filtering and contract reads; [Relative World](Samples~/RelativeWorld/GeoQueryExample.cs) shows
-parked-car membership and measured bird separation. See the [query guide and complete API reference](Documentation~/Queries.md)
-for filters, subscription timing, cleanup, LINQ, and unavailable-root lookup.
+Add `Spatial` to a Ghost for shared-coordinate placement. Supply Cartesian `Double3`, WGS84 `GeoPosition`, or ECEF input, then configure an optional fixed or followed `ReferenceFrame`. Global positions remain doubles until projection near the Unity origin.
 
-## Tests
+Optional `Smoothing` filters position and rotation independently. Optional `Extrapolation` predicts gaps after observations. Configure both inline under **Ghost > Traits**; raw input remains unchanged.
 
-1. In **Unity Hub**, add the project from **`Tests/Unity~`** and open it with **Unity 2022.3.62f3**.
-2. Wait for package import and compilation to finish.
-3. Open **Window > General > Test Runner** and choose **Run All** in both **EditMode** and **PlayMode**.
+| Extrapolation strategy | Use |
+| --- | --- |
+| `ConstantAccelerationExtrapolation` | Default: velocity with optional linear acceleration. |
+| `ConstantVelocityExtrapolation` | Continue linear and angular velocity. |
+| `SingerExtrapolation` | Gradually decay observed acceleration during a gap. |
+| `CoordinatedTurnExtrapolation` | Rotating-body aircraft motion and cubic packet correction. |
+| `NoExtrapolation` | Hold observations during gaps; retain buffered interpolation. |
 
-This project already includes the samples and test configuration. No manifest editing or sample import is needed. The repository root is a UPM package; `Tests/Unity~` is the Unity project to open. See [validation](Documentation~/Validation.md) for testing in other projects.
+For example, inside an initializer where `ghost` has an authored Extrapolation trait:
 
-On Windows, close the test project in Unity and run `powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools~\Validate.ps1` from the repository root to run both suites. See [command-line validation and CI setup](Documentation~/Validation.md#command-line-validation) for editor selection, reports and GitHub Actions configuration.
+```csharp
+Extrapolation extrapolation = ghost.Trait<Extrapolation>();
+extrapolation.MaximumExtrapolation = 0.1f; // Seconds beyond the latest observation.
+extrapolation.Strategy = new SingerExtrapolation
+{
+    ManeuverTimeConstant = 0.5f // Seconds for acceleration to decay to about 37%.
+};
+```
 
-## Documentation
+Use original SDK timestamps on one shared clock. `Realm.InterpolationDelay` adds shared playback buffering; half-lives control filtering, and `MaximumExtrapolation` caps prediction. These are separate settings. See [Spatial input, timing and strategies](Documentation~/Spatial.md) for units, axes and examples of every strategy.
 
-- [Getting started](Documentation~/GettingStarted.md): install and integrate a source.
-- [Guidelines](Documentation~/Guidelines.md): contracts, ownership and contributions.
-- [API reference](Documentation~/API.md): operations and behavior contracts.
-- [Queries](Documentation~/Queries.md): select available Ghosts, read root contracts, and own membership subscriptions.
-- [Architecture](Documentation~/Architecture.md): ownership, update phases and lifecycle diagrams.
-- [Validation](Documentation~/Validation.md): Unity Test Runner setup and API contract coverage.
+## Samples and documentation
+
+| Sample | Demonstrates |
+| --- | --- |
+| [Quick start](Samples~/Minimal/README.md) | One marker, three small integration classes and authored prefabs. |
+| [Example](Samples~/Example/README.md) | Cars, reusable traits, queries and SDK replacement. |
+| [Relative world](Samples~/RelativeWorld/README.md) | WGS84 input, a moving reference, buffering and noisy motion. |
+| [Aircraft formation](Samples~/AircraftFormation/README.md) | Aircraft turns, independent observation streams and flight instruments. |
+
+[Getting started](Documentation~/GettingStarted.md) · [API reference](Documentation~/API.md) · [Architecture](Documentation~/Architecture.md) · [Integration guidelines](Documentation~/Guidelines.md) · [Changelog](CHANGELOG.md)
+
+## Validate the package
+
+Open **`Tests/Unity~`** in **Unity 2022.3.62f3** and run EditMode and PlayMode tests. The repository root is a UPM package; the nested project includes its test configuration and imported samples.
+
+On Windows, close that project in Unity and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools~\Validate.ps1
+```
+
+See [Validation](Documentation~/Validation.md) for editor selection, reports, CI and testing in a consuming project.

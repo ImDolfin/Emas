@@ -12,7 +12,8 @@ namespace Emas
     [Serializable]
     public sealed class SingerExtrapolation : IExtrapolationStrategy
     {
-        [Tooltip("Acceleration decay time constant in seconds. After this duration, acceleration is about 37% of its observed value. Smaller: closer to constant velocity. Larger: closer to constant acceleration. Independent of the extrapolation horizon.")]
+        [Tooltip("Positive acceleration decay time in seconds; 37% remains after this duration. Smaller approaches constant velocity; larger approaches constant acceleration.")]
+        [Min(float.Epsilon)]
         [SerializeField] private float _maneuverTimeConstant = 1f;
 
         /// <summary>Gets or sets the time for acceleration to decay to 1/e of its observed value.</summary>

@@ -4,17 +4,13 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Identifies an entity root and exposes contracts provided by its components.
-    /// </summary>
+    /// <summary>Identifies an entity root and exposes contracts provided by its components.</summary>
     /// <remarks>
-    /// Use this component directly on an authored prefab with reusable Trait components.
-    /// Derive a custom Ghost only when the entity needs additional behavior; subclasses can use RequireComponent.
-    /// Traits and other root components can implement read-only application contracts. Emas creates/destroys roots and sets their metadata.
-    /// Created root GameObjects are named by Key.EntityId before application initialization; Name is separate display metadata.
-    /// Roots activate after successful publication and deactivate on availability loss; Awake may run before source mapping.
-    /// Initializers map source data to the configured traits. Views are optional children, independent of root behaviors.
+    /// Author a plain Ghost with traits; subclass only for combined entity behavior. Emas owns identity and
+    /// lifetime, names the GameObject by entity ID, and activates it after initialization. Awake can precede source
+    /// binding. Views are optional children; root contracts exclude children.
     /// </remarks>
+    [DisallowMultipleComponent]
     [AddComponentMenu("Emas/Ghost")]
     public class Ghost : MonoBehaviour, IGhost
     {
@@ -156,21 +152,11 @@ namespace Emas
             Anchor = null;
         }
 
-        /// <summary>
-        /// Initializes Emas-owned identity and metadata.
-        /// </summary>
-        /// <param name="anchor">
-        /// The anchor that owns this root independently of its scene parenting.
-        /// </param>
-        /// <param name="key">
-        /// The ghost key.
-        /// </param>
-        /// <param name="nameValue">
-        /// The display name.
-        /// </param>
-        /// <param name="variantValue">
-        /// The visual variant.
-        /// </param>
+        /// <summary>Initializes Emas-owned identity and metadata.</summary>
+        /// <param name="anchor">The anchor that owns this root independently of its scene parenting.</param>
+        /// <param name="key">The ghost key.</param>
+        /// <param name="nameValue">The display name.</param>
+        /// <param name="variantValue">The visual variant.</param>
         internal void Initialize(Anchor anchor, Key key, string nameValue, Variant variantValue)
         {
             Anchor = anchor;
@@ -186,26 +172,16 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Sets the source availability state.
-        /// </summary>
-        /// <param name="available">
-        /// The new availability state.
-        /// </param>
+        /// <summary>Sets the source availability state.</summary>
+        /// <param name="available">The new availability state.</param>
         internal void SetAvailable(bool available)
         {
             _isAvailable = available;
         }
 
-        /// <summary>
-        /// Updates source-provided display metadata.
-        /// </summary>
-        /// <param name="nameValue">
-        /// The new name, or null to retain the current name.
-        /// </param>
-        /// <param name="variantValue">
-        /// The new variant, or null to retain the current variant.
-        /// </param>
+        /// <summary>Updates source-provided display metadata.</summary>
+        /// <param name="nameValue">The new name, or null to retain the current name.</param>
+        /// <param name="variantValue">The new variant, or null to retain the current variant.</param>
         internal void SetMetadata(string nameValue, Variant? variantValue)
         {
             if (nameValue != null)
@@ -219,9 +195,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Runs entity-specific behavior after all trait readers and before spatial projection.
-        /// </summary>
+        /// <summary>Runs entity-specific behavior after all trait readers and before spatial projection.</summary>
         /// <remarks>
         /// The realm calls this once per Update for each enabled, owned Ghost that is available or awaiting activation.
         /// It may run before the root's first activation. Prepared or disappeared Ghosts do not update.

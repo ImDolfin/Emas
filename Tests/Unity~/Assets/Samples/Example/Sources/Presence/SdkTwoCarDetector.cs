@@ -4,31 +4,21 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>
-    /// Detects the same permanent car population in SDK Two.
-    /// </summary>
+    /// <summary>Detects the same permanent car population in SDK Two.</summary>
 
     public sealed class SdkTwoCarDetector : PresenceDetector
     {
         private readonly SdkTwoVehicleFeed _feed;
 
-        /// <summary>
-        /// Creates a source with the default SDK Two feed.
-        /// </summary>
+        /// <summary>Creates a source with the default SDK Two feed.</summary>
         public SdkTwoCarDetector()
             : this(new SdkTwoVehicleFeed())
         {
         }
 
-        /// <summary>
-        /// Creates a source with a supplied SDK Two feed.
-        /// </summary>
-        /// <param name="feed">
-        /// The source feed to poll.
-        /// </param>
-        /// <exception cref="ArgumentNullException">
-        /// Thrown when the feed is null.
-        /// </exception>
+        /// <summary>Creates a source with a supplied SDK Two feed.</summary>
+        /// <param name="feed">The source feed to poll.</param>
+        /// <exception cref="ArgumentNullException">Thrown when the feed is null.</exception>
         public SdkTwoCarDetector(SdkTwoVehicleFeed feed)
         {
             if (feed == null)

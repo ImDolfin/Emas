@@ -1,675 +1,259 @@
-# Relative worlds and large coordinates
+# Spatial input and presentation
 
-Configure a reference frame for a realm to project shared Cartesian or geographic positions relative to a moving origin. Add `Spatial` to each participating Ghost root. Without a reference frame, enabled `Spatial` components use an identity frame: Cartesian poses map directly to Unity world space, with no distance limit. Geographic and ECEF attitudes require a Geographic reference. Ghosts without an enabled `Spatial` remain application-positioned.
+Add `Spatial` to each Ghost that uses shared coordinates. Its raw position/orientation remain separate from the Unity transform. An optional `Realm.ReferenceFrame` projects every participating root around a fixed or followed reference; without one, Cartesian poses map directly to Unity world space.
+
+Examples assume `using Emas;` and `using UnityEngine;`. `realm`, `ghost` and SDK readings belong to the calling integration. All calls require Unity's main thread.
 
 ## Choose the input contract
 
-| Spatial input | Meaning | Reference space |
+| Setter | Input | Reference space |
 | --- | --- | --- |
-| `SetCartesianPosition(Double3)` | Shared source XYZ in the world's units and `Coordinates` axes | Cartesian or no reference |
-| `SetGeographicPosition(GeoPosition)` | Absolute WGS84 latitude/longitude degrees and ellipsoidal height metres | Geographic |
-| `SetEarthCenteredPosition(Double3)` | Absolute ECEF XYZ metres | Geographic |
-| `SetSourceRotation(Quaternion)` | Quaternion in the frame's selected source axes; local tangent attitude in Geographic space | Either |
-| `SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)` | Heading clockwise from true north, nose-up pitch, right-wing-down roll | Geographic |
-| `SetEarthCenteredRotation(Quaternion, bodyAxes)` | Active body-to-ECEF quaternion and right-handed source body axes | Geographic |
-
-Position and attitude arrive independently. Setters store data; the Realm applies it after all readers run. `Position` contains source Cartesian coordinates or ECEF metres, never latitude/longitude. `Rotation` contains a normalized quaternion; `RotationSpace` identifies `Source`, `Geographic` (east/up/north), or `EarthCentered`. Read them after `HasPosition` or `HasRotation` becomes true. Each rotation setter replaces the previous representation.
-
-## Choose spatial behavior per Ghost
-
-Author these components on the **same Ghost root**, not on child transforms. `Spatial` applies raw poses through the reference frame and owns attachments and range suppression. It has no smoothing or extrapolation controls. Add either or both optional behavior Traits:
-
-| Root components | Result |
-| --- | --- |
-| `Spatial` | Direct reference-relative placement |
-| `Spatial` + `Smoothing` | Reduce positional/angular jitter without extrapolation |
-| `Spatial` + `Extrapolation` | Extrapolate motion to the shared estimated presentation time, within a separate limit |
-| All three | Predict motion and smooth correction errors |
-
-A positive `realm.InterpolationDelay` changes timestamped channels to buffered playback before these optional
-traits run. It applies to the whole Realm, including the followed reference; the default is zero.
-
-`Smoothing` and `Extrapolation` are built-in Traits without SDK readers; the Realm evaluates them after every data Trait and Ghost hook has run. They appear in `Ghost.Traits` and the Ghost Inspector. Disabling either behavior bypasses it on the next projection. Adding a behavior component requires `Spatial` automatically. Attached parts inherit their parent's processed world pose and bypass their own filters, avoiding a second smoothing pass.
-
-Views requested from the Realm update's query notifications use that update's already projected pose. Creating a view does not advance one predicted entity or attachment parent beyond the rest of that frame. Standalone view requests outside those notifications still apply current spatial input immediately.
-
-## Supply SDK sample times
-
-Supply the SDK's **seconds and nanoseconds separately** so a large Unix-style epoch does not lose its fractional precision:
-
-```csharp
-Timestamp time = new Timestamp(sdkSeconds, sdkNanoseconds);
-Spatial spatial = ghost.GetRequired<Spatial>();
-spatial.SetGeographicPosition(location, time);
-spatial.SetGeographicRotation(yaw, pitch, roll, time);
-
-Extrapolation extrapolation;
-if (ghost.TryGet<Extrapolation>(out extrapolation))
-{
-    extrapolation.SetGeographicVelocity(enuVelocity, tangentOrigin, time);
-    extrapolation.SetGeographicAcceleration(enuAcceleration, tangentOrigin, time);
-}
-```
-
-`Timestamp.Seconds` is a signed 64-bit integer and `Nanoseconds` is an unsigned fraction below one billion. No epoch is assumed. Use one shared SDK clock per Realm, advancing at approximately real-time seconds. `Timestamp.ElapsedSince` subtracts whole seconds before converting to doubles. `Timestamp.FromSeconds(double)` is available for clocks already supplied as floating-point seconds; use the two-part constructor when the SDK supplies both parts.
-
-Each position, orientation, velocity and acceleration channel ignores older and duplicate timed packets. A newer timestamp refreshes a stationary position's age even when coordinates are unchanged. Optional timestamps let existing arrival-timed readers continue working: identical untimed cached positions do not refresh age. Switching a channel to untimed input clears its previous timestamp ordering guard. `Spatial.PositionTime` and `RotationTime` expose accepted sample times; `Position` and `Rotation` remain raw input.
-
-When the SDK cannot provide its current time, the Realm estimates a source-to-Unity clock alignment from received observations. It retains the arrival with the smallest observed relative delay, then advances using Unity's unscaled clock. Every root and the followed reference use the same captured presentation time per spatial pass. Older packets therefore have more extrapolation age than newer packets, even when both were read in the same Unity frame. This estimates relative packet age; **absolute transport latency is unknown** and is not automatically recovered. Extrapolation is an estimate, not guaranteed current truth.
-
-If the SDK clock restarts or a replay changes its time origin, call `realm.ResetSpatialTime()` **before** supplying samples from the new clock. This clears clock alignment, sample ordering and filter/estimated-motion history while retaining raw poses, supplied motion and component settings. Use separate Realms or application-side clock conversion for unrelated SDK clocks.
-
-## Buffer packet timing before filtering noise
-
-For high-speed motion with variable delivery times, start with a shared 100 ms playback buffer:
-
-```csharp
-realm.InterpolationDelay = 0.1f;
-```
-
-The Realm samples every root's position, rotation and supplied SDK motion at **estimated SDK time minus the
-shared delay**. Position uses double-precision linear interpolation; rotation follows the shortest quaternion
-arc. Original timestamps are retained, including multiple observations supplied between Realm updates.
-At 60 Hz input and 90 Hz presentation, the intermediate updates therefore advance along the recorded motion
-instead of holding and jumping at each packet. The moving reference is sampled before projection at the same
-time as its peers, even when their Extrapolation toggles differ. Attached parts inherit their parent's result.
-
-This adds the configured playback latency to the existing transport latency. It does not recover unknown
-absolute latency. Choose enough delay to cover packet delivery variation, while keeping it acceptable for
-your application. The Relative World sample uses `0.1` seconds with 60 Hz observations, 80 ms delivery delay
-and up to 40 ms of delivery jitter. **Playback > Interpolation delay** on Realm Setup configures its next startup;
-`Realm.InterpolationDelay` can be changed directly while running and blends the resulting pose difference over
-0.25 seconds.
-
-If playback reaches the newest available pose, enabled Extrapolation extrapolates for at most its
-`MaximumExtrapolation` **beyond that observation**, rather than predicting through the buffer. Supplied velocity
-and optional acceleration predict position; the last two timed rotations provide a short angular extrapolation.
-Extrapolation off or a zero horizon holds the newest pose. Before enough history arrives, playback holds the
-oldest available pose. Each channel stores at most 128 observations (about 2.1 seconds at 60 Hz); excessive
-buffer delays hold the oldest retained observation. Untimed channels continue using arrival-time behavior.
-
-Range eligibility uses the unfiltered observation at playback time, before extrapolation and smoothing. It
-therefore compares a buffered entity with its buffered reference, rather than culling the origin because
-its newest raw packet has already travelled beyond the configured radius.
-
-Smoothing then filters the remaining measurement error separately. With supplied SDK velocity, it advances
-the position filter using velocity from the **buffered playback time**, including through turns and stops, even
-when Extrapolation is off. It never uses a noisy position difference as this motion step. A held pose after the
-gap horizon contributes no further motion. Rotation half-life still adds angular response lag; use matching,
-small values on the reference and peers when their relative attitude matters. Without SDK velocity, position
-smoothing retains the usual low-pass motion lag described below.
-
-Recorded motion integrates each supplied velocity segment, including across a long render frame. Gap
-extrapolation samples velocity and acceleration at the newest position's timestamp with both immediate and
-buffered playback. Motion timestamps are compared directly, preserving samples exactly at that instant.
-A later acceleration does not apply to an earlier pose; recorded velocity samples interpolate across their
-own timestamps. Acceleration is used for gap extrapolation, rather than applied retroactively over recorded motion.
-
-A buffer cannot reconstruct a maneuver that has not arrived, and a long extrapolation horizon can still overshoot
-a stop or turn during a sustained outage. Start with a short gap horizon such as `0.05` seconds. Call
-`Spatial.ResetPresentation()` after a teleport; it clears pose playback history and seeds the new pose.
-
-## Tune smoothing in half-lives
-
-`Smoothing.PositionHalfLife` and `RotationHalfLife` mean **seconds to halve the remaining correction error**. For a stationary target, after one half-life 50% of the error remains, after two 25%, and after three 12.5%. A value of `0.2` means half the correction remains after 0.2 seconds; `1` means that takes a full second and will feel much slower. This is not a fixed delay or a time to finish moving.
-
-| Half-life | Starting-point tradeoff |
-| --- | --- |
-| `0` | Apply that channel immediately |
-| `0.02–0.05 s` | Responsive; removes mild jitter |
-| `0.05–0.15 s` | Balanced filtering and response; position defaults to `0.08 s` |
-| `0.15–0.5 s` | Stronger filtering with more visible lag |
-
-The Inspector sliders offer `0–0.5 s` with these tradeoffs in their tooltips. Larger finite values remain supported in code if a deliberately slow response is useful. Position filtering stays in double-precision source coordinates; rotation uses the shortest quaternion arc. Both advance in unscaled time even between packets. Changing half-lives retains filter history. `Smoothing.Reset()` explicitly discards both histories and any live-tuning transition.
-
-**Smoothing works with extrapolation disabled or absent.** When supplied SDK velocity is available in `Extrapolation`, a new pair of timed position observations advances the filter by the expected motion between their original timestamps. Only the remaining measurement error is filtered. This assistance remains available when `Extrapolation.enabled` is false or its horizon is zero; it does not extrapolate the target beyond the latest observation. Held, duplicate or older packets add no motion. Recorded motion integrates supplied velocity segments; optional acceleration reconciles separately timed velocity and predicts gaps. Position-derived velocity is not used for this path because it would pass position noise directly into the filter.
-
-With extrapolation enabled and supplied SDK velocity, motion assistance integrates motion between the observed playback poses and applies the **change in predicted lead** separately. A new velocity or acceleration can therefore revise the future trajectory immediately while position measurement corrections retain their half-life. Smoothing the entire revised lead would delay a known turn and leave a sideways position error; following a pitching or rolling reference can make that error appear to circle the origin. Motion assistance uses SDK vectors rather than raw position differences, so position noise remains filtered. Live setting changes still use the separate 0.25-second transition.
-
-Reaching the horizon stops a held packet's motion; accepting another timed pose still advances the filter by its known SDK motion. This applies with `InterpolationDelay = 0` as well as buffered playback. For example, 560 kt motion with a `0.3 s` position half-life and a `0.05 s` extrapolation horizon should not acquire the ordinary low-pass filter's roughly 125 m trailing error merely because packet age exceeds the horizon. Measurement noise, noisy SDK motion and unobserved maneuvers can still produce correction error.
-
-Without supplied SDK velocity or a pair of timed observations, position smoothing remains an ordinary low-pass filter. A steadily moving input then has approximately `speed × half-life / ln(2)` of trailing error: at 100 m/s, about 11.5 m for `0.08 s` and 72 m for `0.5 s`. Increasing smoothing without motion data therefore increases visible lag. With motion assistance and extrapolation disabled, a bird can still trail a predicted reference by the packet age; use comparable extrapolation settings when both should represent the same presentation time.
-
-Tune live roots through **Ghost → Traits** during Play Mode. Serialized edits, Undo/Redo and property assignments use the same continuous transition, including half-lives of zero, extrapolation limits and either trait's enabled toggle. On the next projection, Emas evaluates the previous and new settings at the same update time. It preserves the previous behavior's pose and blends away the difference over **0.25 seconds of real time**, independently for position and rotation. Repeated slider edits continue normal motion and rebase the remaining correction; they do not restart from an old rendered pose. Initial settings apply directly without a transition.
-
-The edit correction reaches zero exactly after 0.25 seconds; any remaining observation error follows the selected smoothing half-life. The correction is never fed back into extrapolation or smoothing, so it cannot accumulate permanent displacement. Raw poses, original SDK timestamps, supplied velocity/acceleration and the shared clock remain unchanged. Extrapolation-only roots receive the same transition. A followed origin supplies one resulting pose for the entire frame, including attached entities.
-
-Changing settings moves presentation gradually toward the new lead or lag. For example, at 100 m/s a 0.1-second reduction in the extrapolation age removes 10 m of lead over the transition instead of snapping backward. Some previous lead can remain during that transition. Zero half-life and disabled smoothing become direct after the blend completes. For an intentional teleport or an immediate switch, supply the new pose and call `Spatial.ResetPresentation()` to bypass the blend and reset both behaviors.
-
-**Rotation half-life defaults to zero.** When `ReferenceFrame.FollowRotation` is enabled, the followed Ghost's rotation filter also determines how quickly reference orientation repositions every other Ghost. Leave it at zero for immediate scene repositioning while smoothing reference position independently. Other Ghosts' position filters process their own source motion and add no lag to reference changes. With FollowRotation disabled, the reference Ghost's rotation does not affect their positions.
-
-## Extrapolate motion independently
-
-Choose **Ghost → Traits → Extrapolation → Strategy** before or during Play Mode, or assign the root's strategy in code:
-
-```csharp
-Extrapolation extrapolation = ghost.Trait<Extrapolation>();
-extrapolation.Strategy = new ConstantVelocityExtrapolation();
-extrapolation.MaximumExtrapolation = 0.1f;
-```
-
-| Strategy | Gap behavior |
-| --- | --- |
-| `ConstantAccelerationExtrapolation` (default) | Extend supplied or estimated linear velocity with optional acceleration; extend supplied or estimated angular velocity |
-| `ConstantVelocityExtrapolation` | Extend linear and angular velocity; ignore linear acceleration during the gap |
-| `SingerExtrapolation` | Extend velocity with exponentially decaying linear acceleration; keep angular velocity constant |
-| `CoordinatedTurnExtrapolation` | Quaternion rotating-body second-order dead reckoning, bank-derived coordinated-turn fallback and cubic packet correction |
-| `NoExtrapolation` | Hold the newest pose after recorded observations; retain buffered interpolation and SDK motion assistance for smoothing |
-
-Changing `Strategy` keeps observations, original timestamps, motion channels and filter history. The resulting
-presentation difference blends over the same 0.25-second live-tuning transition as the horizon. Assign a new
-instance when changing custom strategy settings to get this transition; edits within an existing instance
-take effect directly. Strategies act only beyond observations; buffered interpolation and coordinate conversion
-remain the responsibility of Emas. Disabling Extrapolation or setting a zero horizon bypasses every strategy.
-
-These are **extrapolation algorithms**: they extend observed motion beyond the newest observation to produce
-a predicted pose. The `Extrapolation` component manages that presentation behavior;
-`NoExtrapolation` is the explicit baseline that contributes no future offset.
-
-Implement `IExtrapolationStrategy` to add an application model. Both `ExtrapolateDisplacement` and
-`ExtrapolateRotation` receive an `ExtrapolationContext` and bounded seconds. The context contains:
-
-- The latest accepted position and orientation, each with its original timestamp.
-- The current channel's `ObservationTime`: position time for linear extrapolation, rotation time for angular extrapolation.
-- Linear velocity, acceleration and angular velocity sampled at that time, with null for unavailable motion.
-- Flags distinguishing supplied rates from estimates and world angular velocity from body angular velocity.
-- The newest SDK motion timestamps, reference space, source coordinate convention, rotation space and ECEF body-axis mapping.
-
-Motion channels remain independently timed. A newer SDK sample may be recorded in the timestamp metadata
-while the effective motion is interpolated at the older pose time. Future-only motion is unavailable there;
-an applicable estimate can still be used. Supplied zero motion remains available and overrides estimation.
-The pose properties keep their own observation times rather than pretending that separately timed poses
-were captured together. A custom model can use cross-channel information, including inferring an orientation
-from linear motion when no angular rate is available. The built-in constant-acceleration model still requires
-a linear velocity before extrapolating position; acceleration alone does not invent that velocity.
-
-`ExtrapolateDisplacement` returns a source-space displacement; `ExtrapolateRotation` returns a quaternion
-offset. Body angular vectors use model right/up/forward axes; world vectors use ECEF for EarthCentered
-rotation or local east/up/north otherwise. Emas handles body/world composition and axis conversion.
-Both methods must return zero displacement or identity at zero
-seconds and remain deterministic without mutating state: live tuning can evaluate the old and new model
-at the same update time. Finite-result overflows reported as `ArgumentOutOfRangeException` fall back to the
-observed pose. Other application exceptions propagate. A `[Serializable]` concrete class with a public
-parameterless constructor appears in the Inspector selector, including its serialized fields. Runtime-only
-implementations need no serialization attribute. Null assignment is rejected; missing serialized strategy
-references use the default model.
-
-### Singer acceleration
-
-```csharp
-ghost.Trait<Extrapolation>().Strategy = new SingerExtrapolation
-{
-    ManeuverTimeConstant = 0.5f
-};
-```
-
-Select **Singer Extrapolation** under **Ghost → Traits → Extrapolation → Strategy** to compare it at runtime.
-`ManeuverTimeConstant` is a finite, positive duration in seconds, defaulting to **1 second**. It is the time
-for acceleration to decay to approximately 37% of its observed value. It is independent of the extrapolation
-horizon and the smoothing half-life. Assign a new strategy instance to blend a setting change through the
-existing live-tuning transition; editing an existing instance takes effect directly.
-
-The strategy evaluates the deterministic mean of the [Singer acceleration model](https://www.mathworks.com/help/fusion/ref/singer.html):
-
-```text
-acceleration(t) = acceleration(0) * exp(-t / tau)
-velocity(t)     = velocity(0) + acceleration(0) * tau * (1 - exp(-t / tau))
-displacement(t) = velocity(0) * t
-                + acceleration(0) * tau * (t - tau * (1 - exp(-t / tau)))
-```
-
-Here `tau` is the maneuver time constant and `t` is the bounded gap after the position observation. Smaller
-time constants approach constant velocity; larger values approach constant acceleration. A small-ratio
-series avoids numerical cancellation near the constant-acceleration limit. Decay is evaluated from the
-observation's age on every projection; held packets do not restart it. Raw acceleration and SDK timestamps
-remain unchanged, and the existing sample-age horizon still stops a held trajectory.
-
-This model acts in Cartesian source axes or ECEF axes, using motion sampled at the position observation's
-time. Future-only acceleration is excluded. Missing acceleration gives constant velocity; missing both
-supplied and estimated velocity holds position. Angular motion retains constant body/world angular velocity
-and quaternion composition, without applying the linear decay to rotation. It does not infer coordinated
-turns or aircraft aerodynamics. Velocity approaches a finite changed velocity, rather than decaying to zero.
-
-This is a stateless mean-trajectory strategy, with no Kalman estimator or sampled process noise. Instances
-may be shared between roots. Optional `Smoothing` and buffered playback continue to work independently;
-Singer does not enable the coordinated-turn strategy's automatic cubic packet correction.
-
-### Aircraft body-frame dead reckoning and coordinated turns
-
-```csharp
-ghost.Trait<Extrapolation>().Strategy = new CoordinatedTurnExtrapolation
-{
-    PacketSmoothingDuration = 0.1f,
-    UseBankAngleWhenRatesUnavailable = true,
-    Gravity = 9.80665f
-};
-```
-
-Select the same class under **Ghost → Traits → Extrapolation → Strategy**. Its three settings are editable
-in the Inspector and persist in prefabs. The general extrapolation horizon still applies; selecting this
-model does not change the package default strategy or require an SDK-specific binding.
-
-The model integrates orientation with the quaternion exponential of constant body angular velocity.
-For translation, it transforms the time-aligned world velocity into the aircraft's right/up/forward body
-frame and integrates `R(t) * (vBody + aBody * t)` with closed-form rotating-vector integrals. This provides
-second-order translational dead reckoning without a render-step integrator. Small-rate Taylor limits keep
-nearly straight flight stable. Attitude at the position observation's time is interpolated or held from
-available history; a future-only attitude cannot turn an older position. Missing attitude falls back to
-world constant-acceleration extrapolation. Position still requires an available velocity.
-
-SDK acceleration remains **gravity-free inertial acceleration**, not the derivative of body velocity.
-The model converts it using `aBody = inverse(R) * aWorld - cross(omegaBody, vBody)`. This avoids adding
-centripetal acceleration twice. Missing acceleration instead means constant body velocity, producing a
-constant-speed turn. An explicitly supplied zero acceleration is an inertial zero, which is different.
-This interpretation follows the [Open-DIS body-frame dead-reckoning notes](https://github.com/open-dis/dis-tutorial/blob/master/DeadReckoningStateUpdate.md).
-
-Supplied or estimated angular rates take precedence, including a supplied zero. With neither available,
-the optional coordinated-turn fallback uses `yawRate = Gravity * tan(bank) / horizontalSpeed`, converts
-that world yaw vector into the aircraft body frame, and turns translation and attitude together. This
-assumes steady coordinated flight, negligible sideslip and no wind; ground speed substitutes for airspeed.
-See the [coordinated-turn equations in the FAA-hosted flight-simulation paper](https://www.faa.gov/sites/faa.gov/files/about/office_org/headquarters_offices/avs/MP-086-23.pdf).
-It does not infer a rate below 0.001 source units/second, for a nearly vertical heading, or at banks of
-85 degrees or more. `Gravity` must match Cartesian distance units; geographic input uses metres.
-Angular acceleration, aerodynamic forces and wind are not inferred.
-
-`PacketSmoothingDuration` defaults to **0.1 unscaled seconds**. Selecting this strategy automatically adds
-packet correction; no `Smoothing` component is required. Position uses a cubic Hermite error spline and
-orientation uses a spherical cubic Bezier correction with quaternion interpolation. Each accepted pose
-or motion update rebases from the presented pose continued along its last tangent. Repeated arrivals
-can interrupt a correction; held samples and rejected stale/duplicate timed samples do not restart it.
-The correction and its tangent reach zero at the end of the duration, joining the current bounded
-trajectory without permanently displacing raw input. Each root owns separate state, even if the strategy
-instance is shared. Resetting presentation or the SDK clock discards that state.
-
-Zero duration bypasses packet correction. A correction can finish after the extrapolation horizon, but
-its target remains capped. Optional `Smoothing` can retain its own filter history; its position motion
-assistance follows the corrected trajectory, so SDK lead changes cannot bypass the cubic correction.
-For cubic correction alone, omit `Smoothing` (or use zero half-lives). Strategies implementing
-`IPacketSmoothingStrategy` can request the same packet-correction pipeline.
-
-`Extrapolation.MaximumExtrapolation` is the **maximum sample age used to project motion forward**. It defaults to `0.15 s` and is independent of either smoothing half-life. Extrapolation alone works without Smoothing. With both enabled, the smoother follows predicted motion and blends correction error in every direction; there is no direction rejection or minimum speed. Disabling extrapolation retains supplied SDK velocity for smoothing the motion between newly accepted observations.
-
-| Maximum extrapolation | Starting-point tradeoff |
-| --- | --- |
-| `0` | Bypass extrapolation |
-| `0.05–0.1 s` | Conservative correction for small gaps |
-| `0.1–0.25 s` | Bridge short packet gaps; default `0.15 s` |
-| `0.25–0.5 s` | Bridge longer gaps, with more overshoot risk when entities stop or turn |
-
-The default constant-acceleration estimate uses `position + velocity × age + acceleration × age² / 2`, with age capped by the extrapolation limit. If SDK velocity is missing, consecutive timestamped positions observed during projection estimate velocity. Without either source of velocity, presentation holds the supplied position; acceleration alone does not invent an initial velocity. After a gap reaches the limit, the predicted destination stops advancing rather than drifting indefinitely. Disabling Extrapolation blends toward raw positioning over the live-tuning transition, with any enabled Smoothing continuing to filter observations.
-
-Orientation is predicted with **zero or positive interpolation delay**. Optional SDK body or world angular velocity
-can extend a single attitude observation for at most `MaximumExtrapolation`. Without an applicable supplied
-rate, the last two timed rotations define a shortest quaternion arc for gap extrapolation; one rotation alone
-cannot estimate that rate. Extrapolation disabled or a zero horizon holds the latest orientation. Rotation
-smoothing still applies its independent half-life. Angular extrapolation does not change linear motion.
-
-All angular-velocity setters use **radians per second**, never degrees per second. Choose the setter for
-the vector's reference frame; matching axis names alone does not make world rates into body rates.
-
-| SDK angular vector | Setter |
-| --- | --- |
-| World ENU: X east, Y north, Z up | `SetGeographicAngularVelocity(vector, origin, time)` |
-| World ECEF: X/Y/Z | `SetEarthCenteredAngularVelocity(vector, time)` |
-| Rotating aircraft body axes | `SetBodyAngularVelocity(vector, bodyAxes, time)` |
-
-For world ENU data, use the same SDK tangent origin as the other geographic vectors:
-
-```csharp
-extrapolation.SetGeographicAngularVelocity(
-    new Double3(eastAngularRate, northAngularRate, upAngularRate),
-    sdkTangentOrigin,
-    angularVelocityTime);
-```
-
-The origin is the aircraft location for aircraft-local ENU, or the SDK's fixed origin for shared ENU.
-World rates use the right-hand rule: positive ENU up rotates north toward west, opposite to positive
-clockwise geographic heading. These are angular-vector components, not heading/pitch/roll derivatives.
-The geographic setter converts to ECEF without needing aircraft attitude, so traits may run in any order.
-Use a Geographic reference with geographic/ECEF positions. `AngularVelocity` exposes the converted ECEF
-vector in this mode. World rates compose **before** attitude; body rates compose **after** it. The two
-operations differ when the aircraft is pitched or banked.
-
-For true body angular velocity:
-
-```csharp
-extrapolation.SetBodyAngularVelocity(
-    new Double3(rollRate, pitchRate, yawRate),
-    CoordinateSystem.NorthEastDown,
-    angularVelocityTime);
-```
-
-The default input axes are aircraft **X forward, Y right, Z down**, matching the named roll, pitch and yaw
-body rates above. These are true body angular rates; yaw/pitch/roll Euler-angle derivatives require conversion
-when the attitude is pitched or banked. A different SDK body convention can use an explicit `CoordinateSystem`
-mapping to model right/up/forward. `bodyAxes` only describes directions attached to the aircraft; passing
-`CoordinateSystem.EastNorthUp` there does not convert a world ENU vector to body space.
-Angular velocity transforms as an axial vector, preserving rotation sense through handedness changes.
-For body input, the `AngularVelocity` getter exposes the converted Unity-body quaternion rates
-(X right, Y up, Z forward), so default aircraft input is returned as `(-pitchRate, yawRate, -rollRate)`.
-
-Timed rates ignore duplicate or older samples and are sampled at the **rotation's own observation timestamp**,
-independently of the position channel. A future-only rate leaves an older orientation's history estimate intact.
-Buffered playback still interpolates recorded rotations; the supplied angular rate fills only a gap after the
-newest attitude. Untimed rates apply to the latest raw attitude. A supplied zero overrides inferred spinning.
-All angular setters share one channel and timestamp ordering. An accepted body/world frame change
-clears angular history to prevent mixing incompatible vectors;
-a duplicate or older sample cannot switch frames. `HasAngularVelocity` reports availability;
-`ClearAngularVelocity()` clears ordering/history and restores
-rotation-history estimation. SDK clock resets retain supplied rates while resetting timestamp ordering.
-Use `Spatial.ResetPresentation()` after a teleport. Rotation smoothing remains an ordinary angular error
-filter; supplying angular velocity does not add rotation filter motion assistance.
-
-Supply Cartesian motion in shared source axes/units through `Extrapolation.SetCartesianVelocity` and `SetCartesianAcceleration`. Geographic integrations can use ECEF XYZ metres through the EarthCentered setters, or **ENU** (X east, Y north, Z up) through the Geographic setters. The explicit `GeoPosition tangentOrigin` is the entity location for entity-local ENU, or your SDK's fixed origin for a shared ENU frame; it is independent of the presentation reference. `GeoPosition.ToEarthCenteredVector(enu)` performs the same vector rotation without translation. Supply gravity-free linear acceleration in metres per second squared. Publish matching motion and pose times together; recorded velocity is sampled at the position time, or advanced from an older velocity using acceleration available at that time.
-
-ENU describes a geographic tangent frame, rather than the aircraft's rotating forward/right/down axes.
-For true ENU input, preserve the SDK component order and origin:
-
-```csharp
-extrapolation.SetGeographicVelocity(new Double3(eastSpeed, northSpeed, upSpeed), sdkTangentOrigin, velocityTime);
-extrapolation.SetGeographicAcceleration(new Double3(eastAcceleration, northAcceleration, upAcceleration), sdkTangentOrigin, accelerationTime);
-spatial.SetGeographicRotation(headingDegrees, pitchDegrees, rollDegrees, orientationTime);
-```
-
-Pitch and roll do not change the interpretation of those ENU vectors. If the SDK instead supplies body-frame
-vectors, convert them into world axes using its raw attitude at each motion sample's timestamp before calling
-the motion setters. The projected Ghost transform contains reference alignment, extrapolation and smoothing,
-so it does not represent that raw conversion. Incorrect axes or an acceleration containing gravity can
-produce maneuver-dependent extrapolation offsets even when timestamps are correct.
-
-`Extrapolation.Velocity`, `Acceleration`, `HasVelocity` and `HasAcceleration` expose supplied SDK channels, including while extrapolation is disabled. `ClearVelocity()` releases that supplied channel; timestamp-derived velocity may still be available for enabled extrapolation. `ClearAcceleration()` retains velocity. `Extrapolation.Reset()` clears estimated motion after a discontinuity, retaining supplied motion. For a teleport, supply the new pose with a fresh timestamp (or untimed override), update motion and call `spatial.ResetPresentation()` to reset both optional behaviors. Missing or out-of-range raw observations clear history so source recovery starts fresh. If only the filtered presentation lies outside range, it stays hidden while its existing filter continues settling; culling does not repeatedly reset and snap that presentation back to the raw pose. Re-enabling Spatial restarts presentation history.
-
-The Relative World sample reads a nullable `GeoPoseReading.SampleTime` with pose and motion from the same observation. Its `GeoVelocityTrait` and optional `GeoAccelerationTrait` require Extrapolation and supply nullable ENU vectors at that reading's location, independently of reader order. They clear their supplied channel when a vector is unavailable. The saved sample Ghost prefabs enable Extrapolation and Smoothing, with analytical SDK velocity and configurable observation noise and delivery delay. The Geo Source Inspector can disable those input impairments for comparison; see the [sample controls and correction troubleshooting](../Samples~/RelativeWorld/README.md#try-noisy-and-delayed-packets).
-
-This implementation uses shared buffered pose interpolation, bounded kinematic/angular extrapolation and
-exponential correction smoothing. A Kalman filter would additionally need suitable process and measurement
-noise models, ideally SDK accuracy estimates; timestamps alone do not provide those.
-
-## Attach and detach entities
-
-Use `Spatial.Attach` for a part whose presentation should follow another entity instead of independently timed absolute SDK packets. Attach by a complete `Key` in the same Realm; the parent may be discovered after its parts, including on another Anchor or detector:
-
-```csharp
-Spatial part = partGhost.GetComponent<Spatial>();
-Key vehicle = new Key("vehicles", vehicleKind, vehicleId);
-part.Attach(vehicle, new Vector3(1, 0, 2), Quaternion.identity);
-
-// Continue supplying absolute SDK positions and attitudes while attached.
-// Once those channels describe the release pose, resume absolute placement:
-part.Detach();
-```
-
-The position offset uses **Unity local axes and units**: X right, Y up and Z forward. The relative rotation is a Unity quaternion. Source coordinate presets do not reinterpret these offsets. For your SDK's X-forward/Y-right/Z-down position offset, pass `new Vector3(sourceY, -sourceZ, sourceX)`. Parent and Anchor scale do not scale the attachment offset. The overload without a rotation uses identity; call `Attach` again to change the target or local pose.
-
-Keep `Spatial` enabled while attached. Each Realm projection resolves parents before parts, including attachment chains, then combines the parent's projected world pose with the local offset. Ghost roots stay under their Anchors and retain independent identities and lifetimes. This works with Cartesian and Geographic reference frames and full reference-attitude cancellation. The parent can also be application-positioned without an enabled `Spatial`.
-
-`AttachedTo` reports the requested parent even while it is missing. Until that parent is available and presentable, the part remains tracked and queryable but its views, root renderers and colliders are suppressed. A parent without a usable spatial position, an out-of-range parent, or an attachment cycle also suppresses dependent parts. Discovery, rediscovery or breaking the cycle resolves the attachment automatically. An attached part's resulting position must also fit the reference's presentation range.
-
-Attachment does not require an absolute part position or orientation. The absolute setters continue caching their channels; `Position`, `Rotation`, `RotationSpace`, `HasPosition` and `HasRotation` describe that cached input. `Detach` clears the attachment and the next projection uses those channels. It is safe before parent discovery or when already detached. A missing absolute position keeps presentation suppressed; a stale absolute pose can cause a jump, so publish a current release pose before detaching. Reference following continues to consume the followed Ghost's absolute input; follow the vehicle supplying that input when attaching its parts.
-
-## Configure a prefab realm
-
-Add **Emas > Realm Setup** to the prefab root. Its **Manifestation Blueprints** list maps each Kind to its Ghost and views for every anchor in that realm. Add one **Emas > Anchor Setup** for each anchor frame, on the root or a child object. Each Anchor Setup needs a unique **Anchor ID**, a `PresenceDetectorComponent` subclass and optionally a `GhostInitializer` on the same object. The initializer binds the spatial traits authored on the Ghost prefab. Each blueprint covers one Kind and stores a table of named variants, each selecting one view prefab. For example:
-
-```text
-Screen (RealmSetup: manifestation blueprints and reference frame)
-  Vehicles (AnchorSetup: id vehicles; CarDetector; CarInitializer)
-  Signs (AnchorSetup: id signs; SignDetector; SignInitializer)
-Environment (another RealmSetup with its own anchors and reference frame)
-```
-
-For a car that stays near the Unity origin, enable **Use Reference Frame**, choose the **Coordinate System** matching the incoming poses, and enable **Follow Ghost** on the screen's Realm Setup. If its identity is known in advance, enter the car's entity ID (`my-car`), anchor ID (`vehicles`) and kind ID. Leave **Entity ID** empty when the target is chosen at runtime; the Anchor and Kind fields are then unused. Set **Unity Position** to `(0, 0, 0)`, **Unity Rotation** to identity and **Follow Rotation** as needed. To hide distant views, enable **Limit Distance** and enter a positive **Max Distance** in the shared coordinate units. The followed ghost must be in this same realm and have an enabled `Spatial` component with a published position.
-
-For a fixed origin, leave **Follow Ghost** off. In Cartesian space, enter its shared **Position** as doubles and its **Rotation**. In Geographic space, enter WGS84 latitude, longitude and ellipsoidal height, plus local attitude. Each prefab instance creates its own realm and frame on the first update after enable. Read the live frame through `realmSetup.Realm.ReferenceFrame`. Disabling the setup disposes that realm. [Getting started](GettingStarted.md) shows the complete component wiring.
-
-## Assign a reference at runtime
-
-Enable **Use Reference Frame** and **Follow a Ghost**, and leave **Entity ID (optional)** empty. Realm Setup starts with an uninitialized reference while retaining your coordinate system, Unity placement, rotation-following and distance settings. Ghosts remain tracked and queryable, but spatial views stay suppressed until a reference position is available.
-
-After Realm Setup starts, assign the selected Ghost's key:
-
-```csharp
-realmSetup.Realm.ReferenceFrame.FollowedGhost = ghost.Key;
-```
-
-If your SDK supplies only the identity, construct the full key instead:
-
-```csharp
-realmSetup.Realm.ReferenceFrame.FollowedGhost =
-    new Key(anchorId, kind, runtimeEntityId);
-```
-
-The key includes the Anchor and Kind as well as the entity ID. The Ghost can arrive later; the frame begins following on the update that resolves its first valid `Spatial` position. Assign a different key to switch targets without replacing the frame or its settings. If a previous reference position exists, it is retained while waiting for the new target.
-
-`RealmSetup` normally starts on its first update after enable. Call `StartRealm()` explicitly if you need to assign the key earlier. Stopping and restarting the setup creates a fresh frame, so assign the runtime target for each new Realm. A nonempty Entity ID in the Inspector still requires an Anchor ID and Kind.
-
-## Follow a geographic reference directly
-
-Choose **Reference space > Geographic** in Realm Setup, or set `ReferenceFrame.Space = ReferenceSpace.Geographic`. Feed WGS84 positions directly:
-
-```csharp
-spatial.SetGeographicPosition(new GeoPosition(latitudeDegrees, longitudeDegrees, heightMeters));
-
-realm.ReferenceFrame = new ReferenceFrame
-{
-    Space = ReferenceSpace.Geographic,
-    FollowedGhost = referenceGhost.Key,
-    FollowRotation = false,
-    MaxDistance = 5000
-};
-```
-
-`GeoPosition` uses ellipsoidal height in metres. Convert mean-sea-level height with your application's geoid model when needed. Latitude must be within [-90, 90] degrees and longitude within [-180, 180]. `SetGeographicPosition` converts to Earth-centered, Earth-fixed (ECEF) metres, retained in `Spatial.Position`. Sources already providing ECEF use `SetEarthCenteredPosition`. All spatial positions in a Geographic realm are stored as ECEF metres.
-
-To present one entity relative to another, detect both in the same Realm and give both Ghost roots an enabled `Spatial`. Their anchors and detectors can differ. The reference frame belongs to the Realm; `FollowedGhost` selects the entity supplying its origin, and every participating entity projects through that frame. Each entity still supplies its absolute WGS84 reading. Do not subtract latitude, longitude or altitude in the SDK reader.
-
-Bind an `Trait<GeoPosition>` on each Ghost to its SDK reading; its `Apply` calls `SetGeographicPosition`. The [README integration](../README.md#2-define-reusable-traits-on-the-ghost) shows the complete detector, trait and initializer setup. After the traits run, the Realm resolves the followed entity and projects both roots in the same update. Updating either SDK reading needs no new detection call. Isolated Realms need explicit `Update` calls; `Realm.Default` and `RealmSetup` update automatically. Request the target's view with `Manifest`, or use Anchor Setup's automatic views.
-
-For example, with reference `(52.520008, 13.404954, 40.125)` and target `(52.520108, 13.405154, 50.125)` in latitude degrees, longitude degrees and ellipsoidal metres, identity Unity placement and `FollowRotation = false` put the reference at `(0, 0, 0)` and the target at approximately `(13.576, 10.000, 11.128)` Unity metres. X is east, Y is up and Z is north at the reference. Moving the reference recomputes the target's Unity position while its stored ECEF position stays unchanged.
-
-On each update, the reference position defines the local east/north/up tangent axes. The projection subtracts ECEF positions in doubles, then rotates that displacement into the reference's tangent frame and applies Unity placement. Stationary entities retain their global positions while their projected positions change with the reference. No static ENU origin is configured. This uses the WGS84 [geodetic conversion](https://gssc.esa.int/navipedia/index.php/Ellipsoidal_and_Cartesian_Coordinates_Conversion) and [local tangent transformation](https://gssc.esa.int/navipedia/index.php/Transformations_between_ECEF_and_ENU_coordinates).
-
-For SDK angles matching the sample, feed attitude directly:
-
-```csharp
-spatial.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
-```
-
-All three angles use degrees. Zero faces true north with the model's +Z forward and +Y up. The intrinsic sequence is heading about local up, nose-up pitch about the resulting body right, then right-wing-down bank about the resulting body forward. Angles wrap modulo 360 before float conversion; nonfinite input throws without replacing the last attitude. This is equivalent to `yaw * pitch * roll` in Unity east/up/north axes, with positive yaw and negative pitch/roll `AngleAxis` angles. It follows the entity's own tangent plane as its position changes.
-
-These named angles have the same physical meaning with Unity, ENU, NED or Custom selected. Emas stores their converted quaternion as `RotationSpace.Geographic`; changing `Coordinates` does not reinterpret it. For a manual geographic reference, use `frame.SetGeographicRotation(yawDegrees, pitchDegrees, rollDegrees)` with the same convention. Convert SDK radians or different angle signs/order into this documented convention before calling it.
-
-`Coordinates`, shown as **Source quaternion axes** in Geographic mode, describes raw quaternions supplied to `Spatial.SetSourceRotation`: Unity means local east/up/north, ENU means east/north/up, and NED means north/east/down. Emas accounts for each entity's own tangent plane before applying the reference alignment. SDK quaternion ordering, active/passive representation and body-axis conventions remain application responsibilities. An already converted Unity quaternion uses Unity source axes.
-
-`FollowRotation = false` keeps local north/up aligned to the scene. True cancels the reference's full heading, pitch and roll for both positions and attitudes, preserving 3D separation while changing the arrangement relative to the viewer. For a cockpit view using this cancellation, keep the camera fixed relative to the reference's desired Unity pose; assigning the SDK attitude to that camera applies another rotation. Alternatively, follow position only and orient the camera yourself.
-
-For a fixed geographic reference, assign `frame.GeographicPosition = new GeoPosition(...)` after selecting Geographic space. `frame.Position` exposes the same point in ECEF metres. A followed reference can also be assigned later, using the runtime-selection workflow above. Loss freezes both the last reference position and its tangent axes.
-
-Use `TryToUnityPosition(GeoPosition, out Vector3)` and `ToGeographicPosition(Vector3)` for geographic point conversion. For an entity's attitude, use `ToUnityRotation(rotation, geoPosition)` or `ToSimulationRotation(unityRotation, geoPosition)`; the overloads without a position use the reference location. `ToSimulationPosition` continues to return the stored Cartesian coordinates, which are ECEF in this mode. `GeoPosition.ToEarthCentered()` and `GeoPosition.FromEarthCentered()` convert independently of a Realm.
-
-`MaxDistance` and `DistanceTo` measure straight-line ECEF distance in metres, not surface travel distance. Projection retains Earth curvature; equal-height objects far away need not have the same Unity Y. At an exact ECEF pole (X = Y = 0), longitude is taken as zero to define the tangent axes. Geographic projection requires a reference; removing it restores ordinary identity projection of the stored ECEF numbers.
-
-## Feed ECEF positions and attitudes
-
-Use the same **Geographic** reference space for an SDK that already supplies Earth-centered, Earth-fixed coordinates. Positions bypass WGS84 conversion, and ECEF attitudes have an explicit input method:
-
-```csharp
-spatial.SetEarthCenteredPosition(new Double3(ecefX, ecefY, ecefZ));
-spatial.SetEarthCenteredRotation(bodyToEcefRotation);
-```
-
-The quaternion must actively rotate source body XYZ vectors into ECEF XYZ. The default body convention is **X forward, Y right, Z down**. For other right-handed body axes, pass their mapping to Unity model right/up/forward:
+| `SetCartesianPosition(Double3)` | Shared XYZ in application distance units and source axes. | Cartesian or no reference. |
+| `SetGeographicPosition(GeoPosition)` | WGS84 latitude/longitude degrees and ellipsoidal height metres. | Geographic. |
+| `SetEarthCenteredPosition(Double3)` | ECEF XYZ metres. | Geographic. |
+| `SetSourceRotation(Quaternion)` | Quaternion in configured source axes; local tangent attitude for Geographic. | Either. |
+| `SetGeographicRotation(yaw, pitch, roll)` | Degrees: heading clockwise from true north, nose-up pitch, then right-wing-down roll. | Geographic. |
+| `SetEarthCenteredRotation(rotation, bodyAxes)` | Active body-to-ECEF quaternion; default body axes are X forward, Y right, Z down. | Geographic. |
+
+Position and attitude arrive independently. Setters retain accepted input for the next Realm projection. `Position` is Cartesian XYZ or ECEF metres, never latitude/longitude. `RotationSpace` identifies the stored quaternion basis. Check `HasPosition` / `HasRotation` before reading channels. Convert mean-sea-level altitude to ellipsoidal height in the application.
+
+For native ECEF attitude, decode SDK quaternion ordering and invert passive ECEF-to-body attitudes before supplying them. A custom right-handed body mapping can be passed explicitly:
 
 ```csharp
 // SDK body axes: X forward, Y left, Z up.
 CoordinateSystem bodyAxes = new CoordinateSystem(
     Axis.NegativeY, Axis.PositiveZ, Axis.PositiveX);
-spatial.SetEarthCenteredRotation(bodyToEcefRotation, bodyAxes);
+spatial.SetEarthCenteredRotation(bodyToEcef, bodyAxes);
 ```
 
-`CoordinateSystem.NorthEastDown` describes the default body mapping; `EastNorthUp` describes X right, Y forward, Z up. This parameter concerns the body's axes, not geographic directions at its current location. Decode SDK quaternion ordering and invert passive ECEF-to-body attitudes in the application as needed. ECEF attitudes require right-handed body axes; a mapping that cannot represent a proper body-to-ECEF rotation is rejected.
+Named geographic angles and ECEF attitudes retain their physical meaning independently of the source quaternion preset. ECEF attitude remains global when position changes without another attitude observation.
 
-Position and attitude can arrive independently, in either order. Emas retains the global quaternion, so moving an entity without another attitude update does not silently change its global orientation. Source, named geographic and ECEF attitudes can coexist in the same Realm. `RotationSpace` identifies the stored quaternion's basis. Calling `SetSourceRotation` switches that Ghost back to the local/source convention selected by the frame's **Source quaternion axes** setting.
+## Choose spatial behavior per Ghost
 
-Follow the Ghost's key normally: the frame inherits its attitude representation. For a manual reference, assign its ECEF `Position` and call `frame.SetEarthCenteredRotation(...)`. `ToUnityEarthCenteredRotation(...)` and `ToEarthCenteredRotation(...)` convert attitudes in both directions and take the same optional body-axis mapping. These inputs still display around the reference's moving tangent frame.
+Author components on the same Ghost root:
 
-## Choose source coordinates
+| Components | Result |
+| --- | --- |
+| `Spatial` | Direct placement, attachments and range suppression. |
+| `Spatial` + `Smoothing` | Independently filter position and rotation correction error. |
+| `Spatial` + `Extrapolation` | Predict motion during bounded gaps after observations. |
+| All three | Predict motion and filter remaining correction error. |
 
-Each reference frame has a `Coordinates` value. Choose its preset in Realm Setup or assign it in code. Unity is the default; no extra asset is needed.
+Smoothing and Extrapolation are behavior Traits with no reader binding. The Realm evaluates them after data traits and Ghost hooks. Attached parts inherit their parent's processed pose and bypass their own filters. Disabling Spatial releases transform control and restores presentation components it suppressed; the last world pose remains for application control.
 
-| Preset | Source X | Source Y | Source Z | Unity right / up / forward |
-| --- | --- | --- | --- | --- |
-| `CoordinateSystem.Unity` | Right | Up | Forward | +X / +Y / +Z |
-| `CoordinateSystem.EastNorthUp` | East | North | Up | +X / +Z / +Y |
-| `CoordinateSystem.NorthEastDown` | North | East | Down | +Y / -Z / +X |
+Use one transform writer per root. Keep articulation on children; integrate dynamic physics explicitly. Root parenting stays under its Anchor, but projection compensates for that parent's placement rather than applying its offset twice.
 
-ENU and NED both place east along Unity right and north along Unity forward. For another convention, select **Custom** and choose the signed source axis mapped to each Unity direction. Each of X, Y and Z must appear exactly once. The mapping determines handedness automatically.
+## Configure a prefab realm
 
-```csharp
-frame.Coordinates = CoordinateSystem.NorthEastDown;
+Assign Kind blueprints on `RealmSetup`, with Spatial and any motion traits already on each Ghost prefab. Add an `AnchorSetup`, detector and optional initializer per feed. Under **Reference**, enable **Use reference frame** and choose Cartesian or Geographic.
 
-// Custom source: X left, Y forward, Z up.
-frame.Coordinates = new CoordinateSystem(
-    right: Axis.NegativeX, up: Axis.PositiveZ, forward: Axis.PositiveY);
-```
+For a moving reference, enable **Follow a Ghost** and enter the complete Anchor/Kind/entity identity. Leave Entity ID empty for runtime selection, then assign `realmSetup.Realm.ReferenceFrame.FollowedGhost` after startup. Startup fields are read-only while that Realm runs; code can change its live ReferenceFrame.
 
-In Cartesian space, the setting applies to `Spatial` positions and source quaternion rotations, the reference pose, and both directions of the conversion helpers. In Geographic space it applies to source quaternions; WGS84/ECEF positions and named yaw/pitch/roll have fixed geographic meanings. Source quaternion inputs in a realm must use the selected convention. Explicit ECEF attitudes use their own body-axis mapping. Rotation conversion helpers take source quaternions unless explicitly named EarthCentered. `UnityPosition` and `UnityRotation` remain in Unity coordinates. Reference following and the desired Unity pose are configured independently of the source axes.
-
-Rotations are converted by changing both the world and local basis of their rotation matrix, including handedness. Feed quaternions expressed in that source basis; decoding an SDK's angle order, angular units or quaternion representation belongs in the application. Prefab geometry uses Unity local axes.
-
-Changing `Coordinates` at runtime reinterprets stored source poses on the next realm update, retaining Ghosts and views. Named geographic angles and native ECEF attitudes retain their physical meaning. Conversion helpers use the new setting immediately. It does not rewrite the stored source data.
-
-## Keep your car fixed by code
+Equivalent geographic code setup:
 
 ```csharp
 realm.ReferenceFrame = new ReferenceFrame
 {
-    FollowedGhost = new Key("vehicles", CarKind, "my-car"),
+    Space = ReferenceSpace.Geographic,
+    FollowedGhost = new Key("vehicles", new Kind("vehicle"), "ego"),
     UnityPosition = Vector3.zero,
     UnityRotation = Quaternion.identity,
     FollowRotation = true,
-    MaxDistance = 5000.0
+    MaxDistance = 5000.0 // Metres in Geographic space.
 };
 ```
 
-`FollowedGhost` identifies a ghost in this realm. Its enabled `Spatial` component supplies the reference's latest shared Cartesian position and, when published, rotation. Your car maps to the configured Unity pose; other spatial ghosts move and rotate relative to it. `FollowRotation = false` follows position only, allowing your car's heading to change in Unity.
+For fixed references, assign `Position` in Cartesian space or `GeographicPosition` in Geographic space instead of FollowedGhost. A new ReferenceFrame has no usable position until assigned or resolved from its followed Ghost.
 
-You can also drive the frame manually, without a reference ghost:
+`FollowRotation = true` cancels the reference's full heading, pitch and roll for positions and attitudes. For a cockpit, keep the camera fixed relative to the desired Unity reference pose; applying SDK attitude to that camera adds another rotation. With false, only position is followed. A followed reference uses the same processed presentation time as its peers.
 
-```csharp
-ReferenceFrame frame = new ReferenceFrame
-{
-    Position = new Double3(1000000000.125, 0.0, 1000000000.375),
-    Rotation = Quaternion.identity,
-    UnityPosition = Vector3.zero,
-    UnityRotation = Quaternion.identity,
-    MaxDistance = 5000.0
-};
-realm.ReferenceFrame = frame;
+## Choose source coordinates
 
-// Assign fresh reference data before the realm update.
-frame.Position = new Double3(reference.X, reference.Y, reference.Z);
-```
+`ReferenceFrame.Coordinates` maps signed source axes to Unity right/up/forward:
 
-`Realm.Default` updates automatically. An isolated `new Realm()` needs an application-owned `Update()` call after its incoming data is processed and must be disposed when its owner stops. A `RealmSetup` advances its own isolated realm automatically. Choose a small Unity reference position near the scene origin.
+| Preset | Source XYZ | Unity right / up / forward |
+| --- | --- | --- |
+| `Unity` | Right, up, forward. | +X / +Y / +Z |
+| `EastNorthUp` | East, north, up. | +X / +Z / +Y |
+| `NorthEastDown` | North, east, down. | +Y / -Z / +X |
 
-## Apply spatial channels through Ghost traits
+Custom mappings use each source axis exactly once. Quaternion conversion changes both world and local bases, including handedness. Decode SDK Euler order and quaternion conventions in the application. Prefab geometry and Unity placement always use Unity axes.
 
-Configure independent position and rotation traits on the Ghost prefab, or require them on its class:
+In Cartesian space this setting covers positions and source quaternions. In Geographic space it covers source quaternions only: WGS84 positions, named geographic angles and explicit ECEF inputs have fixed meanings. Changing Coordinates reinterprets stored source poses on the next update; it does not rewrite raw input.
+
+## Supply SDK sample times
+
+Pass original observation times, preferably as separate SDK seconds/nanoseconds:
 
 ```csharp
-[RequireComponent(typeof(Spatial), typeof(PositionTrait), typeof(RotationTrait))]
-public sealed class Car : Ghost
-{
-}
-
-public sealed class PositionTrait : Trait<Double3>
-{
-    public override void Apply(Double3 position)
-    {
-        Ghost.GetRequired<Spatial>().SetCartesianPosition(position);
-    }
-}
-
-public sealed class RotationTrait : Trait<Quaternion>
-{
-    public override void Apply(Quaternion rotation)
-    {
-        Ghost.GetRequired<Spatial>().SetSourceRotation(rotation);
-    }
-}
+Timestamp time = new Timestamp(sdkSeconds, sdkNanoseconds);
+Spatial spatial = ghost.GetRequired<Spatial>();
+spatial.SetGeographicPosition(location, time);
+spatial.SetGeographicRotation(heading, pitch, roll, time);
 ```
 
-The initializer adapts your SDK to those reusable traits. Here the SDK's axes already match the shared frame:
+Use one shared SDK clock per Realm, advancing in real-time seconds. `Timestamp` assumes no epoch; `ElapsedSince` subtracts whole seconds before converting to doubles. `FromSeconds(double)` is available when the SDK already supplies floating-point time.
+
+Channels independently reject older/duplicate timed samples. A newer stationary observation refreshes age. Untimed input clears that channel's ordering guard; repeated identical untimed positions do not refresh age. `PositionTime` and `RotationTime` expose the accepted times.
+
+The Realm aligns SDK time from the least-delayed observed arrival and advances with Unity's unscaled clock. Every root uses one captured presentation time. This estimates relative packet age; absolute transport latency remains unknown. For unrelated SDK clocks, use separate Realms or convert clocks in the application.
+
+Call `realm.ResetSpatialTime()` before publishing after an SDK clock restart. It clears alignment, ordering and presentation histories while retaining raw pose, supplied motion and settings.
+
+## Buffer packet timing before filtering noise
 
 ```csharp
-realm.RegisterPresenceInitializer<Car>(CarKind, (presence, car) =>
-{
-    Spatial spatial = car.GetComponent<Spatial>();
-    car.GetRequired<PositionTrait>().Bind(() => presence.Source is SdkProxy proxy
-        ? new Double3(proxy.X, proxy.Y, proxy.Z) : spatial.Position);
-    car.GetRequired<RotationTrait>().Bind(() =>
-        (presence.Source as SdkProxy)?.Rotation ?? spatial.Rotation);
-});
+realm.InterpolationDelay = 0.1f; // Shared playback delay in seconds; default is zero.
 ```
 
-`SdkProxy` is your SDK's concrete proxy type, supplied once with `Detect(id, CarKind, source: proxy)`. `Presence.Source` resolves a weak reference; these readers preserve the last spatial state if it is collected or destroyed. Use `ReferenceFrame.Coordinates` for the common axis and handedness conversion. For WGS84 feeds, use Geographic space and `SetGeographicPosition` as described above. Other datum conversions, unit conversion and SDK rotation decoding belong in these readers or an application helper. If sources use different conventions, first normalize them to the convention selected for this realm. Each trait only knows its input type. Bind only channels supplied by the SDK; unbound or disabled traits leave their channel unchanged. `Spatial.HasPosition` and `HasRotation` indicate whether each channel has been supplied. Missing rotation leaves root rotation under application control.
+Timed channels play at estimated SDK time minus this delay. Positions interpolate in doubles; rotations use the shortest quaternion arc. Multiple observations between updates are retained. Choose a delay covering delivery variation; it adds latency to the unknown transport delay and cannot reconstruct unseen motion.
 
-The detector calls `Detect(id, CarKind, source: proxy)` on arrival and `Disappear(CarKind, id)` on departure. Data updates require neither another detection nor a report. Each realm update reads and applies the enabled traits, resolves the reference once, and projects all roots using the resulting spatial state. Reference movement also repositions entities whose shared positions stayed unchanged. Sample reference and target data at a common presentation time for interpolated feeds.
+Each channel retains at most 128 observations. Playback before retained history holds the oldest sample; playback beyond the newest uses enabled Extrapolation up to its horizon, then holds. Untimed channels remain immediate. Motion is sampled on the same playback timeline. Attachments inherit their parent's result.
 
-Trait reads do not refresh `InactivityTimeout`. Leave it disabled for feeds that only announce arrivals and departures. A presence feed using expiry must independently confirm continued presence with Detect.
+Start with a short gap horizon such as 0.05 seconds and compare buffered/immediate playback using the samples. Buffers reduce packet stepping; smoothing separately reduces measurement noise. Neither guarantees exact alignment during missing data or unobserved maneuvers.
+
+## Tune smoothing in half-lives
+
+A half-life is seconds to halve remaining correction error: 50% remains after one, 25% after two. Position defaults to 0.08 seconds; rotation defaults to zero.
+
+| Half-life | Effect |
+| --- | --- |
+| `0` | Immediate response after any live-edit transition. |
+| `0.02-0.05 s` | Light filtering and responsive correction. |
+| `0.05-0.15 s` | Moderate filtering. |
+| `0.15-0.5 s` | Stronger filtering with more response lag. |
+
+With timed SDK velocity supplied through Extrapolation, position filtering compensates observed motion and filters measurement error. This works with Extrapolation disabled or a zero horizon. With prediction enabled, changes in predicted lead apply separately from position noise. New observations retain motion assistance after earlier packets reach the horizon; a held sample at its cap adds no motion. Recorded motion integrates velocity segments rather than applying later acceleration retroactively.
+
+Without SDK velocity and timed observations, moving inputs have ordinary low-pass lag, approximately `speed * halfLife / ln(2)`. Position-derived velocity is not used to compensate this filter because that would pass position noise through. Angular velocity supplies gap prediction but does not provide rotation-filter motion assistance.
+
+Following a Ghost's orientation also follows its angular filtering. Use zero/small, comparable rotation half-lives when reference/peer alignment matters. Other roots' position filters do not add lag to reference changes.
+
+Live edits to horizons, half-lives, enabled states, buffering or strategy instances retain history and blend their presentation difference over 0.25 unscaled seconds. Repeated edits rebase the correction while normal motion continues. Raw input is unaffected. For a teleport, supply the new pose and motion, then call `Spatial.ResetPresentation()` to reset playback, estimates, filters and transitions. `Smoothing.Reset()` resets only its filter and tuning; supplied motion remains separate.
+
+## Extrapolate motion independently
+
+Choose **Ghost > Traits > Extrapolation > Strategy**, or assign a model in code:
+
+```csharp
+Extrapolation extrapolation = ghost.Trait<Extrapolation>();
+extrapolation.MaximumExtrapolation = 0.1f;
+// Choose one assignment:
+extrapolation.Strategy = new ConstantAccelerationExtrapolation();
+extrapolation.Strategy = new ConstantVelocityExtrapolation();
+extrapolation.Strategy = new SingerExtrapolation { ManeuverTimeConstant = 0.5f };
+extrapolation.Strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0.1f };
+extrapolation.Strategy = new NoExtrapolation();
+```
+
+| Model | Gap behavior |
+| --- | --- |
+| Constant acceleration (default) | `velocity*t + acceleration*t*t/2`; constant angular velocity. |
+| Constant velocity | Continue linear/angular rates, ignoring linear acceleration. |
+| Singer | Integrate velocity with exponentially decaying acceleration; constant angular velocity. |
+| Coordinated turn | Rotating-body second-order motion and cubic packet correction. |
+| No extrapolation | Hold observations after recorded playback; retain interpolation and SDK motion assistance. |
+
+`MaximumExtrapolation` caps age beyond the newest observation; it defaults to 0.15 seconds. Larger horizons bridge longer gaps but risk overshooting stops and turns. Zero or a disabled trait bypasses all strategies, including packet correction.
+
+Built-in position models need supplied or estimated velocity; acceleration alone does not invent velocity. Consecutive timed positions can estimate velocity. Supplied angular rates can extend one attitude; otherwise the last two timed rotations estimate a shortest-arc rate. A supplied zero overrides estimates. Coupled models can use angular motion for translation as well.
+
+### Singer acceleration
+
+`ManeuverTimeConstant` is a positive duration in seconds, default 1. Acceleration follows `a(t) = a(0)*exp(-t/tau)`; after tau, about 37% remains. Smaller tau approaches constant velocity; larger tau approaches constant acceleration. Velocity is integrated, not damped toward zero. Missing acceleration gives constant velocity.
+
+This is a deterministic mean trajectory, with no estimator or process noise. It does not enable packet correction. Assign a new instance to blend a setting change; editing an existing instance takes effect directly. [Implementation](../Runtime/Entities/SingerExtrapolation.cs).
+
+### Aircraft body-frame dead reckoning and coordinated turns
+
+CoordinatedTurnExtrapolation integrates quaternion body rotation and `R(t)*(vBody + aBody*t)` with closed-form rotating-vector integrals. It uses attitude sampled at the position time; future-only attitude cannot turn older motion. Missing attitude falls back to world second-order motion.
+
+Acceleration must be **gravity-free inertial acceleration**. The model derives `aBody = inverse(R)*aWorld - cross(omegaBody,vBody)`, avoiding duplicate centripetal acceleration. Missing acceleration means constant body velocity; supplied inertial zero is different.
+
+Supplied/estimated rates, including zero, override the optional bank fallback. Otherwise it estimates steady coordinated turn rate `Gravity*tan(bank)/horizontalSpeed`. This assumes negligible sideslip/wind and uses ground speed. It declines near-zero speed, nearly vertical heading and bank magnitudes of 85 degrees or more. Gravity must match the distance unit; the default 9.80665 assumes metres. [Implementation](../Runtime/Entities/CoordinatedTurnExtrapolation.cs).
+
+`PacketSmoothingDuration` defaults to 0.1 unscaled seconds. Position uses a cubic Hermite error spline; rotation uses a spherical cubic quaternion correction. Accepted pose/motion updates continue the prior tangent and rebase interrupted correction; held/rejected samples do not restart it. Each root owns its state, so immutable strategies can be shared. The correction reaches the capped trajectory with zero remaining correction/tangent at the end; it can finish after the extrapolation horizon.
+
+Zero duration bypasses packet correction. Omit Smoothing to evaluate cubic correction alone. With Smoothing present, its position assistance follows the corrected trajectory. Presentation/clock resets discard packet state. Custom models can request this pipeline through `IPacketSmoothingStrategy`.
+
+## Supply SDK motion
+
+Linear vectors use source units/second and units/second squared. Cartesian setters use configured shared axes; ECEF setters use XYZ metres; geographic setters accept ENU (X east, Y north, Z up) at an explicit SDK tangent origin:
+
+```csharp
+extrapolation.SetGeographicVelocity(enuVelocity, sdkTangentOrigin, velocityTime);
+extrapolation.SetGeographicAcceleration(enuAcceleration, sdkTangentOrigin, accelerationTime);
+```
+
+The origin is the entity location for local ENU or the SDK's fixed origin for shared ENU; it is independent of the presentation reference. Acceleration must have gravity removed. Convert body-frame linear vectors using raw SDK attitude at the motion timestamp, never the projected Ghost transform.
+
+Angular vectors always use **radians/second**:
+
+| SDK vector | Setter |
+| --- | --- |
+| World ENU | `SetGeographicAngularVelocity(rate, origin, time)` |
+| World ECEF XYZ | `SetEarthCenteredAngularVelocity(rate, time)` |
+| Aircraft body axes | `SetBodyAngularVelocity(rate, bodyAxes, time)` |
+
+```csharp
+// Default body axes: X forward, Y right, Z down.
+extrapolation.SetBodyAngularVelocity(new Double3(rollRate, pitchRate, yawRate),
+    CoordinateSystem.NorthEastDown, angularTime);
+```
+
+Body rates are true angular-vector components, not Euler-angle derivatives. A body-axis mapping does not turn world ENU into body rates. World ENU uses the right-hand rule: positive up turns north toward west, opposite to positive geographic heading. World rates compose before attitude; body rates compose after it. Handedness conversion preserves rotation sense. `AngularVelocity` exposes model right/up/forward rates for body input (`-pitch, yaw, -roll` for the default) or ECEF for world input.
+
+Motion is sampled at each pose channel's own observation time; future-only samples are excluded. Accepted angular body/world frame changes clear incompatible history. Call `ClearVelocity`, `ClearAcceleration` or `ClearAngularVelocity` when a supplied channel disappears; clearing angular velocity restores history estimation. Resetting estimates retains supplied channels.
+
+## Implement a custom strategy
+
+Implement `IExtrapolationStrategy` with deterministic, non-mutating methods. Both receive `ExtrapolationContext` and bounded seconds; preview/tangent evaluation may call them repeatedly. Return zero displacement or identity rotation at zero seconds. Return finite source-space displacement and a finite nonzero quaternion offset.
+
+The context contains raw accepted poses with their own timestamps, time-aligned observation pose/motion, supplied/estimated provenance, world/body angular convention and coordinate metadata. Newest motion timestamps may be later than effective sampled motion. Emas owns interpolation, composition, coordinate conversion and per-root histories.
+
+A `[Serializable]` concrete class with a public parameterless constructor appears in the selector with its serialized settings. Runtime-only implementations need no serialization attribute. Null assignment is rejected; missing serialized references use the default strategy. Replace instances for a blended live transition; in-place setting edits are immediate. Finite-result overflows reported as `ArgumentOutOfRangeException` fall back to observed pose; other application exceptions propagate.
+
+## Attach and detach entities
+
+```csharp
+Spatial part = partGhost.GetRequired<Spatial>();
+part.Attach(new Key("vehicles", vehicleKind, vehicleId),
+    new Vector3(1, 0, 2), Quaternion.identity);
+// Publish coherent absolute release pose/motion before detaching.
+part.Detach();
+```
+
+Parents use complete same-Realm Keys and may arrive later or belong to another Anchor. Offsets use Unity local axes/units, independently of source presets and parent scale. An SDK forward/right/down offset becomes `(Y, -Z, X)`. Keep Spatial enabled. Parent-first projection resolves chains without reparenting roots or sharing their lifetimes.
+
+Missing/unavailable/out-of-range parents and cycles suppress dependent presentation while keeping entities tracked/queryable. Breaking the condition resumes projection. Application-positioned parents without enabled Spatial also work. Attached parts still cache absolute input; Detach resumes it on the next projection. Missing absolute position stays hidden; stale input can jump. Follow the vehicle's absolute input rather than an attached part as the reference.
 
 ## Preserve precision before Unity
 
-Store and transport global positions as `Double3`, which has three `double` components. Use one shared Cartesian coordinate system and unit for the realm, with its axes described by `ReferenceFrame.Coordinates`. Different detectors must feed the same system. Geographic space standardizes on ECEF metres and handles WGS84 conversion; other coordinate datums must be normalized by the application.
+Subtract reference positions in doubles before casting to Unity floats. Converting an already-rounded global Vector3 cannot recover precision. Cartesian projection applies source-axis mapping, optional inverse reference orientation, then desired Unity alignment. Geographic projection derives local east/up/north at the moving reference and retains Earth curvature.
 
-For Cartesian space, the relative displacement is calculated in double precision before its final conversion to a Unity position:
-
-```text
-Unity position = Unity reference position
-               + Unity reference rotation
-               * inverse(converted reference rotation)
-               * coordinate basis
-               * (entity position - reference position)
-```
-
-The coordinate basis maps source axes to Unity axes. A source rotation matrix `R` becomes `B * R * inverse(B)`, where `B` is that basis. With position-only following, the inverse converted reference rotation is omitted. Absolute positions around one billion metres can therefore yield nearby Unity positions such as `20.25 m` without first rounding the global values into floats. Converting an already-rounded global `Vector3` to `Double3` cannot recover precision.
-
-Projected roots stay beneath their Anchors. Projection sets world position and compensates for parent placement; do not add an Anchor's offset to spatial coordinates a second time. Ordinary ghosts without an enabled `Spatial` retain their existing positioning behavior. Network scenery that should move with the reference should use spatial projection too; a local cockpit can remain fixed in the Unity scene.
-
-Setting `Realm.ReferenceFrame` to null returns to identity projection on the next realm update: roots use their stored world coordinates and rotations, and the previous distance limit no longer applies. Valid positions restore suppressed presentation through the usual refresh phase. Missing positions or coordinates that cannot fit in finite Unity floats remain suppressed.
-
-Disabling `Spatial` stops projection and restores renderers and colliders that spatial culling had disabled. The root keeps its last projected world pose; application positioning can take over from that pose.
-
-Only one system should write a participating root's position and published rotation. Remove old root-position behaviors such as the example's `ApplyPosition` from spatial ghost prefabs. Dynamic Rigidbody motion or other transform writers require an application-specific integration; spatial projection directly places the root.
+Geographic distance/range is straight-line ECEF distance in metres, not surface distance. At exact poles, longitude zero defines the tangent axes. Keep the desired Unity reference near the scene origin. Network scenery should share projection; a local cockpit may remain fixed.
 
 ## Limit distant presentation
 
-`MaxDistance` is an optional positive distance in the shared coordinate units, measured in doubles from the reference. Null disables the configured range limit. Select a range appropriate for your visual scale; relative coordinates far from the reference still have the precision limits of Unity floats.
+`MaxDistance` is a positive optional radius in source units (metres for Geographic); null disables the limit. Both the buffered observation and processed pose must fit the reference/range and finite Unity floats. Missing raw input invalidates presentation history; an otherwise valid filtered pose outside range keeps settling rather than repeatedly resetting.
 
-A spatial ghost without a position, with an explicitly assigned but uninitialized reference, or outside the presentation range keeps its tracking identity and data. Its requested view is suppressed; entering range creates the requested view automatically. `Spatial.IsInRange` describes its latest projection result. Root rendering and colliders are also suppressed outside the range while root scripts remain active. This is a presentation limit, not entity removal or a query-availability filter.
-
-`Demanifest` still cancels the view request. Detector failure removes the population; explicit disappearance and inactivity expiry make a Presence unavailable immediately and remove its root after any configured disappearance grace period.
+Suppression hides views, root renderers and colliders while tracking/query membership and scripts continue. `Spatial.IsInRange` describes the latest projection. Requested views return automatically when presentable; `Demanifest` cancels the request. Disappearance and detector failure have separate tracking lifecycles.
 
 ## Reference loss and conversion helpers
 
-A new frame has no usable position until `Position` is assigned or the followed ghost supplies one. `HasPosition` describes that cached state. If a followed ghost disappears, becomes unavailable, disables its spatial component or lacks position data, `IsReferenceAvailable` becomes false and the last valid reference pose is retained. Existing entities continue to project in that frozen frame. A returning identity resumes following on the next update. With no valid reference yet, spatial presentation stays suppressed.
+A missing followed reference sets `IsReferenceAvailable` false and freezes its last valid pose/tangent axes. Following resumes on return. Before the first valid reference, spatial presentation is suppressed. Removing the ReferenceFrame restores identity Cartesian projection, including stored ECEF numbers if geographic input remains.
 
-Application consumers can use the same conversion and distance rules:
-
-| Method | Use |
+| Helper | Use |
 | --- | --- |
-| `TryToUnityPosition(position, out unityPosition)` | Project a double position when the reference is initialized and the position is within its presentation range |
-| `ToSimulationPosition(unityPosition)` | Convert a Unity world position back into the frame's shared Cartesian coordinates |
-| `ToUnityRotation(rotation)` / `ToSimulationRotation(rotation)` | Convert orientations using the selected coordinates and reference alignment |
-| `DistanceTo(position)` | Compute distance from the cached reference in doubles |
+| `TryToUnityPosition(position, out result)` | Project Cartesian/ECEF or GeoPosition input; false if uninitialized, outside range or unrepresentable. |
+| `ToSimulationPosition(unityPosition)` | Inverse world-position conversion; returns ECEF in Geographic space. |
+| `ToGeographicPosition(unityPosition)` | Inverse WGS84 conversion. |
+| `ToUnityRotation` / `ToSimulationRotation` | Source attitude conversion; geographic overloads accept an entity location, otherwise use the reference location. |
+| `ToUnityEarthCenteredRotation` / `ToEarthCenteredRotation` | Body-to-ECEF attitude conversion with explicit body axes. |
+| `DistanceTo` / `Double3.Distance` | Reference distance or independent shared-coordinate distance. |
 
-Check `HasPosition` before inverse-position, rotation-conversion or reference-distance operations when following a ghost that has not published yet. `TryToUnityPosition` returns false while no reference exists or a result cannot fit in finite Unity floats. Use `Double3.Distance(a, b)` for distances between positions in the shared coordinate system independently of a reference frame. Followed state is resolved during realm updates, so conversion helpers use the latest resolved reference.
+Check `HasPosition` before inverse/reference-dependent operations. Helpers use the latest reference resolved by a Realm update. `GeoPosition.ToEarthCentered` / `FromEarthCentered` and `ToEarthCenteredVector` also work independently of a Realm.
 
-## Run the example
+## Run the examples
 
-Import **Relative world**, open `RelativeWorld.unity`, and press Play. Its authored tracking prefab follows the green origin car driving north at 8 m/s. Stationary orange parked cars appear ahead on alternating sides, pass the origin and leave the SDK snapshot behind it. The road markings scroll using the reference frame's actual northward displacement. A white bird circles above the origin, updating both its relative position and heading through the same spatial traits. Its orange feet are separately tracked entities driven by `GeoAttachmentTrait`, converting SDK body offsets and resolving the bird by key. In the Geo Source component's context menu, choose **Detach bird feet** to hold their absolute release poses, then **Attach bird feet** to restore their local offsets; code can call `SetBirdFeetAttached(bool)`.
-
-`GeoSource` detects the current snapshot and explicitly removes missing IDs. `GeoInitializer` supplies `GeoPosition` readings and local attitude to the authored traits. Realm Setup uses Geographic space: the driving car defines the tangent frame directly. A parked car's ECEF position remains constant even though its Unity position moves past the origin. The mock SDK has a starting road location, which is unrelated to reference configuration.
-
-Inspect Realm Setup, the road's `RoadMotion` component and the saved blueprints and variants to change the scene configuration. See the [sample guide](../Samples~/RelativeWorld/README.md) for timings, units and the SDK mapping. Disable and re-enable Tracking to restart.
+[Relative world](../Samples~/RelativeWorld/README.md) demonstrates WGS84 input, noisy/delayed observations, a moving reference and attachable bird feet. [Aircraft formation](../Samples~/AircraftFormation/README.md) demonstrates independently timed aircraft and angular presentation. Their guides describe controls and defaults; initializers show SDK-to-trait mappings.

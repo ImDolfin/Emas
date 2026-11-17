@@ -5,6 +5,7 @@ namespace Emas.RelativeWorld
     /// <summary>Scrolls authored road markings by the followed car's actual travel distance.</summary>
     public sealed class RoadMotion : MonoBehaviour
     {
+        [Tooltip("Tracking setup whose moving reference determines the travelled road distance.")]
         [SerializeField]
         private RealmSetup _setup;
         [Tooltip("Authored road markings, spaced five metres apart along Z.")]

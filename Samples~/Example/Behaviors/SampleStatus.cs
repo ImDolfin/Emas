@@ -4,15 +4,16 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>
-    /// Displays paired-query membership while the authored setup owns tracking and automatic views.
-    /// </summary>
+    /// <summary>Displays paired-query membership while the authored setup owns tracking and automatic views.</summary>
     public sealed class SampleStatus : MonoBehaviour
     {
+        [Tooltip("Tracking setup supplying the Realm observed by this display.")]
         [SerializeField]
         private RealmSetup _setup;
+        [Tooltip("Anchor containing the cars counted by this display.")]
         [SerializeField]
         private AnchorSetup _carAnchor;
+        [Tooltip("Car source controlled by the sample's restart and SDK replacement buttons.")]
         [SerializeField]
         private CarSource _carSource;
 

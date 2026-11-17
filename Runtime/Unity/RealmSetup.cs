@@ -4,9 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Owns one automatically updated realm and the configured anchors beneath this GameObject.
-    /// </summary>
+    /// <summary>Owns one automatically updated realm and the configured anchors beneath this GameObject.</summary>
     /// <remarks>
     /// Add AnchorSetup components to this prefab or its children. Each anchor has one detector provider.
     /// Realm manifestation blueprints map each Kind for every anchor in this realm. This component owns its realm; it never changes Realm.Default.
@@ -22,7 +20,7 @@ namespace Emas
         [SerializeField]
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
-        [Tooltip("Shared playback delay in seconds for timestamped position and rotation. 0: immediate. Start at 0.1 for noisy 60 Hz packets. Extrapolation only fills gaps beyond buffered observations; all roots and the reference use the same time.")]
+        [Tooltip("Shared playback delay in seconds for all timed poses and the followed reference. Zero plays immediately; start at 0.1 s to absorb packet jitter. Adds latency.")]
         [Min(0)]
         [SerializeField]
         private float _interpolationDelay;
@@ -36,7 +34,7 @@ namespace Emas
         [Tooltip("Manual WGS84 reference: latitude/longitude in degrees and ellipsoidal height in metres.")]
         [SerializeField]
         private GeoPosition _geographicPosition;
-        [Tooltip("Cartesian pose axes, or SetSourceRotation quaternion axes in Geographic space. Geographic Unity means east/up/north. Named geographic yaw/pitch/roll and ECEF inputs use their explicit conventions.")]
+        [Tooltip("Axes for Cartesian poses or geographic source quaternions. Geographic Unity is east/up/north. Named geographic angles and ECEF setters use their own conventions.")]
         [SerializeField]
         private CoordinateSystem _coordinates = CoordinateSystem.Unity;
         [Tooltip("Use a Ghost in this realm as the moving reference. Leave Entity ID empty to assign ReferenceFrame.FollowedGhost at runtime.")]
@@ -82,9 +80,7 @@ namespace Emas
         private bool _autoStartPending;
         private int _lifetime;
 
-        /// <summary>
-        /// Gets the owned realm, or null when this setup is stopped.
-        /// </summary>
+        /// <summary>Gets the owned realm, or null when this setup is stopped.</summary>
         /// <value>The isolated realm for this running setup; a later startup creates a new instance.</value>
         public Realm Realm
         {
@@ -102,17 +98,13 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Starts an isolated realm from the active child anchor and reference-frame settings.
-        /// </summary>
+        /// <summary>Starts an isolated realm from the active child anchor and reference-frame settings.</summary>
         /// <remarks>
         /// Called automatically on the first Update after enabling in Play Mode, after providers have enabled. It may also be called explicitly while enabled.
         /// Each anchor's provider supplies a detached detector per start; component providers can reuse their detector.
         /// StopRealm or disabling releases the realm. A startup failure disposes the partially configured realm.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">
-        /// The setup is disabled, already running, invalid, or stopped during source startup.
-        /// </exception>
+        /// <exception cref="InvalidOperationException">The setup is disabled, already running, invalid, or stopped during source startup.</exception>
         public void StartRealm()
         {
             _autoStartPending = false;
@@ -172,9 +164,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Stops this setup and disposes its realm, anchors, sources, ghosts, views and subscriptions.
-        /// </summary>
+        /// <summary>Stops this setup and disposes its realm, anchors, sources, ghosts, views and subscriptions.</summary>
         /// <remarks>
         /// Safe to call repeatedly. The prefab configuration stays in place for the next StartRealm call.
         /// Source providers and application-owned SDK clients remain application-owned.

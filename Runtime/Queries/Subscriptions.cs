@@ -28,9 +28,7 @@ namespace Emas
                 OnLeave = onLeave;
             }
 
-            /// <summary>
-            /// Stops notifications and releases the callback.
-            /// </summary>
+            /// <summary>Stops notifications and releases the callback.</summary>
             public void Dispose()
             {
                 if (Disposed)

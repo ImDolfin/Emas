@@ -87,6 +87,7 @@ namespace Emas.Editor.Tests
         private sealed class LiveTuningDetector : PresenceDetector
         {
             internal static readonly Vector3 AttachmentOffset = new Vector3(2, 0.5f, -1);
+            internal static readonly Double3 AngularVelocity = new Double3(0, Math.PI / 6, 0);
             internal Ghost Edited;
             internal Ghost Control;
             internal Ghost Attachment;
@@ -97,7 +98,6 @@ namespace Emas.Editor.Tests
             internal double LastProjectionStarted;
             private double _sampleSeconds = -1;
             private double _headingDegrees;
-            private double _angularSpeed;
 
             /// <summary>Supplies identical WGS84 observations travelling east at 100 metres per second.</summary>
             /// <param name="seconds">Elapsed SDK time, advanced by at least one microsecond for each new sample.</param>
@@ -106,20 +106,8 @@ namespace Emas.Editor.Tests
             internal void Publish(double seconds, double correction = 0, double headingCorrection = 0)
             {
                 double nextSample = Math.Max(seconds, _sampleSeconds + 0.000001);
-                double heading = 30 * nextSample + headingCorrection;
-                double turn = (heading - _headingDegrees) % 360;
-                if (turn > 180)
-                {
-                    turn -= 360;
-                }
-                else if (turn < -180)
-                {
-                    turn += 360;
-                }
-
-                _angularSpeed = _sampleSeconds >= 0 ? turn / (nextSample - _sampleSeconds) : 0;
                 _sampleSeconds = nextSample;
-                _headingDegrees = heading;
+                _headingDegrees = 30 * nextSample + headingCorrection;
                 GeoPosition position = new GeoPosition(0, (100 * _sampleSeconds + correction) / 6378137.0 * 180.0 / Math.PI, 0);
                 ObservedPosition = position.ToEarthCentered();
                 ObservedTime = Timestamp.FromSeconds(_sampleSeconds);
@@ -128,7 +116,10 @@ namespace Emas.Editor.Tests
                     Spatial spatial = ghost.GetComponent<Spatial>();
                     spatial.SetGeographicPosition(position, ObservedTime);
                     spatial.SetGeographicRotation(30 * _sampleSeconds + headingCorrection, 0, 0, ObservedTime);
-                    ghost.GetComponent<Extrapolation>().SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
+                    Extrapolation extrapolation = ghost.GetComponent<Extrapolation>();
+                    extrapolation.SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
+                    // The correction is measurement error, not an angular-rate jump. Keep tuning independent of rate estimation.
+                    extrapolation.SetBodyAngularVelocity(AngularVelocity, CoordinateSystem.Unity, ObservedTime);
                 }
 
                 ObservedRotation = Edited.GetComponent<Spatial>().Rotation;
@@ -137,7 +128,7 @@ namespace Emas.Editor.Tests
 
             internal Quaternion PredictedRotation(float horizon)
             {
-                return Quaternion.AngleAxis((float)((_headingDegrees + _angularSpeed * horizon) % 360), Vector3.up);
+                return Quaternion.AngleAxis((float)((_headingDegrees + 30 * horizon) % 360), Vector3.up);
             }
 
             /// <summary>Creates the edited origin, its property-controlled twin and a parent-local attached part.</summary>
@@ -752,6 +743,43 @@ namespace Emas.Editor.Tests
             }
         }
 
+        /// <summary>Multi-object strategy layout keeps compatible settings editable and hides fields belonging to different models.</summary>
+        [Test]
+        public void ExtrapolationAuthoring_MultiObjectLayoutKeepsCompatibleSettingsEditable()
+        {
+            GameObject first = new GameObject("first strategy root");
+            GameObject second = new GameObject("second strategy root");
+            _objects.Add(first);
+            _objects.Add(second);
+            first.SetActive(false);
+            second.SetActive(false);
+            Extrapolation firstExtrapolation = first.AddComponent<Extrapolation>();
+            Extrapolation secondExtrapolation = second.AddComponent<Extrapolation>();
+            firstExtrapolation.Strategy = new SingerExtrapolation { ManeuverTimeConstant = 0.35f };
+            secondExtrapolation.Strategy = new SingerExtrapolation { ManeuverTimeConstant = 0.8f };
+            ExtrapolationStrategyDrawer drawer = new ExtrapolationStrategyDrawer();
+
+            using (SerializedObject settings = new SerializedObject(new UnityEngine.Object[] { firstExtrapolation, secondExtrapolation }))
+            using (SerializedObject single = new SerializedObject(firstExtrapolation))
+            {
+                SerializedProperty strategy = settings.FindProperty("_strategy");
+                float singleHeight = drawer.GetPropertyHeight(single.FindProperty("_strategy"), GUIContent.none);
+                Assert.That(singleHeight, Is.GreaterThan(EditorGUIUtility.singleLineHeight));
+                Assert.That(drawer.GetPropertyHeight(strategy, GUIContent.none), Is.EqualTo(singleHeight));
+                Assert.That(strategy.FindPropertyRelative("_maneuverTimeConstant").hasMultipleDifferentValues, Is.True);
+
+                secondExtrapolation.Strategy = new NoExtrapolation();
+                settings.Update();
+                strategy = settings.FindProperty("_strategy");
+                Assert.That(drawer.GetPropertyHeight(strategy, GUIContent.none), Is.EqualTo(EditorGUIUtility.singleLineHeight));
+
+                secondExtrapolation.Strategy = new SingerExtrapolation { ManeuverTimeConstant = 0.6f };
+                settings.Update();
+                Assert.That(drawer.GetPropertyHeight(settings.FindProperty("_strategy"), GUIContent.none),
+                    Is.EqualTo(singleHeight));
+            }
+        }
+
         /// <summary>
         /// Hidden built-in traits retain serialized settings and enabled states when an authored Ghost prefab is saved and reopened.
         /// </summary>
@@ -848,7 +876,7 @@ namespace Emas.Editor.Tests
             float horizon = extrapolation.enabled ? extrapolation.MaximumExtrapolation : 0;
             Double3 target = source.ObservedPosition + source.ObservedVelocity * horizon;
             double positionError = Double3.Distance(position, target);
-            double rotationError = Quaternion.Angle(rotation, source.PredictedRotation(horizon));
+            double rotationError = RotationDistance(rotation, source.PredictedRotation(horizon));
 
             edit();
             AssertLiveTuningUpdate(realm, source, context);
@@ -858,8 +886,24 @@ namespace Emas.Editor.Tests
             double rotationProgress = rotationHalfLife > 0 ? rotationError * Math.Log(2) * elapsed / rotationHalfLife : 0;
             Assert.That(Double3.Distance(frame.Position, position), Is.LessThanOrEqualTo(0.01 + positionProgress),
                 context + " must not jump the absolute displayed position.");
-            Assert.That(Quaternion.Angle(frame.Rotation, rotation), Is.LessThanOrEqualTo(0.1 + rotationProgress),
+            double rotationDistance = RotationDistance(frame.Rotation, rotation);
+            Assert.That(rotationDistance, Is.LessThanOrEqualTo(0.1 + rotationProgress),
                 context + " must not jump the absolute displayed rotation.");
+        }
+
+        /// <summary>Measures small orientation changes without float-dot rounding appearing as a tuning jump.</summary>
+        /// <param name="first">The earlier public orientation.</param>
+        /// <param name="second">The later public orientation.</param>
+        /// <returns>The shortest normalized quaternion distance in degrees.</returns>
+        private static double RotationDistance(Quaternion first, Quaternion second)
+        {
+            double dot = (double)first.x * second.x + (double)first.y * second.y
+                + (double)first.z * second.z + (double)first.w * second.w;
+            double firstLength = (double)first.x * first.x + (double)first.y * first.y
+                + (double)first.z * first.z + (double)first.w * first.w;
+            double secondLength = (double)second.x * second.x + (double)second.y * second.y
+                + (double)second.z * second.z + (double)second.w * second.w;
+            return 2 * Math.Acos(Math.Min(1d, Math.Abs(dot) / Math.Sqrt(firstLength * secondLength))) * 180 / Math.PI;
         }
 
         /// <summary>Checks convergence to the held observation's requested cap after filter and tuning-transition time has elapsed.</summary>
@@ -967,6 +1011,8 @@ namespace Emas.Editor.Tests
                 Assert.That(spatial.RotationTime, Is.EqualTo(source.ObservedTime), context);
                 Assert.That(extrapolation.Velocity, Is.EqualTo(source.ObservedVelocity), context);
                 Assert.That(extrapolation.HasVelocity, Is.True, context);
+                Assert.That(extrapolation.AngularVelocity, Is.EqualTo(LiveTuningDetector.AngularVelocity), context);
+                Assert.That(extrapolation.HasAngularVelocity, Is.True, context);
             }
 
             ReferenceFrame frame = realm.ReferenceFrame;

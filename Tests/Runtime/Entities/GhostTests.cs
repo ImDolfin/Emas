@@ -101,7 +101,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Required lookup searches the Ghost root, directs missing composition to the Kind's blueprint and Ghost Prefab field, and resolves a disabled root provider.
+        /// Required lookup uses one Ghost marker, directs missing composition to the Kind's blueprint and resolves disabled root providers.
         /// </summary>
         [Test]
         public void GetRequired_ReturnsProviderOrIdentifiesMissingContract()
@@ -117,12 +117,15 @@ namespace Emas.Tests
                 child.AddComponent<FirstPart>();
                 realm.Update();
                 IGhost ghost = concrete;
+                Assert.That(concrete.gameObject.AddComponent<Ghost>(), Is.Null);
+                Assert.That(ghost.GetRequired<Ghost>(), Is.SameAs(concrete));
                 InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ghost.GetRequired<IPart>());
                 Assert.That(error.Message, Does.Contain(ghost.Key.ToString()).And.Contain(typeof(IPart).FullName)
                     .And.Contain("[" + typeof(IPart).Assembly.GetName().Name + "]")
                     .And.Contain("found 0 matching root components").And.Contain("GameObject '43'")
                     .And.Contain(typeof(Ghost).FullName).And.Contain("Manifestation Blueprint for Kind 'vehicles.car'")
                     .And.Contain("Ghost Prefab field").And.Contain("Ghost Prefab is unassigned")
+                    .And.Contain("Realm Setup > Kind mappings")
                     .And.Contain("Anchor, parents, children or views"));
 
                 FirstPart first = concrete.gameObject.AddComponent<FirstPart>();

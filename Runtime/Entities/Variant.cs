@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Identifies an application-defined appearance independently of a ghost kind.
-    /// </summary>
+    /// <summary>Identifies an application-defined appearance independently of a ghost kind.</summary>
     /// <remarks>
     /// Declare named static readonly values in application assemblies for autocomplete.
     /// IDs use ordinal equality. There are no implicit conversions from strings or kinds.
@@ -14,20 +12,14 @@ namespace Emas
     [Serializable]
     public struct Variant : IEquatable<Variant>
     {
-        /// <summary>
-        /// Represents an unspecified appearance.
-        /// </summary>
+        /// <summary>Represents an unspecified appearance.</summary>
         public static readonly Variant None = default(Variant);
         [Tooltip("Case-sensitive appearance ID. Leave empty for Variant.None.")]
         [SerializeField]
         private string _id;
 
-        /// <summary>
-        /// Gets the stable appearance identifier.
-        /// </summary>
-        /// <value>
-        /// The identifier, or an empty string for <see cref="None"/>.
-        /// </value>
+        /// <summary>Gets the stable appearance identifier.</summary>
+        /// <value>The identifier, or an empty string for <see cref="None"/>.</value>
         public string Id
         {
             get
@@ -36,12 +28,8 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether no appearance is specified.
-        /// </summary>
-        /// <value>
-        /// True for the default value or an empty serialized identifier.
-        /// </value>
+        /// <summary>Gets whether no appearance is specified.</summary>
+        /// <value>True for the default value or an empty serialized identifier.</value>
         public bool IsNone
         {
             get
@@ -50,15 +38,9 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Declares an appearance with a stable identifier.
-        /// </summary>
-        /// <param name="id">
-        /// The non-empty, case-sensitive identifier.
-        /// </param>
-        /// <exception cref="ArgumentException">
-        /// The identifier is null, empty or whitespace.
-        /// </exception>
+        /// <summary>Declares an appearance with a stable identifier.</summary>
+        /// <param name="id">The non-empty, case-sensitive identifier.</param>
+        /// <exception cref="ArgumentException">The identifier is null, empty or whitespace.</exception>
         public Variant(string id)
         {
             if (string.IsNullOrWhiteSpace(id))
@@ -69,35 +51,19 @@ namespace Emas
             _id = id;
         }
 
-        /// <summary>
-        /// Compares appearance identifiers for equality.
-        /// </summary>
-        /// <param name="left">
-        /// The first appearance.
-        /// </param>
-        /// <param name="right">
-        /// The second appearance.
-        /// </param>
-        /// <returns>
-        /// True when the identifiers are equal.
-        /// </returns>
+        /// <summary>Compares appearance identifiers for equality.</summary>
+        /// <param name="left">The first appearance.</param>
+        /// <param name="right">The second appearance.</param>
+        /// <returns>True when the identifiers are equal.</returns>
         public static bool operator ==(Variant left, Variant right)
         {
             return left.Equals(right);
         }
 
-        /// <summary>
-        /// Compares appearance identifiers for inequality.
-        /// </summary>
-        /// <param name="left">
-        /// The first appearance.
-        /// </param>
-        /// <param name="right">
-        /// The second appearance.
-        /// </param>
-        /// <returns>
-        /// True when the identifiers differ.
-        /// </returns>
+        /// <summary>Compares appearance identifiers for inequality.</summary>
+        /// <param name="left">The first appearance.</param>
+        /// <param name="right">The second appearance.</param>
+        /// <returns>True when the identifiers differ.</returns>
         public static bool operator !=(Variant left, Variant right)
         {
             return !left.Equals(right);

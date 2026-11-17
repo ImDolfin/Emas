@@ -4,9 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Owns anchors, ghosts, blueprints, views and query subscriptions.
-    /// </summary>
+    /// <summary>Owns anchors, ghosts, blueprints, views and query subscriptions.</summary>
     /// <remarks>
     /// All operations require Unity's main thread. The application handles SDK threading before calling Emas.
     /// Dispose isolated realms when their owner stops; Unity advances Realm.Default automatically.
@@ -46,12 +44,8 @@ namespace Emas
         private bool _notifyingUpdateQueries;
         private bool _disposed;
 
-        /// <summary>
-        /// Gets the shared realm advanced automatically by Unity.
-        /// </summary>
-        /// <value>
-        /// The live default realm; a disposed default is recreated on access.
-        /// </value>
+        /// <summary>Gets the shared realm advanced automatically by Unity.</summary>
+        /// <value>The live default realm; a disposed default is recreated on access.</value>
         public static Realm Default
         {
             get
@@ -60,9 +54,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets a copied, read-only snapshot of this realm's anchors.
-        /// </summary>
+        /// <summary>Gets a copied, read-only snapshot of this realm's anchors.</summary>
         /// <remarks>
         /// Read on the Unity thread. Earlier snapshots do not change; disposed realms return an empty snapshot.
         /// The referenced anchors retain their own lifetimes. No ordering is guaranteed.
@@ -81,16 +73,11 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets a copied, read-only snapshot of all live tracked Ghost roots in this realm, including unavailable ones.
-        /// </summary>
+        /// <summary>Gets a copied, read-only snapshot of all live tracked Ghost roots in this realm, including unavailable ones.</summary>
         /// <remarks>
-        /// Includes prepared roots, roots awaiting activation and roots retained during disappearance grace or handover.
-        /// Available during application initialization for roots created so far; entities discovered later require a fresh snapshot.
-        /// Supports LINQ over identity, root type and component contracts. Check IsAvailable before consuming source data.
-        /// Earlier snapshots retain their membership; referenced Unity components keep their own lifetimes and may be destroyed.
-        /// Removed or destroyed roots are excluded from new snapshots. Disposed realms return an empty snapshot.
-        /// Read on Unity's main thread. No ordering is guaranteed.
+        /// Includes prepared, pending, grace-period and handover roots; check IsAvailable before reading current source
+        /// data. New snapshots exclude removed or destroyed roots and are empty after disposal. Earlier snapshots keep
+        /// their membership, but Unity components can be destroyed. Ordering is unspecified.
         /// </remarks>
         /// <value>A membership snapshot of live roots, regardless of availability or view state.</value>
         public IReadOnlyList<IGhost> Ghosts
@@ -115,15 +102,11 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets the optional Cartesian or geographic reference used to project source poses into Unity world space.
-        /// </summary>
+        /// <summary>Gets or sets the optional Cartesian or geographic reference used to project source poses into Unity world space.</summary>
         /// <remarks>
-        /// Null, the default, uses an identity frame: spatial positions and rotations map directly to Unity world space.
-        /// Enabled Spatial components opt individual ghosts in; disable Spatial to release transform control.
-        /// Changes apply during the next realm update or an explicit Manifest request outside update query notifications.
-        /// Projection runs after source processing and before root/view activation, and does not change data, source activity or query membership.
-        /// Anchor parenting is retained; its transform is compensated when assigning the projected world pose.
+        /// Null uses identity Cartesian projection. Enabled Spatial components opt in; Anchor parenting is retained.
+        /// Changes apply on the next update or an explicit Manifest outside query notification. Projection precedes
+        /// activation and leaves raw data, activity and query membership unchanged.
         /// </remarks>
         /// <value>The reference frame, or null for identity Cartesian projection.</value>
         /// <exception cref="ObjectDisposedException">A value is assigned after this realm has been disposed.</exception>
@@ -143,11 +126,10 @@ namespace Emas
         /// <summary>Gets or sets the shared playback delay for timestamped positions and orientations.</summary>
         /// <value>A finite, nonnegative delay in seconds; zero, the default, uses immediate presentation.</value>
         /// <remarks>
-        /// A positive delay interpolates recorded observations at one SDK time for every root and the followed
-        /// reference. Choose enough delay to cover relative packet jitter. Extrapolation only extrapolates beyond
-        /// the newest buffered observation, within its own limit; disabled extrapolation holds that observation.
-        /// Untimed channels retain immediate behavior. Absolute transport latency is additional and unknown.
-        /// Live changes blend presentation differences over 0.25 seconds. Attached parts inherit their parent's pose.
+        /// Timed channels share one delayed SDK timeline; untimed channels remain immediate. Extrapolation fills gaps
+        /// beyond recorded poses within its own horizon. Choose a delay covering relative packet jitter; transport
+        /// latency is additional. Live edits blend over 0.25 unscaled seconds. Attachments inherit their parent's
+        /// presentation.
         /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN or infinite.</exception>
         /// <exception cref="ObjectDisposedException">This realm has been disposed.</exception>
@@ -170,9 +152,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Creates an isolated realm advanced explicitly with Update.
-        /// </summary>
+        /// <summary>Creates an isolated realm advanced explicitly with Update.</summary>
         public Realm()
             : this(() => Time.realtimeSinceStartupAsDouble)
         {
@@ -198,23 +178,15 @@ namespace Emas
             _spatial.ResetTime(_identities.Snapshot());
         }
 
-        /// <summary>
-        /// Registers a blueprint by kind.
-        /// </summary>
-        /// <param name="blueprint">
-        /// The blueprint to register.
-        /// </param>
+        /// <summary>Registers a blueprint by kind.</summary>
+        /// <param name="blueprint">The blueprint to register.</param>
         /// <remarks>
         /// Assets remain application-owned. Each kind has one blueprint mapping shared by all anchors in this realm.
         /// Each registration captures the asset's settings. Re-register after edits to refresh requested views on the next update;
         /// existing roots stay intact. Re-register after changing its kind to release the previous kind registration.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// The blueprint is null or its kind/view mappings are invalid.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentException">The blueprint is null or its kind/view mappings are invalid.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void RegisterManifestationBlueprint(ManifestationBlueprint blueprint)
         {
             ThrowIfDisposed();
@@ -223,64 +195,34 @@ namespace Emas
             RebindManifestationBlueprintRegistration(staleKinds, blueprint.Kind);
         }
 
-        /// <summary>
-        /// Creates or returns an anchor at the root scene frame.
-        /// </summary>
-        /// <param name="id">
-        /// The anchor identifier.
-        /// </param>
-        /// <param name="sources">
-        /// The sources to attach and start, including on an existing anchor.
-        /// </param>
-        /// <returns>
-        /// The existing or new anchor.
-        /// </returns>
+        /// <summary>Creates or returns an anchor at the root scene frame.</summary>
+        /// <param name="id">The anchor identifier.</param>
+        /// <param name="sources">The sources to attach and start, including on an existing anchor.</param>
+        /// <returns>The existing or new anchor.</returns>
         /// <remarks>
         /// On failure, newly attached sources are removed and prepared ghosts are restored; existing sources remain.
         /// A newly created anchor is disposed.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// The anchor ID is empty.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// An existing anchor uses another frame, or source attachment fails.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentException">The anchor ID is empty.</exception>
+        /// <exception cref="InvalidOperationException">An existing anchor uses another frame, or source attachment fails.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public Anchor GetOrCreateAnchor(string id, params PresenceDetector[] sources)
         {
             return GetOrCreateAnchor(id, null, sources);
         }
 
-        /// <summary>
-        /// Creates or returns an anchor under a scene frame.
-        /// </summary>
-        /// <param name="id">
-        /// The anchor identifier.
-        /// </param>
-        /// <param name="frame">
-        /// The optional parent transform.
-        /// </param>
-        /// <param name="sources">
-        /// The sources to attach and start, including on an existing anchor.
-        /// </param>
-        /// <returns>
-        /// The existing or new anchor.
-        /// </returns>
+        /// <summary>Creates or returns an anchor under a scene frame.</summary>
+        /// <param name="id">The anchor identifier.</param>
+        /// <param name="frame">The optional parent transform.</param>
+        /// <param name="sources">The sources to attach and start, including on an existing anchor.</param>
+        /// <returns>The existing or new anchor.</returns>
         /// <remarks>
         /// On failure, newly attached sources are removed and prepared ghosts are restored; existing sources remain.
         /// A newly created anchor is disposed.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// The anchor ID is empty.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// An existing anchor uses another frame, or source attachment fails.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentException">The anchor ID is empty.</exception>
+        /// <exception cref="InvalidOperationException">An existing anchor uses another frame, or source attachment fails.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public Anchor GetOrCreateAnchor(string id, Transform frame, params PresenceDetector[] sources)
         {
             ThrowIfDisposed();
@@ -347,21 +289,13 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Removes and disposes an anchor.
-        /// </summary>
-        /// <param name="id">
-        /// The anchor identifier.
-        /// </param>
+        /// <summary>Removes and disposes an anchor.</summary>
+        /// <param name="id">The anchor identifier.</param>
         /// <remarks>
         /// Unknown IDs are ignored.
         /// </remarks>
-        /// <exception cref="ArgumentNullException">
-        /// The ID is null.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentNullException">The ID is null.</exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void RemoveAnchor(string id)
         {
             ThrowIfDisposed();
@@ -372,18 +306,10 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Finds a tracked ghost by its exact identity, including unavailable ghosts.
-        /// </summary>
-        /// <param name="key">
-        /// The case-sensitive anchor, kind and entity identity.
-        /// </param>
-        /// <param name="ghost">
-        /// The tracked ghost, or null when no live object exists for this identity.
-        /// </param>
-        /// <returns>
-        /// True when this realm contains the ghost; false for missing or invalid keys and disposed realms.
-        /// </returns>
+        /// <summary>Finds a tracked ghost by its exact identity, including unavailable ghosts.</summary>
+        /// <param name="key">The case-sensitive anchor, kind and entity identity.</param>
+        /// <param name="ghost">The tracked ghost, or null when no live object exists for this identity.</param>
+        /// <returns>True when this realm contains the ghost; false for missing or invalid keys and disposed realms.</returns>
         /// <remarks>
         /// Read on Unity's main thread. Prepared ghosts and ghosts in a source handover
         /// can be returned while unavailable; check IsAvailable before consuming their data. Lookup does not
@@ -408,34 +334,20 @@ namespace Emas
             return true;
         }
 
-        /// <summary>
-        /// Creates an immutable query description scoped to this Realm's available Ghosts.
-        /// </summary>
-        /// <param name="partialName">
-        /// The optional case-insensitive display-name substring; null leaves names unrestricted. Entity IDs are separate.
-        /// </param>
-        /// <returns>
-        /// A reusable description evaluated when counted, selected, enumerated or subscribed to.
-        /// </returns>
+        /// <summary>Creates an immutable query description scoped to this Realm's available Ghosts.</summary>
+        /// <param name="partialName">The optional case-insensitive display-name substring; null leaves names unrestricted. Entity IDs are separate.</param>
+        /// <returns>A reusable description evaluated when counted, selected, enumerated or subscribed to.</returns>
         /// <remarks>Use on Unity's main thread. Does not advance tracking, create roots or request views. A disposed Realm yields empty query results; subscriptions reject disposal.</remarks>
         public Query Query(string partialName = null)
         {
             return new Query(this, partialName);
         }
 
-        /// <summary>
-        /// Uses an existing immutable query description in this realm.
-        /// </summary>
-        /// <param name="description">
-        /// The query description.
-        /// </param>
-        /// <returns>
-        /// A new description bound to this Realm, retaining all filters and leaving the original query and its scope unchanged.
-        /// </returns>
+        /// <summary>Uses an existing immutable query description in this realm.</summary>
+        /// <param name="description">The query description.</param>
+        /// <returns>A new description bound to this Realm, retaining all filters and leaving the original query and its scope unchanged.</returns>
         /// <remarks>Rebinds descriptions from Query.All or another Realm without changing their existing subscriptions. Query evaluation and notifications require Unity's main thread.</remarks>
-        /// <exception cref="ArgumentNullException">
-        /// Thrown when the description is null.
-        /// </exception>
+        /// <exception cref="ArgumentNullException">Thrown when the description is null.</exception>
         public Query Query(Query description)
         {
             if (description == null)
@@ -446,56 +358,34 @@ namespace Emas
             return description.Rebind(this);
         }
 
-        /// <summary>
-        /// Prepares an unavailable typed ghost before source discovery.
-        /// </summary>
-        /// <typeparam name="TGhost">
-        /// The ghost component type.
-        /// </typeparam>
-        /// <param name="anchorId">
-        /// The anchor identifier.
-        /// </param>
-        /// <param name="kind">
-        /// The ghost kind.
-        /// </param>
-        /// <param name="entityId">
-        /// The source entity identifier.
-        /// </param>
-        /// <param name="variant">
-        /// The appearance; null retains an existing value, and None clears it.
-        /// </param>
-        /// <returns>
-        /// The prepared ghost.
-        /// </returns>
+        /// <summary>Prepares an unavailable typed ghost before source discovery.</summary>
+        /// <typeparam name="TGhost">The ghost component type.</typeparam>
+        /// <param name="anchorId">The anchor identifier.</param>
+        /// <param name="kind">The ghost kind.</param>
+        /// <param name="entityId">The source entity identifier.</param>
+        /// <param name="variant">The appearance; null retains an existing value, and None clears it.</param>
+        /// <returns>The prepared ghost.</returns>
         /// <remarks>
         /// The anchor must exist. Preparation never makes a ghost available or assigns a source.
         /// </remarks>
-        /// <exception cref="ArgumentException">
-        /// The kind or entity ID is invalid.
-        /// </exception>
+        /// <exception cref="ArgumentException">The kind or entity ID is invalid.</exception>
         /// <exception cref="InvalidOperationException">
         /// The anchor does not exist, another detector owns the identity, or the existing or authored root cannot provide TGhost.
         /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public TGhost Prepare<TGhost>(string anchorId, Kind kind, string entityId, Variant? variant = null) where TGhost : Ghost
         {
             return GetOrCreate<TGhost>(null, anchorId, entityId, kind, variant, null);
         }
 
-        /// <summary>
-        /// Registers a Ghost root type and binds its configured traits to application data.
-        /// </summary>
+        /// <summary>Registers a Ghost root type and binds its configured traits to application data.</summary>
         /// <typeparam name="TGhost">The Ghost component used as the invisible root.</typeparam>
         /// <param name="kind">The kind this initializer handles.</param>
         /// <param name="initialize">Connects the Ghost's traits to their source-independent value readers.</param>
         /// <remarks>
-        /// Register before attaching detectors. The callback runs after root creation and before SDK data is
-        /// read or the Ghost becomes available. Presence.Source is already assigned. It runs again when
-        /// the source object or capabilities change, or a retained Ghost is rediscovered or handed to a new detector.
-        /// A GhostInitializer on an AnchorSetup overrides this registration for that anchor.
-        /// Define traits on the Ghost or its prefab; use GetComponent to bind their readers here.
+        /// Register before roots of this Kind exist. Bind authored traits using the already assigned Presence.Source.
+        /// Initialization repeats on source/capability changes, rediscovery and handover. An Anchor's GhostInitializer
+        /// overrides this registration. The callback runs before trait reads and availability.
         /// </remarks>
         /// <exception cref="ArgumentException">The kind is invalid.</exception>
         /// <exception cref="ArgumentNullException">The initializer is null.</exception>
@@ -508,9 +398,7 @@ namespace Emas
             _population.RegisterPresenceInitializer(kind, initialize);
         }
 
-        /// <summary>
-        /// Finds a stable presence by identity, including one that is temporarily unavailable.
-        /// </summary>
+        /// <summary>Finds a stable presence by identity, including one that is temporarily unavailable.</summary>
         /// <param name="key">The anchor, kind and entity identity.</param>
         /// <param name="presence">The tracked presence, or null when absent.</param>
         /// <returns>True for a retained presence with a live root; false for absent identities or disposed realms.</returns>
@@ -520,9 +408,7 @@ namespace Emas
             return !_disposed && _population.TryGetPresence(key, out presence);
         }
 
-        /// <summary>
-        /// Requests a manifestation for a detected presence.
-        /// </summary>
+        /// <summary>Requests a manifestation for a detected presence.</summary>
         /// <param name="presence">A presence owned by this realm; null, foreign and removed handles are ignored.</param>
         /// <returns>The current view, or null while no view can be shown.</returns>
         /// <remarks>Uses the same request lifetime and deferred refresh behavior as <see cref="Manifest(IGhost)"/>.</remarks>
@@ -532,9 +418,7 @@ namespace Emas
             return Manifest(_population.FindPresenceRoot(presence));
         }
 
-        /// <summary>
-        /// Removes the view of a presence while retaining its detection and Ghost root.
-        /// </summary>
+        /// <summary>Removes the view of a presence while retaining its detection and Ghost root.</summary>
         /// <param name="presence">The presence to demanifest.</param>
         /// <remarks>Null, foreign and removed presences are ignored. Cancels the request until Manifest is called again.</remarks>
         /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
@@ -543,26 +427,16 @@ namespace Emas
             Demanifest(_population.FindPresenceRoot(presence));
         }
 
-        /// <summary>
-        /// Requests or refreshes the view selected by the ghost's variant.
-        /// </summary>
-        /// <param name="ghost">
-        /// A tracked root owned by this realm; null, foreign and removed roots are ignored.
-        /// </param>
-        /// <returns>
-        /// The view component, or null when no view can be created yet.
-        /// </returns>
+        /// <summary>Requests or refreshes the view selected by the ghost's variant.</summary>
+        /// <param name="ghost">A tracked root owned by this realm; null, foreign and removed roots are ignored.</param>
+        /// <returns>The view component, or null when no view can be created yet.</returns>
         /// <remarks>
-        /// Requests made during source mutation or finalization are refreshed after source data is complete.
-        /// Requests from update query notifications use that update's projected pose, keeping followed references and attachments aligned.
-        /// The request persists while unavailable, awaiting a reference or outside spatial range; a view can appear
-        /// on a later update without another call. Demanifest cancels that request. Trait readers are not refreshed by this call.
-        /// Null, foreign and removed ghosts return null.
-        /// Presentation failures are logged without stopping tracking; call Manifest again after fixing the cause to retry.
+        /// Requests persist until Demanifest or removal, including while unavailable or out of range. Mutation-time
+        /// requests wait for complete data; query callbacks use the current shared projection. This does not read
+        /// traits. Null, foreign or removed roots return null. Presentation failures are logged; call again after fixing
+        /// the cause to retry.
         /// </remarks>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public View Manifest(IGhost ghost)
         {
             ThrowIfDisposed();
@@ -581,18 +455,12 @@ namespace Emas
             return record.View;
         }
 
-        /// <summary>
-        /// Removes a ghost's view while retaining its ghost.
-        /// </summary>
-        /// <param name="ghost">
-        /// The ghost to demanifest.
-        /// </param>
+        /// <summary>Removes a ghost's view while retaining its ghost.</summary>
+        /// <param name="ghost">The ghost to demanifest.</param>
         /// <remarks>
         /// Cancels the persistent view request. Null, foreign and removed ghosts are ignored; source availability is unchanged.
         /// </remarks>
-        /// <exception cref="ObjectDisposedException">
-        /// The realm was disposed.
-        /// </exception>
+        /// <exception cref="ObjectDisposedException">The realm was disposed.</exception>
         public void Demanifest(IGhost ghost)
         {
             ThrowIfDisposed();
@@ -603,18 +471,14 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Applies a bounded source batch, refreshes traits and Ghost behavior, projects spatial poses, then finalizes availability, views and queries.
-        /// </summary>
+        /// <summary>Applies a bounded source batch, refreshes traits and Ghost behavior, projects spatial poses, then finalizes availability, views and queries.</summary>
         /// <remarks>
         /// Processes at most 256 queued actions present at update entry, then ticks attached detectors.
         /// Newly queued actions wait for a later update. Expiry runs after publications, and all trait reads finish
         /// before Ghost.OnUpdate hooks and spatial projection. Availability and views finalize before query notifications.
         /// A disposed realm does nothing.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">
-        /// Called inside another update, source callback or finalization phase.
-        /// </exception>
+        /// <exception cref="InvalidOperationException">Called inside another update, source callback or finalization phase.</exception>
         public void Update()
         {
             if (_disposed)
@@ -671,9 +535,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Disposes all anchors, ghosts, views and subscriptions.
-        /// </summary>
+        /// <summary>Disposes all anchors, ghosts, views and subscriptions.</summary>
         /// <remarks>
         /// Repeated disposal is safe. Update becomes a no-op; lookups and query results are empty.
         /// Operations that configure tracking, request views or subscribe throw ObjectDisposedException.

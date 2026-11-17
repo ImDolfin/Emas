@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Defines the signed source axes corresponding to Unity right, up and forward.
-    /// </summary>
+    /// <summary>Defines the signed source axes corresponding to Unity right, up and forward.</summary>
     /// <remarks>
     /// Each source axis must appear exactly once. The mapping determines handedness and preserves distances.
     /// Positions and quaternion rotation matrices use the same source basis for both world and local axes.
@@ -22,10 +20,13 @@ namespace Emas
         /// <summary>Geographic coordinates: X north, Y east and Z down.</summary>
         public static readonly CoordinateSystem NorthEastDown = new CoordinateSystem(Axis.PositiveY, Axis.NegativeZ, Axis.PositiveX);
 
+        [Tooltip("Signed source axis mapped to Unity X (right). Each source axis must be used once.")]
         [SerializeField]
         private Axis _right;
+        [Tooltip("Signed source axis mapped to Unity Y (up). Each source axis must be used once.")]
         [SerializeField]
         private Axis _up;
+        [Tooltip("Signed source axis mapped to Unity Z (forward). Each source axis must be used once.")]
         [SerializeField]
         private Axis _forward;
 
@@ -71,9 +72,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Creates a coordinate convention from three distinct signed source axes.
-        /// </summary>
+        /// <summary>Creates a coordinate convention from three distinct signed source axes.</summary>
         /// <param name="right">The source axis that maps to Unity positive X.</param>
         /// <param name="up">The source axis that maps to Unity positive Y.</param>
         /// <param name="forward">The source axis that maps to Unity positive Z.</param>

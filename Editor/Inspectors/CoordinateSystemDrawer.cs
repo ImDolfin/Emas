@@ -4,9 +4,7 @@ using UnityEngine;
 
 namespace Emas.Editor
 {
-    /// <summary>
-    /// Offers coordinate presets and inline signed-axis selectors for custom mappings.
-    /// </summary>
+    /// <summary>Offers coordinate presets and inline signed-axis selectors for custom mappings.</summary>
     [CustomPropertyDrawer(typeof(CoordinateSystem))]
     public sealed class CoordinateSystemDrawer : PropertyDrawer
     {

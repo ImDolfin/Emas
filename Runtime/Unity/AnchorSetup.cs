@@ -2,9 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Configures one prefab anchor with a detector component and automatic view requests.
-    /// </summary>
+    /// <summary>Configures one prefab anchor with a detector component and automatic view requests.</summary>
     /// <remarks>
     /// Place on the anchor GameObject under a RealmSetup. Add exactly one enabled MonoBehaviour
     /// deriving from PresenceDetectorComponent (or implementing IDetectorProvider) to the same GameObject.
@@ -24,9 +22,7 @@ namespace Emas
         private Anchor _anchor;
         private RealmSetup _attachmentOwner;
 
-        /// <summary>
-        /// Gets the configured anchor ID.
-        /// </summary>
+        /// <summary>Gets the configured anchor ID.</summary>
         /// <value>The serialized identifier, which must be unique within the owning realm.</value>
         public string Id
         {
@@ -36,9 +32,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the live anchor, or null while this setup is stopped.
-        /// </summary>
+        /// <summary>Gets the live anchor, or null while this setup is stopped.</summary>
         /// <value>The current runtime attachment; disabling and re-enabling creates a new anchor.</value>
         public Anchor Anchor
         {

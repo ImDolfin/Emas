@@ -9,7 +9,9 @@ Import through Package Manager before opening a scene.
 | **Relative world** (`RelativeWorld/`) | `RelativeWorld.unity` | Authored `Spatial` roots and blueprint variant rows, `Double3` positions, parked-car query membership and bird-distance lookup around a driving reference |
 | **Aircraft formation** (`AircraftFormation/`) | `AircraftFormation.unity` | A Mach 1 cockpit reference, two equal-speed wingmen, combined angular maneuvers, independent capture/delivery timing, noise and live angular instruments |
 
-Imported samples appear beneath `Assets/Samples/Emas/0.1.0/`, in a folder matching their displayed sample name.
+Imported samples appear beneath `Assets/Samples/Emas/<version>/`, in a folder matching their displayed sample name.
+
+Package-wide guides live in the installed package's `Documentation~` folder; sample-relative source links work after import too.
 
 Every scene uses a reusable tracking prefab with Realm Setup and Anchor Setup components. Ghost roots, views, blueprints with inline variants, materials, cameras and environments are saved as inspectable assets or scene objects. Customize those assets in the Inspector; the small source components connect SDK data to traits already configured on the Ghost roots. Play Mode creates only the tracked instances.
 

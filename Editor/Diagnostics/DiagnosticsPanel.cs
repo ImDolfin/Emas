@@ -99,8 +99,8 @@ namespace Emas.Editor
                 }
             }
 
-            EditorGUILayout.LabelField(anchors.Count + " anchors  ?  " + _selected.Query().Count + " available entities", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(active + " active detectors  ?  " + stopped + " stopped  ?  " + failed + " errors", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField(anchors.Count + " anchors | " + _selected.Query().Count + " available entities", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(active + " active detectors | " + stopped + " stopped | " + failed + " errors", EditorStyles.wordWrappedMiniLabel);
             return failed;
         }
 

@@ -4,21 +4,15 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Provides stable identity and root-component access for one ghost.
-    /// </summary>
+    /// <summary>Provides stable identity and root-component access for one ghost.</summary>
     /// <remarks>
     /// Read on the Unity thread. Emas owns identity and availability; configured traits update application data.
     /// Consumers use read-only application interfaces and must not assume retained data is current while IsAvailable is false.
     /// </remarks>
     public interface IGhost
     {
-        /// <summary>
-        /// Gets the stable ghost key.
-        /// </summary>
-        /// <value>
-        /// The anchor, kind and entity identity.
-        /// </value>
+        /// <summary>Gets the stable ghost key.</summary>
+        /// <value>The anchor, kind and entity identity.</value>
         Key Key
         {
             get;
@@ -35,42 +29,28 @@ namespace Emas
             get;
         }
 
-        /// <summary>
-        /// Gets the display name.
-        /// </summary>
-        /// <value>
-        /// The source display name used by name filters.
-        /// </value>
+        /// <summary>Gets the display name.</summary>
+        /// <value>The source display name used by name filters.</value>
         string Name
         {
             get;
         }
 
-        /// <summary>
-        /// Gets the selected visual variant.
-        /// </summary>
-        /// <value>
-        /// The appearance, or <see cref="Variant.None"/> if unspecified.
-        /// </value>
+        /// <summary>Gets the selected visual variant.</summary>
+        /// <value>The appearance, or <see cref="Variant.None"/> if unspecified.</value>
         Variant Variant
         {
             get;
         }
 
-        /// <summary>
-        /// Gets whether the ghost currently has initialized source data.
-        /// </summary>
-        /// <value>
-        /// True when source data is initialized and queryable.
-        /// </value>
+        /// <summary>Gets whether the ghost currently has initialized source data.</summary>
+        /// <value>True when source data is initialized and queryable.</value>
         bool IsAvailable
         {
             get;
         }
 
-        /// <summary>
-        /// Gets a read-only snapshot of all Trait components on the Ghost root, including disabled and unbound traits.
-        /// </summary>
+        /// <summary>Gets a read-only snapshot of all Trait components on the Ghost root, including disabled and unbound traits.</summary>
         /// <value>The current root traits; empty when the root has no traits.</value>
         /// <remarks>
         /// Each access observes added or removed root traits; previously returned snapshots retain their membership.
@@ -82,18 +62,10 @@ namespace Emas
             get;
         }
 
-        /// <summary>
-        /// Gets the single root MonoBehaviour assignable to the requested contract type.
-        /// </summary>
-        /// <typeparam name="T">
-        /// The requested interface or component class.
-        /// </typeparam>
-        /// <param name="part">
-        /// Receives the matching component, when found.
-        /// </param>
-        /// <returns>
-        /// True when exactly one matching component exists.
-        /// </returns>
+        /// <summary>Gets the single root MonoBehaviour assignable to the requested contract type.</summary>
+        /// <typeparam name="T">The requested interface or component class.</typeparam>
+        /// <param name="part">Receives the matching component, when found.</param>
+        /// <returns>True when exactly one matching component exists.</returns>
         /// <remarks>
         /// Includes disabled root MonoBehaviours, including the Ghost itself; child and view components do not participate.
         /// No match returns false with a null result. Multiple matches also return false with a null result and log a

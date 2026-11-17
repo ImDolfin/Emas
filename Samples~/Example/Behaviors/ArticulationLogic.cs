@@ -2,9 +2,7 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>
-    /// Animates a manifested vehicle view from its ghost articulation data.
-    /// </summary>
+    /// <summary>Animates a manifested vehicle view from its ghost articulation data.</summary>
 
     public sealed class ArticulationLogic : MonoBehaviour
     {

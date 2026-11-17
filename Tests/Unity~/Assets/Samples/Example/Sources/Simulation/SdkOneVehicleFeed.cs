@@ -4,9 +4,7 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>
-    /// Acts as SDK One's polling client and produces its proxy shape.
-    /// </summary>
+    /// <summary>Acts as SDK One's polling client and produces its proxy shape.</summary>
 
     public sealed class SdkOneVehicleFeed
     {
@@ -16,15 +14,9 @@ namespace Emas.Sample
         /// <value>A live population view whose proxy entries are replaced on each call to <see cref="ReadVehicles"/>.</value>
         public IReadOnlyDictionary<string, SdkOneVehicleProxy> Current => _current;
 
-        /// <summary>
-        /// Reads the current SDK One vehicle population.
-        /// </summary>
-        /// <param name="elapsedSeconds">
-        /// Elapsed source time, in seconds.
-        /// </param>
-        /// <returns>
-        /// The current SDK One proxies.
-        /// </returns>
+        /// <summary>Reads the current SDK One vehicle population.</summary>
+        /// <param name="elapsedSeconds">Elapsed source time, in seconds.</param>
+        /// <returns>The current SDK One proxies.</returns>
         /// <remarks>Refreshes the live dictionary immediately. Enumerate the returned values before calling this method again.</remarks>
         public IEnumerable<SdkOneVehicleProxy> ReadVehicles(float elapsedSeconds)
         {

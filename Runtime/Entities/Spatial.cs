@@ -3,24 +3,12 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Stores independent source poses and applies reference-relative placement, attachments and range suppression.
-    /// </summary>
+    /// <summary>Stores independent source poses and applies reference-relative placement, attachments and range suppression.</summary>
     /// <remarks>
-    /// Place on the Ghost root. Positions retain doubles; Cartesian poses use ReferenceFrame.Coordinates.
-    /// In Geographic space, positions are ECEF metres; rotations accept named geographic angles, source quaternions or body-to-ECEF input.
-    /// In Cartesian space, all participating poses share the source coordinate convention and unit.
-    /// Realm projection owns this root's world pose while this component is enabled; views inherit that pose.
-    /// With no reference frame, Cartesian poses map directly to Unity world space. Geographic and ECEF attitudes require a Geographic frame.
-    /// Keep articulation on child transforms. A custom source updating a cached ghost still calls MarkPublished
-    /// when inactivity expiry is enabled. Disable this component to release spatial placement and range suppression.
-    /// Supply channels on Unity's main thread; setters store input for the next realm projection.
-    /// Add optional Smoothing and Extrapolation traits on the same Ghost root to modify presentation.
-    /// Timed inputs share one SDK clock; duplicate or older timestamps are ignored per channel.
-    /// A positive Realm.InterpolationDelay buffers accepted timed poses for shared position/rotation playback.
-    /// Timestamped stationary updates refresh sample age; untimed identical cached positions do not.
-    /// Attach selects a same-realm parent by Key, including before discovery. Local attachment poses use Unity axes
-    /// and units; absolute inputs remain cached for Detach. Roots retain their Anchor parents and independent lifetimes.
+    /// Place on the Ghost root. While enabled, realm projection owns its world pose; disable to release placement
+    /// and range suppression. Setters retain raw double-precision input for the next projection. Timed channels
+    /// share one SDK clock and reject older or duplicate samples independently. Optional Smoothing and Extrapolation
+    /// modify presentation only.
     /// </remarks>
     [DisallowMultipleComponent]
     [AddComponentMenu("Emas/Spatial")]
@@ -28,11 +16,7 @@ namespace Emas
     {
         private readonly PoseData _data = new PoseData();
         private readonly PoseHistory _history = new PoseHistory();
-        private Double3 _presentationPosition;
-        private Double3 _presentationObservation;
-        private Quaternion _presentationRotation = Quaternion.identity;
-        private bool _hasPresentation;
-        private readonly PresentationTuning _tuning = new PresentationTuning();
+        private readonly PosePresenter _presenter = new PosePresenter();
         private readonly PresentationSuppression _suppression = new PresentationSuppression();
         private RotationSpace _rotationSpace;
         private CoordinateSystem? _earthCenteredBodyAxes;
@@ -48,9 +32,7 @@ namespace Emas
         /// <value>The original SDK timestamp for the stored rotation; null before timed input or after a spatial clock reset.</value>
         public Timestamp? RotationTime => _data.RotationTime;
 
-        /// <summary>
-        /// Gets the last Cartesian source position or absolute ECEF metres after geographic/ECEF input; valid after HasPosition is true.
-        /// </summary>
+        /// <summary>Gets the last Cartesian source position or absolute ECEF metres after geographic/ECEF input; valid after HasPosition is true.</summary>
         /// <value>The raw accepted position, unaffected by extrapolation, smoothing or the projected Unity transform.</value>
         public Double3 Position
         {
@@ -60,9 +42,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the last normalized quaternion in RotationSpace; meaningful after HasRotation becomes true.
-        /// </summary>
+        /// <summary>Gets the last normalized quaternion in RotationSpace; meaningful after HasRotation becomes true.</summary>
         /// <value>The raw accepted orientation, unaffected by smoothing or reference-frame alignment.</value>
         public Quaternion Rotation
         {
@@ -76,9 +56,7 @@ namespace Emas
         /// <value>The representation selected by the last accepted rotation setter.</value>
         public RotationSpace RotationSpace => _rotationSpace;
 
-        /// <summary>
-        /// Gets whether a Cartesian or geographic position has been supplied.
-        /// </summary>
+        /// <summary>Gets whether a Cartesian or geographic position has been supplied.</summary>
         /// <value>True after the first accepted position input; remains true while attached or temporarily unavailable.</value>
         public bool HasPosition
         {
@@ -88,9 +66,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether absolute source orientation has been supplied; when detached, missing orientation leaves the root's rotation alone.
-        /// </summary>
+        /// <summary>Gets whether absolute source orientation has been supplied; when detached, missing orientation leaves the root's rotation alone.</summary>
         /// <value>True after the first accepted rotation input, independently of position availability.</value>
         public bool HasRotation
         {
@@ -100,9 +76,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether the last projection permits presentation, independently of source availability.
-        /// </summary>
+        /// <summary>Gets whether the last projection permits presentation, independently of source availability.</summary>
         /// <value>True when spatial presentation is permitted; initially true until the first projection evaluates this root.</value>
         /// <remarks>
         /// Outside range or before the first position/reference, renderers and colliders are suppressed while
@@ -131,9 +105,9 @@ namespace Emas
 
         internal long RotationVersion => _data.RotationVersion;
 
-        internal Double3 PresentationPosition => _hasPresentation ? _presentationPosition : Position;
+        internal Double3 PresentationPosition => _presenter.HasPose ? _presenter.Position : Position;
 
-        internal Quaternion PresentationRotation => _hasPresentation ? _presentationRotation : Rotation;
+        internal Quaternion PresentationRotation => _presenter.HasPose ? _presenter.Rotation : Rotation;
 
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
@@ -142,9 +116,8 @@ namespace Emas
         /// it with the current observation. Supply the new pose before calling this.</remarks>
         public void ResetPresentation()
         {
-            _hasPresentation = false;
+            _presenter.Reset();
             ResetPoseHistory();
-            ResetTuning();
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)
             {
@@ -219,9 +192,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Supplies a shared Cartesian position in ReferenceFrame.Coordinates without changing rotation.
-        /// </summary>
+        /// <summary>Supplies a shared Cartesian position in ReferenceFrame.Coordinates without changing rotation.</summary>
         /// <param name="position">Finite source XYZ coordinates in the Cartesian world's shared units.</param>
         /// <param name="sampleTime">Optional SDK observation time; duplicate or older timed positions are ignored.</param>
         /// <remarks>Use with Cartesian space, or without a reference. Stores input for the next realm projection.</remarks>
@@ -334,7 +305,7 @@ namespace Emas
 
         internal void ResetTuning()
         {
-            _tuning.Reset();
+            _presenter.ResetTuning();
         }
 
         // Compose optional behavior only after all SDK readers, before capturing the shared reference.
@@ -346,25 +317,7 @@ namespace Emas
                 return;
             }
 
-            Extrapolation extrapolation = GetComponent<Extrapolation>();
-            Smoothing smoothing = GetComponent<Smoothing>();
-            PresentationSettings settings = new PresentationSettings(extrapolation, smoothing, interpolationDelay);
-            if (extrapolation != null)
-            {
-                extrapolation.Prepare(this, timestamp);
-            }
-
-            PresentationPose previous = default(PresentationPose);
-            if (_tuning.Changed(settings))
-            {
-                previous = PreparePose(clock, timestamp, extrapolation, smoothing, sourceAxes, _tuning.Settings, true, out _);
-            }
-
-            PresentationPose current = PreparePose(clock, timestamp, extrapolation, smoothing, sourceAxes, settings, false, out _presentationObservation);
-            current = _tuning.Apply(previous, current, settings, timestamp);
-            _presentationPosition = current.Position;
-            _presentationRotation = current.Rotation;
-            _hasPresentation = true;
+            _presenter.Prepare(this, clock, timestamp, interpolationDelay, sourceAxes);
         }
 
         internal void ResetTime(double timestamp)
@@ -386,7 +339,7 @@ namespace Emas
             // Check the unfiltered observation at playback time. Comparing the latest packet with a delayed
             // reference can cull even the origin when speed times buffer delay exceeds the range limit.
             // Extrapolation and smoothing still cannot bring an out-of-range observation into presentation.
-            Double3 observation = _hasPresentation ? _presentationObservation : Position;
+            Double3 observation = _presenter.HasPose ? _presenter.Observation : Position;
             bool observationVisible = HasPosition && projection.TryToUnityPosition(observation, out position);
             bool visible = observationVisible && projection.TryToUnityPosition(PresentationPosition, out position);
             if (!observationVisible)
@@ -441,118 +394,6 @@ namespace Emas
             _suppression.SetInRange(this, value);
         }
 
-        private PresentationPose PreparePose(SpatialClock clock, double timestamp, Extrapolation extrapolation,
-            Smoothing smoothing, CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 observation)
-        {
-            PresentationPose pose = SamplePose(clock, timestamp, extrapolation, sourceAxes, settings, preview, out Double3 motion, out observation);
-            if (extrapolation != null)
-            {
-                Double3 velocity = default(Double3);
-                Double3 angularVelocity = default(Double3);
-                if (settings.PacketSmoothingDuration > 0)
-                {
-                    // Sample the same bounded trajectory, including buffered playback. Preview calls do not
-                    // advance motion history; finite differences give tangents to any application strategy.
-                    const double step = 0.001d;
-                    PresentationPose before = SamplePose(clock, timestamp - step, extrapolation, sourceAxes, settings, true, out _, out _);
-                    PresentationPose after = SamplePose(clock, timestamp + step, extrapolation, sourceAxes, settings, true, out _, out _);
-                    try
-                    {
-                        velocity = (after.Position - before.Position) * (0.5d / step);
-                        angularVelocity = SpatialMath.RotationRate(before.Rotation, after.Rotation, 2d * step);
-                    }
-                    catch (ArgumentOutOfRangeException)
-                    {
-                        // Unrepresentable optional tangents must not invalidate the baseline pose.
-                    }
-                }
-
-                pose = extrapolation.SmoothPacket(this, pose, velocity, angularVelocity, timestamp, settings.PacketSmoothingDuration, preview, out Double3 packetMotion);
-                if (settings.PacketSmoothingDuration > 0)
-                {
-                    // SDK lead changes have already been corrected by the spline. Advancing a legacy
-                    // position filter with the uncorrected SDK lead would reintroduce the packet jump.
-                    motion = packetMotion;
-                }
-            }
-
-            return smoothing != null ? smoothing.Prepare(this, pose, timestamp, motion, settings, preview) : pose;
-        }
-
-        private PresentationPose SamplePose(SpatialClock clock, double timestamp, Extrapolation extrapolation,
-            CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
-        {
-            motion = default(Double3);
-            observation = Position;
-            PresentationPose pose;
-            if (settings.InterpolationDelay > 0)
-            {
-                pose = BufferedPose(clock, timestamp, extrapolation, sourceAxes, settings, preview, out motion, out observation);
-            }
-            else
-            {
-                Double3 position = extrapolation != null
-                    ? extrapolation.Project(this, clock, timestamp, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion) : Position;
-                Quaternion rotation = Rotation;
-                if (_history.NewestRotationTime.HasValue)
-                {
-                    double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
-                    _history.SampleRotation(age, out rotation);
-                }
-
-                if (extrapolation != null && HasRotation)
-                {
-                    double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
-                    rotation = extrapolation.ProjectRotation(this, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
-                }
-
-                pose = new PresentationPose(position, rotation);
-            }
-
-            return pose;
-        }
-
-        private PresentationPose BufferedPose(SpatialClock clock, double timestamp, Extrapolation extrapolation,
-            CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
-        {
-            Double3 position = Position;
-            Quaternion rotation = Rotation;
-            observation = Position;
-            motion = default(Double3);
-            if (_history.NewestPositionTime.HasValue)
-            {
-                double offset = clock.OffsetFrom(_history.NewestPositionTime.Value, timestamp, settings.InterpolationDelay);
-                _history.SamplePosition(offset, out position);
-                observation = position;
-                if (extrapolation != null)
-                {
-                    position = extrapolation.ProjectTimestamped(this, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, position, offset, preview, out motion);
-                }
-            }
-            else if (extrapolation != null)
-            {
-                // An untimed channel has no SDK history to interpolate; preserve its arrival-timed behavior.
-                position = extrapolation.Project(this, clock, timestamp, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion);
-            }
-
-            if (_history.NewestRotationTime.HasValue)
-            {
-                double offset = clock.OffsetFrom(_history.NewestRotationTime.Value, timestamp, settings.InterpolationDelay);
-                _history.SampleRotation(offset, out rotation);
-                if (extrapolation != null)
-                {
-                    rotation = extrapolation.ProjectRotation(this, rotation, offset, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
-                }
-            }
-            else if (extrapolation != null && HasRotation)
-            {
-                double age = clock.Age(RotationTime, RotationReceivedTime, timestamp);
-                rotation = extrapolation.ProjectRotation(this, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
-            }
-
-            return new PresentationPose(position, rotation);
-        }
-
         private void ResetPoseHistory()
         {
             _history.ClearPosition();
@@ -571,7 +412,7 @@ namespace Emas
         private void ResetRotationSmoothing()
         {
             // Corrections expressed in the former attitude basis cannot be reused in the new one.
-            _tuning.ResetRotation();
+            _presenter.ResetRotation();
             _history.ClearRotation();
             Extrapolation extrapolation = GetComponent<Extrapolation>();
             if (extrapolation != null)

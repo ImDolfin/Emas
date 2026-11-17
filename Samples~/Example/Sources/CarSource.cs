@@ -2,9 +2,7 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>
-    /// Supplies the car detector and demonstrates replacing its SDK without replacing its ghosts.
-    /// </summary>
+    /// <summary>Supplies the car detector and demonstrates replacing its SDK without replacing its ghosts.</summary>
     [RequireComponent(typeof(AnchorSetup))]
     public sealed class CarSource : PresenceDetectorComponent
     {
@@ -17,15 +15,11 @@ namespace Emas.Sample
         private readonly SdkOneVehicleFeed _firstFeed = new SdkOneVehicleFeed();
         private readonly SdkTwoVehicleFeed _secondFeed = new SdkTwoVehicleFeed();
 
-        /// <summary>
-        /// Gets whether the current attachment has switched to SDK Two.
-        /// </summary>
+        /// <summary>Gets whether the current attachment has switched to SDK Two.</summary>
         /// <value>True after replacement; false when a new attachment starts with SDK One.</value>
         public bool IsUsingSecondSdk { get; private set; }
 
-        /// <summary>
-        /// Switches to SDK Two once, retaining compatible car ghosts and their consumers.
-        /// </summary>
+        /// <summary>Switches to SDK Two once, retaining compatible car ghosts and their consumers.</summary>
         /// <remarks>Does nothing while detached or after replacement has already occurred.</remarks>
         public void ReplaceCarSource()
         {

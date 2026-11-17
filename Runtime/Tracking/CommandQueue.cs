@@ -3,9 +3,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    /// <summary>
-    /// Orders commands and prevents nested drains on Unity's main thread.
-    /// </summary>
+    /// <summary>Orders commands and prevents nested drains on Unity's main thread.</summary>
     /// <typeparam name="T">The command data interpreted by the owning subsystem.</typeparam>
     internal sealed class CommandQueue<T>
     {

@@ -4,17 +4,11 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Optional Ghost trait that extrapolates pose using timestamped observations and optional SDK linear and angular motion.</summary>
-    /// <remarks>Author beside Spatial; Smoothing is independently optional. ENU vectors use an explicit SDK tangent origin.
-    /// Without SDK velocity, consecutive timestamped positions estimate it. No SDK binding is needed on this behavior trait.
-    /// Disabling extrapolation retains supplied SDK motion for Smoothing between newly accepted timed observations;
-    /// held observations do not advance from that motion while extrapolation is disabled. With a positive
-    /// Realm.InterpolationDelay, pose and SDK motion are sampled on the shared buffered timeline. Extrapolation
-    /// only covers gaps after the newest buffered observation. Orientation uses supplied body or geographic world angular velocity,
-    /// or extends its last timed arc when unavailable, with immediate or buffered playback.
-    /// Timed SDK linear motion is sampled at the position observation's time;
-    /// changes to its predicted lead are applied without the position smoothing half-life.
-    /// The horizon limits future extrapolation; newly accepted timed poses still contribute SDK motion to
-    /// Smoothing after earlier packets have reached that limit.</remarks>
+    /// <remarks>
+    /// Place beside Spatial; no reader binding is required. Motion and pose share one SDK clock and buffered
+    /// playback time. Missing rates can be estimated from timed poses. Disabling this trait stops gap prediction but
+    /// retains supplied linear motion for Smoothing between observations.
+    /// </remarks>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Spatial))]
     [AddComponentMenu("Emas/Extrapolation")]
@@ -22,7 +16,7 @@ namespace Emas
     {
         [Tooltip("Gap extrapolation model. Change at runtime to compare methods without losing observations or supplied motion.")]
         [SerializeReference] private IExtrapolationStrategy _strategy = new ConstantAccelerationExtrapolation();
-        [Tooltip("Maximum extrapolation beyond the newest observation, in seconds. With buffered playback, only fills gaps after recorded poses. 0: no extrapolation. 0.05-0.1: conservative; 0.1-0.25: bridges short packet gaps; 0.25-0.5: may overshoot stops or turns. Independent of smoothing half-life.")]
+        [Tooltip("Maximum gap prediction in seconds beyond recorded poses. Zero holds the latest observation; 0.05-0.15 s bridges short gaps. Larger values risk overshooting stops and turns.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _maximumExtrapolation = 0.15f;
         private Double3 _velocity;
@@ -215,12 +209,12 @@ namespace Emas
         /// <param name="angularVelocity">Finite true body angular rates in the specified SDK axes; these are not yaw/pitch/roll Euler-angle derivatives.</param>
         /// <param name="bodyAxes">Signed SDK body axes mapped to model right/up/forward. Null uses X forward, Y right, Z down: roll, pitch and yaw rates.</param>
         /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
-        /// <remarks>Positive rates use the source quaternion rotation convention. Converts and stores body rates independently of pose-reader order.
-        /// The axes describe directions fixed to the aircraft; world ENU angular velocity must use SetGeographicAngularVelocity instead.
-        /// Uses the rate sampled at the latest rotation's timestamp, before applying the shared extrapolation horizon. A supplied zero rate overrides
-        /// rotation-history estimation. Clearing the channel restores that estimation. Raw pose remains unchanged;
-        /// a coupled strategy such as CoordinatedTurnExtrapolation can also use angular velocity to turn linear motion.
-        /// Rotation smoothing retains its independent half-life; this input supplies extrapolation, rather than angular filter motion assistance.</remarks>
+        /// <remarks>
+        /// Samples body rates at the attitude timestamp, independently of reader order. Supplied zero overrides
+        /// estimation; ClearAngularVelocity restores it. World ENU rates use SetGeographicAngularVelocity. Rates affect
+        /// extrapolation, including coupled linear strategies, without changing raw pose or providing angular filter
+        /// motion assistance.
+        /// </remarks>
         /// <exception cref="ArgumentException">The body-axis mapping is invalid.</exception>
         /// <exception cref="ArgumentOutOfRangeException">An angular velocity coordinate or its converted value is not finite.</exception>
         public void SetBodyAngularVelocity(Double3 angularVelocity, CoordinateSystem? bodyAxes = null, Timestamp? sampleTime = null)

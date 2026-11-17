@@ -3,9 +3,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    /// <summary>
-    /// Keeps one current record per identity within a realm.
-    /// </summary>
+    /// <summary>Keeps one current record per identity within a realm.</summary>
     internal sealed class IdentityMap
     {
         private readonly Dictionary<Key, Record> _records = new Dictionary<Key, Record>();

@@ -4,9 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Defines the optional ghost root and named visual manifestations for one kind.
-    /// </summary>
+    /// <summary>Defines the optional ghost root and named visual manifestations for one kind.</summary>
     /// <remarks>
     /// Variant names match case-sensitively; unspecified or unknown variants use the optional fallback.
     /// Registration captures settings per realm. Re-register after edits; existing Ghost roots retain their components.
@@ -27,9 +25,7 @@ namespace Emas
         [SerializeField]
         private GameObject _fallbackViewPrefab;
 
-        /// <summary>
-        /// Gets the configured ghost kind.
-        /// </summary>
+        /// <summary>Gets the configured ghost kind.</summary>
         /// <value>The configured kind, or an invalid default value when the asset has not been configured.</value>
         public Kind Kind
         {
@@ -39,9 +35,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the optional ghost root prefab.
-        /// </summary>
+        /// <summary>Gets the optional ghost root prefab.</summary>
         /// <value>The authored root prefab, or null to create a root of the requested Ghost type.</value>
         public Ghost GhostPrefab
         {
@@ -51,9 +45,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the fallback view prefab.
-        /// </summary>
+        /// <summary>Gets the fallback view prefab.</summary>
         /// <value>The prefab used for unspecified or unknown appearances, or null for no fallback view.</value>
         public GameObject FallbackViewPrefab
         {
@@ -87,9 +79,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Configures this kind and its inline named appearances.
-        /// </summary>
+        /// <summary>Configures this kind and its inline named appearances.</summary>
         /// <param name="kind">The ghost kind.</param>
         /// <param name="ghostPrefab">The optional root prefab.</param>
         /// <param name="variants">Named appearances, each selecting one view prefab.</param>
@@ -116,9 +106,7 @@ namespace Emas
             _fallbackViewPrefab = fallbackViewPrefab;
         }
 
-        /// <summary>
-        /// Returns the prefab for an exact variant name, or the optional fallback.
-        /// </summary>
+        /// <summary>Returns the prefab for an exact variant name, or the optional fallback.</summary>
         /// <param name="variant">The requested appearance.</param>
         /// <returns>The matching prefab, the fallback, or null when neither is configured.</returns>
         /// <remarks>Reads this asset's current settings, which may differ from a realm's captured registration.</remarks>

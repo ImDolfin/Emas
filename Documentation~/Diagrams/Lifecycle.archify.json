@@ -13,7 +13,7 @@
     "repository": {
       "url": "https://github.com/ImDolfin/Emas.git",
       "provider": "github",
-      "revision": "3e37839d358222566858617cb2655651685e0df0"
+      "revision": "fa63ab009df9e97c68a4e6f15704c38ae5d25c96"
     }
   },
   "lanes": [
@@ -37,9 +37,15 @@
       "sources": [
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 198,
-          "end_line": 282,
-          "label": "Create root and bind readers"
+          "line": 675,
+          "end_line": 731,
+          "label": "Create and initialize root"
+        },
+        {
+          "path": "Runtime/Tracking/Population.cs",
+          "line": 205,
+          "end_line": 246,
+          "label": "Bind detected source"
         }
       ]
     },
@@ -53,8 +59,8 @@
       "sources": [
         {
           "path": "Runtime/Realm.cs",
-          "line": 1023,
-          "end_line": 1040,
+          "line": 1117,
+          "end_line": 1151,
           "label": "Apply data before activation"
         }
       ]
@@ -69,8 +75,8 @@
       "sources": [
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 683,
-          "end_line": 724,
+          "line": 577,
+          "end_line": 618,
           "label": "Activate complete roots"
         }
       ]
@@ -85,8 +91,8 @@
       "sources": [
         {
           "path": "Runtime/Views/ViewManager.cs",
-          "line": 17,
-          "end_line": 118,
+          "line": 32,
+          "end_line": 108,
           "label": "View requests and gating"
         }
       ]
@@ -101,8 +107,8 @@
       "sources": [
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 533,
-          "end_line": 549,
+          "line": 467,
+          "end_line": 491,
           "label": "Remove current identity and root"
         }
       ]
@@ -118,14 +124,14 @@
       "sources": [
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 338,
-          "end_line": 398,
+          "line": 304,
+          "end_line": 331,
           "label": "Disappearance and grace"
         },
         {
           "path": "Runtime/Tracking/Population.cs",
-          "line": 420,
-          "end_line": 484,
+          "line": 409,
+          "end_line": 418,
           "label": "Startup handover"
         }
       ]

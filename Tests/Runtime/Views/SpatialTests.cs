@@ -2444,10 +2444,8 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Checks a 100 metre-per-second Cartesian bracket with one shared interpolation fraction for position and rotation.</summary>
-        /// <param name="spatial">The buffered root projected relative to its billion-metre origin.</param>
-        /// <param name="minimumPosition">The playback position when the clock-witness observation was received.</param>
-        /// <param name="publishedAt">Local time immediately before the observation anchoring the current SDK clock.</param>
+        /// <summary>Exercises cubic arrival correction, interruption and per-root state with timed, buffered or untimed input.</summary>
+        /// <param name="mode">Zero for timed input, one for buffered input, or two for untimed input.</param>
         private IEnumerator AssertCubicPackets(int mode)
         {
             _realm.InterpolationDelay = mode == 1 ? 0.1f : 0;
@@ -2483,9 +2481,11 @@ namespace Emas.Tests
             double weight = u * u * (3d - 2d * u);
             Assert.That(ghost.transform.position.x, Is.EqualTo(10d * weight).Within(0.15d));
             Assert.That(Quaternion.Angle(ghost.transform.rotation, Quaternion.Euler(0, (float)(60d * weight), 0)), Is.LessThan(1f));
+            double beforeArrival = Time.realtimeSinceStartupAsDouble;
+            // Establish the baseline inside the measured interval; the previous yielded frame may be older.
+            _realm.Update();
             Vector3 before = ghost.transform.position;
             Quaternion beforeRotation = ghost.transform.rotation;
-            double beforeArrival = Time.realtimeSinceStartupAsDouble;
             spatial.SetCartesianPosition(new Double3(-5, 0, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1002, 0));
             spatial.SetSourceRotation(Quaternion.Euler(0, -30, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1002, 0));
             _realm.Update();

@@ -1,14 +1,17 @@
 {
   "name": "com.emas.core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "Emas",
-  "description": "Emas: entity tracking and optional views for Unity.",
+  "description": "Entity tracking, reusable traits, optional views and double-precision spatial presentation for Unity.",
   "unity": "2022.3",
   "unityRelease": "0f1",
   "keywords": [
     "entity",
     "views",
-    "tracking"
+    "tracking",
+    "spatial",
+    "sdk",
+    "extrapolation"
   ],
   "author": {
     "name": "Emas"
@@ -30,7 +33,7 @@
     },
     {
       "displayName": "Relative world",
-      "description": "A driving reference, parked cars and a circling bird using double-precision positions and orientations.",
+      "description": "WGS84 tracking around a moving reference, with buffered motion, noisy packets, queries and attachments.",
       "path": "Samples~/RelativeWorld"
     },
     {

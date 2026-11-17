@@ -1,8 +1,6 @@
 namespace Emas
 {
-    /// <summary>
-    /// Identifies a signed source axis used by a coordinate-system mapping.
-    /// </summary>
+    /// <summary>Identifies a signed source axis used by a coordinate-system mapping.</summary>
     public enum Axis
     {
         /// <summary>The source's positive X axis.</summary>

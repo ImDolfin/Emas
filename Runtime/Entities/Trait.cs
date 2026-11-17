@@ -2,15 +2,11 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Base component for a Ghost trait updated by its realm before spatial projection and queries.
-    /// </summary>
+    /// <summary>Base component for a Ghost trait updated by its realm before spatial projection and queries.</summary>
     /// <remarks>
-    /// Configure traits on the Ghost root prefab or declare them with RequireComponent on its Ghost class.
-    /// Initializers connect input traits to application data. Optional Smoothing and Extrapolation behavior traits
-    /// require no binding and evaluate after all inputs in the spatial phase. Disabled traits do not update.
-    /// Enabled traits can read before the root's first activation, so binding must not depend on OnEnable.
-    /// Every trait read finishes before Ghost.OnUpdate hooks. Ordering among individual traits is unspecified.
+    /// Author traits on the Ghost root and bind inputs in its initializer. Enabled readers finish before
+    /// Ghost.OnUpdate; their relative order is unspecified. Reads can precede initial activation, so binding must
+    /// not depend on OnEnable. Smoothing and Extrapolation need no reader binding.
     /// </remarks>
     public abstract class Trait : MonoBehaviour
     {

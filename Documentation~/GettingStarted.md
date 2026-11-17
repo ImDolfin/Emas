@@ -69,9 +69,9 @@ For integrations that already construct detectors, `IDetectorProvider.CreateDete
 
 Section descriptions live in tooltips. Configuration errors remain visible.
 
-- **Realm Setup** groups Kind mappings, coordinate reference, Unity placement and visibility range. Shared positions and radii use your SDK mapping's units; Unity placement uses Unity units. Rotation fields display Euler angles in degrees, wrapping every 360?. A range must be finite and greater than zero; there is no arbitrary maximum. Inapplicable fields are disabled. Startup settings become read-only while the Realm runs; stop it before changing those settings.
+- **Realm Setup** groups Kind mappings, playback, reference, placement and visibility. Labels show units; rotations display Euler degrees. Startup settings become read-only while running. Stop the Realm to edit them.
 - **Anchor Setup** shows identity, automatic views and the connected Realm, detector and optional initializer. Disable an attached Anchor Setup to edit its startup settings. Ghost construction and appearance belong in the Realm's blueprint list.
-- **Ghost** keeps identity, spatial pose and traits visible in open sections. Inspect cached absolute input beside the projected Unity pose, edit serialized trait settings inline, or select a named trait to open its component Inspector. The detector supplies IDs, display name and Variant; they are not prefab settings. Disabling the Ghost only skips its `OnUpdate` hook; trait and spatial components have their own enable switches. Code can enumerate `ghost.Traits` and use `ghost.GetRequired<TTrait>()` or `ghost.TryGet<TTrait>()` for typed access.
+- **Ghost** shows read-only identity, raw and projected pose, and editable traits. Trait settings support Undo and prefab overrides; the row menu removes a trait. Motion settings show seconds, and the strategy selector exposes each model's settings inline. Disabling the Ghost skips its `OnUpdate` hook; traits and Spatial have their own switches.
 - **Window > Emas** groups live data by Realm, Anchor and detector. The Scene view **Overlays** menu also offers an optional **Emas** summary. Both are passive; they never create a Realm or start a detector.
 
 ### Find and manifest a presence
@@ -131,7 +131,7 @@ Both detector types expose public `Anchor` and `Realm` properties, bound before 
 
 Call `Detect(id, kind, name, variant, capabilities, source)` when an entity arrives, and `Disappear(kind, id)` when it leaves. The optional name labels the entity; the variant chooses its appearance. The minimal sample has one permanent entity, so its detector only handles startup. The SDK proxy changes independently; Ghost traits read its mapped fields on each realm update.
 
-For a complete-snapshot SDK, compare each successful read's IDs with `OwnedPresences` and explicitly call `Disappear` for missing IDs. A missing item in a change-only feed is not a removal. Your detector owns the SDK's validation, scheduling and omission rules; Emas owns the resulting Presence lifecycle. The [README example](../README.md#3-connect-the-detector-and-realm) demonstrates snapshot comparison.
+For a complete-snapshot SDK, compare each successful read's IDs with `OwnedPresences` and call `Disappear` for missing IDs. Only compare omissions after a complete, successful read; a missing item in a change-only feed is not a removal. Your detector owns SDK validation and polling; Emas owns the resulting entity lifecycle.
 
 For SDK membership events, call `CaptureDispatcher()` in `OnStart` and close each event handler over the returned dispatcher. Queue `Detect` or `Disappear` through it, retain the exact delegates, and unsubscribe in `OnStop`. Each captured dispatcher belongs to one attachment, so callbacks retained after a restart cannot change the new attachment. `OnStop` also follows failed startup; make cleanup safe when only some subscriptions were acquired. SDK clients remain application-owned.
 

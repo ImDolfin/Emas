@@ -4,21 +4,22 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Combines quaternion body-frame second-order dead reckoning, coordinated turns and cubic packet correction.</summary>
-    /// <remarks>Assumes velocity turns with the aircraft, with no changing sideslip. Supplied angular rates,
-    /// including zero, take precedence over bank-derived rates. SDK acceleration is gravity-free inertial
-    /// acceleration; its centripetal term is removed before integrating the derivative of body velocity.
-    /// Without acceleration, body velocity stays constant. Missing attitude falls back to world second-order
-    /// motion. Cartesian units must agree with Gravity; geographic motion uses metres. This model does not
-    /// estimate wind, lift, angular acceleration or aerodynamic forces. All state belongs to the root, so
-    /// immutable strategy instances may be shared. Use without Smoothing for cubic correction alone.</remarks>
+    /// <remarks>
+    /// Assumes velocity turns with the body without changing sideslip. Acceleration must be gravity-free inertial
+    /// acceleration; Gravity must use the same distance unit. Supplied rates, including zero, override bank-derived
+    /// rates. Missing attitude falls back to world second-order motion. Instances may be shared when immutable; omit
+    /// Smoothing to evaluate cubic correction alone.
+    /// </remarks>
     [Serializable]
     public sealed class CoordinatedTurnExtrapolation : IExtrapolationStrategy, IPacketSmoothingStrategy
     {
         [Tooltip("Cubic position and quaternion correction duration on accepted packet arrivals, in unscaled seconds. Zero: immediate correction. Independent of the extrapolation horizon.")]
+        [Min(0)]
         [SerializeField] private float _packetSmoothingDuration = 0.1f;
         [Tooltip("Use steady coordinated level-turn rate g*tan(bank)/horizontal speed only when neither supplied nor estimated angular velocity is available. Supplied zero rates override this fallback.")]
         [SerializeField] private bool _useBankAngleWhenRatesUnavailable = true;
         [Tooltip("Gravity magnitude in Cartesian source distance units per second squared; use 9.80665 for metres and geographic input. Used only for the bank-derived turn-rate fallback.")]
+        [Min(float.Epsilon)]
         [SerializeField] private float _gravity = 9.80665f;
 
         /// <summary>Gets or sets cubic packet correction duration in unscaled seconds.</summary>

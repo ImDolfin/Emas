@@ -3,9 +3,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    /// <summary>
-    /// Represents one detected entity independently of its optional visual manifestation.
-    /// </summary>
+    /// <summary>Represents one detected entity independently of its optional visual manifestation.</summary>
     /// <remarks>
     /// A realm owns this stable handle from the first detection until removal. Detection metadata and
     /// capability interfaces originate with the detector; the realm attaches a Ghost root whose components own its data updates.
@@ -23,9 +21,7 @@ namespace Emas
         private bool _available;
         private bool _removed;
 
-        /// <summary>
-        /// Gets the stable anchor, kind and entity identity.
-        /// </summary>
+        /// <summary>Gets the stable anchor, kind and entity identity.</summary>
         /// <value>The identity retained for this handle's lifetime, including after removal.</value>
         public Key Key
         {
@@ -35,9 +31,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the application source supplied by Detect, held through a weak reference.
-        /// </summary>
+        /// <summary>Gets the application source supplied by Detect, held through a weak reference.</summary>
         /// <value>The live application source, or null when it is absent, released, collected or destroyed.</value>
         /// <remarks>
         /// May be a proxy, SDK client or another application object. Returns null when unassigned,
@@ -64,9 +58,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the detector's label for this entity.
-        /// </summary>
+        /// <summary>Gets the detector's label for this entity.</summary>
         /// <value>The latest source label, defaulting to the entity ID when no label was supplied.</value>
         public string Name
         {
@@ -76,9 +68,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the detected appearance used to select a view.
-        /// </summary>
+        /// <summary>Gets the detected appearance used to select a view.</summary>
         /// <value>The latest detected variant, or <see cref="Variant.None"/> when unspecified.</value>
         public Variant Variant
         {
@@ -88,9 +78,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether the detector currently reports this entity as present and initialized.
-        /// </summary>
+        /// <summary>Gets whether the detector currently reports this entity as present and initialized.</summary>
         /// <value>True while the publication is available; false during disappearance, handover or removal.</value>
         public bool IsAvailable
         {
@@ -100,9 +88,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether this presence has been removed from its realm.
-        /// </summary>
+        /// <summary>Gets whether this presence has been removed from its realm.</summary>
         /// <value>True after permanent removal; later detection of the same key creates a different handle.</value>
         public bool IsRemoved
         {
@@ -112,9 +98,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the realm-initialized Ghost root, or null before initialization or after removal.
-        /// </summary>
+        /// <summary>Gets the realm-initialized Ghost root, or null before initialization or after removal.</summary>
         /// <value>The retained root, including during temporary unavailability, or null when no root is bound.</value>
         public Ghost Root
         {
@@ -124,9 +108,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets a snapshot of capability interfaces reported by the detector.
-        /// </summary>
+        /// <summary>Gets a snapshot of capability interfaces reported by the detector.</summary>
         /// <value>A new read-only snapshot of the advertised interface types, with no duplicate entries.</value>
         public IReadOnlyList<Type> Capabilities
         {
@@ -152,9 +134,7 @@ namespace Emas
             _variant = variant;
         }
 
-        /// <summary>
-        /// Checks whether the detector reported a capability interface.
-        /// </summary>
+        /// <summary>Checks whether the detector reported a capability interface.</summary>
         /// <typeparam name="T">The capability interface.</typeparam>
         /// <returns>True when the exact interface was reported.</returns>
         /// <remarks>This checks advertised metadata, not root components. Use Root.TryGet to resolve a component contract.</remarks>

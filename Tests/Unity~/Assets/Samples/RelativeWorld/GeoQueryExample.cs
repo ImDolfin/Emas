@@ -8,7 +8,9 @@ namespace Emas.RelativeWorld
     /// <remarks>Uses available Ghost roots and their Spatial data independently of views. Disposes and rebinds when the authored setup restarts.</remarks>
     public sealed class GeoQueryExample : MonoBehaviour
     {
+        [Tooltip("Tracking setup supplying the Realm observed by these queries.")]
         [SerializeField] private RealmSetup _setup;
+        [Tooltip("Anchor containing the reference car, parked cars and bird.")]
         [SerializeField] private AnchorSetup _anchor;
         private readonly HashSet<Key> _parkedCars = new HashSet<Key>();
         private Realm _observedRealm;

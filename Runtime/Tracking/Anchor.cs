@@ -4,9 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Groups detectors and entity identities beneath a realm-owned scene transform.
-    /// </summary>
+    /// <summary>Groups detectors and entity identities beneath a realm-owned scene transform.</summary>
     /// <remarks>
     /// Owned by its realm; all operations use the Unity thread. Ghosts are parented here, while enabled Spatial
     /// components assign world poses through the realm's reference frame. Dispose stops detectors and removes owned and prepared ghosts.
@@ -52,45 +50,31 @@ namespace Emas
 
         private GhostInitializer _ghostInitializer;
 
-        /// <summary>
-        /// Gets the owning realm.
-        /// </summary>
-        /// <value>
-        /// The realm that owns this anchor.
-        /// </value>
+        /// <summary>Gets the owning realm.</summary>
+        /// <value>The realm that owns this anchor.</value>
         public Realm Realm
         {
             get;
             private set;
         }
 
-        /// <summary>
-        /// Gets the stable anchor identifier.
-        /// </summary>
-        /// <value>
-        /// The exact anchor identifier.
-        /// </value>
+        /// <summary>Gets the stable anchor identifier.</summary>
+        /// <value>The exact anchor identifier.</value>
         public string Id
         {
             get;
             private set;
         }
 
-        /// <summary>
-        /// Gets the scene transform for this anchor.
-        /// </summary>
-        /// <value>
-        /// The anchor scene transform.
-        /// </value>
+        /// <summary>Gets the scene transform for this anchor.</summary>
+        /// <value>The anchor scene transform.</value>
         public Transform Transform
         {
             get;
             private set;
         }
 
-        /// <summary>
-        /// Gets a copied, read-only snapshot of the registered sources, including failed ones.
-        /// </summary>
+        /// <summary>Gets a copied, read-only snapshot of the registered sources, including failed ones.</summary>
         /// <remarks>
         /// Read on the Unity thread. Earlier snapshots do not change; disposed anchors return an empty snapshot.
         /// </remarks>
@@ -119,24 +103,14 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Adds and starts a source.
-        /// </summary>
-        /// <param name="source">
-        /// The source to add.
-        /// </param>
+        /// <summary>Adds and starts a source.</summary>
+        /// <param name="source">The source to add.</param>
         /// <remarks>
         /// Already present on this anchor is a no-op. Startup failure rolls back new ghosts, detaches the source and rethrows the primary error.
         /// </remarks>
-        /// <exception cref="ArgumentNullException">
-        /// The source is null.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// The source belongs to another anchor, or startup rejects its configuration.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The anchor or realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentNullException">The source is null.</exception>
+        /// <exception cref="InvalidOperationException">The source belongs to another anchor, or startup rejects its configuration.</exception>
+        /// <exception cref="ObjectDisposedException">The anchor or realm was disposed.</exception>
         public void AddDetector(PresenceDetector source)
         {
             ThrowIfDisposed();
@@ -179,18 +153,12 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Stops and removes a source and its owned ghosts.
-        /// </summary>
-        /// <param name="source">
-        /// The source to remove.
-        /// </param>
+        /// <summary>Stops and removes a source and its owned ghosts.</summary>
+        /// <param name="source">The source to remove.</param>
         /// <remarks>
         /// Null and unknown sources are ignored. Cleanup errors are logged and retained in LastError; removal still completes.
         /// </remarks>
-        /// <exception cref="ObjectDisposedException">
-        /// The anchor or realm was disposed.
-        /// </exception>
+        /// <exception cref="ObjectDisposedException">The anchor or realm was disposed.</exception>
         public void RemoveDetector(PresenceDetector source)
         {
             ThrowIfDisposed();
@@ -204,28 +172,20 @@ namespace Emas
             Realm.RemoveSourceGhosts(source);
         }
 
-        /// <summary>
-        /// Restarts an attached source while retaining its ghost identities and view requests.
-        /// </summary>
-        /// <param name="source">
-        /// The active or failed source to restart with its current configuration.
-        /// </param>
+        /// <summary>Restarts an attached source while retaining its ghost identities and view requests.</summary>
+        /// <param name="source">The active or failed source to restart with its current configuration.</param>
         /// <remarks>
         /// Stops the old registration once and discards its queued work. Retained ghosts become unavailable until republished.
         /// Unreported ghosts are removed after the next update and the queued initial publications have been processed.
         /// Startup errors propagate and remove the population; the source remains attached for another retry.
         /// Cleanup errors are logged; the new attachment clears LastError and LastErrorContext before startup.
         /// </remarks>
-        /// <exception cref="ArgumentNullException">
-        /// The source is null.
-        /// </exception>
+        /// <exception cref="ArgumentNullException">The source is null.</exception>
         /// <exception cref="InvalidOperationException">
         /// The source is absent, is starting or stopping, or is already being restarted.
         /// Source startup can also throw application-specific exceptions.
         /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The anchor or realm was disposed.
-        /// </exception>
+        /// <exception cref="ObjectDisposedException">The anchor or realm was disposed.</exception>
         public void RestartDetector(PresenceDetector source)
         {
             ThrowIfDisposed();
@@ -284,31 +244,17 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Replaces one source while preserving its compatible ghosts.
-        /// </summary>
-        /// <param name="current">
-        /// The source being replaced.
-        /// </param>
-        /// <param name="replacement">
-        /// The replacement source.
-        /// </param>
+        /// <summary>Replaces one source while preserving its compatible ghosts.</summary>
+        /// <param name="current">The source being replaced.</param>
+        /// <param name="replacement">The replacement source.</param>
         /// <remarks>
         /// Transferred ghosts become unavailable until republished. Unreported ghosts are removed after the next update
         /// and the queued initial publications have been processed. Failed startup removes ghosts and retains the replacement for retry.
         /// </remarks>
-        /// <exception cref="ArgumentNullException">
-        /// Either source is null.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// Both arguments refer to the same source.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// The current source is absent, replacement is attached, or replacement startup fails.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The anchor or realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentNullException">Either source is null.</exception>
+        /// <exception cref="ArgumentException">Both arguments refer to the same source.</exception>
+        /// <exception cref="InvalidOperationException">The current source is absent, replacement is attached, or replacement startup fails.</exception>
+        /// <exception cref="ObjectDisposedException">The anchor or realm was disposed.</exception>
         public void ReplaceDetector(PresenceDetector current, PresenceDetector replacement)
         {
             ThrowIfDisposed();
@@ -371,9 +317,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Stops the anchor and destroys its scene objects.
-        /// </summary>
+        /// <summary>Stops the anchor and destroys its scene objects.</summary>
         /// <remarks>
         /// Idempotent. Unregisters the anchor before cleanup callbacks, stops its detectors and removes their identities.
         /// Application-owned SDK clients are not disposed. Scene destruction follows Unity's deferred destruction rules.

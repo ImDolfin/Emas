@@ -4,9 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Owns tracked entity creation, initialization, ownership and availability transitions.
-    /// </summary>
+    /// <summary>Owns tracked entity creation, initialization, ownership and availability transitions.</summary>
     internal sealed class Population
     {
         private interface IPresenceInitializer
@@ -37,9 +35,7 @@ namespace Emas
                 _initialize = initialize;
             }
 
-            /// <summary>
-            /// Resolves the root type selected by this initializer.
-            /// </summary>
+            /// <summary>Resolves the root type selected by this initializer.</summary>
             /// <param name="population">The population that owns identity lookup and root creation.</param>
             /// <param name="detector">The source claiming the identity.</param>
             /// <param name="key">The full anchor, kind and entity identity.</param>
@@ -55,9 +51,7 @@ namespace Emas
                     name, anchor, blueprint);
             }
 
-            /// <summary>
-            /// Applies the registered trait setup to this presence.
-            /// </summary>
+            /// <summary>Applies the registered trait setup to this presence.</summary>
             /// <param name="presence">The presence whose root is of the registered Ghost type.</param>
             public void Initialize(Presence presence)
             {

@@ -4,9 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Stores a finite three-dimensional position or offset in double precision.
-    /// </summary>
+    /// <summary>Stores a finite three-dimensional position or offset in double precision.</summary>
     [Serializable]
     public struct Double3 : IEquatable<Double3>
     {
@@ -17,33 +15,23 @@ namespace Emas
         [Tooltip("Z coordinate of this three-dimensional position or offset.")]
         [SerializeField] private double _z;
 
-        /// <summary>
-        /// Gets the X coordinate.
-        /// </summary>
+        /// <summary>Gets the X coordinate.</summary>
         /// <value>The first coordinate without a change of units or precision.</value>
         public double X => _x;
 
-        /// <summary>
-        /// Gets the Y coordinate.
-        /// </summary>
+        /// <summary>Gets the Y coordinate.</summary>
         /// <value>The second coordinate without a change of units or precision.</value>
         public double Y => _y;
 
-        /// <summary>
-        /// Gets the Z coordinate.
-        /// </summary>
+        /// <summary>Gets the Z coordinate.</summary>
         /// <value>The third coordinate without a change of units or precision.</value>
         public double Z => _z;
 
-        /// <summary>
-        /// Creates a position or offset with finite coordinates.
-        /// </summary>
+        /// <summary>Creates a position or offset with finite coordinates.</summary>
         /// <param name="x">The finite X coordinate in the caller's coordinate system.</param>
         /// <param name="y">The finite Y coordinate in the same units as X.</param>
         /// <param name="z">The finite Z coordinate in the same units as X.</param>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// A coordinate is NaN or infinite.
-        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">A coordinate is NaN or infinite.</exception>
         public Double3(double x, double y, double z)
         {
             if (!SpatialMath.IsFinite(x))
@@ -66,9 +54,7 @@ namespace Emas
             _z = z;
         }
 
-        /// <summary>
-        /// Adds two positions or offsets without converting to float precision.
-        /// </summary>
+        /// <summary>Adds two positions or offsets without converting to float precision.</summary>
         /// <param name="left">The first vector in a shared coordinate system.</param>
         /// <param name="right">The vector to add, in the same units and axes.</param>
         /// <returns>The component-wise sum.</returns>
@@ -78,9 +64,7 @@ namespace Emas
             return new Double3(left._x + right._x, left._y + right._y, left._z + right._z);
         }
 
-        /// <summary>
-        /// Subtracts two positions or offsets without converting to float precision.
-        /// </summary>
+        /// <summary>Subtracts two positions or offsets without converting to float precision.</summary>
         /// <param name="left">The position or offset from which to subtract.</param>
         /// <param name="right">The position or offset to subtract, in the same units and axes.</param>
         /// <returns>The component-wise difference.</returns>
@@ -90,9 +74,7 @@ namespace Emas
             return new Double3(left._x - right._x, left._y - right._y, left._z - right._z);
         }
 
-        /// <summary>
-        /// Scales a position or offset by a finite scalar.
-        /// </summary>
+        /// <summary>Scales a position or offset by a finite scalar.</summary>
         /// <param name="value">The position or offset to scale.</param>
         /// <param name="scalar">The finite multiplier applied to every coordinate.</param>
         /// <returns>The scaled vector.</returns>
@@ -102,9 +84,7 @@ namespace Emas
             return new Double3(value._x * scalar, value._y * scalar, value._z * scalar);
         }
 
-        /// <summary>
-        /// Scales a position or offset by a finite scalar.
-        /// </summary>
+        /// <summary>Scales a position or offset by a finite scalar.</summary>
         /// <param name="scalar">The finite multiplier applied to every coordinate.</param>
         /// <param name="value">The position or offset to scale.</param>
         /// <returns>The scaled vector.</returns>
@@ -114,9 +94,7 @@ namespace Emas
             return value * scalar;
         }
 
-        /// <summary>
-        /// Returns whether all coordinates are equal.
-        /// </summary>
+        /// <summary>Returns whether all coordinates are equal.</summary>
         /// <param name="left">The first position or offset.</param>
         /// <param name="right">The second position or offset.</param>
         /// <returns>True when all corresponding coordinates compare exactly equal.</returns>
@@ -125,9 +103,7 @@ namespace Emas
             return left.Equals(right);
         }
 
-        /// <summary>
-        /// Returns whether any coordinate differs.
-        /// </summary>
+        /// <summary>Returns whether any coordinate differs.</summary>
         /// <param name="left">The first position or offset.</param>
         /// <param name="right">The second position or offset.</param>
         /// <returns>True when at least one corresponding coordinate differs.</returns>
@@ -161,9 +137,7 @@ namespace Emas
             return largest * Math.Sqrt(x * x + y * y + z * z);
         }
 
-        /// <summary>
-        /// Compares coordinates exactly.
-        /// </summary>
+        /// <summary>Compares coordinates exactly.</summary>
         /// <param name="other">The position or offset to compare.</param>
         /// <returns>True when each corresponding double has the same value; no distance tolerance is applied.</returns>
         public bool Equals(Double3 other)
@@ -171,9 +145,7 @@ namespace Emas
             return _x.Equals(other._x) && _y.Equals(other._y) && _z.Equals(other._z);
         }
 
-        /// <summary>
-        /// Compares this value with another double-precision position or offset.
-        /// </summary>
+        /// <summary>Compares this value with another double-precision position or offset.</summary>
         /// <param name="obj">The object to compare, including null.</param>
         /// <returns>True when the object is a <see cref="Double3"/> with exactly equal coordinates.</returns>
         public override bool Equals(object obj)
@@ -181,9 +153,7 @@ namespace Emas
             return obj is Double3 && Equals((Double3)obj);
         }
 
-        /// <summary>
-        /// Returns a hash based on all three coordinates.
-        /// </summary>
+        /// <summary>Returns a hash based on all three coordinates.</summary>
         /// <returns>A hash consistent with exact coordinate equality.</returns>
         public override int GetHashCode()
         {
@@ -195,9 +165,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Formats all coordinates using invariant culture and round-trip precision.
-        /// </summary>
+        /// <summary>Formats all coordinates using invariant culture and round-trip precision.</summary>
         /// <returns>The coordinates formatted as a parenthesized X, Y, Z triple.</returns>
         public override string ToString()
         {

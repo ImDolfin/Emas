@@ -5,8 +5,11 @@ namespace Emas.AircraftFormation
     /// <summary>Shows reference attitude, angular speed, observation ages and wingman bearings during the flight.</summary>
     public sealed class FlightDisplay : MonoBehaviour
     {
+        [Tooltip("Tracking setup whose reference frame supplies the displayed flight data.")]
         [SerializeField] private RealmSetup _setup;
+        [Tooltip("Simulated SDK source used to compare observed and projected motion.")]
         [SerializeField] private FlightSource _source;
+        [Tooltip("Cockpit camera used to measure wingman bearings.")]
         [SerializeField] private Camera _camera;
         private Quaternion _previousRotation;
         private double _previousTime;

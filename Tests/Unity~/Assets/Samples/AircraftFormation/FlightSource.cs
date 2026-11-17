@@ -18,16 +18,21 @@ namespace Emas.AircraftFormation
         /// <summary>The aircraft category mapped by this sample's blueprint.</summary>
         public static readonly Kind Kind = new Kind("flight.aircraft");
 
+        [Header("Simulation")]
+        [Tooltip("Advance the simulated SDK clock in real time. Disable when stepping the source through code.")]
         [SerializeField] private bool _automaticAdvance = true;
+        [Tooltip("Apply the configured latency and measurement noise. Disable to compare clean, immediate observations.")]
         [SerializeField] private bool _simulateJitterAndDelay = true;
         [Tooltip("Independent reference, left and right capture rates in Hz. The streams share an SDK clock, but not capture times.")]
         [SerializeField] private Vector3 _updatesPerSecond = new Vector3(60, 47, 53);
+        [Header("Transport")]
         [Tooltip("Base delivery latency in seconds. Each wingman adds 15 ms to make transport differences visible.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _packetDelay = 0.08f;
         [Tooltip("Independent uniform delivery variation in seconds; delivery can reorder packets.")]
         [Range(0, 0.2f)]
         [SerializeField] private float _delayJitter = 0.05f;
+        [Header("Measurement noise")]
         [Tooltip("Maximum three-dimensional position error per observation, in metres.")]
         [Range(0, 5)]
         [SerializeField] private float _positionJitter = 2;

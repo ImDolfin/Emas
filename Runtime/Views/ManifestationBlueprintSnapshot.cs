@@ -2,9 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Keeps one registration's manifestation settings stable until that scope registers again.
-    /// </summary>
+    /// <summary>Keeps one registration's manifestation settings stable until that scope registers again.</summary>
     internal sealed class ManifestationBlueprintSnapshot
     {
         internal readonly ManifestationBlueprint Asset;

@@ -4,15 +4,11 @@ using UnityEngine;
 
 namespace Emas.Sample
 {
-    /// <summary>
-    /// Application-defined extensible population kinds.
-    /// </summary>
+    /// <summary>Application-defined extensible population kinds.</summary>
 
     public static class SampleKinds
     {
-        /// <summary>
-        /// Identifies sample cars.
-        /// </summary>
+        /// <summary>Identifies sample cars.</summary>
         public static readonly Kind Car = new Kind("sample.vehicle.car");
 
     }

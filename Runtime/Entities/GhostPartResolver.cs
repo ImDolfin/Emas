@@ -5,9 +5,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Resolves root component contracts and reports ambiguous providers for one ghost.
-    /// </summary>
+    /// <summary>Resolves root component contracts and reports ambiguous providers for one ghost.</summary>
     internal sealed class GhostPartResolver
     {
         private readonly List<MonoBehaviour> _components = new List<MonoBehaviour>();

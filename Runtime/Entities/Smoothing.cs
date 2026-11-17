@@ -4,39 +4,31 @@ using UnityEngine;
 namespace Emas
 {
     /// <summary>Optional Ghost trait that smooths source pose presentation before reference projection.</summary>
-    /// <remarks>Author beside Spatial on the same root. Position and rotation have independent half-lives;
-    /// no SDK binding is needed. Filters raw observations independently of Extrapolation. Supplied SDK velocity can
-    /// compensate motion between timed observations even with extrapolation disabled. With extrapolation enabled,
-    /// advances between packets within its configured horizon. With timed SDK velocity, changes in predicted
-    /// position lead apply directly while position measurement error remains filtered.
-    /// With a positive <see cref="Realm.InterpolationDelay"/>, filters buffered observations and uses SDK velocity
-    /// from their playback time for continuous motion assistance, independently of the Extrapolation toggle.</remarks>
+    /// <remarks>
+    /// Place beside Spatial; no reader binding is required. Position and rotation filter independently, using
+    /// buffered poses when configured. Timed SDK velocity supplied through Extrapolation compensates linear motion
+    /// between observations even when gap extrapolation is disabled.
+    /// </remarks>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Spatial))]
     [AddComponentMenu("Emas/Smoothing")]
     public sealed class Smoothing : Trait
     {
-        [Tooltip("Seconds to halve the remaining position error. 0: immediate. 0.02-0.05: responsive, less jitter removal. 0.05-0.15: balanced (start at 0.08). 0.15-0.5: smoother but more visible lag.")]
+        [Tooltip("Seconds to halve position correction error. Zero applies immediately; start at 0.08 s. Larger values remove more jitter but increase lag without SDK motion.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _positionHalfLife = 0.08f;
-        [Tooltip("Seconds to halve the remaining angular error. 0: immediate (default). 0.02-0.05: light filtering; 0.05-0.15: balanced; 0.15-0.5: stronger filtering with lag. On a followed Ghost this also delays scene repositioning when Follow Rotation is on.")]
+        [Tooltip("Seconds to halve angular correction error. Zero applies immediately (default). Larger values smooth more but delay turns, including scene movement when following this Ghost's orientation.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _rotationHalfLife;
         private PoseSmoother _smoother;
 
         /// <summary>Gets or sets seconds to halve position error; zero applies the incoming presentation position directly.</summary>
         /// <value>A finite, nonnegative half-life in seconds; the default is 0.08 seconds.</value>
-        /// <remarks>Defaults to 0.08. After one half-life, 50% of a stationary correction remains; after three, 12.5% remains.
-        /// The Inspector offers 0-0.5 seconds; larger finite values are supported in code and create stronger lag.
-        /// Supplied SDK velocity in Extrapolation reduces motion lag even when Extrapolation is disabled; without it,
-        /// ordinary position filtering produces speed-dependent lag. Raw input and timestamps are retained.
-        /// Buffered playback samples that velocity at the same delayed time as the pose, preserving observed maneuvers.
-        /// With timed SDK velocity, changes in extrapolation lead bypass this half-life, including supplied acceleration
-        /// changes; position noise remains filtered. Live setting edits retain their separate transition.
-        /// New timed observations retain motion assistance after earlier packets reach the extrapolation horizon;
-        /// a held observation at its limit adds no further motion.
-        /// Live edits retain history and blend the setting-induced displacement over 0.25 seconds of real time,
-        /// including changes to zero and the enabled toggle. Inspector edits and property assignments behave identically.</remarks>
+        /// <remarks>
+        /// Timed SDK motion compensates movement while measurement error remains filtered; without it, moving inputs
+        /// trail. Live edits, including zero and enabled changes, retain history and blend their presentation difference
+        /// over 0.25 unscaled seconds. The Inspector offers 0-0.5 seconds; code also accepts larger finite values.
+        /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned half-life is negative, NaN or infinite.</exception>
         public float PositionHalfLife
         {

@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace Emas.RelativeWorld
 {
-    /// <summary>
-    /// Connects the simulated geodetic SDK to the Inspector-configured anchor.
-    /// </summary>
+    /// <summary>Connects the simulated geodetic SDK to the Inspector-configured anchor.</summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("Emas/Examples/Geo Source")]
     public sealed class GeoSource : PresenceDetectorComponent
@@ -97,9 +95,7 @@ namespace Emas.RelativeWorld
             }
         }
 
-        /// <summary>
-        /// Advances the simulation and delivers due packets; the next realm update reads the latest delivered snapshot.
-        /// </summary>
+        /// <summary>Advances the simulation and delivers due packets; the next realm update reads the latest delivered snapshot.</summary>
         /// <param name="seconds">Additional simulated time in seconds.</param>
         /// <remarks>
         /// Disable <see cref="AutomaticAdvance"/> for deterministic manual stepping. Does nothing before attachment.

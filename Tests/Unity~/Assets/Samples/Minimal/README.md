@@ -31,4 +31,4 @@ The remaining scripts show only the data integration:
 
 Replace the simulated position reader in `MarkerSource` with a reader of your SDK proxy. This marker is always present; call `Disappear` with the kind and stable ID when a real entity departs. Call Emas on Unity's main thread.
 
-The detector supplies its `MarkerSource` adapter as the weak `Presence.Source`. The initializer resolves that adapter inside the position reader, illustrating support for Unity source objects without retaining them through the Ghost.
+The detector supplies its `MarkerSource` component as the weak `Presence.Source`. The initializer resolves that component inside the position reader, illustrating support for Unity source objects without retaining them through the Ghost.

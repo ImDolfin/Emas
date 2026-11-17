@@ -5,11 +5,9 @@ namespace Emas
 {
     /// <summary>Maps an Anchor's detected sources to the traits configured on its Ghosts.</summary>
     /// <remarks>
-    /// Add one enabled initializer beside AnchorSetup before starting it. This replaces the Realm's
-    /// Kind initializer for that Anchor. Bind readers through Presence.Source to retain weak ownership.
-    /// Bindings are established on first detection, rediscovery and handover, and when the source or capability set changes.
-    /// Label and variant changes alone do not rerun initialization. Traits must already exist on the Ghost root.
-    /// Restart the Anchor after changing its initializer configuration.
+    /// Add beside AnchorSetup to override its Realm initializer. Bind existing traits through Presence.Source;
+    /// resolve Source inside readers to preserve weak ownership. Initialization repeats on source/capability
+    /// changes, rediscovery and handover. Restart the Anchor after changing initializer configuration.
     /// </remarks>
     [DisallowMultipleComponent]
     public abstract class GhostInitializer : MonoBehaviour

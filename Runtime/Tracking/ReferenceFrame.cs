@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Maps double-precision Cartesian or WGS84 Earth-centered positions to a nearby Unity world pose.
-    /// </summary>
+    /// <summary>Maps double-precision Cartesian or WGS84 Earth-centered positions to a nearby Unity world pose.</summary>
     /// <remarks>
     /// Assign to Realm.ReferenceFrame to customize spatial projection; null uses an identity frame.
     /// Cartesian space uses shared units and axes. Geographic space uses ECEF metres with local or body-to-ECEF attitudes,
@@ -203,9 +201,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets the axes and handedness for Cartesian poses or geographic local attitudes; defaults to Unity.
-        /// </summary>
+        /// <summary>Gets or sets the axes and handedness for Cartesian poses or geographic local attitudes; defaults to Unity.</summary>
         /// <value>A valid signed permutation of the source X, Y and Z axes.</value>
         /// <remarks>
         /// Cartesian poses use this convention. In Geographic space it describes local attitude axes:
@@ -233,9 +229,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets the shared Cartesian position mapped to UnityPosition; Geographic space uses ECEF metres.
-        /// </summary>
+        /// <summary>Gets or sets the shared Cartesian position mapped to UnityPosition; Geographic space uses ECEF metres.</summary>
         /// <value>The cached Cartesian or ECEF position in doubles; zero before a position has been supplied.</value>
         /// <remarks>
         /// Setting this supplies a usable reference immediately but does not clear FollowedGhost.
@@ -287,9 +281,7 @@ namespace Emas
         /// <value>The representation selected by the latest manual attitude input or followed Ghost.</value>
         public RotationSpace RotationSpace => _rotationSpace;
 
-        /// <summary>
-        /// Gets or sets the desired Unity world position of the reference, normally near zero.
-        /// </summary>
+        /// <summary>Gets or sets the desired Unity world position of the reference, normally near zero.</summary>
         /// <value>A finite Unity world position; zero by default.</value>
         /// <exception cref="ArgumentOutOfRangeException">An assigned position component is NaN or infinite.</exception>
         public Vector3 UnityPosition
@@ -309,9 +301,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets the desired Unity world orientation of the reference.
-        /// </summary>
+        /// <summary>Gets or sets the desired Unity world orientation of the reference.</summary>
         /// <value>A normalized scene-alignment quaternion; identity by default.</value>
         /// <exception cref="ArgumentOutOfRangeException">An assigned quaternion component is nonfinite, or the quaternion has zero length.</exception>
         public Quaternion UnityRotation
@@ -326,9 +316,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets whether the reference rotation is cancelled, keeping its Unity heading fixed.
-        /// </summary>
+        /// <summary>Gets or sets whether the reference rotation is cancelled, keeping its Unity heading fixed.</summary>
         /// <value>True to cancel reference attitude before scene alignment; false to follow only position.</value>
         /// <remarks>
         /// True by default. False follows position only, while UnityRotation still defines the scene alignment.
@@ -341,9 +329,7 @@ namespace Emas
             set;
         } = true;
 
-        /// <summary>
-        /// Gets or sets the maximum presentation distance in shared coordinate units, or null for no distance limit.
-        /// </summary>
+        /// <summary>Gets or sets the maximum presentation distance in shared coordinate units, or null for no distance limit.</summary>
         /// <value>A positive finite distance, or null to disable distance-based suppression.</value>
         /// <remarks>
         /// A configured limit must be positive and finite. Geographic space measures ECEF chord distance in metres.
@@ -369,9 +355,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets the spatial ghost to follow in the owning realm, or null for manual reference updates.
-        /// </summary>
+        /// <summary>Gets or sets the spatial ghost to follow in the owning realm, or null for manual reference updates.</summary>
         /// <value>A complete same-realm identity, or null to retain manual control of the cached pose.</value>
         /// <remarks>
         /// Assign or replace the key when the target identity becomes known at runtime.
@@ -399,9 +383,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether any valid reference position has been supplied, including a frozen last-known position.
-        /// </summary>
+        /// <summary>Gets whether any valid reference position has been supplied, including a frozen last-known position.</summary>
         /// <value>True after a manual or followed position has defined this reference, even if its source later disappears.</value>
         public bool HasPosition
         {
@@ -411,9 +393,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether the manual reference is defined or the followed ghost was available at the last projection.
-        /// </summary>
+        /// <summary>Gets whether the manual reference is defined or the followed ghost was available at the last projection.</summary>
         /// <value>True for a defined manual reference or a currently usable followed Spatial pose; false while a followed identity is unresolved.</value>
         public bool IsReferenceAvailable
         {
@@ -459,9 +439,7 @@ namespace Emas
             _earthCenteredBodyAxes = axes;
         }
 
-        /// <summary>
-        /// Converts a shared Cartesian position, or ECEF metres in Geographic space, into Unity world space.
-        /// </summary>
+        /// <summary>Converts a shared Cartesian position, or ECEF metres in Geographic space, into Unity world space.</summary>
         /// <param name="position">The finite position in this frame's source space.</param>
         /// <param name="unityPosition">The projected world point on success; zero on failure.</param>
         /// <returns>
@@ -500,9 +478,7 @@ namespace Emas
             return GeoPosition.FromEarthCentered(ToSimulationPosition(unityPosition));
         }
 
-        /// <summary>
-        /// Converts a Unity world position back into double-precision Cartesian coordinates, or ECEF metres in Geographic space.
-        /// </summary>
+        /// <summary>Converts a Unity world position back into double-precision Cartesian coordinates, or ECEF metres in Geographic space.</summary>
         /// <param name="unityPosition">The finite Unity world point.</param>
         /// <returns>The point in this frame's source space.</returns>
         /// <remarks>Does not apply MaxDistance or restore precision already lost in the Unity input.</remarks>
@@ -605,9 +581,7 @@ namespace Emas
                 CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes));
         }
 
-        /// <summary>
-        /// Calculates Cartesian distance in doubles; Geographic space measures the ECEF chord in metres, not surface distance.
-        /// </summary>
+        /// <summary>Calculates Cartesian distance in doubles; Geographic space measures the ECEF chord in metres, not surface distance.</summary>
         /// <param name="position">The finite Cartesian or ECEF point in this frame's source space.</param>
         /// <returns>The distance from the cached reference, or positive infinity if it exceeds double range.</returns>
         /// <exception cref="InvalidOperationException">No reference position has been supplied.</exception>

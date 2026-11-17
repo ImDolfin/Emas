@@ -3,9 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>
-    /// Maps a named appearance to a view prefab, serialized directly inside a blueprint.
-    /// </summary>
+    /// <summary>Maps a named appearance to a view prefab, serialized directly inside a blueprint.</summary>
     [Serializable]
     public struct ManifestationVariant
     {
@@ -16,9 +14,7 @@ namespace Emas
         [SerializeField]
         private GameObject _prefab;
 
-        /// <summary>
-        /// Gets the appearance name used by this blueprint row.
-        /// </summary>
+        /// <summary>Gets the appearance name used by this blueprint row.</summary>
         /// <value>The case-sensitive appearance name, or an empty string for an unconfigured row.</value>
         public string Name
         {
@@ -28,9 +24,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the runtime appearance identifier for this blueprint row.
-        /// </summary>
+        /// <summary>Gets the runtime appearance identifier for this blueprint row.</summary>
         /// <value>The identifier constructed from the configured appearance name.</value>
         /// <exception cref="ArgumentException">The row is unconfigured or its serialized name is blank.</exception>
         public Variant Variant
@@ -41,9 +35,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the view prefab selected for this appearance.
-        /// </summary>
+        /// <summary>Gets the view prefab selected for this appearance.</summary>
         /// <value>The authored view prefab, or null for an unconfigured or missing asset reference.</value>
         public GameObject Prefab
         {
@@ -53,9 +45,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Creates a named appearance and its view prefab.
-        /// </summary>
+        /// <summary>Creates a named appearance and its view prefab.</summary>
         /// <param name="name">The non-empty, case-sensitive appearance name.</param>
         /// <param name="prefab">The view prefab.</param>
         /// <exception cref="ArgumentException">The name is null, empty or whitespace.</exception>

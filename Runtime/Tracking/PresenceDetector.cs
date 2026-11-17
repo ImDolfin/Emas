@@ -3,9 +3,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    /// <summary>
-    /// Base class for detecting entities from an external data source.
-    /// </summary>
+    /// <summary>Base class for detecting entities from an external data source.</summary>
     /// <remarks>
     /// Use all detector operations on Unity's main thread. The application handles SDK threading before calling Emas.
     /// Attach through an Anchor. Detect arrivals and disappearances; Ghost traits read their own mapped inputs. SDK clients remain application-owned.
@@ -25,12 +23,8 @@ namespace Emas
         private TimeSpan? _inactivityTimeout;
         private TimeSpan _disappearanceGracePeriod;
 
-        /// <summary>
-        /// Gets the anchor currently hosting this source.
-        /// </summary>
-        /// <value>
-        /// The attached anchor, or null while detached.
-        /// </value>
+        /// <summary>Gets the anchor currently hosting this source.</summary>
+        /// <value>The attached anchor, or null while detached.</value>
         public Anchor Anchor
         {
             get
@@ -50,12 +44,8 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets how long an owned presence may go without publication before it disappears.
-        /// </summary>
-        /// <value>
-        /// A positive timeout, or null to disable inactivity expiry, which is the default.
-        /// </value>
+        /// <summary>Gets or sets how long an owned presence may go without publication before it disappears.</summary>
+        /// <value>A positive timeout, or null to disable inactivity expiry, which is the default.</value>
         /// <remarks>
         /// Configure while detached. Uses unscaled real time and marks expired presences missing during the next realm update,
         /// after queued publications and detector updates. Detect, GetOrCreate and MarkPublished reset the individual presence's deadline.
@@ -63,12 +53,8 @@ namespace Emas
         /// Trait reads do not count as presence activity. Enable only for feeds that confirm continued presence;
         /// arrival/departure-only feeds should leave expiry disabled.
         /// </remarks>
-        /// <exception cref="ArgumentOutOfRangeException">
-        /// The timeout is zero or negative.
-        /// </exception>
-        /// <exception cref="InvalidOperationException">
-        /// The source is attached or running a lifecycle callback.
-        /// </exception>
+        /// <exception cref="ArgumentOutOfRangeException">The timeout is zero or negative.</exception>
+        /// <exception cref="InvalidOperationException">The source is attached or running a lifecycle callback.</exception>
         public TimeSpan? InactivityTimeout
         {
             get
@@ -91,9 +77,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets how long a disappeared presence remains unavailable before removal.
-        /// </summary>
+        /// <summary>Gets or sets how long a disappeared presence remains unavailable before removal.</summary>
         /// <remarks>
         /// Zero, the default, removes immediately. A later report during the grace period reuses the same
         /// Presence and Ghost root. Configure while detached on Unity's main thread.
@@ -123,9 +107,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether this registration is starting or accepting updates.
-        /// </summary>
+        /// <summary>Gets whether this registration is starting or accepting updates.</summary>
         /// <remarks>
         /// False after failure or detachment. Failure leaves the source attached for retry but removes its ghosts.
         /// </remarks>
@@ -138,9 +120,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets whether an anchor currently owns this source, including a failed registration.
-        /// </summary>
+        /// <summary>Gets whether an anchor currently owns this source, including a failed registration.</summary>
         /// <value>True while an anchor retains this detector, even if the attachment has stopped after failure.</value>
         public bool IsAttached
         {
@@ -150,9 +130,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the first error from the most recent attachment attempt, or null.
-        /// </summary>
+        /// <summary>Gets the first error from the most recent attachment attempt, or null.</summary>
         /// <remarks>
         /// Cleared before OnStart. Retained after stopping or detachment; cleanup errors do not replace a primary error.
         /// Errors from superseded registrations cannot change this value.
@@ -166,9 +144,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets or sets an application label used in diagnostics and failure reports.
-        /// </summary>
+        /// <summary>Gets or sets an application label used in diagnostics and failure reports.</summary>
         /// <remarks>
         /// Null, empty or whitespace labels use the source type name. Labels do not affect identity or ownership.
         /// Change this value only on Unity's main thread; recorded failure context retains its original label.
@@ -187,9 +163,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets the anchor, source and operation associated with LastError, or null when no error is recorded.
-        /// </summary>
+        /// <summary>Gets the anchor, source and operation associated with LastError, or null when no error is recorded.</summary>
         /// <remarks>
         /// Emas includes the kind and entity ID when known. Captured with the primary error and cleared
         /// before each attachment attempt; cleanup and stale registrations cannot replace that context.
@@ -227,12 +201,8 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets ghosts owned by this source.
-        /// </summary>
-        /// <value>
-        /// A snapshot including unavailable ghosts.
-        /// </value>
+        /// <summary>Gets ghosts owned by this source.</summary>
+        /// <value>A snapshot including unavailable ghosts.</value>
         protected IReadOnlyList<IGhost> OwnedGhosts
         {
             get
@@ -241,9 +211,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Gets a snapshot of presences monitored by this detector, including unavailable ones.
-        /// </summary>
+        /// <summary>Gets a snapshot of presences monitored by this detector, including unavailable ones.</summary>
         /// <value>A copied membership list of owned presences, or an empty list while detached.</value>
         protected IReadOnlyList<Presence> OwnedPresences
         {
@@ -431,9 +399,7 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Starts one attachment; acquire presence subscriptions and detect existing entities here.
-        /// </summary>
+        /// <summary>Starts one attachment; acquire presence subscriptions and detect existing entities here.</summary>
         /// <remarks>
         /// OnStop follows even when startup throws. Undo partial external subscriptions before throwing if cleanup cannot access them.
         /// </remarks>
@@ -441,9 +407,7 @@ namespace Emas
         {
         }
 
-        /// <summary>
-        /// Processes one realm update on the Unity thread.
-        /// </summary>
+        /// <summary>Processes one realm update on the Unity thread.</summary>
         /// <remarks>
         /// Exceptions stop this registration and remove its ghosts. Other sources continue.
         /// </remarks>
@@ -451,9 +415,7 @@ namespace Emas
         {
         }
 
-        /// <summary>
-        /// Releases this attachment's subscriptions and source-owned resources.
-        /// </summary>
+        /// <summary>Releases this attachment's subscriptions and source-owned resources.</summary>
         /// <remarks>
         /// Called once per started attachment, including failures. Do not dispose application-owned SDK clients.
         /// </remarks>
@@ -461,9 +423,7 @@ namespace Emas
         {
         }
 
-        /// <summary>
-        /// Creates or refreshes a detected entity's stable Presence and initializes its configured Ghost traits.
-        /// </summary>
+        /// <summary>Creates or refreshes a detected entity's stable Presence and initializes its configured Ghost traits.</summary>
         /// <param name="entityId">The stable SDK entity ID.</param>
         /// <param name="kind">The detected kind.</param>
         /// <param name="name">The display label; null retains an existing label or uses the entity ID for a new root.</param>
@@ -473,12 +433,10 @@ namespace Emas
         /// Null preserves the existing source. A different source reruns the initializer.</param>
         /// <returns>The stable realm-owned presence handle.</returns>
         /// <remarks>
-        /// Configured traits must already exist on the root. The initializer binds them before their first read;
-        /// advertised capabilities do not add components or guarantee that Ghost.TryGet can resolve them.
-        /// A new or unavailable entity activates after successful startup, or during the next realm update
-        /// for detections made outside startup. Repeated detection records activity and cancels disappearance grace.
-        /// Source or capability changes rerun initialization; label and variant changes alone do not.
-        /// Initialization failures propagate and stop the affected attachment, with startup rollback handled by the anchor.
+        /// Initializers bind existing root traits; capability metadata does not add components or guarantee contracts.
+        /// Detection records activity and cancels grace. Source/capability changes reinitialize; labels and variants do
+        /// not. Availability finalizes at successful startup or the next update. Initialization failures stop the
+        /// attachment; startup failures roll back.
         /// </remarks>
         /// <exception cref="ArgumentException">An identity is invalid, or a capability is null or is not an interface type.</exception>
         /// <exception cref="InvalidOperationException">The detector is inactive, another detector owns the identity, or the root type is incompatible.</exception>
@@ -495,24 +453,12 @@ namespace Emas
             return _anchor.Realm.DetectPresence(this, _anchor.Id, entityId, kind, name, variant, capabilities, source);
         }
 
-        /// <summary>
-        /// Obtains or creates a typed ghost owned by this source.
-        /// </summary>
-        /// <typeparam name="TGhost">
-        /// The ghost component type.
-        /// </typeparam>
-        /// <param name="entityId">
-        /// The source entity ID.
-        /// </param>
-        /// <param name="kind">
-        /// The ghost kind.
-        /// </param>
-        /// <param name="variant">
-        /// The appearance; null retains an existing value, and None clears it.
-        /// </param>
-        /// <returns>
-        /// The stable ghost component.
-        /// </returns>
+        /// <summary>Obtains or creates a typed ghost owned by this source.</summary>
+        /// <typeparam name="TGhost">The ghost component type.</typeparam>
+        /// <param name="entityId">The source entity ID.</param>
+        /// <param name="kind">The ghost kind.</param>
+        /// <param name="variant">The appearance; null retains an existing value, and None clears it.</param>
+        /// <returns>The stable ghost component.</returns>
         /// <remarks>
         /// Call on Unity's main thread while this source is active. Complete data before a lifecycle or dispatched callback returns.
         /// A new or unavailable ghost obtained outside those callbacks becomes available on the next realm update; finish its data first.
@@ -522,38 +468,20 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is inactive, another source owns the identity, or the existing/prefab ghost has an incompatible type.
         /// </exception>
-        /// <exception cref="ArgumentException">
-        /// The kind or entity ID is invalid.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The owning anchor or realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentException">The kind or entity ID is invalid.</exception>
+        /// <exception cref="ObjectDisposedException">The owning anchor or realm was disposed.</exception>
         protected TGhost GetOrCreate<TGhost>(string entityId, Kind kind, Variant? variant = null) where TGhost : Ghost
         {
             return GetOrCreate<TGhost>(entityId, kind, variant, null);
         }
 
-        /// <summary>
-        /// Obtains or creates a typed ghost and sets its source display name.
-        /// </summary>
-        /// <typeparam name="TGhost">
-        /// The ghost component type.
-        /// </typeparam>
-        /// <param name="entityId">
-        /// The source entity ID.
-        /// </param>
-        /// <param name="kind">
-        /// The ghost kind.
-        /// </param>
-        /// <param name="variant">
-        /// The appearance; null retains an existing value, and None clears it.
-        /// </param>
-        /// <param name="name">
-        /// The source display name, or null to retain the current name.
-        /// </param>
-        /// <returns>
-        /// The stable ghost component.
-        /// </returns>
+        /// <summary>Obtains or creates a typed ghost and sets its source display name.</summary>
+        /// <typeparam name="TGhost">The ghost component type.</typeparam>
+        /// <param name="entityId">The source entity ID.</param>
+        /// <param name="kind">The ghost kind.</param>
+        /// <param name="variant">The appearance; null retains an existing value, and None clears it.</param>
+        /// <param name="name">The source display name, or null to retain the current name.</param>
+        /// <returns>The stable ghost component.</returns>
         /// <remarks>
         /// Call on Unity's main thread while this source is active. Complete data before a lifecycle or dispatched callback returns.
         /// A new or unavailable ghost obtained outside those callbacks becomes available on the next realm update; finish its data first.
@@ -563,12 +491,8 @@ namespace Emas
         /// <exception cref="InvalidOperationException">
         /// The source is inactive, another source owns the identity, or the existing/prefab ghost has an incompatible type.
         /// </exception>
-        /// <exception cref="ArgumentException">
-        /// The kind or entity ID is invalid.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The owning anchor or realm was disposed.
-        /// </exception>
+        /// <exception cref="ArgumentException">The kind or entity ID is invalid.</exception>
+        /// <exception cref="ObjectDisposedException">The owning anchor or realm was disposed.</exception>
         protected TGhost GetOrCreate<TGhost>(string entityId, Kind kind, Variant? variant, string name) where TGhost : Ghost
         {
             if (_anchor == null || !_started)
@@ -580,31 +504,17 @@ namespace Emas
             return _anchor.Realm.GetOrCreate<TGhost>(this, _anchor.Id, entityId, kind, variant, name);
         }
 
-        /// <summary>
-        /// Records fresh data written to a ghost cached by this source.
-        /// </summary>
-        /// <param name="ghost">
-        /// The current ghost owned by this attachment.
-        /// </param>
+        /// <summary>Records fresh data written to a ghost cached by this source.</summary>
+        /// <param name="ghost">The current ghost owned by this attachment.</param>
         /// <remarks>
-        /// Call after updating cached ghost data to reset its inactivity deadline and cancel disappearance grace.
-        /// Any partial data update counts as activity. A ghost retained during grace becomes available at finalization;
-        /// calls outside lifecycle or dispatched work wait for the next realm update.
-        /// GetOrCreate already records activity, so no additional call is needed when publishing through it.
-        /// This does not invoke callbacks synchronously or change ghost data.
+        /// Use after updating cached Ghost data to refresh inactivity and cancel grace. Calls outside
+        /// lifecycle/dispatched work finalize on the next update. GetOrCreate already records activity. This does not
+        /// change data or invoke callbacks synchronously.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">
-        /// The source is inactive.
-        /// </exception>
-        /// <exception cref="ArgumentNullException">
-        /// The ghost is null.
-        /// </exception>
-        /// <exception cref="ArgumentException">
-        /// The ghost is removed, belongs to another source, or was not claimed by this attachment.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The owning anchor or realm was disposed.
-        /// </exception>
+        /// <exception cref="InvalidOperationException">The source is inactive.</exception>
+        /// <exception cref="ArgumentNullException">The ghost is null.</exception>
+        /// <exception cref="ArgumentException">The ghost is removed, belongs to another source, or was not claimed by this attachment.</exception>
+        /// <exception cref="ObjectDisposedException">The owning anchor or realm was disposed.</exception>
         protected void MarkPublished(IGhost ghost)
         {
             if (_anchor == null || !_started)
@@ -616,15 +526,9 @@ namespace Emas
             _anchor.Realm.MarkPublished(this, ghost);
         }
 
-        /// <summary>
-        /// Reports that one owned presence has disappeared.
-        /// </summary>
-        /// <param name="kind">
-        /// The ghost kind.
-        /// </param>
-        /// <param name="entityId">
-        /// The source entity ID.
-        /// </param>
+        /// <summary>Reports that one owned presence has disappeared.</summary>
+        /// <param name="kind">The ghost kind.</param>
+        /// <param name="entityId">The source entity ID.</param>
         /// <remarks>
         /// Unknown IDs and inactive registrations are ignored. The Realm hides the presence immediately and removes it after DisappearanceGracePeriod.
         /// </remarks>
@@ -638,12 +542,8 @@ namespace Emas
             }
         }
 
-        /// <summary>
-        /// Defers an action to a bounded batch in a later realm update.
-        /// </summary>
-        /// <param name="action">
-        /// The action to execute on the Unity thread; null is ignored.
-        /// </param>
+        /// <summary>Defers an action to a bounded batch in a later realm update.</summary>
+        /// <param name="action">The action to execute on the Unity thread; null is ignored.</param>
         /// <remarks>
         /// Call only on Unity's main thread. This defers work; it does not transfer work between threads.
         /// Stopped/detached calls are ignored; actions queued during an update wait until a later update.
@@ -660,23 +560,15 @@ namespace Emas
             _anchor.Realm.Dispatch(this, _registrationGeneration, action);
         }
 
-        /// <summary>
-        /// Captures a dispatcher bound to this source's current attachment.
-        /// </summary>
-        /// <returns>
-        /// A callback that queues work while this attachment remains active and ignores calls after it ends.
-        /// </returns>
+        /// <summary>Captures a dispatcher bound to this source's current attachment.</summary>
+        /// <returns>A callback that queues work while this attachment remains active and ignores calls after it ends.</returns>
         /// <remarks>
         /// Capture during OnStart and pass the returned callback to an external subscription. Invoke it only on Unity's main thread.
         /// Queued actions run during a later realm update, subject to the realm's dispatch budget.
         /// This does not transfer work from background threads.
         /// </remarks>
-        /// <exception cref="InvalidOperationException">
-        /// The source is not active on an anchor.
-        /// </exception>
-        /// <exception cref="ObjectDisposedException">
-        /// The owning anchor or realm was disposed.
-        /// </exception>
+        /// <exception cref="InvalidOperationException">The source is not active on an anchor.</exception>
+        /// <exception cref="ObjectDisposedException">The owning anchor or realm was disposed.</exception>
         protected Action<Action> CaptureDispatcher()
         {
             if (_anchor == null || !_started)
