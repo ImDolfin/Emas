@@ -2,6 +2,8 @@
 
 ## 0.1.0
 
+- Fix extrapolation strategy selection in the Ghost Inspector failing with an argument null exception after the trait's serialized state is disposed. Apply menu selections through fresh serialized state, preserving Undo and prefab edits.
+
 - Add README examples for every built-in extrapolation strategy, shared timestamped motion inputs and runtime strategy switching.
 
 - Add `SingerExtrapolation` with a configurable acceleration decay time constant and stable closed-form mean displacement. Preserve constant quaternion angular motion, independently timed SDK channels, buffered playback, runtime switching and smoothing; expose the strategy and its time constant in the Ghost Inspector and saved prefabs.

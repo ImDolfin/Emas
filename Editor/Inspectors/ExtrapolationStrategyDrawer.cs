@@ -60,6 +60,10 @@ namespace Emas.Editor
 
         private static void ShowMenu(SerializedProperty property)
         {
+            // GhostInspector disposes its per-trait SerializedObject when the draw ends,
+            // before a menu selection runs. Retain only targets and the property path.
+            UnityEngine.Object[] targets = property.serializedObject.targetObjects;
+            string path = property.propertyPath;
             GenericMenu menu = new GenericMenu();
             foreach (Type type in TypeCache.GetTypesDerivedFrom<IExtrapolationStrategy>())
             {
@@ -70,14 +74,29 @@ namespace Emas.Editor
                 }
 
                 Type selectedType = type;
-                SerializedObject owner = property.serializedObject;
-                string path = property.propertyPath;
                 bool selected = property.managedReferenceValue != null && property.managedReferenceValue.GetType() == type;
                 menu.AddItem(new GUIContent(ObjectNames.NicifyVariableName(type.Name)), selected, () =>
                 {
-                    owner.Update();
-                    owner.FindProperty(path).managedReferenceValue = Activator.CreateInstance(selectedType);
-                    owner.ApplyModifiedProperties();
+                    foreach (UnityEngine.Object target in targets)
+                    {
+                        if (target == null)
+                        {
+                            continue;
+                        }
+
+                        using (SerializedObject owner = new SerializedObject(target))
+                        {
+                            owner.Update();
+                            SerializedProperty strategy = owner.FindProperty(path);
+                            if (strategy == null)
+                            {
+                                continue;
+                            }
+
+                            strategy.managedReferenceValue = Activator.CreateInstance(selectedType);
+                            owner.ApplyModifiedProperties();
+                        }
+                    }
                 });
             }
 
