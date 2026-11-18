@@ -2169,6 +2169,31 @@ namespace Emas.Tests
             }
         }
 
+        /// <summary>Rapid pitch, roll and combined maneuvers preserve a stationary target's independently calculated bearing with fresh or delayed packets; reversed body-rate signs produce a distinct angular offset.</summary>
+        /// <returns>An iterator that compares all moving strategies during continuous high-rate flight.</returns>
+        [UnityTest]
+        public IEnumerator TimestampedExtrapolation_HighRateReferenceMatchesIndependentTargetBearing()
+        {
+            Double3[] bodyRates =
+            {
+                new Double3(0, Math.PI, 0),
+                new Double3(4d * Math.PI, 0, 0),
+                new Double3(2d * Math.PI, Math.PI, 0.5d * Math.PI)
+            };
+            IExtrapolationStrategy[] strategies =
+            {
+                new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(),
+                new SingerExtrapolation(), new CoordinatedTurnExtrapolation()
+            };
+            foreach (IExtrapolationStrategy strategy in strategies)
+            {
+                foreach (Double3 rate in bodyRates)
+                {
+                    yield return AssertHighRateReference(strategy, rate);
+                }
+            }
+        }
+
         /// <summary>One timed attitude and supplied aircraft body rates predict pitch and roll with the same horizon in Cartesian, geographic and body-to-ECEF rotation conventions.</summary>
         [Test]
         public void BodyAngularVelocity_PredictsSingleAttitudesAcrossRotationConventions()
@@ -2501,6 +2526,125 @@ namespace Emas.Tests
                         "Extrapolation must continue advancing between source observations in both smoothing configurations.");
                 }
             }
+        }
+
+        /// <summary>Compares a known high-rate flight with a control whose pitch or roll rate has the opposite sign.</summary>
+        /// <param name="strategy">The immutable prediction model shared by the two isolated Realms.</param>
+        /// <param name="bodyRate">Constant forward/right/down body rates in radians per second.</param>
+        /// <returns>An iterator that observes fresh packets followed by packets delayed by 35 milliseconds.</returns>
+        private IEnumerator AssertHighRateReference(IExtrapolationStrategy strategy, Double3 bodyRate)
+        {
+            Realm[] realms = { new Realm(), new Realm() };
+            Spatial[] references = new Spatial[2];
+            Extrapolation[] extrapolations = new Extrapolation[2];
+            Spatial[] clocks = new Spatial[2];
+            TestGhost[] targets = new TestGhost[2];
+            Vector3 worldTarget = new Vector3(1000, 700, 1000);
+            Vector3 angular = new Vector3((float)-bodyRate.Y, (float)bodyRate.Z, (float)-bodyRate.X);
+            double radiansPerSecond = angular.magnitude;
+            Vector3 axis = angular.normalized;
+            Vector3 initialVelocity = new Vector3(0, 0, 343);
+            Double3 reversed = bodyRate.Y != 0
+                ? new Double3(bodyRate.X, -bodyRate.Y, bodyRate.Z)
+                : new Double3(-bodyRate.X, bodyRate.Y, bodyRate.Z);
+            CoordinateSystem axes = CoordinateSystem.NorthEastDown;
+            ReferenceFrame conversion = new ReferenceFrame { Coordinates = axes, Position = default(Double3), FollowRotation = false };
+            double[,] maximumErrors = new double[2, 2];
+            double[,] maximumExcess = new double[2, 2];
+            try
+            {
+                for (int variant = 0; variant < realms.Length; variant++)
+                {
+                    TestSource source = new TestSource();
+                    realms[variant].GetOrCreateAnchor("simulation", source);
+                    TestGhost reference = source.Publish("rapid ownship");
+                    references[variant] = reference.gameObject.AddComponent<Spatial>();
+                    reference.gameObject.AddComponent<Smoothing>();
+                    extrapolations[variant] = reference.gameObject.AddComponent<Extrapolation>();
+                    extrapolations[variant].Strategy = strategy;
+                    realms[variant].ReferenceFrame = new ReferenceFrame { Coordinates = axes, FollowedGhost = reference.Key };
+                    targets[variant] = source.Publish("stationary target");
+                    targets[variant].gameObject.AddComponent<Spatial>().SetCartesianPosition(
+                        new Double3(worldTarget.z, worldTarget.x, -worldTarget.y));
+                    clocks[variant] = source.Publish("current source clock").gameObject.AddComponent<Spatial>();
+                }
+
+                double started = Time.realtimeSinceStartupAsDouble - 0.1d;
+                double elapsed;
+                do
+                {
+                    elapsed = Time.realtimeSinceStartupAsDouble - started;
+                    int phase = elapsed < 0.55d ? 0 : 1;
+                    double observed = elapsed - (phase == 0 ? 0 : 0.035d);
+                    double angle = radiansPerSecond * observed;
+                    Vector3 position = initialVelocity * (float)observed
+                        + Vector3.Cross(axis, initialVelocity) * (float)((1d - Math.Cos(angle)) / radiansPerSecond)
+                        + Vector3.Cross(axis, Vector3.Cross(axis, initialVelocity))
+                            * (float)(observed - Math.Sin(angle) / radiansPerSecond);
+                    Vector3 velocity = RotateTrajectory(initialVelocity, axis, angle);
+                    Vector3 acceleration = Vector3.Cross(angular, velocity);
+                    Quaternion rotation = conversion.ToSimulationRotation(Quaternion.AngleAxis((float)(angle * Mathf.Rad2Deg), axis));
+                    Timestamp sampleTime = Timestamp.FromSeconds(1000d + observed);
+                    for (int variant = 0; variant < realms.Length; variant++)
+                    {
+                        references[variant].SetCartesianPosition(new Double3(position.z, position.x, -position.y), sampleTime);
+                        references[variant].SetSourceRotation(rotation, sampleTime);
+                        extrapolations[variant].SetCartesianVelocity(new Double3(velocity.z, velocity.x, -velocity.y), sampleTime);
+                        extrapolations[variant].SetCartesianAcceleration(new Double3(acceleration.z, acceleration.x, -acceleration.y), sampleTime);
+                        extrapolations[variant].SetBodyAngularVelocity(variant == 0 ? bodyRate : reversed, sampleTime: sampleTime);
+                        double before = Time.realtimeSinceStartupAsDouble;
+                        // A current source-clock witness makes the 35 ms observation age known,
+                        // independently of the production clock's unknown absolute transport offset.
+                        clocks[variant].SetCartesianPosition(default(Double3), Timestamp.FromSeconds(1000d + before - started));
+                        realms[variant].Update();
+                        double after = Time.realtimeSinceStartupAsDouble;
+                        double now = (before + after) * 0.5d - started;
+                        double currentAngle = radiansPerSecond * now;
+                        Vector3 currentPosition = initialVelocity * (float)now
+                            + Vector3.Cross(axis, initialVelocity) * (float)((1d - Math.Cos(currentAngle)) / radiansPerSecond)
+                            + Vector3.Cross(axis, Vector3.Cross(axis, initialVelocity))
+                                * (float)(now - Math.Sin(currentAngle) / radiansPerSecond);
+                        Vector3 expected = RotateTrajectory(worldTarget - currentPosition, axis, -currentAngle);
+                        double error = Vector3.Angle(expected, targets[variant].transform.position);
+                        if ((phase == 0 && elapsed > 0.25d) || elapsed > 0.7d)
+                        {
+                            maximumErrors[variant, phase] = Math.Max(maximumErrors[variant, phase], error);
+                            // The projection instant lies inside this measured update. Bound its angular
+                            // timing uncertainty explicitly; rapid rolls magnify even sub-millisecond spans.
+                            maximumExcess[variant, phase] = Math.Max(maximumExcess[variant, phase],
+                                error - radiansPerSecond * Mathf.Rad2Deg * (after - before));
+                        }
+                    }
+
+                    yield return null;
+                }
+                while (elapsed < 1d);
+
+                TestContext.WriteLine(strategy.GetType().Name + "; FRD rad/s=" + bodyRate
+                    + "; correct bearing error fresh/delayed=" + maximumErrors[0, 0] + "/" + maximumErrors[0, 1]
+                    + "; reversed sign=" + maximumErrors[1, 0] + "/" + maximumErrors[1, 1] + " deg");
+                Assert.That(maximumExcess[0, 0], Is.LessThan(0.25d), "Fresh-packet high-rate bearing must match independent flight geometry.");
+                Assert.That(maximumExcess[0, 1], Is.LessThan(0.25d), "Delayed-packet high-rate bearing must match independent flight geometry.");
+                Assert.That(maximumErrors[1, 1], Is.GreaterThan(2d), "A reversed pitch/roll sign must reproduce a visible maneuver offset.");
+            }
+            finally
+            {
+                foreach (Realm realm in realms)
+                {
+                    realm.Dispose();
+                }
+            }
+        }
+
+        /// <summary>Rotates the independent flight trajectory with Rodrigues' vector formula.</summary>
+        /// <param name="vector">The world or body vector to rotate.</param>
+        /// <param name="axis">The unit rotation axis.</param>
+        /// <param name="angle">The signed angle in radians.</param>
+        /// <returns>The rotated vector without using Emas presentation state.</returns>
+        private static Vector3 RotateTrajectory(Vector3 vector, Vector3 axis, double angle)
+        {
+            return vector * (float)Math.Cos(angle) + Vector3.Cross(axis, vector) * (float)Math.Sin(angle)
+                + axis * (Vector3.Dot(axis, vector) * (float)(1d - Math.Cos(angle)));
         }
 
         /// <summary>Exercises cubic arrival correction, interruption and per-root state with timed, buffered or untimed input.</summary>

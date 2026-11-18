@@ -69,15 +69,16 @@ namespace Emas
                 Double3 angularVelocity = default(Double3);
                 if (settings.PacketSmoothingDuration > 0)
                 {
-                    // Sample the same bounded trajectory, including buffered playback. Preview calls do not
-                    // advance motion history; finite differences give tangents to any application strategy.
+                    // Use a forward difference on the same bounded trajectory, including buffered playback.
+                    // A central difference straddles the held past at a fresh packet and halves its tangent;
+                    // at the horizon the forward difference correctly reports that presentation has stopped.
+                    // Preview calls do not advance motion history.
                     const double step = 0.001d;
-                    PresentationPose before = SamplePose(spatial, clock, timestamp - step, extrapolation, sourceAxes, settings, true, out _, out _);
                     PresentationPose after = SamplePose(spatial, clock, timestamp + step, extrapolation, sourceAxes, settings, true, out _, out _);
                     try
                     {
-                        velocity = (after.Position - before.Position) * (0.5d / step);
-                        angularVelocity = SpatialMath.RotationRate(before.Rotation, after.Rotation, 2d * step);
+                        velocity = (after.Position - pose.Position) * (1d / step);
+                        angularVelocity = SpatialMath.RotationRate(pose.Rotation, after.Rotation, step);
                     }
                     catch (ArgumentOutOfRangeException)
                     {

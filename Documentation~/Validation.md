@@ -55,7 +55,7 @@ Tests exercise public Emas APIs, supported detector extension points and Unity s
 | Queries | Available-root filtering, immutable descriptions, global Realm scope, paired membership notifications and subscription cleanup. |
 | Views | Blueprint snapshots, named/fallback appearance selection, requested-view lifetime, isolated presentation failures and shared projection during manifestation. |
 | Spatial | Coordinate handedness, WGS84/ECEF conversion, independent pose channels, followed references, attachments, range suppression and recovery. |
-| Motion | Shared timestamped playback, packet ordering and clock restart; bounded strategy predictions; supplied/estimated rate provenance; smoothing and SDK motion assistance; live tuning; Singer integration; rotating-body trajectories; cubic correction and per-root isolation. |
+| Motion | Shared timestamped playback, packet ordering and clock restart; bounded strategy predictions; supplied/estimated rate provenance; smoothing and SDK motion assistance; live tuning; Singer integration; rotating-body trajectories; high-rate followed-reference bearings and reversed-rate controls; cubic correction and per-root isolation. |
 | Unity setup | Realm/Anchor ownership, provider/initializer context, startup, restart, disable/reparent behavior and automatic updates. |
 | Editor authoring | Configuration validation, visible root fields, exclusive trait controls, multi-object strategy layout, Undo/Redo, prefab persistence and live tuning. |
 | Samples | Runnable authored scenes, SDK replacement, scoped query consumers, geographic and aircraft motion under delay/jitter/noise, and byte-for-byte imported-sample consistency. |
