@@ -23,7 +23,7 @@ namespace Emas
                 throw new ArgumentNullException(nameof(record));
             }
 
-            // The record supplies its own identity; an existing key cannot be overwritten.
+            // Add must fail if another root already has this Key.
             _records.Add(record.Key, record);
         }
 
@@ -45,7 +45,7 @@ namespace Emas
                 return null;
             }
 
-            // A retained handle cannot address a replacement with the same key.
+            // An old root must not find its replacement just because they share a Key.
             return ReferenceEquals(record.Ghost, ghost) ? record : null;
         }
 
@@ -56,7 +56,7 @@ namespace Emas
                 return false;
             }
 
-            // Cleanup from an old lifetime must never remove a newer record.
+            // Cleanup for an old root must not remove its replacement.
             return _records.Remove(record.Key);
         }
 
@@ -78,6 +78,7 @@ namespace Emas
 
         internal List<Record> OwnedBy(PresenceDetector owner)
         {
+            // Copy the list so callers can change owners or remove roots while going through it.
             List<Record> result = new List<Record>();
             foreach (Record record in _records.Values)
             {

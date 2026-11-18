@@ -25,6 +25,7 @@ namespace Emas.AircraftFormation
                 return;
             }
             double now = Time.realtimeSinceStartupAsDouble;
+            // Measure the displayed rotation over real time so the rate includes buffering and filters.
             if (_hasPrevious && now > _previousTime)
             {
                 _angularSpeed = Quaternion.Angle(_previousRotation, frame.Rotation) / (float)(now - _previousTime);
@@ -46,6 +47,7 @@ namespace Emas.AircraftFormation
                 DrawHorizon(realm.ReferenceFrame.Rotation);
             }
             GUI.Box(new Rect(12, 12, 450, 260), GUIContent.none);
+            // Use the same source and Realm for these controls, readouts and Scene targets.
             GUILayout.BeginArea(new Rect(24, 20, 426, 245));
             GUILayout.Label("MACH 1  /  AIRCRAFT FORMATION");
             GUILayout.Label("343 m/s (1,234.8 km/h)  |  SDK " + _source.ElapsedSeconds.ToString("F1") + " s");
@@ -73,6 +75,7 @@ namespace Emas.AircraftFormation
             }
             GUILayout.EndArea();
 
+            // Draw the sight separately, then restore shared GUI settings for other scripts.
             GUI.color = new Color(0.4f, 1, 0.75f);
             GUI.DrawTexture(new Rect(Screen.width * 0.5f - 12, Screen.height * 0.5f, 24, 1), Texture2D.whiteTexture);
             GUI.DrawTexture(new Rect(Screen.width * 0.5f, Screen.height * 0.5f - 12, 1, 24), Texture2D.whiteTexture);
@@ -93,6 +96,7 @@ namespace Emas.AircraftFormation
             string text = id + " capture age " + (age * 1000).ToString("F0") + " ms";
             if (id != "reference" && spatial.IsInRange)
             {
+                // Measure direction from the camera so it includes reference motion and the playback delay.
                 Vector3 local = _camera.transform.InverseTransformPoint(ghost.transform.position);
                 float azimuth = Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg;
                 float elevation = Mathf.Atan2(local.y, new Vector2(local.x, local.z).magnitude) * Mathf.Rad2Deg;
@@ -108,8 +112,8 @@ namespace Emas.AircraftFormation
 
         private void DrawHorizon(Quaternion rotation)
         {
-            // The level horizon satisfies dot(simulation up, camera ray) = 0. Use the presented reference
-            // attitude so the instrument and target projection share the same buffered, filtered motion.
+            // A level horizon has dot(simulation up, camera ray) = 0. Use the displayed reference
+            // rotation so the instrument and targets use the same buffering and filters.
             Vector3 up = Quaternion.Inverse(rotation) * Vector3.up;
             float focalLength = Screen.height * 0.5f / Mathf.Tan(_camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
             float leftY = Screen.height * 0.5f + (-up.x * Screen.width * 0.5f + up.z * focalLength) / up.y;
@@ -117,6 +121,7 @@ namespace Emas.AircraftFormation
             Vector2 start = new Vector2(0, leftY);
             Vector2 end = new Vector2(Screen.width, rightY);
             Matrix4x4 previous = GUI.matrix;
+            // Rotate the strip onto the horizon, then restore rotation for the rest of the overlay.
             GUI.color = new Color(0.4f, 1, 0.75f, 0.6f);
             GUIUtility.RotateAroundPivot(Mathf.Atan2(end.y - start.y, end.x - start.x) * Mathf.Rad2Deg, start);
             GUI.DrawTexture(new Rect(start.x, start.y, Vector2.Distance(start, end), 2), Texture2D.whiteTexture);

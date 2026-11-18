@@ -86,6 +86,7 @@ namespace Emas.AircraftFormation
                 return;
             }
 
+            // Apply transport setting changes before taking more samples so queued packets keep the correct settings.
             _elapsed += seconds;
             if (_appliedImpairments != _simulateJitterAndDelay)
             {
@@ -97,6 +98,7 @@ namespace Emas.AircraftFormation
                 }
             }
 
+            // Without network errors, sample all aircraft together. Otherwise, schedule each capture and arrival separately.
             if (!_simulateJitterAndDelay)
             {
                 IntegrateTo(_elapsed);
@@ -112,6 +114,7 @@ namespace Emas.AircraftFormation
                 DeliverPending();
             }
 
+            // Report an aircraft only after a complete sample has arrived for its readers.
             for (int index = 0; index < 3; index++)
             {
                 if (_hasReading[index])
@@ -130,6 +133,7 @@ namespace Emas.AircraftFormation
         /// <summary>Restarts the deterministic flight, independent stream seeds and sample-owned SDK clock.</summary>
         protected override void OnStart()
         {
+            // On restart, reset time, queued packets and random numbers together.
             Realm.ResetSpatialTime();
             _pending.Clear();
             _position = new Double3(10000000, 20000000, 30000000);
@@ -150,6 +154,7 @@ namespace Emas.AircraftFormation
         /// <summary>Advances using unscaled, unclamped elapsed time and handles clock mode changes.</summary>
         protected override void OnUpdate()
         {
+            // Reset the clock's starting point when switching between manual steps and real time.
             double realtime = Time.realtimeSinceStartupAsDouble;
             if (_appliedAutomatic != _automaticAdvance)
             {
@@ -164,12 +169,14 @@ namespace Emas.AircraftFormation
 
         private void CapturePending()
         {
+            // Limit catch-up work after a slow frame, then process the three capture schedules in time order.
             for (int index = 0; index < 3; index++)
             {
                 _nextCapture[index] = Math.Max(_nextCapture[index], _elapsed - 0.25);
             }
             while (true)
             {
+                // Advance the flight to the next capture time so all packets follow the same flight path.
                 int index = _nextCapture[0] <= _nextCapture[1] ? 0 : 1;
                 index = _nextCapture[index] <= _nextCapture[2] ? index : 2;
                 double time = _nextCapture[index];
@@ -187,6 +194,7 @@ namespace Emas.AircraftFormation
 
         private FlightReading Capture(int index, double time, bool noisy)
         {
+            // Add error to this captured sample. Leave the SDK's actual motion values unchanged.
             Double3 position = _position + FlightMotion.Offset(index);
             Quaternion rotation = FlightMotion.Rotation(time);
             if (noisy)
@@ -202,7 +210,7 @@ namespace Emas.AircraftFormation
 
         private void DeliverPending()
         {
-            // Resolve the newest due observation independently for each aircraft. A late packet cannot rewind it.
+            // For each aircraft, deliver the newest sample that has arrived. Ignore older packets that arrive late.
             for (int index = _pending.Count - 1; index >= 0; index--)
             {
                 Packet packet = _pending[index];
@@ -222,6 +230,7 @@ namespace Emas.AircraftFormation
 
         private void IntegrateTo(double time)
         {
+            // Use the heading at each step's midpoint to follow turns. Limit the number of steps for large time jumps.
             double duration = time - _motionTime;
             int steps = (int)Math.Min(4096, Math.Max(1, Math.Ceiling(duration * 240)));
             double step = duration / steps;

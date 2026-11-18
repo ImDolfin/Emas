@@ -12,6 +12,7 @@ namespace Emas.Tests
         [Test]
         public void EarthCenteredConversion_MapsKnownLocationsAndRecoversGlobalPositions()
         {
+            // Check known points on the equator and at the poles before testing conversion back and forth.
             Assert.That(Double3.Distance(new GeoPosition(0, 0, 10).ToEarthCentered(), new Double3(6378147, 0, 0)), Is.LessThan(1e-8));
             Assert.That(Double3.Distance(new GeoPosition(0, 90, 0).ToEarthCentered(), new Double3(0, 6378137, 0)), Is.LessThan(1e-8));
             Assert.That(Double3.Distance(new GeoPosition(90, 0, 0).ToEarthCentered(), new Double3(0, 0, 6356752.314245179)), Is.LessThan(1e-8));
@@ -20,6 +21,7 @@ namespace Emas.Tests
             Assert.That(pole.LongitudeDegrees, Is.Zero);
             Assert.That(pole.HeightMeters, Is.EqualTo(10).Within(1e-8));
 
+            // Test points north and south of the equator, near the poles and date line, and high above Earth.
             foreach (GeoPosition position in new[]
             {
                 new GeoPosition(52.520008, 13.404954, 40.125),
@@ -52,6 +54,7 @@ namespace Emas.Tests
                 Is.EqualTo(Double3.Distance(enu, default(Double3))).Within(1e-12));
             Assert.That(new GeoPosition(origin.LatitudeDegrees, origin.LongitudeDegrees, 40000).ToEarthCenteredVector(enu),
                 Is.EqualTo(rotated));
+            // Check data loaded from JSON too. Reject a rotation if its result is too large to store.
             GeoPosition invalid = JsonUtility.FromJson<GeoPosition>("{\"_latitudeDegrees\":100}");
             Assert.Throws<ArgumentOutOfRangeException>(() => invalid.ToEarthCenteredVector(enu));
             Double3 extreme = new Double3(double.MaxValue, double.MaxValue, double.MaxValue);

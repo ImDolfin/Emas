@@ -12,7 +12,7 @@ namespace Emas
     {
         private Anchor _anchor;
         private bool _started;
-        // Each attachment gets a new generation so old callbacks cannot publish into a restarted detector.
+        // Each attachment gets a new version so old callbacks cannot report data after a restart.
         private long _registrationGeneration;
         private long? _sourceChangeGeneration;
         private Exception _lastError;
@@ -223,6 +223,7 @@ namespace Emas
 
         internal void ApplySourceChanges(Realm realm, Action action)
         {
+            // Save the outer callback's source version in case a callback starts another callback or restarts this detector.
             long? previousGeneration = _sourceChangeGeneration;
             _sourceChangeGeneration = _registrationGeneration;
             try
@@ -264,6 +265,7 @@ namespace Emas
 
         internal void RecordError(Exception exception, long generation, string context)
         {
+            // Keep the first error from this source version. Cleanup and old callbacks must not replace it.
             if (_registrationGeneration == generation && _lastError == null)
             {
                 _lastError = exception;
@@ -273,7 +275,7 @@ namespace Emas
 
         internal static void LogError(Exception exception, string context)
         {
-            // Unity unwraps LogException's inner exceptions; format explicitly to keep context on the first line.
+            // Format the error ourselves so Unity keeps the source and operation on the first line.
             UnityEngine.Debug.LogFormat(UnityEngine.LogType.Exception, UnityEngine.LogOption.NoStacktrace, null,
                 "Emas: {0}. {1}: {2}\n{3}", context, exception.GetType().Name, exception.Message, exception);
         }
@@ -297,7 +299,7 @@ namespace Emas
                 throw new InvalidOperationException("The source is already attached to an anchor.");
             }
 
-            // Startup callbacks observe the new attachment and a cleared error state.
+            // Set the new Anchor and clear old errors before OnStart runs.
             _anchor = anchor;
             _sourceContext = null;
             _registrationGeneration++;
@@ -308,6 +310,7 @@ namespace Emas
             string context = DescribeError(CaptureErrorContext(), "OnStart");
             try
             {
+                // Finish setup after OnStart succeeds, unless a callback has already removed or restarted this source.
                 ApplySourceChanges(anchor.Realm, () => InvokeLifecycle(OnStart));
                 if (IsRegistration(anchor.Realm, generation))
                 {
@@ -328,6 +331,7 @@ namespace Emas
 
         internal void Tick()
         {
+            // Save the Anchor and source version before a callback can detach or restart this detector.
             Anchor anchor = _anchor;
             long generation = RegistrationGeneration;
             if (anchor == null || !IsRegistration(anchor.Realm, generation))
@@ -338,6 +342,7 @@ namespace Emas
             string sourceContext = CaptureErrorContext();
             try
             {
+                // Wait for the complete OnUpdate callback before making its data visible.
                 ApplySourceChanges(anchor.Realm, OnUpdate);
                 if (IsRegistration(anchor.Realm, generation))
                 {
@@ -375,6 +380,7 @@ namespace Emas
             long generation = RegistrationGeneration;
             bool wasStarted = _started;
             string context = DescribeError(CaptureErrorContext(), "OnStop");
+            // Stop accepting data before OnStop runs cleanup that may call back into this detector.
             _started = false;
             try
             {
@@ -390,7 +396,7 @@ namespace Emas
             }
             finally
             {
-                // Cleanup may remove and reattach the instance; leave a newer registration intact.
+                // Cleanup may attach this detector again. Leave that newer attachment alone.
                 if (_registrationGeneration == generation)
                 {
                     _anchor = null;
@@ -579,6 +585,7 @@ namespace Emas
             _anchor.ThrowIfDisposed();
             Realm realm = _anchor.Realm;
             long generation = _registrationGeneration;
+            // Check this saved source version both when work is queued and when it runs.
             return action =>
             {
                 if (IsRegistration(realm, generation))
@@ -596,6 +603,7 @@ namespace Emas
 
         private void InvokeLifecycle(Action callback)
         {
+            // Count callbacks still running so startup and cleanup cannot restart the same detector.
             _lifecycleDepth++;
             try
             {
@@ -615,7 +623,7 @@ namespace Emas
             }
 
             string context = DescribeError(CaptureErrorContext(), "OnStop");
-            // Finish old cleanup before deactivation can reattach this source through scene callbacks.
+            // Finish cleanup before hiding roots, since OnDisable may attach this source again.
             _started = false;
             _lifecycleDepth++;
             try
@@ -633,13 +641,14 @@ namespace Emas
 
                 if (_registrationGeneration == generation && _anchor == anchor && anchor != null)
                 {
+                    // Failed startup may keep prepared roots. Errors during normal updates remove all owned roots.
                     if (removeGhosts)
                     {
                         anchor.Realm.RemoveSourceGhosts(this);
                     }
                     else
                     {
-                        // The caller must first restore any prepared roots claimed during startup.
+                        // Let the caller restore prepared roots that startup tried to use.
                         anchor.Realm.MarkUnavailable(this);
                     }
                 }

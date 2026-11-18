@@ -23,6 +23,7 @@ namespace Emas.Editor
 
         private void OnGUI()
         {
+            // Keep selection and scroll positions between repaints. Tracking updates happen elsewhere.
             if (_panel == null)
             {
                 _panel = new DiagnosticsPanel();

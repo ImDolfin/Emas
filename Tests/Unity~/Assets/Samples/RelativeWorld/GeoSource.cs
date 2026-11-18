@@ -104,6 +104,7 @@ namespace Emas.RelativeWorld
         /// <exception cref="ArgumentOutOfRangeException">An attached source receives a negative or non-finite time step.</exception>
         public void Advance(double seconds)
         {
+            // Apply Inspector edits before advancing so the next sample uses the current settings.
             if (_sdk != null)
             {
                 ConfigureSimulation();
@@ -128,7 +129,7 @@ namespace Emas.RelativeWorld
         /// <summary>Restarts the sample's shared SDK clock and initializes the configured packet simulation.</summary>
         protected override void OnStart()
         {
-            // This sample owns the Realm's shared SDK clock, which restarts when the source starts again.
+            // This sample provides the Realm's SDK clock. Restart the clock when the source restarts.
             Realm.ResetSpatialTime();
             _appliedAutomaticAdvance = _automaticAdvance;
             _lastArrivalTime = Time.realtimeSinceStartupAsDouble;
@@ -140,11 +141,11 @@ namespace Emas.RelativeWorld
         protected override void OnUpdate()
         {
             double arrivalTime = Time.realtimeSinceStartupAsDouble;
-            // Serialized Inspector edits bypass property setters, so reconcile the clock mode here as well.
+            // Inspector edits do not call property setters, so update the clock mode here too.
             SynchronizeClockMode(arrivalTime);
             double seconds = _automaticAdvance ? arrivalTime - _lastArrivalTime : 0.0;
             _lastArrivalTime = arrivalTime;
-            // deltaTime is scaled and capped after long frames; SDK observations must share the Realm's real-time rate.
+            // deltaTime can be scaled or limited after slow frames. Use real time to match the Realm's clock.
             Advance(seconds);
         }
 
@@ -162,13 +163,14 @@ namespace Emas.RelativeWorld
 
         private void RefreshPresence()
         {
+            // Report the current objects even if no traits are read or a pose has not changed.
             foreach (GeoPoseReading reading in _sdk.Current.Values)
             {
                 Detect(reading.Id, reading.Kind, reading.Label, reading.Variant, source: _sdk);
             }
             foreach (Presence presence in OwnedPresences)
             {
-                // Trait reads refresh data but do not signal departure; compare identities with the new SDK population.
+                // Trait reads only update data. Compare object IDs with the latest SDK sample to find departures.
                 if (!_sdk.Current.ContainsKey(presence.Key.EntityId))
                 {
                     Disappear(presence.Key.Kind, presence.Key.EntityId);
@@ -184,11 +186,12 @@ namespace Emas.RelativeWorld
 
         private void SynchronizeClockMode(double arrivalTime)
         {
+            // Reset the time baseline when Inspector edits change the mode so manual pauses do not become a large step.
             if (_appliedAutomaticAdvance != _automaticAdvance)
             {
                 _appliedAutomaticAdvance = _automaticAdvance;
                 _lastArrivalTime = arrivalTime;
-                // Mode changes intentionally change the source clock's rate. Spatial tuning does not reset it.
+                // Change the clock rate when the mode changes. Keep the clock running when spatial settings change.
                 Realm.ResetSpatialTime();
             }
         }

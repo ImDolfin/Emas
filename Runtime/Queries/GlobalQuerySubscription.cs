@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    // A live query subscription with one independent registration per realm.
+    // Watches a global query through a separate subscription in each Realm.
     internal sealed class GlobalQuerySubscription : IDisposable
     {
         private sealed class Child
@@ -34,6 +34,7 @@ namespace Emas
                 return;
             }
 
+            // Stop watching for new Realms before disposing their subscriptions. Dispose does not report departures.
             _disposed = true;
             RealmRegistry.Remove(this);
             Child[] children = new Child[_children.Count];
@@ -54,13 +55,14 @@ namespace Emas
             }
 
             Child child = new Child();
-            // Publish the child before subscribing: initial entries may synchronously dispose this global observer.
+            // Save the child first because Subscribe can call an observer that disposes this whole subscription.
             _children.Add(realm, child);
             try
             {
                 IDisposable subscription = realm.Subscribe(_query.Rebind(realm),
                     ghost => Enter(realm, child, ghost),
                     _onLeave == null ? (Action<Key>)null : key => Leave(realm, child, key));
+                // Subscribe reports existing matches before returning. Those callbacks may already have removed this child.
                 if (_disposed || realm.IsDisposed || !_children.ContainsKey(realm))
                 {
                     subscription.Dispose();
@@ -87,12 +89,13 @@ namespace Emas
 
             _children.Remove(realm);
             child.Subscription?.Dispose();
-            // Scoped disposal cancels callbacks; explicitly report the global observer's known departures for this realm.
+            // Disposing the child stops its callbacks, so report its known departures here.
             if (_onLeave == null)
             {
                 return;
             }
 
+            // Copy known matches before callbacks can dispose this subscription or change another Realm.
             Key[] departures = new Key[child.Seen.Count];
             child.Seen.CopyTo(departures);
             child.Seen.Clear();
@@ -116,6 +119,7 @@ namespace Emas
 
         private void Enter(Realm realm, Child child, IGhost ghost)
         {
+            // Ignore callbacks from a child that was replaced or removed.
             Child current;
             if (_disposed || !_children.TryGetValue(realm, out current) || current != child)
             {
@@ -132,6 +136,7 @@ namespace Emas
 
         private void Leave(Realm realm, Child child, Key key)
         {
+            // Remove the Key before calling observers so the same match cannot depart twice.
             Child current;
             if (_disposed || !_children.TryGetValue(realm, out current) || current != child
                 || !child.Seen.Remove(key))

@@ -12,7 +12,7 @@ namespace Emas
     /// </remarks>
     public sealed class ReferenceFrame
     {
-        // Freeze pose, axes and range once per pass so all roots use the same reference, even if callbacks change it.
+        // Save pose, axes and range once per update so every root uses the same reference during callbacks.
         internal readonly struct Projection
         {
             internal readonly Quaternion Alignment;
@@ -51,7 +51,7 @@ namespace Emas
 
                 try
                 {
-                    // Remove the large origin in doubles, then map the small offset into tangent/Unity axes.
+                    // Subtract the large origin using doubles, then convert the small offset into local Unity axes.
                     Double3 displacement = position - _position;
                     Double3 local = _space == ReferenceSpace.Geographic
                         ? _geographicBasis.ToLocal(displacement) : _coordinates.ToUnity(displacement);
@@ -60,7 +60,7 @@ namespace Emas
                 }
                 catch (ArgumentOutOfRangeException)
                 {
-                    // Finite coordinates can have a separation beyond representable range.
+                    // Two valid coordinates can still be too far apart to store their distance.
                     return false;
                 }
             }
@@ -68,7 +68,7 @@ namespace Emas
             internal bool TryUnityPlacement(Double3 position, out Vector3 result)
             {
                 result = default(Vector3);
-                // Attachment offsets are already in Unity axes; orthogonal scene alignment preserves source distance.
+                // Attachment offsets already use Unity axes. Scene rotation does not change their distance.
                 return _hasPosition && (!_maxDistance.HasValue
                     || Double3.Distance(position, new Double3(_unityPosition.x, _unityPosition.y, _unityPosition.z)) <= _maxDistance.Value)
                     && SpatialMath.TryToVector3(position, out result);
@@ -76,7 +76,7 @@ namespace Emas
 
             internal Double3 ToSimulationPosition(Vector3 unityPosition)
             {
-                // Undo scene translation and alignment before restoring the source basis and large origin.
+                // Undo the scene offset and rotation, then restore source axes and the large origin.
                 Double3 offset = new Double3((double)unityPosition.x - _unityPosition.x,
                     (double)unityPosition.y - _unityPosition.y, (double)unityPosition.z - _unityPosition.z);
                 Double3 local = SpatialMath.Rotate(Quaternion.Inverse(Alignment), offset);
@@ -92,7 +92,7 @@ namespace Emas
 
             internal Quaternion ToUnityRotation(Quaternion rotation, GeoPosition position)
             {
-                // Convert the entity's local axes, rotate its tangent frame into the reference tangent frame, then align the scene.
+                // Convert the entity's axes, rotate from its local geographic axes to the reference axes, then apply scene rotation.
                 return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(position)
                     * _coordinates.ToUnityRotation(rotation), nameof(rotation));
             }
@@ -104,7 +104,7 @@ namespace Emas
                     throw new InvalidOperationException("Geographic yaw/pitch/roll requires a Geographic reference frame.");
                 }
 
-                // Named angles are already in east/up/north; only tangent orientation and scene alignment remain.
+                // Yaw, pitch and roll already use east/up/north. Apply only the geographic and scene rotations.
                 return SpatialMath.NormalizeRotation(Alignment
                     * _geographicBasis.RotationFrom(GeoPosition.FromEarthCentered(position)) * rotation, nameof(rotation));
             }
@@ -595,6 +595,7 @@ namespace Emas
 
         internal void UpdateFollowedPose(Spatial spatial)
         {
+            // Check geographic input before replacing the last valid saved reference pose.
             _isReferenceAvailable = spatial != null && spatial.enabled && spatial.HasPosition;
             if (_isReferenceAvailable && _space == ReferenceSpace.Geographic)
             {
@@ -605,7 +606,7 @@ namespace Emas
                 }
                 catch (ArgumentOutOfRangeException)
                 {
-                    // Retain the last usable tangent frame when a source supplies an undefined geographic point.
+                    // Keep the last usable geographic axes if the source position cannot define new ones.
                     _isReferenceAvailable = false;
                 }
             }
@@ -615,10 +616,11 @@ namespace Emas
                 return;
             }
 
+            // Follow the predicted and smoothed pose so the reference matches its displayed root.
             _position = spatial.PresentationPosition;
             _hasPosition = true;
 
-            // Position-only updates retain the previous attitude and its local/ECEF representation.
+            // Position-only updates keep the previous rotation and whether it uses local or ECEF axes.
             if (spatial.HasRotation)
             {
                 _rotation = spatial.PresentationRotation;
@@ -629,6 +631,7 @@ namespace Emas
 
         internal Projection Capture()
         {
+            // Convert the saved rotation from its source, local or ECEF axes into local Unity axes.
             Quaternion referenceRotation = _rotationSpace == Emas.RotationSpace.Geographic
                 ? _rotation : _coordinates.ToUnityRotation(_rotation);
             if (_rotationSpace == Emas.RotationSpace.Geographic)
@@ -645,7 +648,7 @@ namespace Emas
                     : Quaternion.identity;
             }
 
-            // Cancel the reference's converted attitude before applying the desired Unity scene alignment.
+            // Remove the reference rotation, then apply the desired Unity scene rotation.
             Quaternion alignment = _unityRotation * (FollowRotation ? Quaternion.Inverse(referenceRotation) : Quaternion.identity);
             return new Projection(_hasPosition, _position, _unityPosition,
                 SpatialMath.NormalizeRotation(alignment, nameof(Rotation)), _coordinates, _maxDistance, _space);

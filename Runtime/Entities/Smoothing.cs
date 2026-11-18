@@ -71,8 +71,8 @@ namespace Emas
         internal PresentationPose Prepare(Spatial spatial, PresentationPose pose, double timestamp,
             Double3 motion, PresentationSettings settings, bool preview)
         {
-            // A value copy previews the old settings at the same time and from the same history.
-            // Only the new settings commit a step; the presentation transition never feeds back into this filter.
+            // Use a copy to try the old settings at the same time and with the same stored state.
+            // Save only the step using the new settings. Keep the settings-change blend out of this filter.
             PoseSmoother smoother = _smoother;
             smoother.Prepare(timestamp);
             if (spatial.HasRotation)
@@ -100,7 +100,7 @@ namespace Emas
 
         internal override void Refresh()
         {
-            // Evaluate after every input trait has run, in the realm's spatial phase.
+        // Run this after all input traits have supplied their values.
         }
 
         internal override void ClearBinding()

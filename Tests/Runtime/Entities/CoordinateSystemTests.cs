@@ -26,6 +26,7 @@ namespace Emas.Tests
             };
             Assert.Throws<ArgumentException>(() => frame.Coordinates = default);
 
+            // Keep the old axis settings when new settings are invalid.
             Assert.That(frame.TryToUnityPosition(new Double3(2, 3, 5), out Vector3 position), Is.True);
             Assert.That(position, Is.EqualTo(new Vector3(3, -5, 2)));
         }

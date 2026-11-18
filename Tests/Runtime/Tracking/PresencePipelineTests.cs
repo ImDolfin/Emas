@@ -123,6 +123,7 @@ namespace Emas.Tests
             Assert.That(found.Anchor.Realm, Is.SameAs(_realm));
             Assert.That(_realm.Query().Count, Is.Zero);
 
+            // Detection uses the prepared object now. It becomes available after the update finishes.
             Detector detector = new Detector();
             anchor.AddDetector(detector);
             Presence detected = detector.PublishMetadata("prepared", "Claimed car");
@@ -170,6 +171,7 @@ namespace Emas.Tests
                 _realm.Update();
                 Assert.That(arrivals, Is.EqualTo(1));
 
+                // Readers keep getting new values without new detection reports or arrival callbacks.
                 proxy.Position = new Double3(4, 5, 6);
                 proxy.Articulation = 12;
                 _realm.Update();
@@ -216,6 +218,7 @@ namespace Emas.Tests
             Assert.That(initializations, Is.EqualTo(1));
             Assert.That(presence.Source, Is.SameAs(proxy));
 
+            // Read from a different kind of source object while keeping the same Presence and root.
             PositionSdk sdk = new PositionSdk { Position = new Double3(4, 5, 6) };
             Assert.That(detector.Arrive("one", sdk), Is.SameAs(presence));
             Assert.That(presence.Root, Is.SameAs(root));
@@ -223,6 +226,7 @@ namespace Emas.Tests
             Assert.That(presence.Source, Is.SameAs(sdk));
             _realm.Update();
             Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(sdk.Position));
+            // Removing tracking clears the source reference. The application still owns the SDK object.
             detector.Lose("one");
             Assert.That(presence.Source, Is.Null);
             Assert.That(sdk.IsDisposed, Is.False, "SDK ownership remains with the application.");
@@ -239,6 +243,7 @@ namespace Emas.Tests
             Detector detector = new Detector();
             _realm.GetOrCreateAnchor("sdk", detector);
             Presence presence = DetectTemporarySource(detector);
+            // Keep the temporary source out of this method's local variables so it can be collected.
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
@@ -307,6 +312,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(presence.Root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(7, 8, 9)));
 
+            // Clear the source when the object disappears. Read from the new source when it returns.
             detector.Lose("one");
             _realm.Update();
             Assert.That(reads, Is.EqualTo(1));
@@ -350,6 +356,7 @@ namespace Emas.Tests
             Assert.That(_realm.TryGetPresence(new Key("sdk", TrackedKind, "one"), out Presence presence), Is.True);
             Ghost root = presence.Root;
             PipelinePositionTrait originalTrait = root.GetComponent<PipelinePositionTrait>();
+            // Keep old roots unavailable until the replacement connects their readers to its sources.
             anchor.ReplaceDetector(first, new Detector
             {
                 Starting = detector =>
@@ -365,6 +372,7 @@ namespace Emas.Tests
             Assert.That(root.GetComponent<PipelinePositionTrait>(), Is.SameAs(originalTrait));
             Assert.That(root.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(4, 5, 6)));
             Assert.That(initializations, Is.EqualTo(2));
+            // Change both SDK values to prove the reader now uses the replacement source.
             firstProxy.Position = new Double3(90, 90, 90);
             secondSdk.Position = new Double3(7, 8, 9);
             _realm.Update();
@@ -414,6 +422,7 @@ namespace Emas.Tests
             _realm.Update();
             Presence replacement = null;
             RemovalCallback callback = originalRoot.gameObject.AddComponent<RemovalCallback>();
+            // Detect the object again from OnDisable, before Unity destroys the old root.
             callback.Disabled = () =>
             {
                 Assert.That(originalRoot.Anchor, Is.Null);
@@ -438,6 +447,7 @@ namespace Emas.Tests
 
             yield return null;
 
+            // Destroying the old object later must not remove the replacement with the same Key.
             Assert.That(originalRoot == null, Is.True);
             Assert.That(_realm.TryGetPresence(original.Key, out found), Is.True);
             Assert.That(found, Is.SameAs(replacement));
@@ -455,6 +465,7 @@ namespace Emas.Tests
         [TestCase(false)]
         public void TraitFailure_RemovesDetectorPopulationAndPreservesError(bool failInReader)
         {
+            // Stop the detector's Ghosts whether the error happens while reading or applying a value.
             bool rejectData = false;
             InvalidOperationException failure = new InvalidOperationException("trait rejected data");
             _realm.RegisterPresenceInitializer<PipelineGhost>(TrackedKind, (presence, root) =>
@@ -503,6 +514,7 @@ namespace Emas.Tests
             {
                 root.GetComponent<PipelinePositionTrait>().Bind(() =>
                 {
+                    // A reader can remove its own object before returning a value.
                     Assert.Throws<InvalidOperationException>(_realm.Update);
                     detector.Lose(presence.Key.EntityId);
                     return new Double3(1, 2, 3);
@@ -591,6 +603,7 @@ namespace Emas.Tests
             ManifestationBlueprint blueprint = ScriptableObject.CreateInstance<ManifestationBlueprint>();
             try
             {
+                // The prefab supplies the components. The initializer connects their copies to the source data.
                 blueprint.Configure(TrackedKind, prefabGhost, null, null);
                 _realm.RegisterManifestationBlueprint(blueprint);
                 _realm.RegisterPresenceInitializer<Ghost>(TrackedKind, (presence, root) =>
@@ -624,6 +637,7 @@ namespace Emas.Tests
                 Assert.That(_realm.Query().Count, Is.EqualTo(2));
                 Assert.That(target.Root.GetComponentInChildren<View>(), Is.Null);
 
+                // Update the origin after finding the target first. Placement must use the new origin.
                 originData.Position = new Double3(1005, 0, 0);
                 _realm.Update();
                 Assert.That(target.Root.transform.position, Is.EqualTo(new Vector3(5, 0, 0)),

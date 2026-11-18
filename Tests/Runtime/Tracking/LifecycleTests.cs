@@ -154,6 +154,7 @@ namespace Emas.Tests
             ProbeGhost prepared = _realm.Prepare<ProbeGhost>("anchor", Kind, "prepared");
             _realm.Update();
 
+            // Use a prepared root and create new ones, then make a later detector fail during the same call.
             ProbeSource added = new ProbeSource();
             added.Starting = () =>
             {
@@ -172,6 +173,7 @@ namespace Emas.Tests
             InvalidOperationException error = Assert.Throws<InvalidOperationException>(() =>
                 _realm.GetOrCreateAnchor("anchor", retained, added, alsoAdded, failing));
 
+            // Undo the new attachments. Keep the old detector and restore the prepared root.
             Assert.That(error.Message, Is.EqualTo("start failed"));
             Assert.That(anchor.Detectors, Is.EquivalentTo(new[] { retained }));
             Assert.That(retained.IsActive, Is.True);
@@ -264,6 +266,7 @@ namespace Emas.Tests
             Assert.That(found, Is.Null);
             Assert.That(failed.IsAttached, Is.True);
             Assert.That(failed.IsActive, Is.False);
+            // A failed replacement stays attached until the application removes or replaces it.
             Anchor otherAnchor = _realm.GetOrCreateAnchor("other");
             Assert.Throws<InvalidOperationException>(() => otherAnchor.AddDetector(failed));
             ProbeSource recovery = new ProbeSource();
@@ -292,6 +295,7 @@ namespace Emas.Tests
             ProbeGhost reclaimed = null;
             replacement.Starting = () =>
             {
+                // Queue enough work to delay finding the old root until a later update.
                 for (int index = 0; index < 256; index++)
                 {
                     replacement.Queue(() => { });
@@ -309,6 +313,7 @@ namespace Emas.Tests
             };
             replacement.Queue(laterTraffic);
 
+            // Keep both old roots while their startup reports are still waiting in the queue.
             _realm.Update();
 
             Assert.That(reclaimed, Is.Null);
@@ -320,6 +325,7 @@ namespace Emas.Tests
             Assert.That(abandoned.IsAvailable, Is.False);
             Assert.That(_realm.Query().Count, Is.Zero);
 
+            // After startup reports finish, later queued work must not keep missing roots alive.
             _realm.Update();
 
             Assert.That(reclaimed, Is.SameAs(retained));
@@ -355,6 +361,7 @@ namespace Emas.Tests
             };
             first.Updating = () =>
             {
+                // Do not show a requested view until all detector updates have finished.
                 ProbeGhost updated = first.Publish("car", Second, 2);
                 _realm.Manifest(updated);
                 updated.Value = 3;
@@ -387,6 +394,7 @@ namespace Emas.Tests
             ProbeView.Enabled = view =>
             {
                 viewObject = view.gameObject;
+                // Remove tracking now, but wait until this callback ends before disabling the scene objects.
                 _realm.RemoveAnchor("anchor");
                 removedDuringCallback = !_realm.TryGetGhost(ghost.Key, out IGhost ignored);
                 hierarchyActiveDuringCallback = anchorObject.activeSelf && rootObject.activeSelf && viewObject.activeSelf;
@@ -495,6 +503,7 @@ namespace Emas.Tests
             _realm.GetOrCreateAnchor("anchor", first, second);
             List<int> expected = new List<int>();
             List<int> executed = new List<int>();
+            // Mix work from two detectors. Keep the original queue order and the shared limit per update.
             for (int index = 0; index < 260; index++)
             {
                 int value = index;
@@ -515,6 +524,7 @@ namespace Emas.Tests
             Assert.That(first.UpdateCount, Is.EqualTo(1));
             Assert.That(second.UpdateCount, Is.EqualTo(1));
 
+            // Work added by a running callback goes after the work already waiting in the queue.
             _realm.Update();
             expected.Add(260);
             Assert.That(executed, Is.EqualTo(expected));
@@ -590,6 +600,7 @@ namespace Emas.Tests
             IGhost found;
             Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
             GameObject root = ghost.gameObject;
+            // Remove tracking first. Unity destroys the objects at the end of the frame.
             yield return null;
             Assert.That(root == null, Is.True);
             Assert.That(ghost == null, Is.True);

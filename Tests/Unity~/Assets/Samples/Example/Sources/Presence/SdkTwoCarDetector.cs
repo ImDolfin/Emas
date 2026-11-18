@@ -37,6 +37,7 @@ namespace Emas.Sample
 
         private void DetectAll(float elapsedSeconds)
         {
+            // Use matching IDs and variants so existing roots can be reused for the first set of cars.
             foreach (SdkTwoVehicleProxy proxy in _feed.ReadVehicles(elapsedSeconds))
             {
                 DetectProxy(proxy);

@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Emas
 {
     // Unity rejects ancestor activation changes while a descendant callback is running.
-    // Identity map mutations stay immediate; nested scene changes drain after the current change returns.
+    // Update the entity lookup immediately. Queue scene changes from callbacks until this change finishes.
     internal sealed class SceneChangeQueue
     {
         private readonly struct Change
@@ -45,6 +45,7 @@ namespace Emas
                 return;
             }
 
+            // Disable before destroying so cleanup callbacks run through the same scene-change queue.
             if (change.Target.activeSelf != change.Active)
             {
                 change.Target.SetActive(change.Active);

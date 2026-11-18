@@ -66,6 +66,7 @@ namespace Emas.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => detector.DisappearanceGracePeriod = TimeSpan.FromTicks(-1));
             detector.InactivityTimeout = TimeSpan.FromSeconds(2);
             detector.DisappearanceGracePeriod = TimeSpan.FromSeconds(1);
+            // Timeout settings cannot change while attached. Allow changes again after removal.
             Anchor anchor = _realm.GetOrCreateAnchor("sdk", detector);
             Assert.Throws<InvalidOperationException>(() => detector.InactivityTimeout = null);
             Assert.Throws<InvalidOperationException>(() => detector.DisappearanceGracePeriod = TimeSpan.Zero);
@@ -87,6 +88,7 @@ namespace Emas.Tests
             float previousTimeScale = Time.timeScale;
             try
             {
+                // Pause game time. Detector timeouts must still use real time.
                 Time.timeScale = 0;
                 Probe timed = new Probe { InactivityTimeout = TimeSpan.FromMilliseconds(100) };
                 Probe untimed = new Probe();
@@ -128,10 +130,12 @@ namespace Emas.Tests
             List<string> events = new List<string>();
             using (_realm.Query().Observe(ghost => events.Add("enter"), key => events.Add("leave")))
             {
+                // Stop during the grace period. Lookup still finds the object, but queries and the scene must hide it.
                 yield return AdvanceUntil(() => !presence.IsAvailable);
                 Assert.That(presence.IsRemoved, Is.False);
                 Assert.That(root.gameObject.activeSelf, Is.False);
 
+                // Publishing the saved Ghost tells Emas it is still present. It does not need to be detected again.
                 root.Value = 7;
                 detector.PublishCached(root);
                 _realm.Update();
@@ -164,6 +168,7 @@ namespace Emas.Tests
             Assert.That(_realm.TryGetPresence(presence.Key, out Presence missing), Is.True);
             Assert.That(missing, Is.SameAs(presence));
 
+            // Restore the object during grace, then let it disappear again until grace runs out.
             Assert.That(detector.Publish("one"), Is.SameAs(presence));
             _realm.Update();
             Assert.That(_realm.Query().Single(), Is.SameAs(root));
@@ -177,6 +182,7 @@ namespace Emas.Tests
 
         private IEnumerator AdvanceUntil(Func<bool> condition)
         {
+            // Wait for the expected state change instead of guessing how long one frame takes.
             double deadline = Time.realtimeSinceStartupAsDouble + 5;
             while (!condition() && Time.realtimeSinceStartupAsDouble < deadline)
             {

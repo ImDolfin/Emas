@@ -37,6 +37,7 @@ namespace Emas.Editor
 
         internal static void QueueRefresh()
         {
+            // Group object changes so one edit or Undo action scans loaded traits only once.
             if (_refreshQueued)
             {
                 return;
@@ -48,8 +49,8 @@ namespace Emas.Editor
 
         private static void OnHierarchyChanged()
         {
-            // Runtime population changes must not trigger a scene-wide scan on every frame.
-            // Inspected runtime roots refresh their existing trait snapshot in GhostInspector.
+            // Do not scan the whole scene each frame when tracked objects change.
+            // GhostInspector refreshes the traits of the roots being inspected.
             if (!EditorApplication.isPlaying)
             {
                 QueueRefresh();
@@ -58,6 +59,7 @@ namespace Emas.Editor
 
         private static void OnObjectChanges(ref ObjectChangeEventStream changes)
         {
+            // Scan only when components or prefabs change. Editing a value does not change who owns a trait.
             for (int index = 0; index < changes.length; index++)
             {
                 ObjectChangeKind kind = changes.GetEventType(index);
@@ -82,8 +84,8 @@ namespace Emas.Editor
         private static void RefreshLoadedTraits()
         {
             _refreshQueued = false;
-            // Include inactive roots, prefab assets and Prefab Mode. This also repairs flags saved
-            // before a domain reload or an ownership change made while no Inspector was open.
+            // Include inactive roots, prefab assets and Prefab Mode. Also fix old flags saved
+            // before scripts reloaded or a Ghost changed while no Inspector was open.
             foreach (Trait trait in Resources.FindObjectsOfTypeAll<Trait>())
             {
                 if (trait != null)
@@ -100,8 +102,8 @@ namespace Emas.Editor
                 return;
             }
 
-            // Only presentation changes: never set NotEditable or DontSave, and restore orphaned
-            // traits so removing a Ghost cannot strand settings behind an invisible component.
+            // Change only Inspector visibility, leaving NotEditable and DontSave alone. Show any
+            // remaining traits again when their Ghost is removed so their settings stay accessible.
             HideFlags flags = hasGhost ? trait.hideFlags | HideFlags.HideInInspector
                 : trait.hideFlags & ~HideFlags.HideInInspector;
             if (trait.hideFlags != flags)

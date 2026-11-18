@@ -90,6 +90,7 @@ namespace Emas.Tests
         [Test]
         public void Lookup_UsesWholeIdentity()
         {
+            // Give objects the same display name, but change the case of parts of their Keys.
             Probe source = new Probe();
             _realm.GetOrCreateAnchor("anchor", source);
             TestGhost expected = source.Publish("one");
@@ -132,6 +133,7 @@ namespace Emas.Tests
             Assert.That(original.Count, Is.EqualTo(3));
             Assert.Throws<NotSupportedException>(() => ((IList<IGhost>)original).Clear());
 
+            // The initializer can find prepared roots before they appear in query results.
             Kind partKind = new Kind("lookup.part");
             Vector3 offset = new Vector3(1, 2, 3);
             _realm.RegisterPresenceInitializer<AttachedGhost>(partKind, (presence, root) =>
@@ -153,6 +155,7 @@ namespace Emas.Tests
             Assert.That(_realm.Ghosts.Count, Is.EqualTo(4));
             Assert.That(original.Count, Is.EqualTo(3));
 
+            // New lists leave out removed objects. Lists saved earlier must stay unchanged.
             source.Delete("vehicle-main-123");
             Assert.That(_realm.Ghosts.Contains(parent), Is.False);
             Assert.That(original.Contains(parent), Is.True);
@@ -203,6 +206,7 @@ namespace Emas.Tests
                 Assert.That(arrivals, Is.EqualTo(1));
                 UnityEngine.Object.DestroyImmediate(ghost.gameObject);
 
+                // Lookup must stop returning a destroyed root before the next callback pass.
                 IGhost found;
                 Assert.That(_realm.TryGetGhost(key, out found), Is.False);
                 Assert.That(found, Is.Null);
@@ -213,6 +217,7 @@ namespace Emas.Tests
                 Assert.That(typed.Count, Is.Zero);
                 Assert.That(departures, Is.Empty);
 
+                // Send the exit callback on the next update, and send it only once.
                 _realm.Update();
                 _realm.Update();
                 Assert.That(arrivals, Is.EqualTo(1));

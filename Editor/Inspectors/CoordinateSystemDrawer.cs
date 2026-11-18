@@ -49,9 +49,9 @@ namespace Emas.Editor
             {
                 Rect row = position;
                 row.height = EditorGUIUtility.singleLineHeight;
-                // Keep Custom selected while editing, even if the current axes happen to match a preset.
+                // Keep Custom selected while editing, even if the axes match a preset.
                 int preset = property.isExpanded ? 3 : PresetIndex(property);
-                // Mixed-value display is global editor state; restore it before drawing another property.
+                // Restore the shared mixed-value display setting before drawing the next property.
                 bool mixed = EditorGUI.showMixedValue;
                 EditorGUI.showMixedValue = property.hasMultipleDifferentValues;
                 EditorGUI.BeginChangeCheck();
@@ -71,6 +71,7 @@ namespace Emas.Editor
 
                 if (ShowCustom(property))
                 {
+                    // Restore the preset row's display setting before drawing the individual axes.
                     EditorGUI.indentLevel++;
                     DrawAxis(ref row, property.FindPropertyRelative("_right"), "Unity right", "Source axis mapped to Unity positive X.");
                     DrawAxis(ref row, property.FindPropertyRelative("_up"), "Unity up", "Source axis mapped to Unity positive Y.");

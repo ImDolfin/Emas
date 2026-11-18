@@ -111,6 +111,7 @@ namespace Emas
         /// </remarks>
         public Query With<T>() where T : class
         {
+            // Copy the filters so adding this requirement leaves earlier queries unchanged.
             List<Func<IGhost, bool>> parts = new List<Func<IGhost, bool>>(_parts);
             parts.Add(HasPart<T>);
             return Copy(_partialName, _exactName, _anchorId, _kind, _variant, parts);
@@ -149,6 +150,7 @@ namespace Emas
             }
             else
             {
+                // Count every Realm. The same Key in two Realms counts as two matches.
                 first = null;
                 foreach (Realm realm in RealmRegistry.Snapshot())
                 {
@@ -184,6 +186,7 @@ namespace Emas
                 return _realm.FirstMatch(this);
             }
 
+            // Copy the current Realm list without creating the default Realm.
             foreach (Realm realm in RealmRegistry.Snapshot())
             {
                 if (realm.IsDisposed)
@@ -302,13 +305,14 @@ namespace Emas
 
         internal bool Matches(IGhost ghost)
         {
-            // Interface null checks do not detect destroyed Unity components.
+            // Check for a destroyed Unity component, which can still look non-null through an interface.
             Ghost root = ghost as Ghost;
             if (root == null || !root.IsAvailable)
             {
                 return false;
             }
 
+            // Check the simple metadata first, before searching the root's components.
             if (_partialName != null && (ghost.Name == null || ghost.Name.IndexOf(_partialName, StringComparison.OrdinalIgnoreCase) < 0))
             {
                 return false;
@@ -370,6 +374,7 @@ namespace Emas
                 return _realm.Evaluate(this);
             }
 
+            // Reuse one temporary list for each Realm and copy its matches into the global result.
             List<IGhost> result = new List<IGhost>();
             List<IGhost> current = new List<IGhost>();
             foreach (Realm realm in RealmRegistry.Snapshot())

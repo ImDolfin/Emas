@@ -46,18 +46,20 @@ namespace Emas
             }
 
             Double3 displacement = context.Velocity.Value * seconds;
+            // With no acceleration, this gives the same result as constant velocity.
             if (!context.Acceleration.HasValue || context.Acceleration.Value == default(Double3))
             {
                 return displacement;
             }
 
+            // Add the movement from acceleration as it fades toward zero. Keep the supplied velocity unchanged.
             double tau = _maneuverTimeConstant;
             double ratio = seconds / tau;
             double accelerationWeight;
             if (ratio < 0.01d)
             {
                 // Integrating exp(-t/tau) twice gives tau^2*(t/tau - 1 + exp(-t/tau)).
-                // Its direct subtraction loses precision near zero; this series tends to t^2/2.
+                // Direct subtraction loses precision near zero. This series approaches t^2/2.
                 double factor = 0.5d + ratio * (-1d / 6d + ratio * (1d / 24d
                     + ratio * (-1d / 120d + ratio * (1d / 720d - ratio / 5040d))));
                 accelerationWeight = seconds * seconds * factor;

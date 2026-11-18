@@ -53,6 +53,7 @@ namespace Emas.Tests.Samples
             RealmSetup setup = Find<RealmSetup>();
             AnchorSetup anchor = Find<AnchorSetup>();
             Realm originalRealm = setup.Realm;
+            // Wait for the automatic view before testing disable and restart of the tracking prefab.
             AssertView(originalRealm, "quick-start");
 
             setup.gameObject.SetActive(false);
@@ -79,6 +80,7 @@ namespace Emas.Tests.Samples
             Realm realm = Find<RealmSetup>().Realm;
             Query cars = realm.Query().InAnchor("cars").OfKind(Emas.Sample.SampleKinds.Car);
             Dictionary<Key, IGhost> roots = new Dictionary<Key, IGhost>();
+            // Save the IDs and roots so the test can tell whether handover reused or recreated them.
             foreach (IGhost ghost in cars)
             {
                 roots.Add(ghost.Key, ghost);
@@ -94,6 +96,7 @@ namespace Emas.Tests.Samples
             AssertCarView(smallCar);
             Assert.That(realm.Anchors.Count, Is.EqualTo(1));
             source.ReplaceCarSource();
+            // Let the new detector and views read the data after handover.
             yield return null;
             yield return null;
 
@@ -109,6 +112,7 @@ namespace Emas.Tests.Samples
 
             RealmSetup setup = Find<RealmSetup>();
             status.enabled = false;
+            // Check that disabling the consumer clears its matches, while restarting the setup creates a new Realm.
             Assert.That(status.AvailableCarCount, Is.Zero);
             Assert.That(status.SmallCarCount, Is.Zero);
             Assert.That(status.FirstSmallCar, Is.Null);
@@ -131,6 +135,7 @@ namespace Emas.Tests.Samples
 
         private static void AssertCarView(IGhost ghost)
         {
+            // Check that roots provide position and articulation data with either SDK.
             Emas.Sample.I3DPosition position;
             Emas.Sample.IArticulate articulation;
             Assert.That(ghost.TryGet(out position), Is.True);

@@ -98,6 +98,7 @@ namespace Emas
             bool angularVelocityIsEstimated, bool angularVelocityIsWorld, Timestamp? latestVelocityTime,
             Timestamp? latestAccelerationTime, Timestamp? latestAngularVelocityTime)
         {
+            // Keep the latest raw values separate from the pose at the time being predicted.
             Position = spatial.HasPosition ? spatial.Position : (Double3?)null;
             Rotation = spatial.HasRotation ? spatial.Rotation : (Quaternion?)null;
             PositionTime = spatial.PositionTime;
@@ -124,6 +125,7 @@ namespace Emas
 
         internal static Double3? SamplePosition(Spatial spatial, Timestamp? time)
         {
+            // Treat input without a timestamp as current. Otherwise, require a sample at or before the requested time.
             if (!spatial.HasPosition)
             {
                 return null;
@@ -145,6 +147,7 @@ namespace Emas
 
         private static Quaternion? SampleRotation(Spatial spatial, Timestamp? time)
         {
+            // A rotation from a later time must not change how we predict an older position.
             if (!spatial.HasRotation)
             {
                 return null;

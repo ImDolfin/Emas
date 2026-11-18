@@ -30,11 +30,13 @@ namespace Emas.Editor
 
                 if (mixedStrategies)
                 {
+                    // Different strategy types have different settings. Show only the type selector for mixed types.
                     return;
                 }
 
                 using (new EditorGUI.IndentLevelScope())
                 {
+                    // Stop at the end of this strategy so fields from the next component are not drawn.
                     SerializedProperty child = property.Copy();
                     SerializedProperty end = property.GetEndProperty();
                     bool next = child.NextVisible(true);
@@ -61,6 +63,7 @@ namespace Emas.Editor
                 return height;
             }
 
+            // Count the same rows used when drawing, including nested settings.
             SerializedProperty child = property.Copy();
             SerializedProperty end = property.GetEndProperty();
             bool next = child.NextVisible(true);
@@ -75,8 +78,8 @@ namespace Emas.Editor
 
         private static void ShowMenu(SerializedProperty property)
         {
-            // GhostInspector disposes its per-trait SerializedObject when the draw ends,
-            // before a menu selection runs. Retain only targets and the property path.
+            // GhostInspector disposes each trait's SerializedObject after drawing,
+            // before the menu callback runs. Keep only the targets and property path.
             UnityEngine.Object[] targets = property.serializedObject.targetObjects;
             string path = property.propertyPath;
             bool mixedStrategies = HaveMixedStrategies(property);
@@ -85,6 +88,7 @@ namespace Emas.Editor
             types.Sort((left, right) => StringComparer.Ordinal.Compare(StrategyName(left), StrategyName(right)));
             foreach (Type type in types)
             {
+                // Only list serializable classes that can be created here. Skip Unity object types.
                 if (!type.IsClass || type.IsAbstract || type.ContainsGenericParameters || !type.IsSerializable
                     || type.GetConstructor(Type.EmptyTypes) == null || typeof(UnityEngine.Object).IsAssignableFrom(type))
                 {
@@ -106,6 +110,7 @@ namespace Emas.Editor
 
                         using (SerializedObject owner = new SerializedObject(target))
                         {
+                            // Create a new SerializedObject for the menu callback because drawing has finished.
                             owner.Update();
                             SerializedProperty strategy = owner.FindProperty(path);
                             if (strategy == null)
@@ -164,7 +169,7 @@ namespace Emas.Editor
                 return false;
             }
 
-            // Different settings within one model must remain editable; only differing types hide the child fields.
+            // Allow different values for the same strategy type. Hide fields only when types differ.
             string type = property.managedReferenceFullTypename;
             foreach (UnityEngine.Object target in property.serializedObject.targetObjects)
             {

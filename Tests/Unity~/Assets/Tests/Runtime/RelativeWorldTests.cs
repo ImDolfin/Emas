@@ -47,6 +47,7 @@ namespace Emas.Tests.Samples
 
             internal void Record(Vector3 previous, Vector3 current, double seconds, double rawDistance)
             {
+                // Compare displayed motion with the calculated orbit. Weight each error by the time it was shown.
                 Vector3 midpoint = (previous + current) * 0.5f;
                 Vector3 expectedVelocity = new Vector3(-midpoint.z, 0, midpoint.x) * (Mathf.PI / 4f);
                 Vector3 velocityError = (current - previous) / (float)seconds - expectedVelocity;
@@ -66,6 +67,7 @@ namespace Emas.Tests.Samples
                 bool visible, Double3 rawReference, Double3 reference, Double3 target)
             {
                 double sampleSeconds = sample.ElapsedSince(new Timestamp(0, 0));
+                // Check for new samples before measuring clock progress and packet age.
                 if (double.IsNaN(_firstSample))
                 {
                     _firstSample = sampleSeconds;
@@ -169,6 +171,7 @@ namespace Emas.Tests.Samples
             Spatial parkedSpatial = parked.GetComponent<Spatial>();
             Double3 parkedPosition = parkedSpatial.Position;
             Double3 initialOrigin = originSpatial.Position;
+            // Save the stationary target and view to check that later screen motion does not come from source motion or recreation.
             View parkedView = parked.GetComponentInChildren<View>();
             Assert.That(parkedView, Is.Not.Null);
             Assert.That(parked.transform.position.x, Is.EqualTo(-6f).Within(0.001f));
@@ -184,6 +187,7 @@ namespace Emas.Tests.Samples
 
             source.Advance(5.0);
             realm.Update();
+            // Check that the followed origin stays in place while the stationary roadside target moves behind it.
             AssertOriginPose(origin);
             Assert.That(Double3.Distance(initialOrigin, originSpatial.Position), Is.EqualTo(40.0).Within(0.001));
             Assert.That(Double3.Distance(parkedSpatial.Position, parkedPosition), Is.LessThan(0.000001));
@@ -195,6 +199,7 @@ namespace Emas.Tests.Samples
             source.Advance(1.0);
             realm.Update();
             Assert.That(realm.TryGetGhost(new Key("relative-world", CarKind, "parked-0"), out IGhost removed), Is.False);
+            // Check that the query removes the passed parking bay and later reports a different one.
             Assert.That(realm.Query().OfKind(CarKind).Count, Is.EqualTo(1));
             Assert.That(queries.AvailableCarCount, Is.EqualTo(1));
             Assert.That(queries.ParkedCarCount, Is.Zero, "Observer departures remove the previously reported parked car.");
@@ -212,6 +217,7 @@ namespace Emas.Tests.Samples
             AssertOriginPose(origin);
 
             Double3 beforeSpeedChange = originSpatial.Position;
+            // Change speed and check that future travel changes while the distance already travelled stays the same.
             Assert.Throws<System.ArgumentOutOfRangeException>(() => source.SpeedKilometersPerHour = -1);
             Assert.Throws<System.ArgumentOutOfRangeException>(() => source.SpeedKilometersPerHour = float.NaN);
             source.SpeedKilometersPerHour = 360;
@@ -264,6 +270,7 @@ namespace Emas.Tests.Samples
             yield return null;
             Assert.That(marking.localPosition.z, Is.EqualTo(-2f).Within(0.001f));
             source.Advance(3600.0);
+            // Jump forward in time and check that only nearby cars remain, rather than every car passed.
             setup.Realm.Update();
             Assert.That(setup.Realm.Query().OfKind(CarKind).Count, Is.InRange(1, 2));
             Assert.That(setup.Realm.TryGetGhost(new Key("relative-world", CarKind, "parked-0"), out IGhost removed), Is.False);
@@ -316,6 +323,7 @@ namespace Emas.Tests.Samples
             AssertFeetAttached(bird, leftFoot, rightFoot);
 
             Vector3 releasePosition = leftFoot.transform.position;
+            // Detach at the current SDK pose, then move the reference and check the released foot's screen position.
             source.SetBirdFeetAttached(false);
             realm.Update();
             Spatial leftSpatial = leftFoot.GetComponent<Spatial>();
@@ -335,6 +343,7 @@ namespace Emas.Tests.Samples
             AssertProjectedTarget(realm.ReferenceFrame, leftFoot, leftSpatial);
             source.SetBirdFeetAttached(true);
             realm.Update();
+            // Reattach and check that placement changes while roots and requested views are reused.
             Assert.That(Foot(realm, "bird-left-foot"), Is.SameAs(leftFoot));
             Assert.That(Foot(realm, "bird-right-foot"), Is.SameAs(rightFoot));
             Assert.That(leftFoot.GetComponentInChildren<View>(), Is.SameAs(leftView));
@@ -362,6 +371,7 @@ namespace Emas.Tests.Samples
             bool sawMeasurementJitter = false;
             bool sawDelayedObservation = false;
             bool sawProcessedPresentation = false;
+            // Measure real frame times while the SDK sends delayed samples with random measurement error.
             do
             {
                 yield return null;
@@ -421,6 +431,7 @@ namespace Emas.Tests.Samples
                 }
 
                 firstOrigin = origin;
+                // Save packet values between frames to tell new noisy samples from held samples.
                 previousSample = sample;
                 previousParkedId = parked == null ? null : parked.Key.EntityId;
                 previousParked = parkedSpatial == null ? default(Double3) : parkedSpatial.Position;
@@ -433,13 +444,14 @@ namespace Emas.Tests.Samples
             Assert.That(sawProcessedPresentation, Is.True, "The saved behaviors process raw SDK observations.");
             Timestamp heldSample = firstOrigin.GetRequired<Spatial>().PositionTime.Value;
             Double3 beforeHold = realm.ReferenceFrame.Position;
-            // Hold the SDK explicitly, so this check also works when rendering is slower than the packet rate.
+            // Pause SDK updates so the check also works when frames are slower than packets.
             yield return null;
             realm.Update();
             Assert.That(firstOrigin.GetRequired<Spatial>().PositionTime.Value, Is.EqualTo(heldSample));
             Assert.That(Double3.Distance(beforeHold, realm.ReferenceFrame.Position), Is.GreaterThan(0.00001),
                 "Presentation continues between packets without refreshing the raw timestamp.");
             source.SimulateJitterAndDelay = false;
+            // Switch transport mode and check that the delayed sample is replaced immediately while objects are reused.
             realm.Update();
             Assert.That(firstOrigin.GetRequired<Spatial>().PositionTime.Value.ElapsedSince(new Timestamp(0, 0)),
                 Is.EqualTo(elapsed).Within(0.000001), "Clean mode immediately exposes the latest observation.");
@@ -461,6 +473,7 @@ namespace Emas.Tests.Samples
             source.enabled = false;
             source.enabled = true;
             realm.Update();
+            // Restart only the source clock and check that the same Realm forgets the old sample age.
             Assert.That(Find<RealmSetup>().Realm, Is.SameAs(realm));
             Ghost restarted = Car(realm, "origin");
             Spatial restartedSpatial = restarted.GetRequired<Spatial>();
@@ -488,6 +501,7 @@ namespace Emas.Tests.Samples
                 Assert.That(source.SpeedKilometersPerHour, Is.EqualTo(360));
                 Assert.That(source.SimulateJitterAndDelay, Is.True);
                 SampleMotionMetrics immediate = new SampleMotionMetrics();
+                // Measure the same repeatable source with two playback settings, then compare their errors.
                 SampleMotionMetrics buffered = new SampleMotionMetrics();
                 yield return MeasureSampleMotion(realm, source, 0, immediate);
                 yield return MeasureSampleMotion(realm, source, 0.1f, buffered);
@@ -546,6 +560,7 @@ namespace Emas.Tests.Samples
                     ghost.GetRequired<Smoothing>().PositionHalfLife = 0.3f;
                 }
                 yield return AssertFastMotionRemainsStable(realm, bird, origin, sdkStarted);
+                // Disable bird prediction without restarting the source, then pause on one packet.
                 bird.GetRequired<Extrapolation>().enabled = false;
                 yield return AssertMovingBirdWithoutExtrapolation(realm, source, bird, origin);
                 yield return AssertHeldBirdPacketOnlySettles(realm, source, bird);
@@ -586,7 +601,7 @@ namespace Emas.Tests.Samples
                 Timestamp beforeSample = spatial.PositionTime.Value;
                 double beforeStall = Time.realtimeSinceStartupAsDouble;
                 Time.maximumDeltaTime = 0.02f;
-                // An editor stall must delay delivery without slowing the independent SDK observation clock.
+                // Pause the Editor and check that delivery waits while the SDK clock keeps running.
                 System.Threading.Thread.Sleep(120);
                 yield return null;
                 double elapsed = Time.realtimeSinceStartupAsDouble - beforeStall;
@@ -595,12 +610,14 @@ namespace Emas.Tests.Samples
                     "A clamped Unity frame duration must not leave fresh source packets permanently behind the extrapolation clock.");
 
                 extrapolation.MaximumExtrapolation = 0.5f;
+                // Increase the prediction limit and check that fresh samples do not gain extra lead.
                 yield return null;
                 Assert.That(Double3.Distance(realm.ReferenceFrame.Position, spatial.Position), Is.LessThan(5),
                     "Fresh 100 m/s observations must not jump toward a larger cap when changing it from 0.15 s to 0.5 s.");
                 AssertOriginPose(origin);
 
                 Time.timeScale = 0f;
+                // Check that the SDK keeps sampling in real time when the scene's scaled time is paused.
                 Timestamp beforeScaledPause = spatial.PositionTime.Value;
                 double scaledPauseStarted = Time.realtimeSinceStartupAsDouble;
                 yield return null;
@@ -612,6 +629,7 @@ namespace Emas.Tests.Samples
 
                 source.AutomaticAdvance = false;
                 realm.Update();
+                // Step manually, then resume automatic time and check that distance and clock timing remain correct.
                 Timestamp heldSample = spatial.PositionTime.Value;
                 Double3 heldPosition = spatial.Position;
                 yield return null;
@@ -674,6 +692,7 @@ namespace Emas.Tests.Samples
                     };
                     realm.Update();
                     Assert.That(extrapolation.HasVelocity, Is.False);
+                    // Check that missing motion stays missing instead of being supplied as zero.
                     Assert.That(extrapolation.HasAcceleration, Is.False);
                     Assert.That(extrapolation.HasAngularVelocity, Is.False);
                     reading = new Emas.RelativeWorld.GeoPoseReading("optional", "Optional motion", CarKind,
@@ -687,6 +706,7 @@ namespace Emas.Tests.Samples
                     Assert.That(extrapolation.HasAngularVelocity, Is.True);
                     Assert.That(extrapolation.AngularVelocity, Is.EqualTo(new Double3(-2, 3, -1)));
                     Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()), "Motion traits do not overwrite pose or use its location implicitly.");
+                    // Supply both rate formats to check that world rates win and conversion uses the packet's origin.
                     reading = new Emas.RelativeWorld.GeoPoseReading("optional", "World angular motion", CarKind,
                         default, 0, 90, 40, 0, 0, 0, bodyAngularVelocity: new Double3(100, 0, 0),
                         eastNorthUpAngularVelocity: new Double3(1, 2, 3));
@@ -696,6 +716,7 @@ namespace Emas.Tests.Samples
                     extrapolation.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
                     Assert.That(extrapolation.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
                     reading = null;
+                    // Remove optional motion data and check that the supplied rate is cleared while the Ghost remains.
                     realm.Update();
                     Assert.That(extrapolation.HasVelocity, Is.False);
                     Assert.That(extrapolation.HasAcceleration, Is.False);
@@ -714,6 +735,7 @@ namespace Emas.Tests.Samples
         private static IEnumerator MeasureSampleMotion(Realm realm, Emas.RelativeWorld.GeoSource source,
             float interpolationDelay, SampleMotionMetrics metrics)
         {
+            // Restart the same repeatable feed for each playback setting, then let corrections settle.
             realm.InterpolationDelay = interpolationDelay;
             source.enabled = false;
             source.enabled = true;
@@ -742,6 +764,7 @@ namespace Emas.Tests.Samples
             Vector3 previous = bird.transform.position - origin.transform.position;
             double previousTime = Time.realtimeSinceStartupAsDouble;
             deadline = previousTime + 2;
+            // Compare the displayed target offset with the raw source offset for a fixed amount of real time.
             do
             {
                 yield return null;
@@ -769,6 +792,7 @@ namespace Emas.Tests.Samples
             Spatial spatial = bird.GetRequired<Spatial>();
             foreach (float speed in new[] { 0f, 360f })
             {
+                // Check that roots are reused while delayed samples switch the reference between stopped and moving.
                 source.SpeedKilometersPerHour = speed;
                 double deadline = Time.realtimeSinceStartupAsDouble + 0.6;
                 do
@@ -795,6 +819,7 @@ namespace Emas.Tests.Samples
             Assert.That(view, Is.Not.Null);
             Double3 initialObservation = spatial.Position;
             SampleMotionMetrics early = new SampleMotionMetrics();
+            // Measure early and late in the run to catch errors that grow during long travel.
             SampleMotionMetrics late = new SampleMotionMetrics();
             SampleMotionMetrics entire = new SampleMotionMetrics();
             bool retainedView = true;
@@ -818,9 +843,11 @@ namespace Emas.Tests.Samples
                 double arrivalAge = sourceElapsed - sample.ElapsedSince(new Timestamp(0, 0));
                 minimumArrivalAge = System.Math.Min(minimumArrivalAge, arrivalAge);
                 double sharedAge = System.Math.Max(0, arrivalAge - minimumArrivalAge);
+                // Measure delay against the fastest arrival seen so far, as required by the public clock API.
                 Double3 target = originSpatial.Position + originExtrapolation.Velocity * System.Math.Min(sharedAge, 0.05);
                 Vector3 current = bird.transform.position - origin.transform.position;
                 SampleMotionMetrics window = elapsed >= 2 && elapsed < 6 ? early : elapsed >= 16 ? late : null;
+                // Add each frame to the full-run totals and to the matching comparison period.
                 foreach (SampleMotionMetrics metrics in new[] { entire, window })
                 {
                     if (metrics != null && step > 0)
@@ -868,6 +895,7 @@ namespace Emas.Tests.Samples
             int freshObservations = 0;
             float maximumDistance = 0;
             double deadline = Time.realtimeSinceStartupAsDouble + 1.2;
+            // Check that fresh samples keep the bird moving when prediction is disabled only on the bird.
             do
             {
                 yield return null;
@@ -901,8 +929,8 @@ namespace Emas.Tests.Samples
         private static IEnumerator AssertHeldBirdPacketOnlySettles(Realm realm, Emas.RelativeWorld.GeoSource source, Ghost bird)
         {
             Spatial spatial = bird.GetRequired<Spatial>();
-            // Entering manual mode rebases the sample clock and clears presentation history. Deliver one more
-            // noisy observation to establish a correction, then hold that exact SDK packet without advancing it.
+            // Manual mode resets the clock baseline and pose history. Deliver one more
+            // noisy sample to create a correction, then hold that SDK packet without advancing time.
             source.AutomaticAdvance = false;
             realm.Update();
             Timestamp beforeManualPacket = spatial.PositionTime.Value;
@@ -921,7 +949,7 @@ namespace Emas.Tests.Samples
                 Assert.That(spatial.PositionTime.Value, Is.EqualTo(heldSample));
                 Assert.That(spatial.Position, Is.EqualTo(heldObservation));
                 Assert.That(spatial.IsInRange, Is.True);
-                // Compare in ECEF so the origin's independent extrapolation cannot disguise invented bird motion.
+                // Compare in ECEF so prediction on the origin cannot hide extra motion added to the bird.
                 double error = Double3.Distance(heldObservation,
                     realm.ReferenceFrame.ToSimulationPosition(bird.transform.position));
                 Assert.That(error, Is.LessThanOrEqualTo(previousError + 0.001),
@@ -946,16 +974,16 @@ namespace Emas.Tests.Samples
                 source.SimulateJitterAndDelay = false;
             }
 
-            // Loading can consume real time before this coroutine resumes. Restart configured tracking so manual
-            // scenarios start at SDK time zero and RoadMotion also receives a fresh reference-frame baseline.
+            // Loading may take time before this coroutine resumes. Restart tracking so manual
+            // tests start at SDK time zero and RoadMotion starts from the new reference frame.
             RealmSetup setup = Find<RealmSetup>();
             setup.gameObject.SetActive(false);
             setup.gameObject.SetActive(true);
             setup.StartRealm();
             if (!withImpairments)
             {
-                // Disable filters before RoadMotion can observe this frame: even a short extrapolation lead would
-                // otherwise become travelled distance when these exact mapping scenarios switch to raw poses.
+                // Disable filters before RoadMotion reads this frame. Even a small prediction lead could
+                // otherwise be counted as travel when these tests switch to raw poses.
                 UseDirectPresentation(setup.Realm);
             }
             yield return null;
@@ -964,7 +992,7 @@ namespace Emas.Tests.Samples
 
         private static void UseDirectPresentation(Realm realm)
         {
-            // These exact mapping scenarios advance SDK time in jumps rather than at the presentation clock's rate.
+            // These mapping tests advance SDK time in jumps, independently of the display clock.
             realm.InterpolationDelay = 0;
             foreach (IGhost entity in realm.Ghosts)
             {

@@ -11,7 +11,7 @@ namespace Emas.Editor
         /// <summary>Draws grouped configuration, units, dependent controls and runtime diagnostics.</summary>
         public override void OnInspectorGUI()
         {
-            // Authoring changes use Unity serialization; an existing Realm retains its startup configuration.
+            // Save edits through Unity. A running Realm keeps the settings it started with.
             serializedObject.Update();
             bool running = false;
             foreach (Object value in targets)
@@ -34,6 +34,7 @@ namespace Emas.Editor
                 DrawReference();
             }
             serializedObject.ApplyModifiedProperties();
+            // Check settings before startup. Once running, show the settings actually used by the Realm.
             foreach (Object value in targets)
             {
                 RealmSetup setup = (RealmSetup)value;
@@ -74,6 +75,7 @@ namespace Emas.Editor
                 }
                 using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(useFrame)))
                 {
+                    // Show fields for the chosen coordinate space and reference mode.
                     InspectorLayout.Field(serializedObject, "_referenceSpace", "Reference space");
                     bool geographic = !space.hasMultipleDifferentValues && space.intValue == (int)ReferenceSpace.Geographic;
                     InspectorLayout.Field(serializedObject, "_coordinates", geographic ? "Source quaternion axes" : "Coordinate system");
@@ -95,6 +97,7 @@ namespace Emas.Editor
                     }
                     else if (!space.hasMultipleDifferentValues)
                     {
+                        // Use latitude, longitude and altitude for geographic input, or source units for Cartesian input.
                         if (geographic)
                         {
                             SerializedProperty position = serializedObject.FindProperty("_geographicPosition");
@@ -116,6 +119,7 @@ namespace Emas.Editor
             }
             using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(useFrame)))
             {
+                // Apply scene placement and visibility after converting to the reference, in every reference mode.
                 using (InspectorLayout.Section("Placement", "Where the reference appears in the scene. Keep this near the origin for float precision."))
                 {
                     InspectorLayout.Field(serializedObject, "_unityPosition", "Position (Unity units)");

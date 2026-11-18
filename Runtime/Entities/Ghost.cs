@@ -83,6 +83,7 @@ namespace Emas
                     _traitBuffer = new List<Trait>();
                 }
 
+                // Compare the components themselves, since replacing a trait can leave the count unchanged.
                 GetComponents(_traitBuffer);
                 bool changed = _traitBuffer.Count != _traits.Count;
                 for (int index = 0; !changed && index < _traitBuffer.Count; index++)
@@ -92,7 +93,7 @@ namespace Emas
 
                 if (changed)
                 {
-                    // Replace the snapshot so trait readers can inspect a changed root without altering an active pass.
+                    // Make a new list so a reader can check changed traits without changing a loop already in progress.
                     _traits = Array.AsReadOnly(_traitBuffer.ToArray());
                 }
 
@@ -166,6 +167,8 @@ namespace Emas
             _name = nameValue ?? key.EntityId;
             _variant = variantValue;
             _isAvailable = false;
+
+            // Clear warnings from lookups made before the root received its Key and ran setup.
             if (_partResolver != null)
             {
                 _partResolver.Reset();

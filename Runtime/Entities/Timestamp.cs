@@ -41,6 +41,7 @@ namespace Emas
                 throw new ArgumentOutOfRangeException(nameof(seconds));
             }
 
+            // Round down so nanoseconds never go below zero. Keep rounding from reaching one full second.
             long whole = (long)Math.Floor(seconds);
             uint nanos = (uint)((seconds - whole) * 1000000000d);
             return new Timestamp(whole, Math.Min(nanos, 999999999U));
@@ -51,6 +52,7 @@ namespace Emas
         /// <returns>The signed elapsed seconds; negative when this timestamp precedes the supplied timestamp.</returns>
         public double ElapsedSince(Timestamp other)
         {
+            // Subtract whole seconds first so close timestamps keep their nanosecond detail.
             double seconds;
             try
             {
@@ -58,7 +60,7 @@ namespace Emas
             }
             catch (OverflowException)
             {
-                // Extremely distant epochs cannot preserve nanosecond precision, but their elapsed time still fits in a double.
+                // Very distant dates lose nanosecond detail, but their difference still fits in a double.
                 seconds = (double)Seconds - other.Seconds;
             }
 

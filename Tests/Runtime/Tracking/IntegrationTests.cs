@@ -70,6 +70,7 @@ namespace Emas.Tests
             GameObject frame = new GameObject("source frame");
             _objects.Add(frame);
             Anchor anchor = _realm.GetOrCreateAnchor("shared", frame.transform, first);
+            // Keep the same parent and existing source when adding another detector.
             Anchor reused = _realm.GetOrCreateAnchor("shared", frame.transform, first, second);
             Assert.That(reused, Is.SameAs(anchor));
             Assert.That(reused.Transform.parent, Is.SameAs(frame.transform));

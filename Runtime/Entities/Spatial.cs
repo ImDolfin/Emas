@@ -122,6 +122,7 @@ namespace Emas
         /// </remarks>
         public bool TryGetObservedUnityPose(out Pose pose)
         {
+            // Debug reads need input from a tracked Ghost. They do not update the followed reference.
             pose = default(Pose);
             Ghost ghost = GetComponent<Ghost>();
             if (!HasPosition || ghost == null || ghost.Anchor == null)
@@ -131,6 +132,7 @@ namespace Emas
 
             try
             {
+                // Use the same saved reference for raw input and the displayed root so they can be compared.
                 ReferenceFrame frame = ghost.Anchor.Realm.ReferenceFrame;
                 ReferenceFrame.Projection projection = frame != null ? frame.Capture()
                     : new ReferenceFrame.Projection(true, default(Double3), Vector3.zero, Quaternion.identity, CoordinateSystem.Unity, null);
@@ -139,6 +141,7 @@ namespace Emas
                     return false;
                 }
 
+                // If no source rotation exists, return identity rather than the displayed transform rotation.
                 pose = new Pose(position, HasRotation ? ProjectRotation(projection, Rotation, Position) : Quaternion.identity);
                 return true;
             }
@@ -157,6 +160,7 @@ namespace Emas
         /// it with the current observation. Supply the new pose before calling this.</remarks>
         public void ResetPresentation()
         {
+            // Reset all filters together, then restart playback from the stored observations.
             _presenter.Reset();
             ResetPoseHistory();
             Smoothing smoothing = GetComponent<Smoothing>();
@@ -212,6 +216,7 @@ namespace Emas
                 throw new ArgumentOutOfRangeException(nameof(localPosition), "The attachment position must be finite.");
             }
 
+            // Check every input before saving the attachment, then clear the old world-pose filter state.
             Quaternion rotation = SpatialMath.NormalizeRotation(localRotation, nameof(localRotation));
             _attachedTo = parent;
             _attachmentPosition = localPosition;
@@ -273,6 +278,7 @@ namespace Emas
         /// <exception cref="System.ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public void SetSourceRotation(Quaternion rotation, Timestamp? sampleTime = null)
         {
+            // Check the packet time before changing rotation axes. Rejected packets must leave axes and filters unchanged.
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             if (!_data.SetRotation(normalized, sampleTime, Time.realtimeSinceStartupAsDouble))
             {
@@ -302,6 +308,7 @@ namespace Emas
         /// <exception cref="System.ArgumentOutOfRangeException">An angle is not finite.</exception>
         public void SetGeographicRotation(double yawDegrees, double pitchDegrees, double rollDegrees, Timestamp? sampleTime = null)
         {
+            // Store yaw, pitch and roll using local geographic axes, regardless of the source axis settings.
             Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
             if (!_data.SetRotation(rotation, sampleTime, Time.realtimeSinceStartupAsDouble))
             {
@@ -327,6 +334,7 @@ namespace Emas
         /// <exception cref="System.ArgumentOutOfRangeException">The quaternion is not finite or has zero length.</exception>
         public void SetEarthCenteredRotation(Quaternion rotation, CoordinateSystem? bodyAxes = null, Timestamp? sampleTime = null)
         {
+            // Changing body axes clears old corrections even when the rotation still uses ECEF.
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
             if (!_data.SetRotation(normalized, sampleTime, Time.realtimeSinceStartupAsDouble))
@@ -349,9 +357,10 @@ namespace Emas
             _presenter.ResetTuning();
         }
 
-        // Compose optional behavior only after all SDK readers, before capturing the shared reference.
+        // Apply prediction and smoothing after all SDK readers run and before saving the shared reference.
         internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
         {
+            // Attached roots get their displayed pose from the parent. Clear their separate prediction state.
             if (!enabled || AttachedTo.HasValue)
             {
                 ResetPresentation();
@@ -377,22 +386,22 @@ namespace Emas
         internal bool ApplyProjection(ReferenceFrame.Projection projection)
         {
             Vector3 position = default(Vector3);
-            // Check the unfiltered observation at playback time. Comparing the latest packet with a delayed
-            // reference can cull even the origin when speed times buffer delay exceeds the range limit.
-            // Extrapolation and smoothing still cannot bring an out-of-range observation into presentation.
+            // Check the raw observation at playback time. Comparing the newest packet with a delayed
+            // reference can hide even the origin if it moved farther than the range limit during the delay.
+            // Prediction and smoothing must not display an observation that is outside the range limit.
             Double3 observation = _presenter.HasPose ? _presenter.Observation : Position;
             bool observationVisible = HasPosition && projection.TryToUnityPosition(observation, out position);
             bool visible = observationVisible && projection.TryToUnityPosition(PresentationPosition, out position);
             if (!observationVisible)
             {
-                // A missing or out-of-range observation invalidates history. A valid observation whose
-                // filtered presentation is outside range must keep settling, without a reset-and-snap loop.
+                // Clear filter state when the observation is missing or outside range. If only the
+                // filtered pose is outside range, let it keep moving toward the valid input instead of resetting it.
                 ResetPresentation();
             }
 
             if (visible)
             {
-                // Assign world pose so anchor transforms do not introduce a second offset.
+                // Set the world pose so the anchor transform does not add another offset.
                 if (HasRotation)
                 {
                     transform.SetPositionAndRotation(position, ProjectRotation(projection, PresentationRotation, PresentationPosition));
@@ -409,6 +418,7 @@ namespace Emas
 
         internal bool ApplyAttachment(ReferenceFrame.Projection projection, Transform parent)
         {
+            // Attachment offsets use local Unity units. Apply the parent rotation, but ignore its scale.
             Vector3 parentPosition = parent.position;
             Double3 offset = SpatialMath.Rotate(parent.rotation,
                 new Double3(_attachmentPosition.x, _attachmentPosition.y, _attachmentPosition.z));
@@ -441,6 +451,7 @@ namespace Emas
 
         private void ResetPoseHistory()
         {
+            // After a reset, start the new history with the samples we still have.
             _history.ClearPosition();
             _history.ClearRotation();
             if (PositionTime.HasValue)
@@ -456,7 +467,7 @@ namespace Emas
 
         private void ResetRotationSmoothing()
         {
-            // Corrections expressed in the former attitude basis cannot be reused in the new one.
+            // Clear corrections that were calculated using the old rotation axes.
             _presenter.ResetRotation();
             _history.ClearRotation();
             Extrapolation extrapolation = GetComponent<Extrapolation>();
@@ -474,6 +485,7 @@ namespace Emas
 
         private void StorePosition(Double3 position, Timestamp? sampleTime)
         {
+            // Check packet times first. Add only accepted samples with timestamps to playback history.
             if (!_data.SetPosition(position, sampleTime, Time.realtimeSinceStartupAsDouble))
             {
                 return;
@@ -517,7 +529,7 @@ namespace Emas
         private void OnDisable()
         {
             ResetPresentation();
-            // Temporarily hiding the hierarchy must not release range suppression on reactivation.
+            // Turning the GameObject off and on must not restore components hidden by the range limit.
             if (!enabled)
             {
                 SetInRange(true);

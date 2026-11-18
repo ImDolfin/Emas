@@ -35,6 +35,7 @@ namespace Emas.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => new Double3(double.NaN, 0d, 0d));
             Assert.Throws<ArgumentOutOfRangeException>(() => new Double3(0d, double.PositiveInfinity, 0d));
             Assert.Throws<ArgumentOutOfRangeException>(() => new Double3(0d, 0d, double.NegativeInfinity));
+            // Valid input numbers can still produce a result that is too large to store.
             Double3 largest = new Double3(double.MaxValue, 0d, 0d);
             Assert.Throws<ArgumentOutOfRangeException>(() => { _ = largest + largest; });
             Assert.Throws<ArgumentOutOfRangeException>(() => { _ = largest * 2d; });

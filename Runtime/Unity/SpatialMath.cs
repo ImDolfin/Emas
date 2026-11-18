@@ -11,7 +11,7 @@ namespace Emas
             RequireFiniteAngle(pitchDegrees, nameof(pitchDegrees));
             RequireFiniteAngle(rollDegrees, nameof(rollDegrees));
 
-            // Named aircraft angles use physical directions, independent of a source quaternion's basis.
+            // Yaw, pitch and roll use aircraft directions, regardless of the source quaternion axes.
             Quaternion yaw = Quaternion.AngleAxis((float)(yawDegrees % 360d), Vector3.up);
             Quaternion pitch = Quaternion.AngleAxis(-(float)(pitchDegrees % 360d), Vector3.right);
             Quaternion roll = Quaternion.AngleAxis(-(float)(rollDegrees % 360d), Vector3.forward);
@@ -109,6 +109,7 @@ namespace Emas
 
         internal static Double3 RotationRate(Quaternion before, Quaternion after, double seconds)
         {
+            // Find the shortest rotation change in world axes before dividing by elapsed time.
             Quaternion arc = NormalizeRotation(after * Quaternion.Inverse(before), nameof(after));
             if (arc.w < 0)
             {

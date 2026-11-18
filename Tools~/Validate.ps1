@@ -16,6 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 try
 {
+    # Find the included Unity project and editor before starting the tests.
     $repository = Split-Path -Parent $PSScriptRoot
     $project = Join-Path $repository 'Tests\Unity~'
     $output = Join-Path $repository 'TestResults\Validation~'
@@ -43,6 +44,7 @@ catch
     exit 1
 }
 
+# Run the suites one at a time. Still run the second suite if the first one fails.
 $platforms = if ($TestPlatform -eq 'All') { @('EditMode', 'PlayMode') } else { @($TestPlatform) }
 $failures = New-Object 'System.Collections.Generic.List[string]'
 foreach ($platform in $platforms)
@@ -51,6 +53,7 @@ foreach ($platform in $platforms)
     $log = Join-Path $output ($platform + '.log')
     try
     {
+        # Delete old reports so a crash cannot look like an earlier successful run.
         foreach ($previous in @($report, $log))
         {
             if (Test-Path -LiteralPath $previous)
@@ -59,6 +62,7 @@ foreach ($platform in $platforms)
             }
         }
 
+        # Wait for Unity to exit, then check the test report too.
         Write-Host "Running $platform tests. Log: $log"
         $arguments = @(
             '-batchmode', '-nographics',
@@ -78,6 +82,7 @@ foreach ($platform in $platforms)
             throw 'Unity did not produce a test results XML file.'
         }
 
+        # Check that the report contains tests and that they all passed.
         [xml]$results = Get-Content -LiteralPath $report -Raw
         $run = $results.SelectSingleNode('/test-run')
         if ($null -eq $run -or $run.GetAttribute('result') -cne 'Passed')

@@ -12,6 +12,7 @@ namespace Emas.RelativeWorld
         public override void Apply(GeoPoseReading value)
         {
             Extrapolation extrapolation = Ghost.GetRequired<Extrapolation>();
+            // Use the packet's geographic origin so conversion does not depend on which reader runs first.
             if (value != null && value.EastNorthUpVelocity.HasValue)
             {
                 extrapolation.SetGeographicVelocity(value.EastNorthUpVelocity.Value,
@@ -19,6 +20,7 @@ namespace Emas.RelativeWorld
             }
             else
             {
+                // Clear missing velocity. A supplied zero velocity would mean the object is stationary.
                 extrapolation.ClearVelocity();
             }
         }

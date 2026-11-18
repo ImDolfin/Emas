@@ -56,7 +56,7 @@ namespace Emas
             double longitude = _longitudeDegrees * RadiansPerDegree;
             double sin = Math.Sin(latitude);
             double cos = Math.Cos(latitude);
-            // Prime-vertical radius accounts for the WGS84 ellipsoid's flattening at this latitude.
+            // Adjust the Earth radius for the flattening of the WGS84 Earth model at this latitude.
             double radius = SemiMajorAxis / Math.Sqrt(1.0 - EccentricitySquared * sin * sin);
             return new Double3((radius + _heightMeters) * cos * Math.Cos(longitude),
                 (radius + _heightMeters) * cos * Math.Sin(longitude),
@@ -72,7 +72,7 @@ namespace Emas
         {
             ReferenceFrame.ValidatePosition(eastNorthUp, nameof(eastNorthUp));
             GeographicBasis basis = new GeographicBasis(this);
-            // The internal geographic basis uses east/up/north, while this public SDK contract uses ENU.
+            // Internal axes are east/up/north. The public SDK input uses east/north/up (ENU).
             return basis.ToEarthCentered(new Double3(eastNorthUp.X, eastNorthUp.Z, eastNorthUp.Y));
         }
 
@@ -89,9 +89,10 @@ namespace Emas
                 throw new ArgumentOutOfRangeException(nameof(position), "Earth's center has no geographic reference direction.");
             }
 
+            // Start with an approximate latitude that accounts for Earth being flatter at the poles.
             double horizontal = Double3.Distance(new Double3(position.X, position.Y, 0), default(Double3));
             double latitude = Math.Atan2(position.Z, horizontal * (1.0 - EccentricitySquared));
-            // Refine geodetic latitude with the ellipsoid radius; cap iterations and stop once the angle settles.
+            // Improve the latitude estimate until it stops changing or reaches the loop limit.
             for (int iteration = 0; iteration < 32; iteration++)
             {
                 double sin = Math.Sin(latitude);
@@ -106,7 +107,7 @@ namespace Emas
             }
 
             double sinLatitude = Math.Sin(latitude);
-            // Projection along the ellipsoid normal avoids division by cos(latitude) at the poles.
+            // Measure height along the local up direction to avoid dividing by zero at the poles.
             double height = horizontal * Math.Cos(latitude) + position.Z * sinLatitude
                 - SemiMajorAxis * Math.Sqrt(1.0 - EccentricitySquared * sinLatitude * sinLatitude);
             return new GeoPosition(latitude / RadiansPerDegree,

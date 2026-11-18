@@ -20,6 +20,7 @@ namespace Emas.Sample
         /// <remarks>Refreshes the live dictionary immediately. Enumerate the returned values before calling this method again.</remarks>
         public IEnumerable<SdkTwoVehicleProxy> ReadVehicles(float elapsedSeconds)
         {
+            // Use SDK One's cars and paths, but return their data in a different format.
             for (int index = 0; index < SampleMotion.CarCount; index++)
             {
                 SdkTwoVehicleProxy proxy = new SdkTwoVehicleProxy(

@@ -107,6 +107,7 @@ namespace Emas
         /// <exception cref="InvalidOperationException">The setup is disabled, already running, invalid, or stopped during source startup.</exception>
         public void StartRealm()
         {
+            // Check the scene setup before callbacks can see a Realm that is not fully configured.
             _autoStartPending = false;
             if (!isActiveAndEnabled || _starting || _realm != null)
             {
@@ -119,6 +120,7 @@ namespace Emas
                 throw new InvalidOperationException(error);
             }
 
+            // Make the new Realm available before configuration so callbacks can find their owner.
             ReferenceFrame frame = CreateReferenceFrame();
             _starting = true;
             int lifetime = ++_lifetime;
@@ -138,6 +140,7 @@ namespace Emas
                     }
                 }
 
+                // Prepare initializers and automatic view requests before detectors publish their first roots.
                 AttachActiveAnchors(realm, lifetime, false);
 
                 if (_lifetime != lifetime || !isActiveAndEnabled || !ReferenceEquals(_realm, realm))
@@ -147,6 +150,7 @@ namespace Emas
             }
             catch
             {
+                // Undo only this startup attempt. A callback may already have replaced it with a new one.
                 if (ReferenceEquals(_realm, realm))
                 {
                     StopRealm();
@@ -173,7 +177,7 @@ namespace Emas
         {
             _autoStartPending = false;
             _lifetime++;
-            // Clear the live binding before cleanup callbacks can stop or start this setup again.
+            // Clear the current Realm link before cleanup callbacks can stop or restart this setup.
             Realm realm = _realm;
             _realm = null;
             KeyValuePair<AnchorSetup, IDisposable>[] subscriptions =
@@ -195,6 +199,7 @@ namespace Emas
                 }
             }
 
+            // Clear all setup links before cleanup callbacks can inspect or reattach other scene objects.
             foreach (KeyValuePair<AnchorSetup, IDisposable> item in subscriptions)
             {
                 item.Value?.Dispose();
@@ -210,6 +215,7 @@ namespace Emas
                 return "RealmSetup interpolation delay must be finite and nonnegative.";
             }
 
+            // Check all configured parts before attaching any source.
             HashSet<Kind> blueprintKinds = new HashSet<Kind>();
             ManifestationBlueprint[] blueprints = Blueprints;
             for (int index = 0; index < blueprints.Length; index++)
@@ -267,6 +273,7 @@ namespace Emas
 
         internal void StartAnchor(AnchorSetup setup)
         {
+            // Ignore old enable callbacks while starting, changing owners or attaching another source.
             Realm realm = _realm;
             if (realm == null || _starting || !isActiveAndEnabled || !setup.isActiveAndEnabled
                 || !setup.WantsAttachment || setup.Owner() != this || setup.AttachmentOwner != null || _subscriptions.ContainsKey(setup))
@@ -336,6 +343,7 @@ namespace Emas
 
         private void ConfigurePresenceInitializers(Realm realm, int lifetime)
         {
+            // Mark each configurator before calling it, so another scan from a callback cannot run it twice.
             bool configured;
             do
             {
@@ -379,6 +387,7 @@ namespace Emas
 
         private void AttachAnchor(AnchorSetup setup, Realm realm, int lifetime, bool validate)
         {
+            // If any attachment step fails, undo provider creation, subscriptions and detector startup together.
             Anchor anchor = null;
             IDisposable subscription = null;
             try
@@ -397,6 +406,7 @@ namespace Emas
                     throw new InvalidOperationException("RealmSetup has duplicate anchor ID '" + setup.Id + "'.");
                 }
 
+                // Set the scene owner and initializers before a detector can report its first entity.
                 anchor = realm.GetOrCreateAnchor(setup.Id, setup.transform);
                 setup.Bind(anchor, this);
                 GhostInitializer initializer = setup.GetComponent<GhostInitializer>();
@@ -416,7 +426,7 @@ namespace Emas
                     });
                 }
 
-                // Record ownership before OnStart can disable or reparent the setup and trigger cleanup.
+                // Save the owner before OnStart can disable or move the setup and trigger cleanup.
                 _subscriptions.Add(setup, subscription);
                 PresenceDetector source = setup.CreateDetectorProvider().CreateDetector();
                 if (source == null)
@@ -454,6 +464,7 @@ namespace Emas
 
         private AnchorSetup[] ActiveAnchors()
         {
+            // Collect active anchors owned by this setup. Leave anchors under nested Realms with their own owners.
             AnchorSetup[] candidates = GetComponentsInChildren<AnchorSetup>(true);
             List<AnchorSetup> anchors = new List<AnchorSetup>(candidates.Length);
             foreach (AnchorSetup candidate in candidates)
@@ -470,6 +481,7 @@ namespace Emas
 
         private ReferenceFrame CreateReferenceFrame()
         {
+            // A followed reference waits for its target position. A manually placed reference can be used immediately.
             if (!_useReferenceFrame)
             {
                 return null;
@@ -487,7 +499,7 @@ namespace Emas
 
             if (_followGhost)
             {
-                // Leave position undefined even with an empty target: runtime selection must wait for actual data.
+                // Leave position unset even if no target is selected. Wait for position data after a target is chosen.
                 if (!string.IsNullOrEmpty(_referenceEntityId))
                 {
                     if (string.IsNullOrEmpty(_referenceAnchorId) || !_referenceKind.IsValid)
@@ -522,6 +534,7 @@ namespace Emas
 
         private void Update()
         {
+            // Wait until providers are enabled before starting automatically. Update only this setup's Realm.
             if (_autoStartPending)
             {
                 StartRealm();

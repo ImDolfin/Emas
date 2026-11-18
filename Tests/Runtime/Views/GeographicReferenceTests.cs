@@ -21,12 +21,14 @@ namespace Emas.Tests
             Assert.That(frame.TryToUnityPosition(stationary, out Vector3 local), Is.True);
             Assert.That(Vector3.Distance(local, new Vector3(0, 10, 0)), Is.LessThan(0.0001f));
 
+            // Move the reference around Earth while keeping the observed ECEF point still.
             frame.GeographicPosition = new GeoPosition(0, 90, 0);
             Assert.That(frame.TryToUnityPosition(stationary, out local), Is.True);
             Assert.That(Vector3.Distance(local, new Vector3(-6378147, -6378137, 0)), Is.LessThan(1));
             Assert.That(frame.TryToUnityPosition(new GeoPosition(0, 90, 10), out local), Is.True);
             Assert.That(Vector3.Distance(local, new Vector3(0, 10, 0)), Is.LessThan(0.0001f));
 
+            // Points just across the date line must still be close together.
             frame.GeographicPosition = new GeoPosition(0, 179.9999, 0);
             GeoPosition acrossDateLine = new GeoPosition(0, -179.9999, 0);
             Assert.That(frame.TryToUnityPosition(acrossDateLine, out local), Is.True);
@@ -79,6 +81,7 @@ namespace Emas.Tests
             Assert.That(Quaternion.Angle(frame.ToUnityRotation(attitude, east), expected), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToSimulationRotation(expected, east), attitude), Is.LessThan(0.05f));
 
+            // Check rotation at the object's location first, then turn on reference rotation cancellation.
             frame.FollowRotation = true;
             Assert.That(Quaternion.Angle(frame.ToUnityRotation(attitude, frame.GeographicPosition), frame.UnityRotation), Is.LessThan(0.05f));
             Quaternion projected = frame.ToUnityRotation(attitude, east);
@@ -86,6 +89,7 @@ namespace Emas.Tests
             Assert.That(Quaternion.Angle(frame.ToUnityRotation(attitude), frame.UnityRotation), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToSimulationRotation(frame.UnityRotation), attitude), Is.LessThan(0.05f));
 
+            // Aircraft yaw, pitch and roll must keep the same meaning with any source-axis setting.
             frame.UnityRotation = Quaternion.identity;
             frame.SetGeographicRotation(90, 30, 90);
             Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.Geographic));
@@ -119,6 +123,7 @@ namespace Emas.Tests
             Assert.That(Quaternion.Angle(frame.ToUnityEarthCenteredRotation(fluBody, forwardLeftUp), Quaternion.identity), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToEarthCenteredRotation(Quaternion.identity, forwardLeftUp), fluBody), Is.LessThan(0.05f));
 
+            // Combine bank and scene rotation, then use that rotation for the reference too.
             frame.UnityRotation = Quaternion.Euler(10, 20, 30);
             Quaternion banked = north * Quaternion.AngleAxis(30, Vector3.right);
             Quaternion expected = frame.UnityRotation * Quaternion.AngleAxis(-30, Vector3.forward);

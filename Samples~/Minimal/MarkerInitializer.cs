@@ -10,7 +10,7 @@ namespace Emas.Minimal
         /// <param name="root">The authored marker Ghost whose position trait receives the reader.</param>
         protected override void Initialize(Presence presence, Ghost root)
         {
-            // Read through the weak Source; keep the current pose if the source no longer resolves.
+            // Read the current Source if it still exists. Otherwise, keep the current pose.
             root.GetRequired<MarkerPositionTrait>().Bind(() =>
                 (presence.Source as MarkerSource)?.ReadPosition(presence.Key.EntityId) ?? root.transform.localPosition);
         }

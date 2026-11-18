@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    // Tracks live realms and global query subscriptions on Unity's main thread.
+    // Tracks active Realms and global query subscriptions on Unity's main thread.
     internal static class RealmRegistry
     {
         private static readonly List<Realm> Realms = new List<Realm>();
@@ -18,6 +18,7 @@ namespace Emas
 
         internal static void Register(Realm realm)
         {
+            // Add the Realm first because the observers' first callbacks may query all Realms.
             Realms.Add(realm);
             _snapshot = Realms.ToArray();
             GlobalQuerySubscription[] subscriptions = Subscriptions.ToArray();
@@ -29,6 +30,7 @@ namespace Emas
 
         internal static void Unregister(Realm realm)
         {
+            // Remove the Realm before departure callbacks can query the Realm list.
             Realms.Remove(realm);
             _snapshot = Realms.ToArray();
             GlobalQuerySubscription[] subscriptions = Subscriptions.ToArray();
@@ -43,6 +45,7 @@ namespace Emas
         {
             GlobalQuerySubscription subscription =
                 new GlobalQuerySubscription(query, onEnter, onLeave);
+            // Register first so an initial callback can dispose this subscription right away.
             Subscriptions.Add(subscription);
             foreach (Realm realm in Snapshot())
             {

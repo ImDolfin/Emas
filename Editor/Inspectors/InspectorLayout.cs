@@ -43,7 +43,7 @@ namespace Emas.Editor
             }
         }
 
-        // Display Euler angles but write the quaternion only on edits, preserving untouched serialized rotations.
+        // Show Euler angles, but save the quaternion only when edited so viewing it does not change it.
         internal static void Rotation(SerializedProperty property, string label)
         {
             EditorGUILayout.LabelField(new GUIContent(label + " (degrees)", property.tooltip));
@@ -64,6 +64,7 @@ namespace Emas.Editor
 
         internal static void Position(SerializedProperty property, string label)
         {
+            // Edit Double3's saved values directly so converting through Vector3 does not lose precision.
             EditorGUILayout.LabelField(new GUIContent(label, property.tooltip));
             using (new EditorGUILayout.HorizontalScope())
             {

@@ -10,6 +10,7 @@ namespace Emas
 
         internal List<Kind> Register(ManifestationBlueprint blueprint)
         {
+            // Copy the new settings, then find old registrations of this asset in case its Kind changed.
             ManifestationBlueprintSnapshot snapshot = blueprint.CaptureSnapshot();
             string kindId = snapshot.Kind.Id;
             List<Kind> staleKinds = null;
@@ -28,6 +29,7 @@ namespace Emas
                 staleKinds.Add(new Kind(entry.Key));
             }
 
+            // Remove old registrations after the search. The Realm will refresh views for each affected Kind.
             if (staleKinds != null)
             {
                 for (int index = 0; index < staleKinds.Count; index++)

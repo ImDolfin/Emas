@@ -67,6 +67,7 @@ namespace Emas
                 int right = Index(_right);
                 int up = Index(_up);
                 int forward = Index(_forward);
+                // Check axis order and signs to find whether the conversion mirrors the axes.
                 int inversions = (right > up ? 1 : 0) + (right > forward ? 1 : 0) + (up > forward ? 1 : 0);
                 return (inversions % 2 == 0 ? 1 : -1) * Sign(_right) * Sign(_up) * Sign(_forward);
             }
@@ -119,7 +120,7 @@ namespace Emas
 
         internal Double3 ToUnityAngularVelocity(Double3 value)
         {
-            // Angular velocity is an axial vector: reflections also reverse its rotation sense.
+            // Mirroring the axes also reverses the sign of angular velocity.
             return ToUnity(value) * Determinant;
         }
 
@@ -156,7 +157,7 @@ namespace Emas
         private Quaternion Rotation(Double3 vector, float scalar)
         {
             // For an orthogonal basis B, B R(q) B^-1 has quaternion (det(B) * B * q.xyz, q.w).
-            // The determinant factor also handles reflections; treating q.xyz as a position would reverse turns.
+            // The determinant supplies the extra sign needed for mirrored axes. Without it, turns would reverse.
             int determinant = Determinant;
             return new Quaternion((float)(determinant * vector.X), (float)(determinant * vector.Y),
                 (float)(determinant * vector.Z), scalar);

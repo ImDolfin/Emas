@@ -19,6 +19,7 @@ namespace Emas.Sample
 
         private void LateUpdate()
         {
+            // Read the root's latest data after its readers run, even if it has no view.
             if (_position != null)
             {
                 transform.localPosition = _position.Position;

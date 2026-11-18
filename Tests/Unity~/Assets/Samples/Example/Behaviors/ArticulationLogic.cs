@@ -16,6 +16,7 @@ namespace Emas.Sample
                 return;
             }
 
+            // Animate the visual child without changing the Ghost's source pose.
             transform.localRotation = Quaternion.Euler(
                 0.0f,
                 _articulation.Steering * 12.0f,

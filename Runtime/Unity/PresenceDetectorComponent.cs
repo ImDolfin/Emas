@@ -209,6 +209,7 @@ namespace Emas
 
         private void OnEnable()
         {
+            // If the setup was waiting for this provider, enabling it can finish attaching the source.
             AnchorSetup setup = GetComponent<AnchorSetup>();
             if (setup != null && setup.isActiveAndEnabled)
             {
@@ -222,6 +223,7 @@ namespace Emas
 
         private void OnDisable()
         {
+            // Use the saved owner. Moving this object in the scene may have changed which setup is nearest.
             AnchorSetup setup = GetComponent<AnchorSetup>();
             if (setup != null && setup.AttachmentOwner != null)
             {

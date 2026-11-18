@@ -30,10 +30,11 @@ namespace Emas.Tests.Samples
             string imported = Path.Combine(Application.dataPath, "Samples", sample);
             Assert.That(Directory.Exists(imported), Is.True, imported);
             string[] expected = RelativeFiles(source);
+            // Compare file lists first so missing assets or metadata are caught before comparing contents.
             Assert.That(RelativeFiles(imported), Is.EquivalentTo(expected), "Reimport the updated sample.");
             foreach (string relative in expected)
             {
-                // Text comparison allows Git's platform-specific line endings.
+                // Compare text so Git's different line endings do not cause a mismatch.
                 Assert.That(File.ReadAllText(Path.Combine(imported, relative)).Replace("\r\n", "\n"),
                     Is.EqualTo(File.ReadAllText(Path.Combine(source, relative)).Replace("\r\n", "\n")),
                     sample + "/" + relative + ": reimport the updated sample.");
@@ -55,6 +56,7 @@ namespace Emas.Tests.Samples
             Scene scene = EditorSceneManager.OpenScene(directory + sceneFile, OpenSceneMode.Additive);
             try
             {
+                // Check the shared setup first, then check each entity and view asset.
                 RealmSetup[] setups = scene.GetRootGameObjects()
                     .SelectMany(root => root.GetComponentsInChildren<RealmSetup>(true)).ToArray();
                 Assert.That(setups, Has.Length.EqualTo(1));
@@ -80,6 +82,7 @@ namespace Emas.Tests.Samples
                 }
 
                 SerializedProperty blueprints = serializedSetup.FindProperty("_blueprints");
+                // Check every Kind's root and variant views to make sure the imported sample has all its assets.
                 Assert.That(blueprints.arraySize, Is.GreaterThan(0));
                 for (int index = 0; index < blueprints.arraySize; index++)
                 {
@@ -97,6 +100,7 @@ namespace Emas.Tests.Samples
 
                     if (sample == "RelativeWorld")
                     {
+                        // Check the saved motion defaults so the sample works without the test changing them first.
                         Extrapolation extrapolation = blueprint.GhostPrefab.GetRequired<Extrapolation>();
                         Smoothing smoothing = blueprint.GhostPrefab.GetRequired<Smoothing>();
                         Assert.That(extrapolation.enabled, Is.True);

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace Emas
 {
-    // One tracked root's lifetime and presentation state; availability, spatial visibility and view requests are independent.
+    // State for one root. Availability, visibility and requests for a view can change separately.
     internal sealed class Record
     {
         internal readonly Key Key;
@@ -21,10 +21,10 @@ namespace Emas
         internal bool ViewDirty;
         internal bool RefreshingView;
         internal long ViewVersion;
-        // Ownership changes invalidate trait work; attachment generations reject publications from old detector lifetimes.
+        // Owner changes stop old trait work. Source versions reject reports queued before a restart.
         internal long OwnershipVersion;
         internal long RegistrationGeneration;
-        // Handover waits for its earliest cleanup update and for work queued through the end of startup.
+        // Keep old roots until the next cleanup update and the queued startup work have both finished.
         internal long HandoverUpdate;
         internal long HandoverDispatchSequence;
         internal double LastPublishedAt;

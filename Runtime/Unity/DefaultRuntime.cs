@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Owns the shared realm and its persistent Unity runner; isolated RealmSetup lifetimes use their own updates.
+    // Owns the shared Realm and its Unity update component. Each RealmSetup runs its own updates.
     internal static class DefaultRuntime
     {
         [DefaultExecutionOrder(-32000)]
@@ -31,6 +31,7 @@ namespace Emas
 
         internal static bool TryGetRealm(out Realm realm)
         {
+            // Debug code uses this lookup so reading state does not create the shared update component.
             realm = _realm != null && !_realm.IsDisposed ? _realm : null;
             return realm != null;
         }
@@ -42,6 +43,7 @@ namespace Emas
                 return;
             }
 
+            // Keep the update component across scene changes so loading a scene does not reset tracking.
             _realm = new Realm();
             if (_runner == null)
             {
@@ -54,7 +56,7 @@ namespace Emas
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void Reset()
         {
-            // Release the previous play session's static state even when Unity domain reload is disabled.
+            // Clear state from the previous play session even when Unity keeps static fields between sessions.
             if (_runner != null)
             {
                 Object.Destroy(_runner.gameObject);

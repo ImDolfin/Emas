@@ -14,7 +14,7 @@ namespace Emas
         internal bool TryGet<T>(Ghost ghost, out T part) where T : class
         {
             part = null;
-            // Refresh membership on every lookup so runtime component changes and new ambiguities are visible immediately.
+            // Check components on every lookup so additions, removals and duplicate matches are found right away.
             ghost.GetComponents(_components);
             int count = 0;
             for (int index = 0; index < _components.Count; index++)
@@ -32,6 +32,7 @@ namespace Emas
             Type contract = typeof(T);
             if (count > 1)
             {
+                // Do not choose between duplicate matches. Log the problem once until those matches change.
                 part = null;
                 if (_reportedAmbiguities == null)
                 {
@@ -46,6 +47,7 @@ namespace Emas
                 return false;
             }
 
+            // Clear the old duplicate warning so a later duplicate can be logged again.
             if (_reportedAmbiguities != null)
             {
                 _reportedAmbiguities.Remove(contract);
@@ -65,6 +67,7 @@ namespace Emas
 
         private string DescribeAmbiguity<T>(Ghost ghost) where T : class
         {
+            // Include instance IDs because several matching components can have the same type.
             StringBuilder message = new StringBuilder();
             message.Append("Ghost '").Append(ghost.Key).Append("' has multiple root providers for ")
                 .Append(typeof(T).FullName).Append(": ");

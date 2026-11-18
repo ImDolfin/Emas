@@ -20,7 +20,7 @@ namespace Emas
             double sinLongitude = Math.Sin(longitude);
             double cosLongitude = Math.Cos(longitude);
 
-            // Up is the geodetic ellipsoid normal, not the radial direction from Earth's center.
+            // Up points away from the local WGS84 surface. It does not point straight away from Earth's center.
             _east = new Double3(-sinLongitude, cosLongitude, 0);
             _up = new Double3(cosLatitude * cosLongitude, cosLatitude * sinLongitude, sinLatitude);
             _north = new Double3(-sinLatitude * cosLongitude, -sinLatitude * sinLongitude, cosLatitude);
@@ -38,7 +38,7 @@ namespace Emas
 
         internal Quaternion RotationFrom(GeoPosition position)
         {
-            // Express the other location's north/up axes in this tangent frame to account for Earth's curvature.
+            // Convert the other location's north/up directions to these local axes to account for Earth's curve.
             GeographicBasis other = new GeographicBasis(position);
             Double3 forward = ToLocal(other._north);
             Double3 up = ToLocal(other._up);
@@ -56,7 +56,7 @@ namespace Emas
 
         internal Quaternion ToEarthCenteredRotation(Quaternion localRotation, CoordinateSystem bodyAxes)
         {
-            // Reverse the mapping for body Z/Y to reconstruct the active body-to-ECEF quaternion.
+            // Convert body forward/up back to ECEF axes to rebuild the body-to-ECEF rotation.
             Double3 forward = ToEarthCentered(SpatialMath.Rotate(localRotation, bodyAxes.ToUnity(new Double3(0, 0, 1))));
             Double3 up = ToEarthCentered(SpatialMath.Rotate(localRotation, bodyAxes.ToUnity(new Double3(0, 1, 0))));
             return Quaternion.LookRotation(ToVector3(forward), ToVector3(up));

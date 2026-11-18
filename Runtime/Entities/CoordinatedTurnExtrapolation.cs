@@ -83,6 +83,7 @@ namespace Emas
                     + context.Acceleration.GetValueOrDefault() * (0.5d * seconds * seconds);
             }
 
+            // Convert world motion to local Unity axes, then calculate motion in the turning body axes.
             Double3 velocity = ToLocal(context, context.Velocity.Value);
             Double3 bodyVelocity = SpatialMath.Rotate(Quaternion.Inverse(attitude), velocity);
             Double3 rate = BodyRate(context, attitude, velocity);
@@ -91,10 +92,11 @@ namespace Emas
             {
                 Double3 acceleration = ToLocal(context, context.Acceleration.Value);
                 // d(v_body)/dt = R^-1*a_world - omega_body x v_body. Feeding inertial
-                // acceleration directly into the rotating integral would add centripetal motion twice.
+                // acceleration directly into this calculation would count the acceleration caused by turning twice.
                 bodyAcceleration = SpatialMath.Rotate(Quaternion.Inverse(attitude), acceleration) - Cross(rate, bodyVelocity);
             }
 
+            // Convert the movement back to source axes before mapping the position into Unity.
             Double3 displacement = SpatialMath.Rotate(attitude, Integrate(bodyVelocity, bodyAcceleration, rate, seconds));
             return context.Space == ReferenceSpace.Geographic
                 ? Basis(context).ToEarthCentered(displacement) : context.SourceCoordinates.ToSource(displacement);
@@ -123,6 +125,7 @@ namespace Emas
 
         private Double3 BodyRate(ExtrapolationContext context, Quaternion attitude, Double3 velocity)
         {
+            // Use supplied or estimated turn rates, including zero, before trying to infer a turn from bank.
             if (context.AngularVelocity.HasValue)
             {
                 Double3 rate = context.AngularVelocity.Value;
@@ -144,6 +147,7 @@ namespace Emas
                 return default(Double3);
             }
 
+            // Estimate only a steady, level turn. Stop if bank or horizontal speed cannot be calculated.
             double speed = Math.Sqrt(velocity.X * velocity.X + velocity.Z * velocity.Z);
             Double3 forward = SpatialMath.Rotate(attitude, new Double3(0, 0, 1));
             double headingLength = Math.Sqrt(forward.X * forward.X + forward.Z * forward.Z);
@@ -166,6 +170,7 @@ namespace Emas
 
         private static bool TryAttitude(ExtrapolationContext context, out Quaternion attitude)
         {
+            // Calculate turns from the local body rotation, even when the SDK supplies an ECEF rotation.
             attitude = Quaternion.identity;
             if (!context.ObservationRotation.HasValue || (context.Space == ReferenceSpace.Geographic && !context.ObservationPosition.HasValue))
             {
@@ -216,7 +221,7 @@ namespace Emas
             double f4;
             if (Math.Abs(angle) < 0.01d)
             {
-                // Taylor limits avoid cancellation and division by a tiny rate in nearly straight flight.
+                // For nearly straight flight, use a series expansion to avoid rounding errors and division by a tiny rate.
                 double squared = angle * angle;
                 f1 = angle * (0.5d + squared * (-1d / 24d + squared / 720d));
                 f2 = squared * (1d / 6d + squared * (-1d / 120d + squared / 5040d));
@@ -233,7 +238,7 @@ namespace Emas
                 f4 = 0.5d - sine / angle + (1d - cosine) / (angle * angle);
             }
 
-            // Exact Rodrigues integrals of exp(omega*t)*(v_body + a_body*t), not a frame-step approximation.
+            // Use the exact Rodrigues formula to sum exp(omega*t)*(v_body + a_body*t) over this time interval.
             Double3 vCross = Cross(axis, velocity);
             Double3 aCross = Cross(axis, acceleration);
             return (velocity + vCross * f1 + Cross(axis, vCross) * f2) * seconds

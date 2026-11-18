@@ -160,6 +160,7 @@ namespace Emas
 
         internal Realm(Func<double> elapsedSeconds)
         {
+            // Set up shared tracking and scene changes before queries can see this Realm.
             _dispatch = new CommandQueue<DispatchCommand>(ExecuteDispatch);
             _subscriptions = new Subscriptions(this);
             _views = new ViewManager(_identities, _sceneChanges);
@@ -191,6 +192,7 @@ namespace Emas
         {
             ThrowIfDisposed();
             ValidateManifestationBlueprint(blueprint);
+            // Copy the blueprint settings, then refresh views that use them. Keep existing roots.
             List<Kind> staleKinds = _blueprints.Register(blueprint);
             RebindManifestationBlueprintRegistration(staleKinds, blueprint.Kind);
         }
@@ -231,6 +233,7 @@ namespace Emas
                 throw new ArgumentException("An anchor requires an identifier.", nameof(id));
             }
 
+            // Keep a list of new sources so failed startup can undo only those additions.
             Anchor anchor;
             bool created = false;
             List<PresenceDetector> newSources = null;
@@ -244,6 +247,7 @@ namespace Emas
 
             try
             {
+                // Reusing an Anchor must keep its original scene parent.
                 if (anchor.Transform.parent != frame)
                 {
                     if (frame != null || anchor.Transform.parent != null)
@@ -254,6 +258,7 @@ namespace Emas
 
                 if (sources != null)
                 {
+                    // Save the existing roots before a new source can take them over in OnStart.
                     for (int index = 0; index < sources.Length; index++)
                     {
                         PresenceDetector source = sources[index];
@@ -276,6 +281,7 @@ namespace Emas
             }
             catch
             {
+                // Remove a new Anchor completely. For an existing Anchor, undo only the new sources.
                 if (created)
                 {
                     anchor.Dispose();
@@ -323,7 +329,7 @@ namespace Emas
                 return false;
             }
 
-            // Resolve identity independently of availability, excluding destroyed Unity objects.
+            // Find the root even while unavailable, but reject destroyed Unity objects.
             Record record;
             if (!_identities.TryGetValue(key, out record) || record.Ghost == null)
             {
@@ -446,6 +452,7 @@ namespace Emas
                 return null;
             }
 
+            // Keep the view request so it can be shown later when its data, range and assets allow it.
             if (!record.ViewRequested)
             {
                 _views.Request(record);
@@ -495,9 +502,10 @@ namespace Emas
             _updateNumber++;
             try
             {
+                // Run only work queued before this update. New work waits for the next update.
                 _dispatch.ExecutePending(MaxDispatchActionsPerUpdate);
 
-                // Source callbacks may remove anchors while this snapshot is being processed.
+                // Copy the Anchor list because source callbacks may remove Anchors as we go.
                 List<Anchor> anchors = new List<Anchor>(_anchors.Values);
                 for (int index = 0; index < anchors.Count && !_disposed; index++)
                 {
@@ -519,11 +527,12 @@ namespace Emas
 
                 if (!_disposed)
                 {
-                    // Let publications in this update refresh their deadlines before expiring silent ghosts.
+                    // Apply fresh reports before checking which Ghosts have gone quiet for too long.
                     _population.RemoveUnpublishedHandoverGhosts(_updateNumber, _dispatch.HasPendingThrough);
                     _population.RemoveExpiredGhosts();
-                    // Expose complete data and refresh views before notifying consumers.
+                    // Finish data and views before telling observers about changes.
                     FinalizeChanges(null, updateGhosts: true);
+                    // Arrival callbacks may request views. Use the reference pose already chosen for this update.
                     _notifyingUpdateQueries = true;
                     _subscriptions.NotifyAll();
                 }
@@ -547,7 +556,7 @@ namespace Emas
                 return;
             }
 
-            // Invalidate pending work before source cleanup can call back into the realm.
+            // Reject queued work before source cleanup can call back into this Realm.
             _disposed = true;
             RealmRegistry.Unregister(this);
             _dispatch.Clear();
@@ -558,6 +567,7 @@ namespace Emas
                 anchors[index].Dispose();
             }
 
+            // Remove any roots left after Anchor cleanup, then release blueprint and reference settings.
             List<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count; index++)
             {
@@ -607,6 +617,7 @@ namespace Emas
 
         internal int CountMatches(Query query, out IGhost first)
         {
+            // Count matches and keep the first one so Single does not need to build a result list.
             first = null;
             if (_disposed)
             {
@@ -678,6 +689,7 @@ namespace Emas
                 throw new ArgumentException("Anchor, kind and entity identifiers are required.");
             }
 
+            // Check and copy the supplied capabilities before passing them to a setup callback.
             List<Type> capabilitySnapshot = null;
             if (capabilities != null)
             {
@@ -698,7 +710,7 @@ namespace Emas
 
             long generation = detector.RegistrationGeneration;
             string sourceContext = detector.CaptureErrorContext();
-            // Initializers must finish binding traits before callbacks can observe or activate their roots.
+            // Finish connecting trait readers before callbacks can use or activate their roots.
             _sourceDepth++;
             try
             {
@@ -709,8 +721,8 @@ namespace Emas
             {
                 string context = PresenceDetector.DescribeError(sourceContext, "Detect", kind, entityId);
                 detector.RecordError(exception, generation, context);
-                // Lifecycle and dispatched detections already have a failure boundary. Preserve startup rollback
-                // and let that boundary log once, while direct detections stop before pending roots can activate.
+                // OnStart, OnUpdate and Dispatch callers handle their own errors and undo failed startup.
+                // For a direct detection call, stop the source here before its new roots can activate.
                 if (!detector.IsApplyingSourceChanges && detector.IsRegistration(this, generation))
                 {
                     detector.HandleFailure(exception, context);
@@ -803,6 +815,7 @@ namespace Emas
 
         internal void ApplySourceChanges(Action action)
         {
+            // Finish all source callbacks, including callbacks started by other callbacks, before updating views.
             _sourceDepth++;
             try
             {
@@ -874,6 +887,7 @@ namespace Emas
 
         private void RollbackAnchorSources(Anchor anchor, List<PresenceDetector> sources, HashSet<Record> previous)
         {
+            // Undo new sources in reverse order. Cleanup callbacks may remove the Anchor as we go.
             for (int index = sources.Count - 1; index >= 0; index--)
             {
                 Anchor current;
@@ -895,7 +909,7 @@ namespace Emas
 
         private void ExecuteDispatch(DispatchCommand command)
         {
-            // Check the attachment at execution time: work queued before a restart belongs to the old lifetime.
+            // Check the source version again when work runs. Work from before a restart is no longer valid.
             if (_disposed
                 || (command.Source != null && !command.Source.IsRegistration(this, command.Generation)))
             {
@@ -937,6 +951,7 @@ namespace Emas
 
         private void RebindManifestationBlueprints(Kind kind)
         {
+            // Copy the root list before view callbacks can change tracking.
             List<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count; index++)
             {
@@ -966,7 +981,7 @@ namespace Emas
             record.ViewDirty = true;
             if (_sourceDepth == 0 && !_finalizing)
             {
-                // Arrival observers may request each view in turn. Keep the shared projection captured before notification.
+                // Arrival observers may request several views. Keep the same reference pose for all of them.
                 if (!_notifyingUpdateQueries)
                 {
                     _spatial.Project(record, _referenceFrame);
@@ -982,17 +997,18 @@ namespace Emas
             try
             {
                 List<Record> records = _identities.Snapshot();
-                // Use one snapshot for the pass; roots created by readers or hooks wait for a later finalization.
-                // Read every root's traits before any Ghost hook can consume another root's data.
+                // Work on one copy of the root list. New roots wait for the next pass.
+                // Read all traits before any Ghost.OnUpdate can use another root's data.
                 _population.RefreshTraits(records, onlyOwner);
                 if (updateGhosts)
                 {
                     _population.UpdateGhosts(records);
                 }
 
-                // Project complete trait and Ghost data before activating any roots or views.
+                // Place roots using their finished data before activating roots or views.
                 _spatial.Project(records, _referenceFrame);
                 _population.ActivateRoots(records, onlyOwner);
+                // Activation callbacks may cancel or replace a view request. Refresh only requests still needing work.
                 for (int index = 0; index < records.Count; index++)
                 {
                     Record record = records[index];

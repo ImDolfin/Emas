@@ -64,6 +64,7 @@ namespace Emas.Tests
             Assert.That(source.LastError, Is.SameAs(failure));
             Assert.That(source.LastErrorContext, Does.Contain("anchor 'vehicles'").And.Contain("source 'ArrivalDetector'"));
             Assert.That(source.LastErrorContext, Does.Contain("operation 'Update traits'").And.Contain("kind 'car'").And.Contain("entity '42'"));
+            // Changing the name later must not change the saved error details.
             string recorded = source.LastErrorContext;
             source.Name = "Renamed";
             Assert.That(source.LastErrorContext, Is.EqualTo(recorded));
@@ -104,6 +105,7 @@ namespace Emas.Tests
             Assert.That(source.LastError, Is.SameAs(primary));
             Assert.That(source.IsAttached, Is.True);
             Assert.That(source.IsActive, Is.False);
+            // Fix both errors, then restart. Clear the old errors before accepting new data.
             failing = false;
             anchor.RestartDetector(source);
             Assert.That(source.LastErrorContext, Is.Null);

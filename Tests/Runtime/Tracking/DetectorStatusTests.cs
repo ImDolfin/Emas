@@ -83,6 +83,7 @@ namespace Emas.Tests
             Assert.That(source.Realm, Is.Null);
             Assert.That(source.LastError, Is.Null);
             Assert.That(source.LastErrorContext, Is.Null);
+            // Keep the Anchor and Realm available during startup and cleanup. Record the first error only.
             source.Starting = () =>
             {
                 Assert.That(source.IsAttached && source.IsActive, Is.True);
@@ -104,6 +105,7 @@ namespace Emas.Tests
             Assert.That(source.Anchor, Is.Null);
             Assert.That(source.Realm, Is.Null);
             Assert.That(source.Stops, Is.EqualTo(1));
+            // Attach the detector again to clear old errors. Removing it must clear its owner too.
             source.Starting = () => Assert.That(source.LastError, Is.Null);
             source.Stopping = null;
             anchor.AddDetector(source);
@@ -132,6 +134,7 @@ namespace Emas.Tests
             StatusGhost ghost = source.Publish("failed");
             StatusGhost other = healthy.Publish("healthy");
             _realm.Update();
+            // Make one source fail during both update and cleanup. The other source must keep running.
             source.Stopping = () =>
             {
                 throw new Exception("cleanup failure");
@@ -156,6 +159,7 @@ namespace Emas.Tests
             Assert.That(healthyUpdates, Is.EqualTo(3));
             Assert.That(_realm.Query().Single(), Is.SameAs(other));
             Assert.That(healthy.LastError, Is.Null);
+            // The replacement uses the same Key with a new root. Keep the failed detector's error details.
             ProbeSource replacement = new ProbeSource();
             anchor.ReplaceDetector(source, replacement);
             StatusGhost recovered = replacement.Publish("failed");
@@ -201,6 +205,7 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("first", source);
             IReadOnlyList<Anchor> anchors = _realm.Anchors;
             IReadOnlyList<PresenceDetector> sources = anchor.Detectors;
+            // Save the lists, then change the owners. Compare the saved lists with new ones.
             ProbeSource replacement = new ProbeSource();
             anchor.ReplaceDetector(source, replacement);
             _realm.GetOrCreateAnchor("second", new ProbeSource());

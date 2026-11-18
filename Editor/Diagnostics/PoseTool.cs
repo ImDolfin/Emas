@@ -31,6 +31,7 @@ namespace Emas.Editor
             {
                 if (_instance == null)
                 {
+                    // Use the same tool instance so the toolbar, window and overlay share their settings.
                     PoseTool[] tools = Resources.FindObjectsOfTypeAll<PoseTool>();
                     _instance = tools.Length > 0 ? tools[0] : CreateInstance<PoseTool>();
                     _instance.hideFlags = HideFlags.HideAndDontSave;
@@ -45,6 +46,7 @@ namespace Emas.Editor
         /// <summary>Retains the active tool instance as the shared debugger state for windows and overlays.</summary>
         public override void OnActivated()
         {
+            // The toolbar may activate a different tool instance. Keep the current target.
             if (_instance != null && _instance != this)
             {
                 _pinnedGhost = _instance._pinnedGhost;
@@ -63,6 +65,7 @@ namespace Emas.Editor
         /// <param name="window">The Editor window requesting tool GUI; only Scene view repaint events draw markers.</param>
         public override void OnToolGUI(EditorWindow window)
         {
+            // Draw only during repaint so mouse and layout events do not add handles.
             if (!(window is SceneView) || Event.current == null || Event.current.type != EventType.Repaint)
             {
                 return;
@@ -78,6 +81,7 @@ namespace Emas.Editor
                 }
 
                 Pose presented = new Pose(ghost.transform.position, ghost.transform.rotation);
+                // Draw both sets of axes at the same size on screen so they are easy to compare.
                 float size = HandleUtility.GetHandleSize(presented.position) * _gizmoSize;
                 if (_drawObservedPose)
                 {
@@ -106,6 +110,7 @@ namespace Emas.Editor
 
         internal void DrawControls(Realm realm, bool compact)
         {
+            // Switch the active Editor tool without changing the Ghost's traits.
             EditorGUI.BeginChangeCheck();
             if (GUILayout.Button(IsActive ? "Deactivate pose tool" : "Activate pose tool"))
             {
@@ -120,6 +125,7 @@ namespace Emas.Editor
             }
 
             _pinnedGhost = (Ghost)EditorGUILayout.ObjectField("Pinned Ghost", _pinnedGhost, typeof(Ghost), true);
+            // Find the target first. The followed object may not have arrived yet.
             CollectGhosts();
             Ghost first = _ghosts.Count > 0 ? _ghosts[0] : null;
             Ghost followed = null;
@@ -131,6 +137,7 @@ namespace Emas.Editor
 
             using (new EditorGUILayout.HorizontalScope())
             {
+                // Keep a pinned target when selection changes. Unpin to follow the current selection again.
                 using (new EditorGUI.DisabledScope(first == null))
                 {
                     if (GUILayout.Button("Pin", EditorStyles.miniButton))
@@ -151,6 +158,7 @@ namespace Emas.Editor
                 }
             }
 
+            // Both panels share these settings, so an edit updates every Scene view.
             _drawObservedPose = EditorGUILayout.ToggleLeft("Observed pose (cyan)", _drawObservedPose);
             _drawPresentedPose = EditorGUILayout.ToggleLeft("Presented pose (magenta)", _drawPresentedPose);
             using (new EditorGUILayout.HorizontalScope())
@@ -164,6 +172,7 @@ namespace Emas.Editor
                 SceneView.RepaintAll();
             }
 
+            // Refresh after the buttons so the values show any change to the pinned target.
             CollectGhosts();
             if (_ghosts.Count == 0)
             {
@@ -181,10 +190,12 @@ namespace Emas.Editor
             _seen.Clear();
             if (_pinnedGhost != null)
             {
+                // Use the pinned target even when another object is selected.
                 _ghosts.Add(_pinnedGhost);
                 return;
             }
 
+            // Compare each Ghost once, even when several of its view children are selected.
             foreach (GameObject selected in Selection.gameObjects)
             {
                 Ghost ghost = selected != null ? selected.GetComponentInParent<Ghost>() : null;
@@ -199,6 +210,7 @@ namespace Emas.Editor
         {
             using (InspectorLayout.Section(ghost.name))
             {
+                // If the pose cannot be converted, show it as missing rather than as a zero pose.
                 Spatial spatial = ghost.GetComponent<Spatial>();
                 if (spatial == null || !spatial.TryGetObservedUnityPose(out Pose observed))
                 {
@@ -206,6 +218,7 @@ namespace Emas.Editor
                     return;
                 }
 
+                // Both poses use the same reference, so their difference shows the effect of smoothing and extrapolation.
                 InspectorLayout.ReadOnly("Position difference", Vector3.Distance(observed.position, ghost.transform.position).ToString("G6") + " units");
                 InspectorLayout.ReadOnly("Rotation difference", spatial.HasRotation
                     ? Quaternion.Angle(observed.rotation, ghost.transform.rotation).ToString("G6") + " deg" : "No observed attitude");
@@ -216,6 +229,7 @@ namespace Emas.Editor
                     : ObjectNames.NicifyVariableName(extrapolation.Strategy.GetType().Name).Replace(" Extrapolation", string.Empty));
                 if (!compact)
                 {
+                    // Show the Unity coordinates in the full window to keep the overlay small.
                     InspectorLayout.ReadOnly("Prediction horizon", extrapolation != null ? extrapolation.MaximumExtrapolation.ToString("G4") + " s (maximum)" : "None");
                     using (new EditorGUI.DisabledScope(true))
                     {
@@ -237,6 +251,7 @@ namespace Emas.Editor
                     }
                     if (GUILayout.Button("Frame comparison", EditorStyles.miniButton))
                     {
+                        // Frame both positions. Keep some space around them even when they overlap.
                         SceneView scene = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView : EditorWindow.GetWindow<SceneView>();
                         Bounds bounds = new Bounds(ghost.transform.position, Vector3.one * 2f);
                         bounds.Encapsulate(observed.position);
@@ -253,18 +268,21 @@ namespace Emas.Editor
 
         private static void DrawPose(Pose pose, float size, Color color, bool hasRotation, string label, float labelSide)
         {
+            // Use the local pose matrix only for the marker. Draw the arrows with world rotations.
             using (new Handles.DrawingScope(color, Matrix4x4.TRS(pose.position, pose.rotation, Vector3.one)))
             {
                 Handles.DrawWireCube(Vector3.zero, Vector3.one * (size * 0.15f));
             }
             if (hasRotation)
             {
+                // Arrow caps point along local +Z. Rotate them to point along each pose axis.
                 DrawAxis(pose.position, pose.rotation * Quaternion.LookRotation(Vector3.right), size, Color.red);
                 DrawAxis(pose.position, pose.rotation * Quaternion.LookRotation(Vector3.up, Vector3.forward), size, Color.green);
                 DrawAxis(pose.position, pose.rotation, size, Color.blue);
             }
             if (label != null)
             {
+                // Move labels up on screen so both names remain readable when the poses overlap.
                 SceneView scene = SceneView.currentDrawingSceneView;
                 Vector3 up = scene != null && scene.camera != null ? scene.camera.transform.up : Vector3.up;
                 GUIStyle style = new GUIStyle(EditorStyles.miniBoldLabel);

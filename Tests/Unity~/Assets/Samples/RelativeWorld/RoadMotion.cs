@@ -18,6 +18,7 @@ namespace Emas.RelativeWorld
 
         private void Awake()
         {
+            // Keep the original pattern so each scroll starts from the saved positions.
             _positions = new Vector3[_markings.Length];
             for (int index = 0; index < _markings.Length; index++)
             {
@@ -36,13 +37,13 @@ namespace Emas.RelativeWorld
                 }
                 else
                 {
-                    // A restarted realm supplies a new frame; do not count its origin reset as travelled distance.
+                    // Reset the distance baseline when the Realm restarts so its new origin does not look like travel.
                     _distance = 0;
                     _previousFrame = frame;
                 }
                 _previousPosition = frame.Position;
             }
-            // Wrap at the authored marking spacing to keep local offsets small during long runs.
+            // Wrap at the marking spacing so offsets stay small during long runs.
             float offset = (float)(_distance % 5.0);
             for (int index = 0; index < _markings.Length; index++)
             {

@@ -17,6 +17,7 @@ namespace Emas.Editor
 
         internal void Draw(bool compact)
         {
+            // Read the existing Realms. Opening this panel must not create the default Realm.
             Realm[] realms = RealmRegistry.Snapshot();
             if (realms.Length == 0)
             {
@@ -31,6 +32,7 @@ namespace Emas.Editor
             int failed = DrawSummary(anchors);
             if (compact)
             {
+                // Show the same pose controls in the Scene overlay. Keep detector details in the window.
                 PoseTool.Instance.DrawControls(_selected, true);
                 if (failed > 0)
                 {
@@ -45,6 +47,7 @@ namespace Emas.Editor
                 return;
             }
 
+            // Keep the pose and detector pages separate, and remember where each page was scrolled.
             _tab = GUILayout.Toolbar(_tab, new[] { "Pose debugger", "Tracking" });
             if (_tab == 0)
             {
@@ -61,7 +64,7 @@ namespace Emas.Editor
 
         private void SelectRealm(Realm[] realms)
         {
-            // Query existing owners only; opening diagnostics must never create or start a default Realm.
+            // List existing Realms only. Opening this panel must not create or start the default Realm.
             Realm defaultRealm;
             DefaultRuntime.TryGetRealm(out defaultRealm);
             RealmSetup[] setups = UnityEngine.Object.FindObjectsOfType<RealmSetup>(true);
@@ -69,6 +72,7 @@ namespace Emas.Editor
             int selected = 0;
             for (int index = 0; index < realms.Length; index++)
             {
+                // Use the setup's scene and name when available. Also list Realms created by code.
                 names[index] = ReferenceEquals(realms[index], defaultRealm) ? "Default realm" : "Code realm " + (index + 1);
                 foreach (RealmSetup setup in setups)
                 {
@@ -139,6 +143,7 @@ namespace Emas.Editor
             foreach (Anchor anchor in anchors)
             {
                 bool match = Matches(anchor.Id);
+                // When a detector name matches, show its Anchor too.
                 foreach (PresenceDetector detector in anchor.Detectors)
                 {
                     match |= Matches(detector.Name);
@@ -173,7 +178,7 @@ namespace Emas.Editor
             }
 
             EditorGUILayout.EndScrollView();
-            // Stop retaining disposed or recovered detectors solely because their error foldout was once open.
+            // Forget an expanded error once its detector is disposed or has recovered.
             _expandedErrors.IntersectWith(errors);
         }
 
@@ -181,6 +186,7 @@ namespace Emas.Editor
         {
             using (InspectorLayout.Section(detector.Name))
             {
+                // Count all owned roots, including unavailable ones. Show the available count separately.
                 IReadOnlyList<IGhost> ghosts = _selected.GetOwnedGhosts(detector);
                 int available = 0;
                 foreach (IGhost ghost in ghosts)

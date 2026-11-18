@@ -10,6 +10,7 @@ namespace Emas.Tests
         [Test]
         public void SampleIntervals_PreserveNanosecondsAcrossEpochsAndSecondRollover()
         {
+            // Keep a one-nanosecond gap even when the clock value is large.
             Timestamp first = new Timestamp(1700000000L, 999999998U);
             Timestamp next = new Timestamp(1700000000L, 999999999U);
             Timestamp rollover = new Timestamp(1700000001L, 0U);
@@ -18,6 +19,7 @@ namespace Emas.Tests
             Assert.That(first.CompareTo(next), Is.LessThan(0));
             Assert.That(rollover.CompareTo(next), Is.GreaterThan(0));
             Assert.That(next.Equals(new Timestamp(1700000000L, 999999999U)), Is.True);
+            // Check how negative times are split into seconds and nanoseconds. Reject invalid fractions.
             Assert.That(Timestamp.FromSeconds(-0.25).ElapsedSince(new Timestamp(-1, 750000000U)), Is.Zero);
             Assert.Throws<ArgumentOutOfRangeException>(() => new Timestamp(0, 1000000000U));
             Assert.Throws<ArgumentOutOfRangeException>(() => Timestamp.FromSeconds(double.PositiveInfinity));

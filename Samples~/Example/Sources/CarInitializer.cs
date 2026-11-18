@@ -13,7 +13,7 @@ namespace Emas.Sample
             string id = presence.Key.EntityId;
             PositionTrait position = root.GetRequired<PositionTrait>();
             ArticulationTrait articulation = root.GetRequired<ArticulationTrait>();
-            // Resolve Source on each read so a binding retains the Presence, rather than either SDK feed.
+            // Look up Source on each read so the reader keeps the Presence without keeping an old SDK feed alive.
             if (presence.Source is SdkTwoVehicleFeed)
             {
                 position.Bind(() => ((SdkTwoVehicleFeed)presence.Source).Current[id].Coordinates);

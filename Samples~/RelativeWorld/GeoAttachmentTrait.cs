@@ -18,6 +18,7 @@ namespace Emas.RelativeWorld
             }
             else
             {
+                // Convert forward/right/down into Unity local axes. Emas finds the parent later using its ID.
                 Key parent = new Key(Ghost.Key.AnchorId, value.ParentKind, value.ParentId);
                 Vector3 offset = value.BodyOffset;
                 spatial.Attach(parent, new Vector3(offset.y, -offset.z, offset.x));

@@ -20,6 +20,7 @@ namespace Emas.Sample
         /// <remarks>Refreshes the live dictionary immediately. Enumerate the returned values before calling this method again.</remarks>
         public IEnumerable<SdkOneVehicleProxy> ReadVehicles(float elapsedSeconds)
         {
+            // Update each car under the same key so readers get its latest SDK data.
             for (int index = 0; index < SampleMotion.CarCount; index++)
             {
                 Vector3 position = SampleMotion.GetCarPosition(index, elapsedSeconds);

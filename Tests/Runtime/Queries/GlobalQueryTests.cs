@@ -37,6 +37,7 @@ namespace Emas.Tests
         [TearDown]
         public void TearDown()
         {
+            // Stop watching first so closing the Realms does not send more exit callbacks to the test.
             foreach (IDisposable subscription in _subscriptions)
             {
                 subscription.Dispose();
@@ -69,6 +70,7 @@ namespace Emas.Tests
             first.Update();
             second.Update();
 
+            // Keep equal Keys in different Realms separate. Reuse the filters to search just one Realm.
             Query all = Query.All().OfKind(TestKind);
             Assert.That(left.Key, Is.EqualTo(right.Key));
             Assert.That(all.ToArray(), Is.EquivalentTo(new IGhost[] { left, right }));
@@ -96,6 +98,7 @@ namespace Emas.Tests
             IDisposable subscription = Query.All().OfKind(TestKind).OnAvailable(arrivals.Add);
             _subscriptions.Add(subscription);
             Assert.That(arrivals, Is.EqualTo(new IGhost[] { firstGhost }));
+            // Start watching before creating the next Realm. The watcher must find new Realms too.
             Realm second = Own(new Realm());
             ProbeSource secondSource = new ProbeSource();
             second.GetOrCreateAnchor("second", secondSource);
@@ -103,6 +106,7 @@ namespace Emas.Tests
             second.Update();
             Assert.That(arrivals, Is.EqualTo(new IGhost[] { firstGhost, secondGhost }));
 
+            // Stopping the watcher must also stop callbacks from Realms added later.
             subscription.Dispose();
             secondSource.Publish("three");
             second.Update();
@@ -132,6 +136,7 @@ namespace Emas.Tests
             second.Update();
             Assert.That(Query.All().OfKind(TestKind).Count, Is.EqualTo(2));
 
+            // Remove and recreate one object, then close the other Realm. Each exit must name the right Realm.
             firstSource.RemoveId("same");
             first.Update();
             firstSource.Publish("same");
@@ -142,6 +147,7 @@ namespace Emas.Tests
                 "enter first", "enter second", "leave first", "enter first", "leave second"
             }));
 
+            // Stopping the watcher must not report exits for objects that are still present.
             subscription.Dispose();
             first.Dispose();
             Assert.That(events.Count, Is.EqualTo(5));
@@ -180,6 +186,7 @@ namespace Emas.Tests
             IDisposable subscription = Query.All().OfKind(TestKind).ObserveWithRealm(
                 (owner, ghost) =>
                 {
+                    // Close the Realm inside its first entry callback and check that the exit callback still follows.
                     events.Add("enter");
                     owner.Dispose();
                 },

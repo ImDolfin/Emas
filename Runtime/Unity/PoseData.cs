@@ -39,6 +39,7 @@ namespace Emas
 
         internal bool SetRotation(Quaternion rotation, Timestamp? sampleTime, double receivedTime)
         {
+            // Check rotation times separately from position. An old rotation must not reset correction or sample age.
             if (!Accepts(RotationTime, sampleTime))
             {
                 return false;

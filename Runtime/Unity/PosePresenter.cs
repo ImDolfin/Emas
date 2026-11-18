@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Owns source-space presentation, keeping playback and filters separate from raw input and transform projection.
+    // Builds the displayed source pose. Keeps playback and filters separate from raw input and Unity transforms.
     internal sealed class PosePresenter
     {
         private readonly PresentationTuning _tuning = new PresentationTuning();
@@ -22,6 +22,7 @@ namespace Emas
 
         internal void Prepare(Spatial spatial, SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
         {
+            // Read the settings and input once before trying any settings changes.
             Extrapolation extrapolation = spatial.GetComponent<Extrapolation>();
             Smoothing smoothing = spatial.GetComponent<Smoothing>();
             PresentationSettings settings = new PresentationSettings(extrapolation, smoothing, interpolationDelay);
@@ -31,11 +32,13 @@ namespace Emas
             }
 
             PresentationPose previous = default(PresentationPose);
+            // Try the old settings at the same time so the blend covers only the settings change.
             if (_tuning.Changed(settings))
             {
                 previous = PreparePose(spatial, clock, timestamp, extrapolation, smoothing, sourceAxes, _tuning.Settings, true, out _);
             }
 
+            // Save the new filter state once. Keep the final settings-change offset out of that state.
             PresentationPose current = PreparePose(spatial, clock, timestamp, extrapolation, smoothing, sourceAxes, settings, false, out _observation);
             current = _tuning.Apply(previous, current, settings, timestamp);
             _position = current.Position;
@@ -62,6 +65,7 @@ namespace Emas
         private PresentationPose PreparePose(Spatial spatial, SpatialClock clock, double timestamp, Extrapolation extrapolation,
             Smoothing smoothing, CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 observation)
         {
+            // Calculate the source pose within its prediction limit before applying packet correction or Smoothing.
             PresentationPose pose = SamplePose(spatial, clock, timestamp, extrapolation, sourceAxes, settings, preview, out Double3 motion, out observation);
             if (extrapolation != null)
             {
@@ -69,10 +73,10 @@ namespace Emas
                 Double3 angularVelocity = default(Double3);
                 if (settings.PacketSmoothingDuration > 0)
                 {
-                    // Use a forward difference on the same bounded trajectory, including buffered playback.
-                    // A central difference straddles the held past at a fresh packet and halves its tangent;
-                    // at the horizon the forward difference correctly reports that presentation has stopped.
-                    // Preview calls do not advance motion history.
+                    // Estimate velocity by comparing this pose with one slightly later on the same path.
+                    // Comparing poses before and after a new packet would halve its starting velocity.
+                    // At the prediction limit, both poses are held still, so this correctly gives zero velocity.
+                    // Preview calls leave stored motion unchanged.
                     const double step = 0.001d;
                     PresentationPose after = SamplePose(spatial, clock, timestamp + step, extrapolation, sourceAxes, settings, true, out _, out _);
                     try
@@ -82,19 +86,21 @@ namespace Emas
                     }
                     catch (ArgumentOutOfRangeException)
                     {
-                        // Unrepresentable optional tangents must not invalidate the baseline pose.
+                        // If velocity is too large to represent, keep the valid pose.
                     }
                 }
 
+                // Apply packet correction using its own stored arrivals, then apply the optional Smoothing trait.
                 pose = extrapolation.SmoothPacket(spatial, pose, velocity, angularVelocity, timestamp, settings.PacketSmoothingDuration, preview, out Double3 packetMotion);
                 if (settings.PacketSmoothingDuration > 0)
                 {
-                    // SDK lead changes have already been corrected by the spline. Advancing an ordinary
-                    // position filter with the uncorrected SDK lead would reintroduce the packet jump.
+                    // Packet correction has already handled changes in predicted movement. Using the original
+                    // prediction again in Smoothing would bring back the packet jump.
                     motion = packetMotion;
                 }
             }
 
+            // Use known movement to help Smoothing follow the pose. Smooth only the remaining position error.
             return smoothing != null ? smoothing.Prepare(spatial, pose, timestamp, motion, settings, preview) : pose;
         }
 
@@ -104,6 +110,7 @@ namespace Emas
             motion = default(Double3);
             observation = spatial.Position;
             PresentationPose pose;
+            // With a playback delay, read stored samples. Otherwise, start at the latest position and rotation.
             if (settings.InterpolationDelay > 0)
             {
                 pose = BufferedPose(spatial, clock, timestamp, extrapolation, sourceAxes, settings, preview, out motion, out observation);
@@ -138,6 +145,7 @@ namespace Emas
             Quaternion rotation = spatial.Rotation;
             observation = spatial.Position;
             motion = default(Double3);
+            // Position and rotation share the playback clock, but each keeps its own sample times.
             if (spatial.History.NewestPositionTime.HasValue)
             {
                 double offset = clock.OffsetFrom(spatial.History.NewestPositionTime.Value, timestamp, settings.InterpolationDelay);
@@ -150,7 +158,7 @@ namespace Emas
             }
             else if (extrapolation != null)
             {
-                // An untimed channel has no SDK history to interpolate; preserve its arrival-timed behavior.
+                // With no timestamp, use time since arrival because there are no SDK times to interpolate.
                 position = extrapolation.Project(spatial, clock, timestamp, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion);
             }
 

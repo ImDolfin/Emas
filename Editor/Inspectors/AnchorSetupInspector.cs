@@ -11,7 +11,7 @@ namespace Emas.Editor
         /// <summary>Draws concise authoring controls and read-only connections.</summary>
         public override void OnInspectorGUI()
         {
-            // Serialized editing preserves Undo, prefab overrides and mixed values across selected objects.
+            // Edit through Unity so Undo, prefab overrides and multiple selection work.
             serializedObject.Update();
             bool attached = false;
             foreach (Object value in targets)
@@ -24,6 +24,7 @@ namespace Emas.Editor
                 InspectorLayout.Field(serializedObject, "_automaticViews", "Automatic views");
             }
             serializedObject.ApplyModifiedProperties();
+            // Show each Anchor's current connections without changing them while settings are edited.
             foreach (Object value in targets)
             {
                 AnchorSetup setup = (AnchorSetup)value;

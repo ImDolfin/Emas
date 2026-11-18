@@ -92,6 +92,7 @@ namespace Emas
         public void Configure(Kind kind, Ghost ghostPrefab, IEnumerable<ManifestationVariant> variants,
             GameObject fallbackViewPrefab)
         {
+            // Copy and check all rows first, so bad input leaves the asset unchanged and later caller edits cannot change it.
             List<ManifestationVariant> copiedVariants = variants == null
                 ? new List<ManifestationVariant>() : new List<ManifestationVariant>(variants);
             string error = GetConfigurationError(kind, copiedVariants);
@@ -122,6 +123,7 @@ namespace Emas
 
         internal ManifestationBlueprintSnapshot CaptureSnapshot()
         {
+            // Copy the rows for this registration. The caller still owns the Unity assets they refer to.
             ManifestationVariant[] variants = _variants == null
                 ? new ManifestationVariant[0] : _variants.ToArray();
             return new ManifestationBlueprintSnapshot(this, Kind, _ghostPrefab, variants, _fallbackViewPrefab);
@@ -130,6 +132,7 @@ namespace Emas
         internal static GameObject ResolveViewPrefab(IReadOnlyList<ManifestationVariant> variants,
             GameObject fallbackViewPrefab, Variant variant)
         {
+            // Match appearance names exactly. Use the fallback when no name was supplied or the name is unknown.
             if (!variant.IsNone && variants != null)
             {
                 for (int index = 0; index < variants.Count; index++)
@@ -152,6 +155,7 @@ namespace Emas
                 return "Emas manifestation blueprint requires a non-empty kind ID.";
             }
 
+            // Save the first row for each name so an error can identify both rows when a name is repeated.
             Dictionary<string, int> indices = new Dictionary<string, int>(StringComparer.Ordinal);
             if (variants != null)
             {

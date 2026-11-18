@@ -16,7 +16,7 @@ namespace Emas.Editor
             IMGUIContainer content = new IMGUIContainer(() => panel.Draw(true));
             content.style.minWidth = 260f;
             content.style.maxWidth = 340f;
-            // Schedule visual refreshes on this element rather than taking ownership of Realm updates.
+            // Refresh this panel on a schedule. Leave Realm updates to the application.
             content.schedule.Execute(() => content.MarkDirtyRepaint()).Every(250);
             return content;
         }

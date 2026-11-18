@@ -27,6 +27,12 @@ The codebase is C# and follows the standard Unity Package Manager layout.
 
 Runtime entry point: `Realm.Default`. Keep short role names in namespace `Emas`; do not add system-name prefixes. Group runtime files under `Entities`, `Tracking`, `Queries`, `Views` and `Unity`, with one top-level type per file. Tests mirror these responsibilities. The package ID is `com.emas.core`. Use current Emas names throughout; do not add legacy aliases or compatibility annotations.
 
+## Writing Style
+
+- Use simple English in replies, documentation and code comments. Keep sentences short and easy to understand.
+- Avoid fancy words and unnecessary jargon. When a technical term is needed, explain it in plain words.
+- Add comments inside method bodies to explain each main step, especially in large methods. Explain why a step is needed instead of repeating the code.
+
 ## Coding Conventions
 
 - Use **C# 8.0** features only. Do not use records, target-typed new, init accessors, relational patterns, static lambdas, global usings or file-scoped namespaces. Use Allman braces and braces for every control-flow body.

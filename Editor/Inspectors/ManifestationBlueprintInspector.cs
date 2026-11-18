@@ -23,6 +23,7 @@ namespace Emas.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("_fallbackViewPrefab"));
             serializedObject.ApplyModifiedProperties();
 
+            // Save edits before checking them so errors describe the values shown in the Inspector.
             foreach (UnityEngine.Object value in targets)
             {
                 string error = ((ManifestationBlueprint)value).GetConfigurationError();
@@ -35,7 +36,7 @@ namespace Emas.Editor
 
         private void OnEnable()
         {
-            // Recreate callbacks whenever Unity recreates this editor; the list edits the selected serialized assets.
+            // Set up list callbacks each time Unity creates this editor for the selected assets.
             _variants = new ReorderableList(serializedObject, serializedObject.FindProperty("_variants"),
                 true, true, true, true);
             _variants.elementHeight = EditorGUIUtility.singleLineHeight + 6f;
@@ -77,7 +78,7 @@ namespace Emas.Editor
         {
             SerializedProperty rows = list.serializedProperty;
             HashSet<string> names = new HashSet<string>(System.StringComparer.Ordinal);
-            // The inserted name must be unused on every selected blueprint during multi-object editing.
+            // Choose a name that is unused in every selected blueprint.
             foreach (UnityEngine.Object value in targets)
             {
                 using (SerializedObject blueprint = new SerializedObject(value))
@@ -91,6 +92,7 @@ namespace Emas.Editor
             }
 
             string name = "variant";
+            // Find one unused name across all selected blueprints. Uppercase and lowercase names differ.
             int suffix = 2;
             while (names.Contains(name))
             {
@@ -98,7 +100,7 @@ namespace Emas.Editor
             }
 
             int newIndex = rows.arraySize;
-            // Unity can copy the preceding row on insertion; overwrite both fields to avoid duplicating its prefab.
+            // Unity may copy the previous row when adding one. Reset both fields to avoid copying its prefab.
             rows.InsertArrayElementAtIndex(newIndex);
             SerializedProperty row = rows.GetArrayElementAtIndex(newIndex);
             row.FindPropertyRelative("_name").stringValue = name;

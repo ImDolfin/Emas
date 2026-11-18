@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // A source-space pose, kept separate from both immutable observations and projected Unity transforms.
+    // A pose in source axes, kept separate from raw observations and Unity transforms.
     internal struct PresentationPose
     {
         internal Double3 Position;

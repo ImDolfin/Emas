@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Owns suppression state and restores only components disabled by spatial presentation.
+    // Tracks hidden components and restores only those hidden by spatial presentation.
     internal sealed class PresentationSuppression
     {
         private readonly List<Renderer> _renderers = new List<Renderer>();
@@ -22,7 +22,7 @@ namespace Emas
                 return;
             }
 
-            // Include newly attached components while hidden; preserve components already disabled by the application.
+            // Also hide newly added components. Leave components disabled by the application disabled.
             root.GetComponentsInChildren(true, _renderers);
             foreach (Renderer renderer in _renderers)
             {
@@ -45,13 +45,14 @@ namespace Emas
 
             _renderers.Clear();
             _colliders.Clear();
-            // Destroyed components cannot be restored; drop their Unity-null handles while retaining live suppression ownership.
+            // Remove destroyed components from the saved list. Keep tracking the components that still exist.
             _hiddenRenderers.RemoveWhere(item => item == null);
             _hiddenColliders.RemoveWhere(item => item == null);
         }
 
         internal void Restore()
         {
+            // Restore only components we disabled. Leave components disabled by the application unchanged.
             foreach (Renderer renderer in _hiddenRenderers)
             {
                 if (renderer != null)

@@ -32,6 +32,7 @@ namespace Emas.Tests
         [Test]
         public void PoseConversions_RoundTripLargeOriginsAndRotatedUnityPlacement()
         {
+            // Use a large world origin and keep the small local offsets through both rotations.
             ReferenceFrame frame = new ReferenceFrame();
             frame.Position = new Double3(1e12 + 0.125d, -1e12 + 0.25d, 1e12 + 0.5d);
             frame.Rotation = new Quaternion(0f, 1f, 0f, 1f);
@@ -43,6 +44,7 @@ namespace Emas.Tests
             Assert.That(frame.TryToUnityPosition(entity, out Vector3 unity), Is.True);
             Assert.That(Vector3.Distance(unity, new Vector3(0.5f, 8.75f, 27.25f)), Is.LessThan(0.00001f));
             Assert.That(Double3.Distance(frame.ToSimulationPosition(unity), entity), Is.LessThan(0.001d));
+            // Apply the reference and scene rotations in the same order for position and attitude.
             Quaternion projectedRotation = frame.ToUnityRotation(entityRotation);
             Quaternion expectedRotation = frame.UnityRotation * Quaternion.Inverse(frame.Rotation) * entityRotation;
             Assert.That(Quaternion.Angle(projectedRotation, expectedRotation), Is.LessThan(0.05f));
@@ -67,12 +69,14 @@ namespace Emas.Tests
             Assert.That(Vector3.Distance(frame.ToUnityRotation(sourceTurn) * Vector3.forward, Vector3.left),
                 Is.LessThan(0.0001f));
 
+            // Try the same values with NED axes. Changing the axes also changes the positive turn direction.
             frame.Coordinates = CoordinateSystem.NorthEastDown;
             Assert.That(frame.TryToUnityPosition(new Double3(2, 3, 5), out Vector3 ned), Is.True);
             Assert.That(ned, Is.EqualTo(new Vector3(3, -5, 2)));
             Assert.That(Vector3.Distance(frame.ToUnityRotation(sourceTurn) * Vector3.forward, Vector3.right),
                 Is.LessThan(0.0001f));
 
+            // Combine turns on all three axes to check every axis direction and sign.
             Quaternion source = Quaternion.AngleAxis(30, Vector3.right)
                 * Quaternion.AngleAxis(40, Vector3.up) * Quaternion.AngleAxis(50, Vector3.forward);
             Quaternion expected = Quaternion.AngleAxis(-30, Vector3.forward)
@@ -88,6 +92,7 @@ namespace Emas.Tests
         [Test]
         public void SerializedCustomCoordinates_RoundTripReferenceAndUnityPlacement()
         {
+            // Save and load the axis settings with Unity, then use them with a large origin.
             CoordinateSystem coordinates = new CoordinateSystem(Axis.NegativeZ, Axis.NegativeX, Axis.PositiveY);
             ReferenceFrame frame = new ReferenceFrame
             {
@@ -102,6 +107,7 @@ namespace Emas.Tests
             Assert.That(Vector3.Distance(unity, new Vector3(25.25f, 10.5f, 4.25f)), Is.LessThan(0.0001f));
             Assert.That(Double3.Distance(frame.ToSimulationPosition(unity), source), Is.LessThan(0.001d));
 
+            // Check rotation separately from position to catch a wrong quaternion sign.
             Quaternion sourceRotation = frame.Rotation * Quaternion.AngleAxis(90, Vector3.forward);
             Quaternion expected = frame.UnityRotation * Quaternion.AngleAxis(-90, Vector3.right);
             Assert.That(Quaternion.Angle(frame.ToUnityRotation(sourceRotation), expected), Is.LessThan(0.05f));
@@ -152,6 +158,7 @@ namespace Emas.Tests
             Double3 outside = frame.Position + new Double3(3d, 4.25d, 0d);
             Assert.That(frame.TryToUnityPosition(outside, out Vector3 unused), Is.False);
             Assert.That(frame.DistanceTo(outside), Is.GreaterThan(5d));
+            // Remove the range limit so the same source point can be shown again.
             frame.MaxDistance = null;
             Assert.That(frame.TryToUnityPosition(outside, out unused), Is.True);
             Assert.That(frame.MaxDistance, Is.Null);
@@ -186,6 +193,7 @@ namespace Emas.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => frame.UnityPosition = new Vector3(0f, float.PositiveInfinity, 0f));
             Assert.Throws<ArgumentOutOfRangeException>(() => frame.Rotation = default);
             Assert.Throws<ArgumentOutOfRangeException>(() => frame.UnityRotation = new Quaternion(0f, 0f, 0f, float.NaN));
+            // After rejecting bad input, accept valid quaternions and adjust them to unit length.
             frame.Rotation = new Quaternion(0f, 0f, 0f, 4f);
             frame.UnityRotation = new Quaternion(0f, 0f, 0f, 2f);
             Assert.That(frame.Rotation, Is.EqualTo(Quaternion.identity));

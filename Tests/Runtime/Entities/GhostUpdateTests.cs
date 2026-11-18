@@ -54,6 +54,7 @@ namespace Emas.Tests
         [Test]
         public void OnUpdate_UsesFreshTraitsBeforeReferenceProjectionAndQueries()
         {
+            // Ghost behavior changes the input after readers finish. The followed Ghost must use those changes too.
             int reads = 0;
             _realm.RegisterPresenceInitializer<PipelineGhost>(TestKind, (presence, root) =>
             {
@@ -75,6 +76,7 @@ namespace Emas.Tests
             PipelineGhost target = (PipelineGhost)detector.Arrive("target").Root;
             PipelineGhost origin = (PipelineGhost)detector.Arrive("origin").Root;
             int arrivals = 0;
+            // Send arrival callbacks only after behavior and final placement are done.
             using (_realm.Query().OnAvailable(ghost =>
             {
                 Assert.That(((PipelineGhost)ghost).UpdateCount, Is.EqualTo(1));
@@ -107,6 +109,7 @@ namespace Emas.Tests
             Assert.That(ghost.UpdateCount, Is.Zero);
             ghost.Updating = () =>
             {
+                // Reject a nested update. Requesting a view here must not run Ghost behavior again.
                 Assert.Throws<InvalidOperationException>(() => _realm.Update());
                 _realm.Manifest(ghost);
             };
@@ -125,6 +128,7 @@ namespace Emas.Tests
         {
             Detector detector = new Detector { DisappearanceGracePeriod = TimeSpan.FromMinutes(1) };
             _realm.GetOrCreateAnchor("sdk", detector);
+            // Preparing a Ghost does not mark it as detected. Disabling its behavior must not remove it.
             PipelineGhost ghost = _realm.Prepare<PipelineGhost>("sdk", TestKind, "one");
             _realm.Update();
             Assert.That(ghost.UpdateCount, Is.Zero);
@@ -135,6 +139,7 @@ namespace Emas.Tests
             ghost.enabled = true;
             _realm.Update();
             Assert.That(ghost.UpdateCount, Is.EqualTo(1));
+            // Keep the object during the grace period. Run its behavior again when it returns.
             detector.Lose("one");
             _realm.Update();
             Assert.That(ghost.IsAvailable, Is.False);
@@ -157,6 +162,7 @@ namespace Emas.Tests
             PipelineGhost good = healthy.Publish("good");
             InvalidOperationException error = new InvalidOperationException("ghost calculation failed");
             bad.Updating = () => { throw error; };
+            // Stop all Ghosts owned by the failed detector. The other detector must keep updating.
             ExpectedErrors.Verify(_realm.Update, "operation 'Ghost.OnUpdate'.*entity 'bad'.*ghost calculation failed");
             Assert.That(failing.IsActive, Is.False);
             Assert.That(failing.LastError, Is.SameAs(error));

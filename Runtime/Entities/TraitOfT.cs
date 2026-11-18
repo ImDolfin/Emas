@@ -30,6 +30,7 @@ namespace Emas
 
         internal override void Refresh()
         {
+            // Save this reader's binding so its result cannot overwrite a new binding set during the read.
             Func<TData> read = _read;
             if (read == null)
             {
@@ -37,7 +38,7 @@ namespace Emas
             }
 
             TData data = read();
-            // A reader may synchronously remove, disable or rebind its own trait.
+            // The reader may remove, disable or reconnect its own trait before returning.
             if (this != null && enabled && ReferenceEquals(_read, read))
             {
                 Apply(data);

@@ -78,6 +78,7 @@ namespace Emas.Tests
                 throw new ArgumentNullException(nameof(patterns));
             }
 
+            // Catch expected errors only during this call. Send unexpected messages to Unity as usual.
             ExpectedErrors capture = new ExpectedErrors(patterns);
             Debug.unityLogger.logHandler = capture;
             try

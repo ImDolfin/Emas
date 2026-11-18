@@ -44,14 +44,14 @@ namespace Emas.Sample
                 return;
             }
 
-            // A restarted setup owns a different Realm. Dispose the old paired subscription before replaying the new one.
+            // Restarting creates a new Realm. Dispose the old subscription before subscribing to the new Realm.
             StopObserving();
             _observedRealm = realm;
             if (realm != null)
             {
                 _carQuery = realm.Query().InAnchor(_carAnchor.Id).OfKind(SampleKinds.Car)
                     .With<I3DPosition>().With<IArticulate>();
-                // Filters return new descriptions. Deriving this variant query leaves the observed car query unchanged.
+                // Filters return new queries, so adding a variant filter leaves the original car query unchanged.
                 _smallCarQuery = _carQuery.WithVariant(CarVariants.SmallCar);
                 _carSubscription = _carQuery.Observe(ghost => _cars.Add(ghost.Key), key => _cars.Remove(key));
             }
@@ -64,6 +64,7 @@ namespace Emas.Sample
 
         private void StopObserving()
         {
+            // Unsubscribe before clearing this component's saved matches and queries.
             _carSubscription?.Dispose();
             _carSubscription = null;
             _observedRealm = null;
@@ -80,7 +81,7 @@ namespace Emas.Sample
                 return;
             }
 
-            // foreach captures matching membership now; each contract still exposes the Ghost's current data.
+            // foreach takes the current set of matches. Each result still reads the Ghost's latest data.
             foreach (IGhost ghost in _carQuery)
             {
                 I3DPosition position;

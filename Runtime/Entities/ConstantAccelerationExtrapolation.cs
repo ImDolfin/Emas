@@ -15,6 +15,7 @@ namespace Emas
         public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
+            // Acceleration alone does not tell us the starting velocity.
             if (!context.Velocity.HasValue)
             {
                 return default(Double3);

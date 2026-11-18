@@ -69,6 +69,7 @@ namespace Emas
 
         internal IDetectorProvider CreateDetectorProvider()
         {
+            // Find exactly one provider on this GameObject. Do not use a child anchor's detector.
             MonoBehaviour[] behaviours = GetComponents<MonoBehaviour>();
             IDetectorProvider provider = null;
             foreach (MonoBehaviour behaviour in behaviours)
@@ -97,6 +98,7 @@ namespace Emas
                 return "AnchorSetup requires a non-empty anchor ID.";
             }
 
+            // Check that the provider is enabled and belongs here before callbacks can publish entities.
             MonoBehaviour[] behaviours = GetComponents<MonoBehaviour>();
             int sourceCount = 0;
             foreach (MonoBehaviour behaviour in behaviours)
@@ -132,7 +134,7 @@ namespace Emas
 
         internal RealmSetup Owner()
         {
-            // The nearest setup owns the anchor, so nested realms do not capture each other's children.
+            // The nearest setup owns the anchor. Nested Realms must not take each other's anchors.
             Transform current = transform;
             while (current != null)
             {

@@ -62,6 +62,7 @@ namespace Emas.RelativeWorld
                 return;
             }
 
+            // Restarting replaces the Realm. Dispose old subscriptions before subscribing to the new Realm.
             StopObserving();
             _observedRealm = realm;
             if (realm == null)
@@ -69,13 +70,14 @@ namespace Emas.RelativeWorld
                 return;
             }
 
+            // Create queries for object membership and data within this sample's Anchor.
             _carQuery = realm.Query().InAnchor(_anchor.Id).OfKind(GeoSource.Kind).With<Spatial>();
             _parkedCarQuery = _carQuery.WithVariant(new Variant("target"));
             _originQuery = _carQuery.WithVariant(new Variant("origin"));
             _birdQuery = realm.Query().InAnchor(_anchor.Id).OfKind(GeoSource.BirdKind).With<Spatial>();
 
-            // Current matches may enter synchronously. The collection is ready before subscribing.
-            // Keep only identity on departure: the Ghost's Unity object may already be destroyed.
+            // Create the collection before subscribing because current matches may be reported immediately.
+            // Keep only the ID on departure because the Ghost's Unity object may already be destroyed.
             _parkedCarSubscription = _parkedCarQuery.Observe(
                 ghost => _parkedCars.Add(ghost.Key), key => _parkedCars.Remove(key));
         }
@@ -94,7 +96,7 @@ namespace Emas.RelativeWorld
             _parkedCarQuery = null;
             _originQuery = null;
             _birdQuery = null;
-            // Subscription disposal does not synthesize departures; the consumer clears its own retained state.
+            // Disposing the subscription does not report departures, so clear this component's saved matches.
             _parkedCars.Clear();
         }
 

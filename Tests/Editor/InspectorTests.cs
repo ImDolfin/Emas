@@ -124,7 +124,7 @@ namespace Emas.Editor.Tests
                     spatial.SetGeographicRotation(30 * _sampleSeconds + headingCorrection, 0, 0, ObservedTime);
                     Extrapolation extrapolation = ghost.GetComponent<Extrapolation>();
                     extrapolation.SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
-                    // The correction is measurement error, not an angular-rate jump. Keep tuning independent of rate estimation.
+                    // Apply measurement error without changing the angular rate so the test checks tuning alone.
                     extrapolation.SetBodyAngularVelocity(AngularVelocity, CoordinateSystem.Unity, ObservedTime);
                 }
 
@@ -198,6 +198,7 @@ namespace Emas.Editor.Tests
         [Test]
         public void SerializedBlueprint_RejectsInvalidVariants()
         {
+            // Fix the table one step at a time so each check tests a separate error.
             ManifestationBlueprint blueprint = CreateBlueprint(null);
             GameObject prefab = new GameObject("row prefab");
             _objects.Add(prefab);
@@ -248,6 +249,7 @@ namespace Emas.Editor.Tests
                 new ManifestationVariant("car_low", low)
             }, null);
             ManifestationBlueprint copy = CreateBlueprint(null);
+            // Save and reload through Unity before editing rows to check saved data as well as Configure input.
             EditorUtility.CopySerialized(blueprint, copy);
             Assert.That(copy.ResolveViewPrefab(new Variant("car_low")), Is.SameAs(low));
 
@@ -261,6 +263,7 @@ namespace Emas.Editor.Tests
             Undo.IncrementCurrentGroup();
             int group = Undo.GetCurrentGroup();
             rows.DeleteArrayElementAtIndex(0);
+            // Remove one row, keep the other mapping, and check that one Undo restores it.
             serialized.ApplyModifiedProperties();
             Undo.FlushUndoRecordObjects();
             Undo.CollapseUndoOperations(group);
@@ -316,6 +319,7 @@ namespace Emas.Editor.Tests
             }
 
             Ghost manualGhost = (Ghost)setup.Realm.Query().InAnchor("manual").Single();
+            // Check that each Anchor controls its automatic views while manual requests use the Realm's blueprint.
             Assert.That(manualGhost.IsAvailable, Is.True);
             Assert.That(manualGhost.GetComponentInChildren<View>(true), Is.Null);
             Assert.That(setup.Realm.Manifest(manualGhost).gameObject.name, Is.EqualTo("realm view"));
@@ -341,6 +345,7 @@ namespace Emas.Editor.Tests
             Assert.That(setup.Realm, Is.Null);
 
             coordinates.FindPropertyRelative("_up").intValue = (int)Axis.NegativeZ;
+            // Fix the invalid axis, then check the resulting position and rotation after startup.
             serialized.ApplyModifiedPropertiesWithoutUndo();
             setup.StartRealm();
             ReferenceFrame frame = setup.Realm.ReferenceFrame;
@@ -371,6 +376,7 @@ namespace Emas.Editor.Tests
             Assert.That(setup.Realm, Is.Null);
 
             geographic.FindPropertyRelative("_latitudeDegrees").doubleValue = 0;
+            // Retry with the same setup and check that its Unity placement offset is applied.
             serialized.ApplyModifiedPropertiesWithoutUndo();
             setup.StartRealm();
             ReferenceFrame frame = setup.Realm.ReferenceFrame;
@@ -452,6 +458,7 @@ namespace Emas.Editor.Tests
             Assert.That(trafficRoot.GetComponent<Spatial>().IsInRange, Is.False);
             Assert.That(trafficRoot.GetComponentInChildren<View>(true), Is.Null);
 
+            // Choose a reference after startup and check that the frame and views are reused.
             frame.FollowedGhost = ego.Key;
             realm.Update();
             Assert.That(frame.IsReferenceAvailable, Is.True);
@@ -463,6 +470,7 @@ namespace Emas.Editor.Tests
             Assert.That(frame.TryToUnityPosition(frame.Position + new Double3(101, 0, 0), out Vector3 outside), Is.False);
 
             frame.FollowedGhost = traffic.Key;
+            // Switch the reference and check that the frame keeps its placement and range settings.
             realm.Update();
             Assert.That(realm.ReferenceFrame, Is.SameAs(frame));
             Assert.That(Vector3.Distance(trafficRoot.transform.position, frame.UnityPosition), Is.LessThan(0.0001f));
@@ -471,6 +479,7 @@ namespace Emas.Editor.Tests
             setup.StopRealm();
             setup.StartRealm();
             setup.Realm.Update();
+            // Check that changing the running target leaves the prefab's saved target empty.
             Assert.That(setup.Realm.ReferenceFrame.FollowedGhost, Is.Null);
             Assert.That(setup.Realm.ReferenceFrame.HasPosition, Is.False);
         }
@@ -507,6 +516,7 @@ namespace Emas.Editor.Tests
         [UnityTest]
         public IEnumerator DiagnosticsAndOverlay_ObserveWithoutAdvancingTracking()
         {
+            // Update the Realm manually so an extra update from the Editor can be detected.
             yield return new EnterPlayMode();
             using (Realm realm = new Realm())
             {
@@ -524,6 +534,7 @@ namespace Emas.Editor.Tests
                     Emas.Editor.RealmOverlay overlay = new Emas.Editor.RealmOverlay();
                     window.rootVisualElement.Add(overlay.CreatePanelContent());
                     Selection.activeGameObject = ghost.gameObject;
+                    // Activate the Scene tool and pin the root before clearing selection.
                     ToolManager.SetActiveTool(tool);
                     Assert.That(ToolManager.activeToolType, Is.EqualTo(typeof(Emas.Editor.PoseTool)));
                     using (SerializedObject settings = new SerializedObject(tool))
@@ -539,9 +550,10 @@ namespace Emas.Editor.Tests
                     }
                     yield return null;
                     yield return null;
+                    // Let the UI repaint, then check that it did not read sources, move roots or create scene objects.
                     Assert.That(detector.Updates, Is.Zero);
                     Assert.That(realm.Anchors.Count, Is.EqualTo(1));
-                    // Unity may release transient selection objects between frames; the debugger must add none.
+                    // Unity may remove temporary selection objects between frames. The debugger must add none.
                     Assert.That(Resources.FindObjectsOfTypeAll<GameObject>(), Is.SubsetOf(sceneObjects));
                     Assert.That(spatial.Position, Is.EqualTo(new Double3(10, 20, 30)));
                     Assert.That(ghost.transform.position, Is.EqualTo(Vector3.zero));
@@ -551,6 +563,7 @@ namespace Emas.Editor.Tests
                 {
                     if (ToolManager.activeToolType == typeof(Emas.Editor.PoseTool))
                     {
+                        // Restore the previous Editor tool before destroying this test's tool.
                         ToolManager.RestorePreviousTool();
                     }
                     Selection.objects = previousSelection;
@@ -573,6 +586,7 @@ namespace Emas.Editor.Tests
         [Test]
         public void SerializedVisibilityRange_RequiresPositiveFiniteSharedUnits()
         {
+            // Check that invalid visibility settings prevent the Realm from starting.
             RealmSetup setup = CreateRealm();
             SerializedObject settings = new SerializedObject(setup);
             settings.FindProperty("_useReferenceFrame").boolValue = true;
@@ -593,6 +607,7 @@ namespace Emas.Editor.Tests
 
             settings.Update();
             settings.FindProperty("_maxDistance").doubleValue = 100;
+            // Fix the range, then check invalid playback delays using the same setup.
             foreach (float invalidDelay in new[] { -0.1f, float.NaN })
             {
                 settings.FindProperty("_interpolationDelay").floatValue = invalidDelay;
@@ -603,6 +618,7 @@ namespace Emas.Editor.Tests
             }
 
             settings.FindProperty("_interpolationDelay").floatValue = 0.1f;
+            // Start successfully and check that the Realm uses the delay saved through Unity.
             settings.ApplyModifiedPropertiesWithoutUndo();
             setup.StartRealm();
             Assert.That(setup.Realm.InterpolationDelay, Is.EqualTo(0.1f));
@@ -628,6 +644,7 @@ namespace Emas.Editor.Tests
                 };
                 realm.GetOrCreateAnchor("live tuning", source);
                 double started = Time.realtimeSinceStartupAsDouble;
+                // Move the source first so the filters have history, then stop source updates before editing settings.
                 for (int index = 0; index < 3; index++)
                 {
                     yield return null;
@@ -635,7 +652,7 @@ namespace Emas.Editor.Tests
                     AssertLiveTuningUpdate(realm, source, "Moving before tuning");
                 }
 
-                // Hold a corrected sample past its cap so normal motion cannot disguise a configuration jump.
+                // Hold a corrected sample past the prediction limit so motion cannot hide a jump caused by an edit.
                 source.Publish(Time.realtimeSinceStartupAsDouble - started, 8, 45);
                 AssertLiveTuningUpdate(realm, source, "Corrected observation");
                 yield return HoldLiveTuningSample(realm, source, 0.18);
@@ -658,7 +675,7 @@ namespace Emas.Editor.Tests
                 yield return HoldLiveTuningSample(realm, source, 0.25 + 8 * 0.06);
                 AssertLiveTuningTarget(realm, source, 0.03f);
 
-                // A later corrected packet restores independent position and rotation error before testing direct modes.
+                // Send another packet with position and rotation error before testing modes that apply poses directly.
                 source.Publish(source.ObservedTime.ElapsedSince(default(Timestamp)) + 0.01, 16, 90);
                 AssertLiveTuningUpdate(realm, source, "Fresh correction before direct modes");
                 AssertContinuousLiveTuning(realm, source, () =>
@@ -676,6 +693,7 @@ namespace Emas.Editor.Tests
                 AssertContinuousLiveTuning(realm, source, () =>
                 {
                     EditLiveTuning(source, "_positionHalfLife", 0.4f);
+                    // Restore positive settings, then toggle each component separately.
                     EditLiveTuning(source, "_rotationHalfLife", 0.4f);
                     EditLiveTuning(source, "_maximumExtrapolation", 0.25f);
                 }, "Restoring positive settings");
@@ -693,6 +711,7 @@ namespace Emas.Editor.Tests
                 yield return HoldLiveTuningSample(realm, source, 0.35);
                 AssertLiveTuningTarget(realm, source, 0.25f);
 
+                // Edit sliders repeatedly and check that both moving and held input stay smooth.
                 yield return DragLiveTuningWhileMoving(realm, source);
                 yield return HoldLiveTuningSample(realm, source, 0.35);
                 AssertLiveTuningTarget(realm, source, source.Control.GetComponent<Extrapolation>().MaximumExtrapolation);
@@ -723,6 +742,7 @@ namespace Emas.Editor.Tests
             smoothing.hideFlags = HideFlags.DontUnloadUnusedAsset;
             yield return WaitForTraitVisibility(root, false);
 
+            // Add a Ghost and check that traits move into its Inspector without changing other component flags.
             InspectorGhost ghost = root.AddComponent<InspectorGhost>();
             UnityEditor.Editor inspector = null;
             try
@@ -736,6 +756,7 @@ namespace Emas.Editor.Tests
                 AssertTraitSettingsSupportUndo(smoothing, extrapolation, custom);
 
                 Undo.DestroyObjectImmediate(custom);
+                // Undo component changes and check that the trait list and visibility update without enabling traits.
                 Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, extrapolation }));
                 custom = Undo.AddComponent<InspectorTrait>(root);
                 custom.enabled = false;
@@ -746,6 +767,7 @@ namespace Emas.Editor.Tests
                 UnityEngine.Object.DestroyImmediate(inspector);
                 inspector = null;
                 Undo.DestroyObjectImmediate(ghost);
+                // Remove the Ghost and check that its remaining traits can be inspected again.
                 yield return WaitForTraitVisibility(root, false);
                 Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset));
 
@@ -799,6 +821,7 @@ namespace Emas.Editor.Tests
                 Assert.That(strategy.FindPropertyRelative("_maneuverTimeConstant").hasMultipleDifferentValues, Is.True);
 
                 secondExtrapolation.Strategy = new NoExtrapolation();
+                // Hide settings for different strategy types, but allow edits when only their values differ.
                 settings.Update();
                 strategy = settings.FindProperty("_strategy");
                 Assert.That(drawer.GetPropertyHeight(strategy, GUIContent.none), Is.EqualTo(EditorGUIUtility.singleLineHeight));
@@ -834,6 +857,7 @@ namespace Emas.Editor.Tests
                 inspector = null;
 
                 contents = PrefabUtility.LoadPrefabContents(path);
+                // Create a fresh prefab instance to check saved values rather than values still in memory.
                 Ghost restored = contents.GetComponent<Ghost>();
                 Smoothing restoredSmoothing = contents.GetComponent<Smoothing>();
                 Extrapolation restoredExtrapolation = contents.GetComponent<Extrapolation>();
@@ -859,6 +883,7 @@ namespace Emas.Editor.Tests
                 using (SerializedObject settings = new SerializedObject(extrapolation))
                 {
                     SerializedProperty strategy = settings.FindProperty("_strategy");
+                    // Change the strategy type and check that its new settings are saved too.
                     strategy.managedReferenceValue = new SingerExtrapolation();
                     strategy.FindPropertyRelative("_maneuverTimeConstant").floatValue = 0.35f;
                     settings.ApplyModifiedProperties();
@@ -895,6 +920,7 @@ namespace Emas.Editor.Tests
         /// <param name="context">The configuration change described by assertion failures.</param>
         private static void AssertContinuousLiveTuning(Realm realm, LiveTuningDetector source, Action edit, string context)
         {
+            // Estimate how far the old settings can move the pose before applying the same edits in two ways.
             ReferenceFrame frame = realm.ReferenceFrame;
             Double3 position = frame.Position;
             Quaternion rotation = frame.Rotation;
@@ -911,7 +937,7 @@ namespace Emas.Editor.Tests
             edit();
             AssertLiveTuningUpdate(realm, source, context);
             double elapsed = Time.realtimeSinceStartupAsDouble - previousProjection;
-            // Exponential decay cannot advance farther than its initial error times its initial decay rate.
+            // Use the starting error and decay rate to limit how far smoothing can move the pose.
             double positionProgress = positionHalfLife > 0 ? positionError * Math.Log(2) * elapsed / positionHalfLife : 0;
             double rotationProgress = rotationHalfLife > 0 ? rotationError * Math.Log(2) * elapsed / rotationHalfLife : 0;
             Assert.That(Double3.Distance(frame.Position, position), Is.LessThanOrEqualTo(0.01 + positionProgress),
@@ -927,6 +953,7 @@ namespace Emas.Editor.Tests
         /// <returns>The shortest normalized quaternion distance in degrees.</returns>
         private static double RotationDistance(Quaternion first, Quaternion second)
         {
+            // Normalize the dot product before finding the shortest rotation. Opposite quaternion signs mean the same pose.
             double dot = (double)first.x * second.x + (double)first.y * second.y
                 + (double)first.z * second.z + (double)first.w * second.w;
             double firstLength = (double)first.x * first.x + (double)first.y * first.y
@@ -984,6 +1011,7 @@ namespace Emas.Editor.Tests
         /// <param name="value">The new setting applied to both authoring paths.</param>
         private static void EditLiveTuning(LiveTuningDetector source, string property, float value)
         {
+            // Apply the same edit through Unity on one object and its public property on the other.
             bool extrapolation = property == "_maximumExtrapolation";
             Trait edited = extrapolation ? (Trait)source.Edited.GetComponent<Extrapolation>() : source.Edited.GetComponent<Smoothing>();
             using (SerializedObject settings = new SerializedObject(edited))
@@ -1029,6 +1057,7 @@ namespace Emas.Editor.Tests
         /// <param name="context">The consumer action described if an assertion fails.</param>
         private static void AssertLiveTuningUpdate(Realm realm, LiveTuningDetector source, string context)
         {
+            // Update both roots with the same reference and check that their source poses were not changed.
             source.LastProjectionStarted = Time.realtimeSinceStartupAsDouble;
             realm.Update();
             foreach (Ghost ghost in new[] { source.Edited, source.Control })
@@ -1047,6 +1076,7 @@ namespace Emas.Editor.Tests
 
             ReferenceFrame frame = realm.ReferenceFrame;
             Assert.That(frame.IsReferenceAvailable, Is.True, context);
+            // Check that the followed origin, unchanged twin and attached part use the same displayed reference pose.
             Assert.That(Vector3.Distance(source.Edited.transform.position, frame.UnityPosition), Is.LessThan(0.001f), context);
             Assert.That(Quaternion.Angle(source.Edited.transform.rotation, frame.UnityRotation), Is.LessThan(0.05f), context);
             Assert.That(Double3.Distance(frame.Position, source.ObservedPosition), Is.LessThan(50), context);
@@ -1103,6 +1133,7 @@ namespace Emas.Editor.Tests
         /// <param name="ghost">The application-defined Ghost inspected through Unity serialization.</param>
         private static void AssertGhostAuthoringMetadata(Ghost ghost)
         {
+            // Read rows through Unity's public saved-property API without accessing private fields.
             using (SerializedObject serialized = new SerializedObject(ghost))
             {
                 List<string> visible = new List<string>();
@@ -1158,6 +1189,7 @@ namespace Emas.Editor.Tests
         /// <param name="custom">The initially disabled application trait with its default value.</param>
         private static void AssertTraitSettingsSupportUndo(Smoothing smoothing, Extrapolation extrapolation, InspectorTrait custom)
         {
+            // Group both kinds of edits so one Undo reverses one user action.
             Undo.IncrementCurrentGroup();
             int group = Undo.GetCurrentGroup();
             try
@@ -1183,6 +1215,7 @@ namespace Emas.Editor.Tests
                 Assert.That(custom.enabled, Is.False);
 
                 Undo.PerformRedo();
+                // Check that Redo restores strategy settings and enabled states as well as numeric values.
                 Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.15f));
                 Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.03f));
                 Assert.That(extrapolation.MaximumExtrapolation, Is.EqualTo(0.2f));

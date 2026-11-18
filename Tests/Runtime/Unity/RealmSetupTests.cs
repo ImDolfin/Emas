@@ -135,6 +135,7 @@ namespace Emas.Tests
         [Test]
         public void NestedRealms_OwnIndependentPopulations()
         {
+            // Each setup owns its own tracked objects, even when the setups are nested in the scene.
             RealmSetup environment = CreateRealm("environment");
             RealmSetup screen = CreateRealm("screen");
             screen.transform.SetParent(environment.transform, false);
@@ -151,6 +152,7 @@ namespace Emas.Tests
             Assert.That(screen.Realm.Query().Count, Is.EqualTo(1));
             Assert.That(Query.All().OfKind(TestKind).Count, Is.EqualTo(2));
 
+            // Stopping the outer Realm must leave the inner Realm and its query results working.
             environment.StopRealm();
             Assert.That(environment.Realm, Is.Null);
             Assert.That(screen.Realm.Query().Count, Is.EqualTo(1));
@@ -171,6 +173,7 @@ namespace Emas.Tests
             setup.StartRealm();
 
             Assert.That(configurator.Calls, Is.Zero);
+            // An inactive source joins the running Realm when its GameObject is enabled.
             provider.gameObject.SetActive(true);
             AssertConfiguredPresence(setup.Realm);
             Assert.That(configurator.Calls, Is.EqualTo(1));
@@ -181,6 +184,7 @@ namespace Emas.Tests
             AssertConfiguredPresence(setup.Realm);
             Assert.That(configurator.Calls, Is.EqualTo(1));
 
+            // Starting a new Realm runs setup again. Toggling a source in the same Realm does not.
             setup.StopRealm();
             setup.StartRealm();
             AssertConfiguredPresence(setup.Realm);
@@ -207,6 +211,7 @@ namespace Emas.Tests
             Assert.That(initializer.Anchor, Is.SameAs(original));
             Assert.That(initializer.Realm, Is.SameAs(first.Realm));
             second.gameObject.SetActive(true);
+            // Changing the scene parent must not move a running detector or its initializer to another Realm.
             provider.transform.SetParent(second.transform, false);
             second.StartRealm();
 
@@ -218,6 +223,7 @@ namespace Emas.Tests
             Assert.That(first.Realm.Query().Count, Is.EqualTo(1));
             Assert.That(second.Realm.Query().Count, Is.Zero);
 
+            // Disable to leave the old Realm. Enable again to join the Realm at the new scene location.
             anchorSetup.enabled = false;
             Assert.That(anchorSetup.Anchor, Is.Null);
             Assert.That(initializer.Anchor, Is.Null);
@@ -256,6 +262,7 @@ namespace Emas.Tests
             Assert.That(setup.Realm, Is.Null);
             Assert.That(provider.GetComponent<AnchorSetup>().Anchor, Is.Null);
 
+            // Fix the provider and retry the same setup, using the same prefab.
             fail = false;
             setup.StartRealm();
             Assert.That(setup.Realm.Query().Count, Is.EqualTo(1));
@@ -274,6 +281,7 @@ namespace Emas.Tests
             setup.gameObject.SetActive(true);
             yield return null;
 
+            // Let Unity start, update and stop the components. The test must not call Realm.Update itself.
             Realm realm = setup.Realm;
             Assert.That(realm, Is.Not.Null);
             Assert.That(realm.Query().Single().Key.EntityId, Is.EqualTo("first"));
@@ -309,6 +317,7 @@ namespace Emas.Tests
         {
             GameObject root = new GameObject(name);
             _objects.Add(root);
+            // Finish setting up the inactive prefab before Unity can start it.
             root.SetActive(false);
             return root.AddComponent<RealmSetup>();
         }

@@ -93,6 +93,7 @@ namespace Emas.Tests
             Anchor anchor = _realm.GetOrCreateAnchor("restart", source);
             TestGhost ghost = source.Publish("one");
             _realm.Update();
+            // Test restart with a root that was kept and with one that was removed after a failure.
             if (fail)
             {
                 source.Updating = () =>
@@ -110,6 +111,7 @@ namespace Emas.Tests
                 source.Enqueue(() => Assert.Fail("Old work ran after restart."));
             }
 
+            // After restart, ignore old queued work. Keep old roots hidden until they are reported again.
             anchor.RestartDetector(source);
             Assert.That(source.Starts, Is.EqualTo(2));
             Assert.That(source.Stops, Is.EqualTo(1));
@@ -118,6 +120,7 @@ namespace Emas.Tests
             Assert.That(source.IsAttached && source.IsActive, Is.True);
             Assert.That(ghost.IsAvailable, Is.False);
             Assert.That(anchor.Detectors, Is.EqualTo(new[] { source }));
+            // Report the same Key again. Check when its old root is reused and when a new root is needed.
             TestGhost recovered = source.Publish("one");
             if (fail)
             {
@@ -143,6 +146,7 @@ namespace Emas.Tests
             TestGhost ghost = source.Publish("one");
             _realm.Update();
             InvalidOperationException failure = new InvalidOperationException("retry failed");
+            // Use an old root and create a new one before failing. Check that both are cleaned up correctly.
             source.Starting = () =>
             {
                 Assert.That(source.Publish("one"), Is.SameAs(ghost));
@@ -161,6 +165,7 @@ namespace Emas.Tests
             IGhost found;
             Assert.That(_realm.TryGetGhost(ghost.Key, out found), Is.False);
             Assert.That(_realm.TryGetGhost(new Key("restart", Kind, "partial"), out found), Is.False);
+            // Fix startup and retry the attached detector. An object removed earlier now needs a new root.
             source.Starting = () => source.Publish("one");
             anchor.RestartDetector(source);
             Assert.That(_realm.Query().Single(), Is.Not.SameAs(ghost));
@@ -203,6 +208,7 @@ namespace Emas.Tests
             int calls = 0;
             original(() => calls++);
 
+            // After restart, queue work through the old and new dispatchers. Only the new one should work.
             anchor.RestartDetector(source);
             Action<Action> current = source.Captured;
             original(() => calls += 100);
@@ -210,6 +216,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(calls, Is.EqualTo(10));
 
+            // A dispatcher must also ignore work after its detector is detached.
             anchor.RemoveDetector(source);
             current(() => calls += 100);
             _realm.Update();

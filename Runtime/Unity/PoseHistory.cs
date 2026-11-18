@@ -3,8 +3,8 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Preserve independent SDK channels without converting their absolute epochs to floating point.
-    // Each ring retains 128 observations; sampling and insertion allocate nothing after construction.
+    // Store each SDK input separately. Keep full timestamp precision.
+    // Each circular buffer holds 128 samples. Reading and adding samples need no new memory.
     internal sealed class PoseHistory
     {
         private readonly struct RotationSample
@@ -42,6 +42,7 @@ namespace Emas
 
             internal void Add(Double3 value, Timestamp time)
             {
+                // Accept only newer samples. If the buffer is full, replace its oldest sample.
                 if (_count > 0 && time.CompareTo(At(_count - 1).Time) <= 0)
                 {
                     return;
@@ -67,6 +68,7 @@ namespace Emas
                     return false;
                 }
 
+                // Outside the stored time range, hold the nearest sample. Interpolate only between stored samples.
                 VectorSample newest = At(_count - 1);
                 value = newest.Value;
                 if (_count == 1 || offsetFromNewest >= 0)
@@ -81,6 +83,7 @@ namespace Emas
                     return true;
                 }
 
+                // Search newest samples first because playback usually needs a recent pair.
                 VectorSample after = newest;
                 for (int index = _count - 2; index >= 0; index--)
                 {
@@ -102,7 +105,7 @@ namespace Emas
 
             internal void Clear()
             {
-                // Samples contain values only; clearing counts releases the timeline without clearing the arrays.
+                // Reset the sample count to empty the buffer. The old array values can stay in place.
                 _start = 0;
                 _count = 0;
             }
@@ -120,6 +123,7 @@ namespace Emas
                     return true;
                 }
 
+                // Put the earlier time first so the same calculation can sum motion forward or backward.
                 bool reverse = start > end;
                 try
                 {
@@ -128,7 +132,7 @@ namespace Emas
                 }
                 catch (ArgumentOutOfRangeException)
                 {
-                    // A finite interval and velocity can still produce an unrepresentable displacement.
+                    // Even valid time and velocity values can produce movement too large to store.
                     value = default(Double3);
                     return false;
                 }
@@ -142,15 +146,15 @@ namespace Emas
                 Double3 result = default(Double3);
                 if (end > 0)
                 {
-                    // Sampling holds the latest value beyond its timestamp. Acceleration-based
-                    // extrapolation, when requested, is added separately by the extrapolation model.
+                    // After the last timestamp, hold the latest velocity. Prediction from
+                    // acceleration, when enabled, is added separately by the strategy.
                     double tailStart = Math.Max(start, 0d);
                     result = newest.Value * (end - tailStart);
                     end = tailStart;
                 }
 
-                // Scan back only as far as this update needs. A normal render interval crosses
-                // few recent samples; a frame hitch can integrate all intervening maneuver segments.
+                // Search only the samples crossed during this update. Most frames cross
+                // few samples, but a slow frame may need to sum motion across many samples.
                 for (int index = _count - 2; index >= 0 && end > start; index--)
                 {
                     VectorSample before = At(index);
@@ -169,7 +173,7 @@ namespace Emas
 
                 if (end > start)
                 {
-                    // Before startup history (or after ring exhaustion), sampling holds the oldest value.
+                    // Before the earliest stored time, hold the oldest available value.
                     result += At(0).Value * (end - start);
                 }
 
@@ -179,6 +183,7 @@ namespace Emas
             private static Double3 IntegralSegment(Double3 before, Double3 after, double beforeOffset,
                 double afterOffset, double start, double end)
             {
+                // Velocity changes linearly between samples. A trapezoid gives the exact movement over any part of that interval.
                 double duration = afterOffset - beforeOffset;
                 Double3 startValue = Interpolate(before, after, (start - beforeOffset) / duration);
                 Double3 endValue = Interpolate(before, after, (end - beforeOffset) / duration);
@@ -209,7 +214,7 @@ namespace Emas
             private static double Coordinate(double before, double after, double weight)
             {
                 // Subtract nearby large coordinates before scaling, but avoid overflowing the
-                // difference when finite endpoints lie near opposite ends of the double range.
+                // difference when the endpoints are extremely large and have opposite signs.
                 double difference = after - before;
                 return SpatialMath.IsFinite(difference)
                     ? before + difference * weight : before * (1d - weight) + after * weight;
@@ -286,8 +291,8 @@ namespace Emas
             _angularVelocities.Add(angularVelocity, time);
         }
 
-        // Offsets are playback time minus this channel's newest timestamp. Negative values sample
-        // recorded history; positive values hold the latest vector for the caller's bounded extrapolation.
+        // Offsets are playback time minus the newest sample time. Negative offsets read
+        // stored samples. Positive offsets hold the latest value so the caller can predict from it.
         internal bool SamplePosition(double offsetFromNewest, out Double3 position)
         {
             return _positions.Sample(offsetFromNewest, out position);
@@ -298,8 +303,8 @@ namespace Emas
             return _velocities.Sample(offsetFromNewest, out velocity);
         }
 
-        // Integrate the same piecewise-linear velocity curve used by sampling, including every
-        // crossed observation. Endpoint-only trapezoids miss a maneuver inside a long render step.
+        // Sum movement along the same velocity curve used for sampling, including every
+        // crossed sample. Looking only at the endpoints would miss turns during a slow frame.
         internal bool IntegrateVelocity(double startOffsetFromNewest, double endOffsetFromNewest, out Double3 motion)
         {
             return _velocities.Integrate(startOffsetFromNewest, endOffsetFromNewest, out motion);
@@ -344,8 +349,8 @@ namespace Emas
             RotationSample oldest = RotationAt(0);
             if (offsetFromNewest <= oldest.Time.ElapsedSince(newest.Time))
             {
-                // Startup and an exhausted ring hold the oldest available observation rather than
-                // inventing an earlier pose or stretching the playback clock for this one entity.
+                // If playback is earlier than stored history, hold the oldest available sample.
+                // Do not invent an earlier pose or change the shared clock for this one entity.
                 rotation = oldest.Value;
                 return true;
             }
@@ -406,6 +411,7 @@ namespace Emas
 
         internal bool EstimateAngularVelocity(Timestamp? time, out Double3 rate)
         {
+            // Estimate from rotations at or before the requested time. Do not use a later-only rotation.
             rate = default(Double3);
             int newestIndex = _rotationCount - 1;
             while (newestIndex >= 0 && time.HasValue && RotationAt(newestIndex).Time.CompareTo(time.Value) > 0)
@@ -423,8 +429,8 @@ namespace Emas
             double elapsed = newest.Time.ElapsedSince(previous.Time);
             try
             {
-                // Express the shortest observed arc as a body angular vector so the same strategy
-                // handles supplied and estimated rates. One observation cannot define a rate.
+                // Convert the shortest rotation change into a body rotation rate so the same strategy
+                // can use supplied and estimated rates. A single rotation cannot tell us a rate.
                 Quaternion arc = Quaternion.Inverse(previous.Value) * newest.Value;
                 if (arc.w < 0)
                 {

@@ -49,6 +49,7 @@ namespace Emas
                     return null;
                 }
 
+                // The weak reference may still find a Unity object that has already been destroyed.
                 if (source is UnityEngine.Object unityObject && unityObject == null)
                 {
                     return null;
@@ -161,6 +162,7 @@ namespace Emas
 
         internal bool SetMetadata(string name, Variant? variant, IEnumerable<Type> capabilities)
         {
+            // Update the label and appearance even when no new capabilities were supplied.
             if (name != null)
             {
                 _name = name;
@@ -173,7 +175,7 @@ namespace Emas
 
             if (capabilities != null)
             {
-                // Validate the replacement before changing the advertised set so malformed metadata cannot partially replace it.
+                // Check all new capabilities before changing the set, so bad input leaves the old set intact.
                 List<Type> next = new List<Type>();
                 foreach (Type capability in capabilities)
                 {
@@ -188,7 +190,7 @@ namespace Emas
                     }
                 }
 
-                // Capabilities form a set; enumeration order alone must not rerun the initializer.
+                // A different order means the same capabilities and must not run setup again.
                 bool changed = next.Count != _capabilities.Count;
                 if (!changed)
                 {
@@ -221,6 +223,7 @@ namespace Emas
 
         internal void MarkRemoved()
         {
+            // Keep the Key and metadata for callers, but release the scene root and source.
             _available = false;
             _removed = true;
             _root = null;

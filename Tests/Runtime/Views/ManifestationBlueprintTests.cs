@@ -21,6 +21,7 @@ namespace Emas.Tests
             GameObject fallback = new GameObject("fallback");
             try
             {
+                // Check exact names first. Unknown or missing names should use the fallback view.
                 ManifestationVariant car = new ManifestationVariant("small_car", full);
                 ManifestationVariant carLow = new ManifestationVariant("small_car_low", low);
                 blueprint.Configure(new Kind("cars"), null, new[] { car, carLow }, fallback);
@@ -31,6 +32,7 @@ namespace Emas.Tests
                 Assert.That(blueprint.ResolveViewPrefab(new Variant("unknown")), Is.SameAs(fallback));
                 Assert.That(blueprint.ResolveViewPrefab(Variant.None), Is.SameAs(fallback));
 
+                // Without a fallback, a missing Variant must return no view.
                 blueprint.Configure(new Kind("cars"), null, new[] { car }, null);
                 Assert.That(blueprint.ResolveViewPrefab(carLow.Variant), Is.Null);
                 Assert.That(blueprint.ResolveViewPrefab(Variant.None), Is.Null);
@@ -81,6 +83,7 @@ namespace Emas.Tests
                 ManifestationVariant duplicate = new ManifestationVariant("car", replacement);
                 Kind kind = new Kind("cars");
                 blueprint.Configure(kind, null, new[] { first }, null);
+                // Both invalid changes must leave the old settings working.
                 Assert.That(Assert.Throws<ArgumentException>(() => blueprint.Configure(kind, null,
                     new[] { first, duplicate }, null)).Message, Does.Contain("duplicate").And.Contain("index 0"));
                 Assert.That(Assert.Throws<ArgumentException>(() => blueprint.Configure(kind, null,
@@ -108,6 +111,7 @@ namespace Emas.Tests
             {
                 ManifestationVariant[] rows = { new ManifestationVariant("car", original) };
                 blueprint.Configure(new Kind("cars"), null, rows, null);
+                // The caller still owns the array. The blueprint must keep a separate copy of its rows.
                 rows[0] = new ManifestationVariant("car", replacement);
                 Assert.That(blueprint.ResolveViewPrefab(new Variant("car")), Is.SameAs(original));
             }

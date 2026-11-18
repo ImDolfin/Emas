@@ -65,6 +65,7 @@ namespace Emas.Tests
                 ghost => events.Add("enter " + ghost.Key.EntityId),
                 key => events.Add("leave " + key.EntityId));
             Assert.That(events, Is.EqualTo(new[] { "enter first" }));
+            // Send entry and exit callbacks after the update. An idle update must not send another entry.
             _source.Publish("second");
             _realm.Update();
             _source.RemoveId("first");
@@ -72,6 +73,7 @@ namespace Emas.Tests
             _realm.Update();
             _realm.Update();
             Assert.That(events, Is.EqualTo(new[] { "enter first", "enter second", "leave first" }));
+            // Stop watching before removing the last object. No more exit callbacks should run.
             subscription.Dispose();
             _source.RemoveId("second");
             _realm.Update();
@@ -93,6 +95,7 @@ namespace Emas.Tests
             {
             }, departed.Add);
             _source.RemoveId("removed");
+            // Destroy the component before the exit callback runs. The callback must still have its Key.
             yield return null;
             Assert.That(ghost == null, Is.True);
             _realm.Update();
@@ -111,6 +114,7 @@ namespace Emas.Tests
             Query query = _realm.Query().WithVariant(red);
             List<string> events = new List<string>();
             query.Observe(ghost => events.Add("enter"), key => events.Add("leave"));
+            // Make the same root stop matching the filter, then match it again.
             _source.Publish("one", new Variant("blue"), "other");
             _realm.Update();
             _realm.Update();
@@ -176,6 +180,7 @@ namespace Emas.Tests
             {
             }, key => departures++);
             _source.RemoveId("one");
+            // Stop watching while an exit is waiting. Neither way of stopping should add another callback.
             if (disposeRealm)
             {
                 _realm.Dispose();
@@ -214,6 +219,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(departed, Is.EqualTo(new[] { "first" }));
 
+            // The first callback removes another object. Report that second exit on the next pass.
             _realm.Update();
             Assert.That(departed, Is.EqualTo(new[] { "first", "second" }));
         }
@@ -229,6 +235,7 @@ namespace Emas.Tests
             int entries = 0;
             IDisposable subscription = null;
             subscription = _realm.Query().Observe(ghost => entries++, key => subscription.Dispose());
+            // Remove and restore the object before updating. Its exit callback can still cancel the new entry.
             _anchor.RestartDetector(_source);
             _source.Publish("one");
             _realm.Update();

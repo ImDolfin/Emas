@@ -37,7 +37,7 @@ namespace Emas
 
         internal void Unbind(Anchor anchor)
         {
-            // Cleanup for an old lifetime must not clear a new binding established from a stop callback.
+            // Cleanup for an old run must not clear a new binding created by a stop callback.
             if (ReferenceEquals(Anchor, anchor))
             {
                 Anchor = null;

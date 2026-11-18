@@ -108,6 +108,7 @@ namespace Emas.Tests
         [SetUp]
         public void SetUp()
         {
+            // Set up the source while it is inactive, before it can publish any data.
             GameObject root = new GameObject("component realm");
             _objects.Add(root);
             root.SetActive(false);
@@ -121,6 +122,7 @@ namespace Emas.Tests
             root.SetActive(true);
             _setup.StartRealm();
 
+            // The initializer connects the trait on each copy of this root to source data.
             GameObject prefab = new GameObject("authored root");
             _objects.Add(prefab);
             prefab.SetActive(false);
@@ -167,11 +169,13 @@ namespace Emas.Tests
             Assert.That(_source.Detector.Realm, Is.SameAs(_setup.Realm));
             Presence presence = _source.Current;
             TextTrait trait = presence.Root.GetComponent<TextTrait>();
+            // Update the detector before reading traits, so traits see the new value in the same update.
             _source.BeforeRead = () => _source.Source.Value = "updated";
             _setup.Realm.Update();
             Assert.That(trait.Value, Is.EqualTo("updated"));
             Assert.That(_initializer.Calls, Is.EqualTo(1));
 
+            // Use the replacement source with the same Ghost and trait.
             _source.BeforeRead = null;
             _source.Source = new Reading { Value = "replacement" };
             _source.Publish();
@@ -195,6 +199,7 @@ namespace Emas.Tests
             Assert.That(code.GetComponent<TextTrait>().Value, Is.EqualTo("realm mapping"));
             Assert.That(_source.Current.Root.GetComponent<TextTrait>().Value, Is.EqualTo("first"));
 
+            // Disable the local initializer so the next attachment uses the Realm's initializer.
             _source.gameObject.SetActive(false);
             Assert.That(_initializer.Anchor, Is.Null);
             Assert.That(_initializer.Realm, Is.Null);
@@ -215,6 +220,7 @@ namespace Emas.Tests
             _source.gameObject.SetActive(true);
             Presence original = _source.Current;
             Action<Action> stale = _source.Captured;
+            // Restart must ignore old queued work and old saved dispatchers.
             _source.Queue(() => _source.Source.Value = "stale queued work");
             _source.GetComponent<AnchorSetup>().Anchor.RestartDetector(_source.Detector);
             int called = 0;
@@ -231,6 +237,7 @@ namespace Emas.Tests
             Assert.That(_source.Anchor, Is.SameAs(_source.GetComponent<AnchorSetup>().Anchor));
             Assert.That(_initializer.Anchor, Is.SameAs(_source.Anchor));
             Assert.That(_initializer.Realm, Is.SameAs(_setup.Realm));
+            // Keep the owner available during stop and restart callbacks. Clear it when finally removed.
             _source.Anchor.Dispose();
             Assert.That(_source.Anchor, Is.Null);
             Assert.That(_source.Realm, Is.Null);
@@ -289,6 +296,7 @@ namespace Emas.Tests
             Assert.That(_source.Detector.LastError, Is.TypeOf<InvalidOperationException>());
             Assert.That(_setup.Realm.Query().Count, Is.Zero);
             Assert.That(_source.Stops, Is.EqualTo(1));
+            // Fixing the error does not restart the detector. The application must restart it.
             _source.BeforeRead = null;
             _source.GetComponent<AnchorSetup>().Anchor.RestartDetector(_source.Detector);
             Assert.That(_source.Detector.LastError, Is.Null);

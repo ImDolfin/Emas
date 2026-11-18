@@ -30,6 +30,7 @@ namespace Emas.Sample
             }
 
             IsUsingSecondSdk = true;
+            // Fill the new feed before handing over, because existing Ghosts may read it immediately.
             ReadProxies();
             anchor.ReplaceDetector(Detector, new SdkTwoCarDetector(_secondFeed) { Name = "SDK Two cars" });
         }
@@ -37,6 +38,7 @@ namespace Emas.Sample
         /// <summary>Restarts the replacement timer and publishes the permanent car population from SDK One.</summary>
         protected override void OnStart()
         {
+            // Report the fixed set of cars once. Their readers keep getting updated SDK data.
             _elapsed = 0f;
             IsUsingSecondSdk = false;
             foreach (SdkOneVehicleProxy proxy in _firstFeed.ReadVehicles(Time.time))
@@ -47,7 +49,7 @@ namespace Emas.Sample
             }
         }
 
-        // The application owns both feeds, including SDK Two after detector replacement.
+        // The application keeps both feeds running, including SDK Two after its detector is replaced.
         private void Update()
         {
             ReadProxies();
@@ -65,7 +67,7 @@ namespace Emas.Sample
 
         private void ReadProxies()
         {
-            // The component continues refreshing the application-owned feed after its detector is replaced.
+            // Keep updating the application's feed after its detector is replaced.
             if (IsUsingSecondSdk)
             {
                 _secondFeed.ReadVehicles(Time.time);

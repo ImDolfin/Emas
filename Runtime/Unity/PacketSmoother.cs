@@ -3,8 +3,8 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Cubic correction lives beside raw dead reckoning, never in the strategy instance or SDK history.
-    // Position uses a Hermite error spline; orientation uses a spherical cubic Bezier correction.
+    // Keep packet corrections separate from the prediction strategy and raw SDK samples.
+    // Use a Hermite curve for position error and a spherical Bezier curve for rotation error.
     internal struct PacketSmoother
     {
         private Double3 _position;
@@ -36,11 +36,13 @@ namespace Emas
                 return target;
             }
 
+            // Keep the valid pose in case the correction calculation overflows.
             PresentationPose baseline = target;
             try
             {
                 double elapsed = Math.Max(0d, timestamp - _timestamp);
                 bool motionChanged = motionVersion != _motionVersion;
+                // Give Smoothing the movement after packet correction so it does not add movement twice.
                 if (spatial.HasPosition)
                 {
                     bool hadPosition = _hasPosition;
@@ -57,6 +59,7 @@ namespace Emas
                     target.Rotation = Rotation(target.Rotation, angularVelocity, spatial.RotationVersion, motionChanged, elapsed, timestamp, duration);
                 }
 
+                // Save the packet versions only after position and rotation have both been handled.
                 _timestamp = timestamp;
                 _positionVersion = spatial.PositionVersion;
                 _rotationVersion = spatial.RotationVersion;
@@ -65,7 +68,7 @@ namespace Emas
             }
             catch (ArgumentOutOfRangeException)
             {
-                // A finite SDK correction can still overflow a difference or tangent. Recover with raw presentation.
+                // Very large SDK values can overflow correction calculations. Fall back to the pose without correction.
                 this = default(PacketSmoother);
                 motion = default(Double3);
                 return baseline;
@@ -95,8 +98,8 @@ namespace Emas
             Double3 offset = PositionCorrection(timestamp, duration, out Double3 tangent);
             if (version != _positionVersion || motionChanged)
             {
-                // Advance the old spline BEFORE rebasing. Continuing only the last presented tangent
-                // would restart at u=0 on every packet and retain stale motion at frame-rate arrivals.
+                // Update the old correction curve to the current time before starting the new correction.
+                // Otherwise, frequent packets could keep restarting the curve and preserve movement that should have stopped.
                 _positionOffset = _targetPosition + _targetVelocity * elapsed + offset - target;
                 _positionTangent = _targetVelocity + tangent - velocity;
                 _positionStarted = timestamp;
@@ -111,6 +114,7 @@ namespace Emas
 
         private Double3 PositionCorrection(double timestamp, double duration, out Double3 tangent)
         {
+            // The Hermite curve ends with zero position correction and zero correction velocity.
             double u = Math.Min(1d, Math.Max(0d, (timestamp - _positionStarted) / duration));
             double squared = u * u;
             double h00 = 2d * squared * u - 3d * squared + 1d;
@@ -144,7 +148,7 @@ namespace Emas
                 Double3 continuedRate = RotationCorrectionRate(u, duration) + SpatialMath.Rotate(correction, _targetAngularVelocity);
                 _rotationOffset = SpatialMath.NormalizeRotation(continued * Quaternion.Inverse(target), nameof(target));
                 // For Q = E*T, world angular velocity is omega_E + E*omega_T. Evaluate the old
-                // correction's current angular tangent so frequent packets still dissipate its error.
+                // correction's current rotation rate so frequent packets still let its error fade away.
                 _rotationTangent = continuedRate - SpatialMath.Rotate(_rotationOffset, angularVelocity);
                 _rotationControl = SpatialMath.AngularDisplacement(_rotationTangent, duration / 3d) * _rotationOffset;
                 _rotationStarted = timestamp;
@@ -158,6 +162,7 @@ namespace Emas
 
         private Double3 RotationCorrectionRate(double u, double duration)
         {
+            // Use the exact rotation rate at each end. Estimate the rate only inside the curve.
             if (u <= 0)
             {
                 return _rotationTangent;
@@ -174,8 +179,8 @@ namespace Emas
 
         private Quaternion Curve(double u)
         {
-            // Spherical de Casteljau avoids interpolating quaternion components and handles antipodes.
-            // The last two controls are identity: both correction and its tangent vanish at the end.
+            // Spherical de Casteljau blends rotations on the sphere and handles q and -q as the same rotation.
+            // The last two control rotations are identity, so rotation error and its rate end at zero.
             float amount = (float)u;
             Quaternion first = Quaternion.Slerp(_rotationOffset, _rotationControl, amount);
             Quaternion second = Quaternion.Slerp(_rotationControl, Quaternion.identity, amount);

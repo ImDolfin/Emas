@@ -115,6 +115,7 @@ namespace Emas.Tests
             _realm.Update();
 
             Query named = _realm.Query("car");
+            // Add filters to narrow the search. The earlier query must stay unchanged.
             Assert.That(named.Count, Is.EqualTo(4));
             Query ofKind = named.OfKind(kind);
             Assert.That(ofKind.Count, Is.EqualTo(3));
@@ -144,6 +145,7 @@ namespace Emas.Tests
             Assert.That(part, Is.Null);
             Assert.That(query.Count, Is.Zero);
 
+            // Saved queries and direct lookup must see components added to or removed from the root.
             ExtraPart component = ghost.gameObject.AddComponent<ExtraPart>();
             Assert.That(ghost.TryGet<IExtraPart>(out part), Is.True);
             Assert.That(part, Is.SameAs(component));
@@ -175,6 +177,7 @@ namespace Emas.Tests
             InvalidOperationException multiple = Assert.Throws<InvalidOperationException>(() => query.Single());
             Assert.That(multiple.Message, Is.EqualTo("Expected exactly one ghost, but found 2."));
 
+            // Use the same query as the number of matches changes from two to one to none.
             anchor.RemoveDetector(first);
             Assert.That(query.Count, Is.EqualTo(1));
             Assert.That(query.FirstOrDefault(), Is.SameAs(secondGhost));
@@ -236,6 +239,7 @@ namespace Emas.Tests
                 TestGhost foreign = secondSource.Publish("42", Variant.None);
                 secondRealm.Update();
 
+                // Only accept roots owned by this Realm, even if another Realm has the same Key.
                 Assert.That(own.Key, Is.EqualTo(foreign.Key));
                 Assert.That(_realm.Manifest(foreign), Is.Null);
                 Assert.That(_realm.Manifest(own), Is.Not.Null);
@@ -315,12 +319,14 @@ namespace Emas.Tests
                 _realm.Update();
                 Assert.That(_realm.Manifest(ghost), Is.Null);
 
+                // An earlier view request should work once a matching blueprint is registered.
                 _realm.RegisterManifestationBlueprint(first);
                 _realm.Update();
                 View firstView = ghost.GetComponentInChildren<View>();
                 Assert.That(firstView, Is.Not.Null);
                 Assert.That(firstView.gameObject.name, Is.EqualTo("first view"));
 
+                // Replace the view after changing the blueprint. Keep the same tracked root.
                 _realm.RegisterManifestationBlueprint(second);
                 _realm.Update();
                 View secondView = ghost.GetComponentInChildren<View>();
@@ -375,6 +381,7 @@ namespace Emas.Tests
                 Assert.That(firstAnchor.Transform.Find("one"), Is.SameAs(first.transform));
                 Assert.That(secondAnchor.Transform.Find("one"), Is.SameAs(second.transform));
 
+                // Registering again updates requested views. Existing roots keep their original components.
                 blueprint.Configure(kind, nextRoot.AddComponent<TestGhost>(), null, nextView);
                 _realm.RegisterManifestationBlueprint(blueprint);
                 _realm.Update();
@@ -437,10 +444,12 @@ namespace Emas.Tests
                 Assert.That(otherRealm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
                 Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
 
+                // Editing the asset must not change settings already registered in either Realm.
                 shared.Configure(kind, null, new[] { new ManifestationVariant("car", newPrefab) }, null);
                 Assert.That(otherRealm.Manifest(localGhost).gameObject.name, Is.EqualTo("old view"));
                 Assert.That(_realm.Manifest(globalGhost).gameObject.name, Is.EqualTo("old view"));
 
+                // Register the edited asset in just one Realm first. The other Realm must keep its old settings.
                 otherRealm.RegisterManifestationBlueprint(shared);
                 _realm.Update();
                 otherRealm.Update();
@@ -492,6 +501,7 @@ namespace Emas.Tests
                 Assert.That(view.gameObject.name, Is.EqualTo("small car"));
                 Assert.That(_realm.Manifest(ghost), Is.SameAs(view));
 
+                // A new Variant updates a requested view while keeping the same Ghost.
                 Assert.That(source.Publish("42", low), Is.SameAs(ghost));
                 _realm.Update();
                 View lowView = ghost.GetComponentInChildren<View>();
@@ -499,6 +509,7 @@ namespace Emas.Tests
                 Assert.That(lowView.Ghost, Is.SameAs(ghost));
                 Assert.That(lowView, Is.Not.SameAs(view));
 
+                // After cancelling the view request, later Variant changes must not bring the view back.
                 _realm.Demanifest(ghost);
                 source.Publish("42", full);
                 _realm.Update();

@@ -32,7 +32,7 @@ namespace Emas
             }
             catch (ArgumentOutOfRangeException)
             {
-                // Extreme finite inputs can overflow a difference. Keep valid baseline presentation instead.
+                // Subtracting very large values can overflow. Keep the valid pose without the extra offset.
                 Reset();
             }
 
@@ -63,13 +63,14 @@ namespace Emas
                 return current;
             }
 
+            // For another settings edit, start from the correction still visible now.
             double remaining = _positionActive ? Remaining(timestamp, _positionStarted) : 0;
             Double3 offset = _positionOffset * remaining;
             _positionActive = remaining > 0;
             if (changed)
             {
-                // Preview the old behavior at NOW, not at the last rendered frame. Repeated slider edits
-                // therefore retain ordinary forward motion instead of freezing a fast-moving entity.
+                // Try the old settings at the current time. Using the last frame instead would make repeated
+                // slider edits hold a fast-moving entity still.
                 offset += previous - current;
                 _positionOffset = offset;
                 _positionStarted = timestamp;
@@ -104,7 +105,7 @@ namespace Emas
         private static double Remaining(double timestamp, double started)
         {
             double progress = Math.Min(1d, Math.Max(0d, (timestamp - started) / Duration));
-            // Smoothstep has zero slope at each end and reaches exactly zero, leaving no permanent offset.
+            // Smoothstep starts and ends smoothly. The correction reaches zero, leaving no lasting offset.
             return 1d - progress * progress * (3d - 2d * progress);
         }
     }

@@ -51,6 +51,7 @@ namespace Emas.Tests
             Anchor anchor = realm.GetOrCreateAnchor("tests.default", source);
             try
             {
+                // Let Unity run the updates. Do not call Realm.Update from the test.
                 yield return null;
                 yield return null;
                 Assert.That(source.Updates, Is.GreaterThan(0));

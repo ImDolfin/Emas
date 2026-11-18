@@ -1,6 +1,6 @@
 namespace Emas
 {
-    // Capture effective values once per projection. Disabled channels use the same direct path as zero settings.
+    // Read settings once per projection. Disabled filters act the same as filters set to zero.
     internal readonly struct PresentationSettings
     {
         internal readonly float MaximumExtrapolation;
@@ -17,6 +17,7 @@ namespace Emas
             RotationHalfLife = smoothing != null && smoothing.enabled ? ValidTime(smoothing.RotationHalfLife) : 0;
             InterpolationDelay = ValidTime(interpolationDelay);
             Strategy = extrapolation != null ? extrapolation.Strategy : null;
+            // Apply packet correction only when prediction is enabled. Having an Extrapolation trait alone is not enough.
             IPacketSmoothingStrategy packetSmoothing = Strategy as IPacketSmoothingStrategy;
             PacketSmoothingDuration = extrapolation != null && extrapolation.enabled && MaximumExtrapolation > 0 && packetSmoothing != null
                 ? ValidTime(packetSmoothing.PacketSmoothingDuration) : 0;

@@ -44,13 +44,13 @@ namespace Emas
 
         internal void ExecutePending(int maximum)
         {
-            // Commands enqueued during execution belong to a later batch.
+            // Work added while this batch runs waits for the next batch.
             Execute(maximum, _lastSequence);
         }
 
         internal void ExecuteAll()
         {
-            // Scene changes include work enqueued by the current Unity callbacks.
+            // Scene changes also run work added by the current Unity callbacks.
             Execute(int.MaxValue, long.MaxValue);
         }
 
@@ -66,6 +66,7 @@ namespace Emas
 
         private void Execute(int maximum, long sequence)
         {
+            // A callback may try to run the queue again. Let the current loop finish it in order.
             if (_executing)
             {
                 return;
@@ -76,7 +77,7 @@ namespace Emas
             {
                 for (int index = 0; index < maximum && HasPendingThrough(sequence); index++)
                 {
-                    // Dequeue before invoking application code, which may enqueue or clear work.
+                    // Remove the item first because its callback may add or clear queued work.
                     _execute(_pending.Dequeue().Command);
                 }
             }

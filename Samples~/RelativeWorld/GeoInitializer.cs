@@ -9,9 +9,10 @@ namespace Emas.RelativeWorld
         protected override void Initialize(Presence presence, Ghost root)
         {
             string id = presence.Key.EntityId;
-            // Capture identity and Presence, then resolve the latest SDK snapshot without retaining the SDK itself.
+            // Keep the ID and Presence, then look up the latest sample without keeping the SDK alive.
             root.GetRequired<GeoPositionTrait>().Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
             root.GetRequired<GeoOrientationTrait>().Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
+            // Bind optional motion readers only when this root has their traits.
             GeoVelocityTrait velocity;
             if (root.TryGet<GeoVelocityTrait>(out velocity))
             {
@@ -28,6 +29,7 @@ namespace Emas.RelativeWorld
                 angularVelocity.Bind(() => ((SimulatedGeoSdk)presence.Source).Current[id]);
             }
 
+            // Read the parent ID and the saved release pose from the same delivered sample.
             GeoAttachmentTrait attachment;
             if (root.TryGet<GeoAttachmentTrait>(out attachment))
             {

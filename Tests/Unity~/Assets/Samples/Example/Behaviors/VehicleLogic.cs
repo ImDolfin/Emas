@@ -16,6 +16,7 @@ namespace Emas.Sample
                 return;
             }
 
+            // Bob the view locally so its motion does not change the root's position data.
             float offset = Mathf.Sin(Time.time * 5.0f + _position.Position.x) * 0.035f;
             transform.localPosition = new Vector3(0.0f, offset, 0.0f);
         }

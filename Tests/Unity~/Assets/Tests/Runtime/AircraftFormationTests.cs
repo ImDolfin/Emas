@@ -48,6 +48,7 @@ namespace Emas.Tests.Samples
             float maximumTurn = 0;
             for (int index = 0; index < 540; index++)
             {
+                // Vary the source time steps and check that formation offsets stay fixed in simulation axes.
                 double step = steps[index % steps.Length];
                 source.Advance(step);
                 realm.Update();
@@ -62,6 +63,7 @@ namespace Emas.Tests.Samples
                 Assert.That(camera.transform.rotation, Is.EqualTo(Quaternion.identity));
                 foreach (string id in new[] { "left", "right" })
                 {
+                    // Check that following the reference rotates the target offset without changing its length or moving the camera.
                     Ghost wingman = Aircraft(realm, id);
                     Spatial spatial = wingman.GetRequired<Spatial>();
                     Vector3 offset = new Vector3(id == "left" ? -70 : 70, id == "left" ? 20 : -20, 350);
@@ -88,6 +90,7 @@ namespace Emas.Tests.Samples
             FlightSource source = Find<FlightSource>();
             source.AutomaticAdvance = true;
             double warmup = Time.realtimeSinceStartupAsDouble + 1;
+            // Wait for the delayed streams and let smoothing settle before measuring.
             while (Time.realtimeSinceStartupAsDouble < warmup)
             {
                 yield return null;
@@ -105,7 +108,7 @@ namespace Emas.Tests.Samples
             int frames = 0;
             do
             {
-                // Deliberately vary update opportunities while both SDK and Realm retain their real-time clocks.
+                // Vary how often updates run while the SDK and Realm both use real time.
                 yield return new WaitForSecondsRealtime(frames % 3 == 0 ? 0.031f : frames % 3 == 1 ? 0.005f : 0.017f);
                 frames++;
                 maximumTurn = Mathf.Max(maximumTurn, Quaternion.Angle(initial, realm.ReferenceFrame.Rotation));
@@ -116,6 +119,7 @@ namespace Emas.Tests.Samples
                     Assert.That(spatial.IsInRange, Is.True);
                     Assert.That(ghost.GetComponentInChildren<View>(), Is.Not.Null);
                     Timestamp sample = spatial.PositionTime.Value;
+                    // Check timestamps separately from displayed motion so a held sample is not counted as a new packet.
                     Assert.That(sample.CompareTo(previous[index]), Is.GreaterThanOrEqualTo(0));
                     if (sample.CompareTo(previous[index]) > 0)
                     {
@@ -131,6 +135,7 @@ namespace Emas.Tests.Samples
                         continue;
                     }
                     independentCaptures |= sample.CompareTo(previous[0]) != 0;
+                    // Check that target angles stay within limits while the three streams have different delays.
                     Vector3 offset = new Vector3(index == 1 ? -70 : 70, index == 1 ? 20 : -20, 350);
                     Vector3 expected = Quaternion.Inverse(realm.ReferenceFrame.Rotation) * offset;
                     maximumBearingError = Mathf.Max(maximumBearingError, Vector3.Angle(expected, ghost.transform.position));
@@ -155,6 +160,7 @@ namespace Emas.Tests.Samples
             _scene = SceneManager.GetSceneByPath(path);
             RealmSetup setup = Find<RealmSetup>();
             setup.StopRealm();
+            // Restart after setting up the mock source so manual steps do not include loading time.
             FlightSource source = Find<FlightSource>();
             source.AutomaticAdvance = false;
             source.SimulateJitterAndDelay = impairments;

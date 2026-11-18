@@ -54,6 +54,7 @@ namespace Emas.Tests
                 Assert.That(concrete.Anchor, Is.SameAs(anchor));
                 Assert.That(ghost.Anchor.Realm.ReferenceFrame, Is.SameAs(realm.ReferenceFrame));
 
+                // Moving a Ghost in the scene does not change which Realm owns it.
                 concrete.enabled = false;
                 concrete.transform.SetParent(otherAnchor.Transform, false);
                 realm.Update();
@@ -94,6 +95,7 @@ namespace Emas.Tests
                     .And.Contain(typeof(FirstPart).FullName).And.Contain(typeof(SecondPart).FullName)
                     .And.Contain("instance " + first.GetInstanceID()).And.Contain("instance " + second.GetInstanceID()));
 
+                // After removing the extra component, lookup should find the one that remains.
                 UnityEngine.Object.DestroyImmediate(second);
                 Assert.That(ghost.TryGet<IPart>(out part), Is.True);
                 Assert.That(part, Is.SameAs(first));
@@ -151,6 +153,7 @@ namespace Emas.Tests
                 IReadOnlyList<Trait> empty = ghost.Traits;
                 Assert.That(empty, Is.Empty);
 
+                // Include disabled root traits. A child trait can only use a Ghost on its own GameObject.
                 PipelinePositionTrait position = concrete.gameObject.AddComponent<PipelinePositionTrait>();
                 position.enabled = false;
                 Assert.That(concrete.gameObject.activeSelf, Is.False);
@@ -175,6 +178,7 @@ namespace Emas.Tests
                 Assert.That(concrete.Trait<PipelinePositionTrait>().enabled, Is.False);
                 Assert.Throws<NotSupportedException>(() => ((IList<Trait>)original).Clear());
 
+                // Adding or removing components must not change a list the caller already received.
                 PipelineActionTrait action = concrete.gameObject.AddComponent<PipelineActionTrait>();
                 Assert.That(action.Ghost, Is.SameAs(concrete));
                 Assert.That(ghost.Traits, Is.EqualTo(new Trait[] { position, action }));
@@ -187,6 +191,7 @@ namespace Emas.Tests
                 Assert.That(removed, Is.Null);
                 Assert.Throws<InvalidOperationException>(() => ghost.Trait<PipelinePositionTrait>());
 
+                // Lookup should work again after removing the duplicate component.
                 PipelineActionTrait duplicate = concrete.gameObject.AddComponent<PipelineActionTrait>();
                 LogAssert.Expect(LogType.Error, new Regex(Regex.Escape(ghost.Key.ToString()) + ".*" + Regex.Escape(typeof(PipelineActionTrait).FullName)));
                 InvalidOperationException ambiguous = Assert.Throws<InvalidOperationException>(() => ghost.Trait<PipelineActionTrait>());

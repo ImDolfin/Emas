@@ -23,7 +23,7 @@ namespace Emas
 
         internal double Age(Timestamp? sampleTime, double receivedTime, double localTime)
         {
-            // Shared timestamps remove relative delivery jitter; untimed input can only use its own arrival age.
+            // Shared timestamps avoid differences caused by packet delays. Without a timestamp, use time since arrival.
             double age = sampleTime.HasValue && _hasAnchor
                 ? (localTime - _localAnchor) - sampleTime.Value.ElapsedSince(_sourceAnchor)
                 : localTime - receivedTime;
@@ -33,7 +33,7 @@ namespace Emas
         internal double OffsetFrom(Timestamp sampleTime, double localTime, double delay)
         {
             // Preserve negative offsets: buffered playback usually lies BEFORE the newest observation.
-            // Subtract timestamp parts before using doubles so large SDK epochs retain sub-frame precision.
+            // Subtract timestamp parts before converting to doubles so large timestamps keep precise time differences.
             return (_hasAnchor ? (localTime - _localAnchor) - sampleTime.ElapsedSince(_sourceAnchor) : 0d) - delay;
         }
 

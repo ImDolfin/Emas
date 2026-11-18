@@ -114,6 +114,7 @@ namespace Emas.RelativeWorld
                 throw new ArgumentException("A geographic reading requires a nonempty entity ID.", nameof(id));
             }
 
+            // Check the sample before several trait readers use it.
             ValidateRange(latitudeDegrees, -90.0, 90.0, nameof(latitudeDegrees));
             ValidateRange(longitudeDegrees, -180.0, 180.0, nameof(longitudeDegrees));
             ValidateFinite(altitudeMeters, nameof(altitudeMeters));
@@ -128,6 +129,7 @@ namespace Emas.RelativeWorld
                 throw new ArgumentException("An attached reading requires a parent ID and Kind.", nameof(parentId));
             }
 
+            // Keep pose, attachment and motion values together with their original sample time.
             Id = id;
             Label = label;
             Kind = kind;

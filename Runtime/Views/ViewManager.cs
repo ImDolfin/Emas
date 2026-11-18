@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Scene changes are isolated here; every activation/deactivation can reenter application code.
+    // Handles scene changes. Enabling or disabling an object can call application code.
     internal sealed class ViewManager
     {
         private readonly IdentityMap _identities;
@@ -37,12 +37,13 @@ namespace Emas
             }
 
             record.RefreshingView = true;
-            // Scene callbacks can cancel or replace the request; continuation checks compare this captured version.
+            // Save this request's version so we can stop if a scene callback cancels or replaces it.
             long version = record.ViewVersion;
             record.ViewDirty = false;
             string context = "view refresh for " + record.Key;
             try
             {
+                // Keep the request while the view is hidden so it can be shown again when ready.
                 if (!record.ViewRequested || !record.SpatialVisible)
                 {
                     Destroy(record);
@@ -60,6 +61,7 @@ namespace Emas
                     return;
                 }
 
+                // Use the saved blueprint settings. Asset edits take effect after registration is repeated.
                 GameObject prefab = record.ManifestationBlueprint.ResolveViewPrefab(record.Ghost.Variant);
                 if (prefab == null)
                 {
@@ -74,7 +76,7 @@ namespace Emas
 
                 context += " (prefab '" + prefab.name + "')";
 
-                // Rebind the existing child when the requested appearance resolves to the same prefab.
+                // Reuse the child when the requested appearance uses the same prefab.
                 if (record.View != null && record.ViewPrefab == prefab)
                 {
                     record.View.Bind(record.Ghost);
@@ -86,6 +88,7 @@ namespace Emas
                     return;
                 }
 
+                // Destroying the old child can run OnDisable, which may change the request before we create its replacement.
                 Destroy(record);
                 if (!CanContinue(record, version))
                 {
@@ -96,8 +99,8 @@ namespace Emas
             }
             catch (System.Exception exception)
             {
-                // Presentation failures belong to this view, not to the source population.
-                // Keep the request so a new request or appearance change can retry it.
+                // Report this view's failure without stopping the source.
+                // Keep the request so changing the request or appearance can try again.
                 Destroy(record);
                 PresenceDetector.LogError(exception, context);
             }
@@ -110,7 +113,7 @@ namespace Emas
         internal void Destroy(Record record)
         {
             View view = record.View;
-            // Clear bookkeeping before OnDisable can request another view for the same root.
+            // Clear the saved view before OnDisable can request another one for the same root.
             record.View = null;
             record.ViewPrefab = null;
             try
@@ -129,8 +132,8 @@ namespace Emas
 
         private void CreateView(Record record, GameObject prefab, long version)
         {
-            // Inactive staging keeps OnEnable from running before the view is bound to its Ghost.
-            // Refresh keeps the record guarded while this method handles partial-instance cleanup.
+            // Create under an inactive parent so OnEnable waits until the view is connected to its Ghost.
+            // Refresh blocks nested refreshes while this method cleans up any failed creation.
             GameObject staging = null;
             GameObject instance = null;
             try
@@ -146,6 +149,7 @@ namespace Emas
                     view = instance.AddComponent<View>();
                 }
 
+                // Connect the view under the inactive parent, then move it to the root. Enable it after saving its details.
                 view.Bind(record.Ghost);
                 instance.name = prefab.name;
                 instance.transform.SetParent(record.Ghost.transform, false);
@@ -155,6 +159,7 @@ namespace Emas
                     return;
                 }
 
+                // Save the instance before OnEnable can query or cancel its own view.
                 record.ViewPrefab = prefab;
                 record.View = view;
                 if (record.Ghost.gameObject.activeInHierarchy)
@@ -170,6 +175,7 @@ namespace Emas
             }
             catch
             {
+                // Remove only this failed instance. A callback may already have created a different view for this root.
                 if (record.View != null && record.View.gameObject == instance)
                 {
                     record.View = null;

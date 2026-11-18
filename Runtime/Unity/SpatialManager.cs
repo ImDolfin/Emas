@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Captures one reference pose, projects eligible roots, and coordinates view suppression without changing availability.
+    // Saves one reference pose, places roots in Unity, and hides out-of-range views without removing entities.
     internal sealed class SpatialManager
     {
         private readonly Realm _realm;
@@ -22,9 +22,10 @@ namespace Emas
 
         internal void Project(List<Record> records, ReferenceFrame frame)
         {
+            // Use one display time and reference for all roots, including attachments.
             double timestamp = Time.realtimeSinceStartupAsDouble;
             float interpolationDelay = _realm.InterpolationDelay;
-            // Align the shared SDK clock before predicting the followed origin or any other root.
+            // Update the shared SDK clock before predicting any root, including the followed reference.
             ObserveTimes(records);
             ReferenceFrame.Projection projection = Capture(frame, timestamp, interpolationDelay);
             try
@@ -46,7 +47,7 @@ namespace Emas
             {
                 double timestamp = Time.realtimeSinceStartupAsDouble;
                 float interpolationDelay = _realm.InterpolationDelay;
-                // Include the followed reference and other anchors in clock alignment even for one-root requests.
+                // Use timestamps from all anchors and the followed reference, even when updating only one root.
                 ObserveTimes(_identities.Snapshot());
                 ProjectChain(record, Capture(frame, timestamp, interpolationDelay), timestamp, interpolationDelay);
             }
@@ -58,6 +59,7 @@ namespace Emas
 
         internal void ResetTime(List<Record> records)
         {
+            // When the SDK clock restarts, reset the shared clock and every root's stored history together.
             _clock.Reset();
             double timestamp = Time.realtimeSinceStartupAsDouble;
             foreach (Record record in records)
@@ -91,13 +93,14 @@ namespace Emas
             Spatial spatial = record.Ghost.GetComponent<Spatial>();
             if (spatial != null && spatial.enabled)
             {
-                // Activation/destruction callbacks can add presentation after the projection pass.
+                // Enable and destroy callbacks can add roots after this placement pass.
                 spatial.SetInRange(false);
             }
         }
 
         private ReferenceFrame.Projection Capture(ReferenceFrame frame, double timestamp, float interpolationDelay)
         {
+            // Predict the followed root first, then save its reference for placing all other entities.
             if (frame != null && frame.FollowedGhost.HasValue)
             {
                 Record reference;
@@ -134,6 +137,7 @@ namespace Emas
 
         private void ObserveTimes(List<Record> records)
         {
+            // Use any valid pose timestamp to improve the shared clock, regardless of anchor or pose type.
             foreach (Record record in records)
             {
                 if (CanProject(record))
@@ -164,6 +168,7 @@ namespace Emas
 
         private void ProjectChain(Record record, ReferenceFrame.Projection projection, double timestamp, float interpolationDelay)
         {
+            // Follow parent links and remember visited records. This detects loops without recursive calls.
             _chain.Clear();
             _visiting.Clear();
             Record current = record;
@@ -178,8 +183,8 @@ namespace Emas
                 }
             }
 
-            // Resolve ancestors first, independent of discovery order, without recursion for deep chains.
-            // A cycle has no projected ancestor: its members and descendants remain hidden until the cycle is broken.
+            // Place parents first, regardless of discovery order. Avoid recursive calls for long parent chains.
+            // If parent links form a loop, hide those roots and their children until the loop is fixed.
             for (int index = _chain.Count - 1; index >= 0 && !_realm.IsDisposed; index--)
             {
                 Record item = _chain[index];
@@ -197,6 +202,7 @@ namespace Emas
             }
 
             Spatial spatial = record.Ghost.GetComponent<Spatial>();
+            // If one root cannot be placed, keep it tracked so a later update can recover.
             bool visible = true;
             try
             {
@@ -229,6 +235,7 @@ namespace Emas
                 PresenceDetector.LogError(exception, "spatial projection for " + record.Key);
             }
 
+            // Update view visibility only when the root's display state changes.
             if (_identities.Contains(record) && record.SpatialVisible != visible)
             {
                 record.SpatialVisible = visible;

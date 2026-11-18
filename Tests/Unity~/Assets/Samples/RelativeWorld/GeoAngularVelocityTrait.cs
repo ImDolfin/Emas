@@ -13,6 +13,7 @@ namespace Emas.RelativeWorld
         public override void Apply(GeoPoseReading value)
         {
             Extrapolation extrapolation = Ghost.GetRequired<Extrapolation>();
+            // Use world angular rates when available. Otherwise use body rates, which differ from Euler angle rates.
             if (value != null && value.EastNorthUpAngularVelocity.HasValue)
             {
                 GeoPosition origin = new GeoPosition(value.LatitudeDegrees, value.LongitudeDegrees, value.AltitudeMeters);
@@ -24,6 +25,7 @@ namespace Emas.RelativeWorld
             }
             else
             {
+                // Clear a missing rate so Emas estimates it from poses rather than keeping the old supplied value.
                 extrapolation.ClearAngularVelocity();
             }
         }

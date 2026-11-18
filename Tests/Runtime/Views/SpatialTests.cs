@@ -206,6 +206,7 @@ namespace Emas.Tests
         [TestCase(2)]
         public void ObservedPose_ProjectsRawInputThroughThePresentedReferenceWithoutMutation(int representation)
         {
+            // Test the same moving reference with Cartesian, geographic and ECEF input.
             GeoPosition origin = new GeoPosition(48, 11, 1200);
             GeoPosition targetLocation = new GeoPosition(48.001, 11.002, 1250);
             ReferenceFrame frame = new ReferenceFrame
@@ -232,6 +233,7 @@ namespace Emas.Tests
             {
                 referenceExtrapolation.SetGeographicVelocity(new Double3(0, 100, 0), origin, time);
             }
+            // Use slow filters so a new raw input is clearly different from the displayed pose.
             frame.FollowedGhost = reference.Key;
             TestGhost ghost = _source.Publish("observed target");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
@@ -263,6 +265,7 @@ namespace Emas.Tests
             Assert.That(Vector3.Distance(referenceObservation.position, reference.transform.position), Is.EqualTo(10).Within(0.002f),
                 "The followed Ghost's observation must use the predicted reference rather than pinning the raw marker to the origin.");
 
+            // Publish a sudden pose change without resetting the filters.
             time = new Timestamp(1001, 0);
             Double3 input = representation == 0 ? frame.Position + new Double3(150, 200, -50) : new GeoPosition(48.002, 11.002, 1250).ToEarthCentered();
             spatial.SetCartesianPosition(input, time);
@@ -290,6 +293,7 @@ namespace Emas.Tests
             Vector3 presentedPosition = ghost.transform.position;
             Quaternion presentedRotation = ghost.transform.rotation;
             Assert.That(frame.TryToUnityPosition(input, out Vector3 expectedPosition), Is.True);
+            // Repeated debug reads must return raw input without changing the displayed pose or sample time.
             for (int read = 0; read < 3; read++)
             {
                 Assert.That(spatial.TryGetObservedUnityPose(out Pose observed), Is.True);
@@ -303,6 +307,7 @@ namespace Emas.Tests
                 Assert.That(spatial.PositionTime, Is.EqualTo(time));
             }
 
+            // Changing the range limit may hide the debug pose, but must keep the raw observation.
             frame.MaxDistance = 1;
             Assert.That(spatial.TryGetObservedUnityPose(out _), Is.False);
             frame.MaxDistance = 5000;
@@ -315,6 +320,7 @@ namespace Emas.Tests
         [Test]
         public void MissingReference_UsesIdentityWorldPoseAndClearingRestoresIt()
         {
+            // With no reference set, source positions must map directly to world positions even under a moved anchor.
             Assert.That(_realm.ReferenceFrame, Is.Null);
             _anchor.Transform.position = new Vector3(50, 20, -10);
             _anchor.Transform.rotation = Quaternion.Euler(0, 30, 0);
@@ -350,7 +356,7 @@ namespace Emas.Tests
             AssertRotation(ghost.transform.rotation, rotation);
             Assert.That(ghost.GetComponent<Spatial>().IsInRange, Is.True);
 
-            // Named geographic angles require Geographic projection; incompatible input suppresses presentation and can recover.
+            // Geographic angles need a Geographic reference. Hide incompatible input and recover when the reference is fixed.
             Spatial spatial = ghost.GetComponent<Spatial>();
             spatial.SetGeographicRotation(0, 0, 0);
             ExpectedErrors.Verify(() => _realm.Update(), "InvalidOperationException: Geographic yaw/pitch/roll requires a Geographic reference frame");
@@ -476,6 +482,7 @@ namespace Emas.Tests
         [Test]
         public void GeographicFollowing_UpdatesCachedPosesAndRetainsReferenceOnLoss()
         {
+            // Move the followed origin without changing the target's raw ECEF position or replacing its view.
             RegisterView();
             ReferenceFrame frame = new ReferenceFrame { Space = ReferenceSpace.Geographic, FollowRotation = false };
             _realm.ReferenceFrame = frame;
@@ -496,6 +503,7 @@ namespace Emas.Tests
             Assert.That(target.GetComponent<Spatial>().Position, Is.EqualTo(stored));
             Assert.That(ActiveView(target), Is.SameAs(view));
             Vector3 projected = target.transform.position;
+            // Keep the last valid reference when its position becomes unusable or its Ghost disappears.
             ego.GetComponent<Spatial>().SetEarthCenteredPosition(new Double3(double.MaxValue, double.MaxValue, double.MaxValue));
             _realm.Update();
             Assert.That(frame.IsReferenceAvailable, Is.False);
@@ -505,6 +513,7 @@ namespace Emas.Tests
             Assert.That(frame.IsReferenceAvailable, Is.False);
             AssertPosition(target.transform.position, projected, 1);
 
+            // A new Ghost with the same key restores following without replacing the target's view.
             TestGhost replacement = _source.PublishEarthCenteredPosition("ego", new GeoPosition(0, 0, 0).ToEarthCentered());
             _realm.Update();
             Assert.That(frame.IsReferenceAvailable, Is.True);
@@ -562,7 +571,7 @@ namespace Emas.Tests
             Presence reference = references.Arrive("ego", referenceReading);
             _realm.Update();
 
-            // Independent PROJ cart/topocentric results, reordered from east/north/up to Unity east/up/north.
+            // Expected positions come from PROJ, with east/north/up reordered to Unity's east/up/north.
             AssertPosition(target.Root.transform.position, new Vector3(13.575955788316f, 9.999975872273f, 11.127827524704f));
             AssertPosition(reference.Root.transform.position, Vector3.zero);
             Assert.That(frame.IsReferenceAvailable, Is.True);
@@ -583,7 +592,7 @@ namespace Emas.Tests
             AssertPosition(reference.Root.transform.position, Vector3.zero);
 
             Spatial referenceSpatial = reference.Root.GetComponent<Spatial>();
-            // Intrinsic heading 90, nose-up pitch 30, right-wing-down roll 90; expected offsets are analytic.
+            // Use heading 90, nose-up pitch 30 and right-wing-down roll 90. Calculate the expected offsets directly.
             referenceSpatial.SetGeographicRotation(450, 30, 90);
             frame.Coordinates = CoordinateSystem.NorthEastDown;
             _realm.Update();
@@ -600,7 +609,7 @@ namespace Emas.Tests
                 Is.EqualTo(Double3.Distance(storedTarget, referenceSpatial.Position)).Within(0.0001));
             Assert.That(_realm.Manifest(target), Is.SameAs(view));
 
-            // Source quaternion axes can change without reinterpreting named geographic angles.
+            // Changing source quaternion axes must not change the meaning of geographic yaw, pitch and roll.
             frame.Coordinates = CoordinateSystem.EastNorthUp;
             _realm.Update();
             AssertPosition(target.Root.transform.position, bankedOffset);
@@ -611,7 +620,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(frame.RotationSpace, Is.EqualTo(RotationSpace.Source));
             AssertPosition(target.Root.transform.position, new Vector3(6.787977894133f, 4.999993968840f, 5.563909085825f));
-            // The application owns these sources; Presence deliberately retains only weak references.
+            // Keep these sources alive. The application owns them, and Presence does not keep them alive.
             GC.KeepAlive(targetReading);
             GC.KeepAlive(referenceReading);
         }
@@ -622,6 +631,7 @@ namespace Emas.Tests
         [Test]
         public void EarthCenteredChannels_RetainGlobalAttitudeAndFollowMixedInputs()
         {
+            // Rotation alone cannot display a spatial view. It also needs position, which may arrive separately.
             RegisterView();
             ReferenceFrame frame = new ReferenceFrame
             {
@@ -645,6 +655,7 @@ namespace Emas.Tests
             Assert.That(spatial.RotationSpace, Is.EqualTo(RotationSpace.EarthCentered));
             Assert.Throws<ArgumentException>(() => spatial.SetEarthCenteredRotation(Quaternion.identity, CoordinateSystem.Unity));
 
+            // Moving the target keeps its ECEF rotation. Moving the reference changes how that rotation appears in Unity.
             spatial.SetEarthCenteredPosition(new GeoPosition(0, 90, 0).ToEarthCentered());
             _realm.Update();
             AssertRotation(spatial.Rotation, north);
@@ -654,6 +665,7 @@ namespace Emas.Tests
             AssertRotation(target.transform.rotation, Quaternion.AngleAxis(90, Vector3.forward));
             Assert.That(ActiveView(target), Is.SameAs(view));
 
+            // The followed ECEF rotation and another target's local rotation must use the same reference.
             TestGhost local = _source.PublishEarthCenteredPosition("local", spatial.Position);
             _source.PublishRotation("local", Quaternion.identity);
             frame.FollowedGhost = target.Key;
@@ -664,6 +676,7 @@ namespace Emas.Tests
             AssertRotation(local.transform.rotation, Quaternion.AngleAxis(-90, Vector3.forward));
             Assert.That(ActiveView(target), Is.SameAs(view));
 
+            // Switching rotation axes must update the followed reference and both displayed rotations.
             spatial.SetSourceRotation(Quaternion.identity);
             _realm.Update();
             Assert.That(spatial.RotationSpace, Is.EqualTo(RotationSpace.Source));
@@ -707,6 +720,7 @@ namespace Emas.Tests
         [Test]
         public void PartialPublications_KeepIndependentSpatialAndArticulationState()
         {
+            // Set position first, then send rotation and application data in separate updates.
             _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1000, 0, 0) };
             Double3 position = new Double3(1005, 2, 3);
             TestGhost ghost = _source.PublishPosition("remote", position);
@@ -772,6 +786,7 @@ namespace Emas.Tests
         [TestCase(true)]
         public void RangeChanges_PreserveMembershipAndRespectPresentationRequests(bool cancelWhileFar)
         {
+            // Check tracking and view requests separately at, inside and outside the range limit.
             RegisterView();
             ReferenceFrame frame = new ReferenceFrame { Position = new Double3(0, 0, 0), MaxDistance = 50 };
             _realm.ReferenceFrame = frame;
@@ -799,6 +814,7 @@ namespace Emas.Tests
                     _realm.Demanifest(ghost);
                 }
 
+                // Move only the reference to bring the same tracked source back into range.
                 frame.Position = new Double3(30, 40, 0);
                 _realm.Update();
                 Assert.That(ghost.GetComponent<Spatial>().IsInRange, Is.True);
@@ -952,6 +968,7 @@ namespace Emas.Tests
         [Test]
         public void RangeSuppression_RestoresOriginalRendererAndColliderStates()
         {
+            // Start with some renderers and colliders enabled and others disabled. Only restore those hidden by Emas.
             RegisterView();
             _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(0, 0, 0), MaxDistance = 10 };
             TestGhost ghost = _source.PublishPosition("remote", new Double3(5, 0, 0));
@@ -974,6 +991,7 @@ namespace Emas.Tests
             Assert.That(disabledCollider.enabled, Is.False);
             Assert.That(ghost.gameObject.activeInHierarchy, Is.True);
 
+            // Also hide components added while outside range, even on inactive children.
             GameObject lateChild = new GameObject("geometry added while suppressed");
             lateChild.transform.SetParent(ghost.transform, false);
             lateChild.SetActive(false);
@@ -990,6 +1008,7 @@ namespace Emas.Tests
             UnityEngine.Object.DestroyImmediate(lateCollider);
             _realm.Update();
 
+            // On return to range, restore only components that Emas disabled.
             _source.PublishPosition("remote", new Double3(6, 0, 0));
             _realm.Update();
             Assert.That(visibleRenderer.enabled, Is.True);
@@ -1001,6 +1020,7 @@ namespace Emas.Tests
 
             _source.PublishPosition("remote", new Double3(50, 0, 0));
             _realm.Update();
+            // Removing the range reference restores components hidden by Emas. Keep user-disabled components disabled.
             _realm.ReferenceFrame = null;
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(50, 0, 0));
@@ -1013,6 +1033,7 @@ namespace Emas.Tests
             _realm.ReferenceFrame = new ReferenceFrame { MaxDistance = 10 };
             _realm.Update();
             Spatial spatial = ghost.GetComponent<Spatial>();
+            // Disabling or destroying Spatial restores components it hid. Enabling it checks the range again.
             spatial.enabled = false;
             Assert.That(spatial.IsInRange, Is.True);
             Assert.That(visibleRenderer.enabled, Is.True);
@@ -1036,6 +1057,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator Smoothing_WithoutVelocityFiltersIndependentChannelsAndCanBeResetOrDisabled()
         {
+            // Start both filters at the first sample. Reject invalid half-lives and keep the previous settings.
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(1e9, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
             Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
@@ -1059,6 +1081,7 @@ namespace Emas.Tests
             float timeScale = Time.timeScale;
             try
             {
+                // Smoothing must keep using real time when game time is paused. Rotation must take the shortest path.
                 Time.timeScale = 0;
                 double positionStarted = Time.realtimeSinceStartupAsDouble;
                 Double3 input = new Double3(1e9 + 10, 2, 0);
@@ -1083,6 +1106,7 @@ namespace Emas.Tests
                 Assert.That(spatial.Position, Is.EqualTo(input));
                 AssertRotation(spatial.Rotation, targetRotation);
 
+                // Changing position or rotation smoothing must keep the other filter's state.
                 smoothing.RotationHalfLife = 0;
                 _realm.Update();
                 yield return AdvanceSmoothing(0.3);
@@ -1099,6 +1123,7 @@ namespace Emas.Tests
                 Assert.That(Quaternion.Angle(targetRotation, ghost.transform.rotation), Is.GreaterThan(0).And.LessThan(80),
                     "Disabling position smoothing keeps rotation smoothing active.");
 
+                // Resetting must clear the remaining smoothing offset and show the current input immediately.
                 spatial.ResetPresentation();
                 _realm.Update();
                 AssertPosition(ghost.transform.position, new Vector3(10, 2, 0));
@@ -1119,6 +1144,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator Smoothing_VelocityPredictsMotionWithoutRejectingCorrections()
         {
+            // Accept a new position behind the current one, even with a strong forward velocity.
             _realm.ReferenceFrame = new ReferenceFrame { Coordinates = CoordinateSystem.NorthEastDown, Position = default(Double3) };
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(10, 0, 0));
             Spatial spatial = ghost.GetComponent<Spatial>();
@@ -1137,6 +1163,7 @@ namespace Emas.Tests
             Assert.That(extrapolation.HasVelocity, Is.True);
             Assert.That(extrapolation.Velocity, Is.EqualTo(new Double3(8, 0, 0)));
 
+            // Stop predicting acceleration at the time limit, even if the same position is sent repeatedly.
             spatial.ResetPresentation();
             spatial.SetCartesianPosition(default(Double3));
             extrapolation.SetCartesianVelocity(new Double3(8, 0, 0));
@@ -1183,6 +1210,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator Smoothing_GeographicReferenceAndAttachmentsSharePresentationPose()
         {
+            // The followed root, a separate target and an attached part must all use the same smoothed reference.
             GeoPosition origin = new GeoPosition(52.520008, 13.404954, 40);
             ReferenceFrame frame = new ReferenceFrame
             {
@@ -1222,6 +1250,7 @@ namespace Emas.Tests
             AssertPosition(target.transform.position, targetPosition);
             AssertPosition(part.transform.position, reference.transform.position + reference.transform.rotation * offset);
 
+            // Change one filter while the other continues smoothing.
             smoothing.RotationHalfLife = 0;
             spatial.SetGeographicRotation(180, 0, 0);
             _realm.Update();
@@ -1260,6 +1289,7 @@ namespace Emas.Tests
         [Test]
         public void Manifest_FromArrivalObserversPreservesSharedAttachmentPresentation()
         {
+            // Request views in arrival callbacks. All roots must already be at their final positions for this update.
             RegisterView(observeEnable: true);
             ReferenceFrame frame = new ReferenceFrame { FollowedGhost = new Key("simulation", SpatialKind, "reference") };
             _realm.ReferenceFrame = frame;
@@ -1334,6 +1364,7 @@ namespace Emas.Tests
         [Test]
         public void Smoothing_RangeRecoveryAndReenableDiscardOldHistory()
         {
+            // Moving the reference can put the smoothed pose outside range while the raw position stays inside.
             ReferenceFrame frame = new ReferenceFrame { Position = default(Double3), MaxDistance = 10 };
             _realm.ReferenceFrame = frame;
             TestGhost ghost = _source.PublishPosition("smooth", new Double3(5, 0, 0));
@@ -1357,6 +1388,7 @@ namespace Emas.Tests
                 "Widening the range must reveal the retained filtered pose, not a reset at the latest raw position.");
             Assert.That(spatial.Position, Is.EqualTo(new Double3(20, 0, 0)));
 
+            // When raw input moves outside range, clear the filter. Returning to range must show the new input immediately.
             frame.Position = default(Double3);
             frame.MaxDistance = 10;
             spatial.SetCartesianPosition(new Double3(100, 0, 0));
@@ -1367,6 +1399,7 @@ namespace Emas.Tests
             Assert.That(spatial.IsInRange, Is.True);
             AssertPosition(ghost.transform.position, new Vector3(7, 0, 0));
 
+            // Re-enabling must start from current source input, not the old displayed pose.
             spatial.enabled = false;
             ghost.transform.position = Vector3.zero;
             spatial.SetCartesianPosition(new Double3(8, 0, 0));
@@ -1381,6 +1414,7 @@ namespace Emas.Tests
         [Test]
         public void Singer_DecaysAccelerationAndPreservesStableLimitingCases()
         {
+            // Advance the clock past the prediction limit so the expected prediction time stays fixed.
             Double3 origin = new Double3(1e9, 0, 0);
             _realm.ReferenceFrame = new ReferenceFrame { Position = origin };
             TestGhost ghost = _source.Publish("Singer mean");
@@ -1401,6 +1435,7 @@ namespace Emas.Tests
             _source.Publish("Singer mean clock").gameObject.AddComponent<Spatial>().SetCartesianPosition(origin, new Timestamp(1002, 0));
             _realm.Update();
 
+            // Sum acceleration in many small steps to check the strategy's formula independently.
             double horizon = extrapolation.MaximumExtrapolation;
             const int steps = 4000;
             double step = horizon / steps;
@@ -1421,6 +1456,7 @@ namespace Emas.Tests
             Assert.That(spatial.PositionTime, Is.EqualTo(time));
             Assert.That(extrapolation.Acceleration, Is.EqualTo(acceleration));
 
+            // Check that the same input approaches constant acceleration and constant velocity at the two limits.
             strategy.ManeuverTimeConstant = float.MaxValue;
             _realm.Update();
             expected = velocity * horizon + acceleration * (0.5d * horizon * horizon);
@@ -1438,6 +1474,7 @@ namespace Emas.Tests
         [Test]
         public void Singer_RespectsIndependentChannelsAndOptionalMotionInGeographicPlayback()
         {
+            // Keep a future acceleration sample, but do not use it to predict from an older position.
             GeoPosition origin = new GeoPosition(48, 11, 1200);
             _realm.ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = origin };
             _realm.InterpolationDelay = 0.1f;
@@ -1479,6 +1516,7 @@ namespace Emas.Tests
         [TestCase(2)]
         public void CoordinatedTurn_IntegratesBodyAccelerationAcrossCoordinateRepresentations(int representation)
         {
+            // Send the same turning motion using three different source coordinate settings.
             GeoPosition origin = new GeoPosition(48, 11, 1200);
             ReferenceFrame frame = new ReferenceFrame
             {
@@ -1520,6 +1558,7 @@ namespace Emas.Tests
             _source.Publish("body clock").gameObject.AddComponent<Spatial>().SetCartesianPosition(frame.Position, new Timestamp(1002, 0));
             _realm.Update();
 
+            // Sum body velocity in many small steps to get an independent expected path.
             const int steps = 4000;
             double step = extrapolation.MaximumExtrapolation / (double)steps;
             Double3 expected = default(Double3);
@@ -1542,6 +1581,7 @@ namespace Emas.Tests
         [Test]
         public void CoordinatedTurn_BankFallbackRespectsZeroOverridesAndRecovery()
         {
+            // Start without rotation rates so the strategy must estimate the turn from bank and speed.
             TestGhost ghost = _source.Publish("bank turn");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
@@ -1561,6 +1601,7 @@ namespace Emas.Tests
                 (float)(100d * Math.Sin(rate * horizon) / rate)), 0.001f);
             AssertRotation(ghost.transform.rotation, Quaternion.Euler(0, (float)(rate * horizon * 180d / Math.PI), 0) * bank);
 
+            // A supplied zero turn rate overrides the bank estimate and gives straight motion with acceleration.
             extrapolation.SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, time);
             extrapolation.SetCartesianAcceleration(new Double3(2, 3, 4), time);
             spatial.ResetPresentation();
@@ -1572,6 +1613,7 @@ namespace Emas.Tests
             extrapolation.SetBodyAngularVelocity(new Double3(0, 1e-8, 0), CoordinateSystem.Unity);
             _realm.Update();
             AssertPosition(ghost.transform.position, straight, 0.001f);
+            // Very large motion must fall back safely, then recover using the valid source pose.
             extrapolation.SetBodyAngularVelocity(new Double3(double.MaxValue, double.MaxValue, 0), CoordinateSystem.Unity);
             extrapolation.MaximumExtrapolation = 1;
             spatial.ResetPresentation();
@@ -1639,6 +1681,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator CoordinatedTurn_ContinuousPacketsConvergeAfterMotionStops()
         {
+            // Compare roots with and without Smoothing, using timestamps, delayed playback and arrival times.
             for (int mode = 0; mode < 3; mode++)
             {
                 _realm.InterpolationDelay = mode == 1 ? 0.05f : 0;
@@ -1663,6 +1706,7 @@ namespace Emas.Tests
                 smoothing.PositionHalfLife = 0.08f;
                 smoothing.RotationHalfLife = 0.04f;
                 _realm.Update();
+                // Send another stationary packet each frame while the previous correction is still fading.
                 double started = Time.realtimeSinceStartupAsDouble;
                 Quaternion stoppedRotation = Quaternion.Euler(10, 60, -30);
                 do
@@ -1698,6 +1742,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator ExtrapolationStrategies_SwitchAtRuntimeWithoutLosingObservations()
         {
+            // Keep input poses and motion fixed. Change only the strategy and its settings-change blend.
             for (int mode = 0; mode < 3; mode++)
             {
                 _realm.InterpolationDelay = mode == 1 ? 0.1f : 0;
@@ -1755,6 +1800,7 @@ namespace Emas.Tests
         [Test]
         public void ExtrapolationStrategies_ControlEstimatedMotionWithoutChangingInterpolation()
         {
+            // Use two timestamped poses to estimate motion. Check the application strategy at the prediction limit.
             TestGhost ghost = _source.Publish("estimated-strategy");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
@@ -1782,6 +1828,7 @@ namespace Emas.Tests
             Assert.That(angular.AngularVelocity.Value.Y, Is.EqualTo(Math.PI / 2).Within(0.00001));
             Assert.That(linear.Acceleration, Is.Null);
 
+            // Supplied zero rates override estimates. Clearing them restores estimates from the stored poses.
             extrapolation.SetCartesianVelocity(default(Double3), new Timestamp(1001, 0));
             extrapolation.SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, new Timestamp(1001, 0));
             _realm.Update();
@@ -1795,6 +1842,7 @@ namespace Emas.Tests
             Assert.That(linear.VelocityIsEstimated, Is.True);
             Assert.That(angular.AngularVelocityIsEstimated, Is.True);
 
+            // NoExtrapolation must still interpolate between stored poses.
             extrapolation.Strategy = new NoExtrapolation();
             _realm.InterpolationDelay = 0.5f;
             spatial.ResetPresentation();
@@ -1809,6 +1857,7 @@ namespace Emas.Tests
         [Test]
         public void ExtrapolationContext_AlignsAllMotionToEachPoseChannel()
         {
+            // Give position and rotation different times, with motion samples before and after each.
             _realm.ReferenceFrame = new ReferenceFrame { Coordinates = CoordinateSystem.NorthEastDown };
             TestGhost ghost = _source.Publish("context");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
@@ -1876,6 +1925,7 @@ namespace Emas.Tests
         [Test]
         public void TimestampedExtrapolation_AlignsPacketAgesAndRejectsOlderChannels()
         {
+            // Use another root's newer timestamp to set the shared clock past this root's prediction limit.
             _realm.ReferenceFrame = new ReferenceFrame { Position = new Double3(1e9, 0, 0) };
             Timestamp older = new Timestamp(1700000000L, 250000000U);
             Timestamp latest = new Timestamp(1700000000L, 900000000U);
@@ -1935,6 +1985,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator BufferedTimeline_InterpolatesBurstChannelsAndResetsWithTheSdkClock()
         {
+            // Send several poses before rendering. Playback uses history while raw properties keep the newest input.
             Assert.That(_realm.InterpolationDelay, Is.Zero);
             Assert.Throws<ArgumentOutOfRangeException>(() => _realm.InterpolationDelay = -0.01f);
             Assert.Throws<ArgumentOutOfRangeException>(() => _realm.InterpolationDelay = float.NaN);
@@ -1958,6 +2009,7 @@ namespace Emas.Tests
             Assert.That(spatial.Position, Is.EqualTo(new Double3(1e9 + 1000, 0, 0)));
             AssertRotation(spatial.Rotation, latestRotation);
 
+            // Reject old and duplicate samples. Playback must stay correct when another entity advances the shared clock.
             spatial.SetCartesianPosition(new Double3(1e9 - 1000, 0, 0), new Timestamp(1005, 0));
             spatial.SetSourceRotation(Quaternion.Euler(0, 180, 0), latest);
             TestGhost clock = _source.Publish("clock");
@@ -1971,6 +2023,7 @@ namespace Emas.Tests
             Assert.That(spatial.RotationTime, Is.EqualTo(latest));
             AssertRotation(spatial.Rotation, latestRotation);
 
+            // Reset SDK time, clear old samples and accept restarted timestamps immediately.
             _realm.ResetSpatialTime();
             Timestamp restarted = new Timestamp(0, 0);
             spatial.SetCartesianPosition(new Double3(1e9 + 50, 0, 0), restarted);
@@ -2020,7 +2073,7 @@ namespace Emas.Tests
             _realm.Update();
             AssertPosition(reference.transform.position, frame.UnityPosition);
             AssertRotation(reference.transform.rotation, frame.UnityRotation);
-            // The independent peer traces a short chord; a 2-degree turn contributes less than 2 mm of offset error.
+            // The separate target follows a short straight segment. Approximating its 2-degree turn adds less than 2 mm of error.
             AssertPosition(peer.transform.position, frame.UnityPosition + frame.UnityRotation * peerOffset, 0.01f);
             AssertRotation(peer.transform.rotation, frame.UnityRotation);
             AssertPosition(part.transform.position, reference.transform.position + reference.transform.rotation * partOffset);
@@ -2174,7 +2227,7 @@ namespace Emas.Tests
             Assert.That(spatial.Position, Is.EqualTo(lastObservation));
             Assert.That(spatial.PositionTime, Is.EqualTo(lastObservationTime));
 
-            // Seed a known playback observation independently of how much earlier motion remains buffered.
+            // Set a known playback pose so this check does not depend on how much older motion is still stored.
             spatial.ResetPresentation();
             _realm.Update();
             Assert.That(ghost.transform.position.x, Is.EqualTo(lastObservation.X - origin + 3).Within(0.001));
@@ -2213,8 +2266,8 @@ namespace Emas.Tests
                 _realm.Update();
                 Assert.That(frame.Position.X, Is.EqualTo(10).Within(0.001));
 
-                // These positions and endpoint velocities describe one coherent accelerated segment.
-                // The new acceleration changes the future lead without changing measurement error.
+                // These positions and velocities describe the same period of constant acceleration.
+                // The new acceleration changes predicted movement without changing the position measurement error.
                 Timestamp turnTime = new Timestamp(0, 20000000);
                 Double3 position = new Double3(1.8, 0.2, 0);
                 Double3 velocity = new Double3(80, 20, 0);
@@ -2251,6 +2304,7 @@ namespace Emas.Tests
         [Test]
         public void TimestampedExtrapolation_IndependentMotionAndOrientationShareThePoseTimeline()
         {
+            // Later velocity can help interpolate earlier motion. Do not use acceleration with no sample at or before the pose.
             TestGhost ghost = _source.Publish("independent channels");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
@@ -2287,6 +2341,7 @@ namespace Emas.Tests
         [UnityTest]
         public IEnumerator TimestampedExtrapolation_HighRateReferenceMatchesIndependentTargetBearing()
         {
+            // Turn around each axis to expose wrong signs. Then turn around all axes together to check their interaction.
             Double3[] bodyRates =
             {
                 new Double3(0, Math.PI, 0),
@@ -2311,6 +2366,7 @@ namespace Emas.Tests
         [Test]
         public void BodyAngularVelocity_PredictsSingleAttitudesAcrossRotationConventions()
         {
+            // One rotation and body pitch rate must give the same predicted rotation with either Cartesian axis setting.
             TestGhost ghost = _source.Publish("angular input");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
@@ -2334,6 +2390,7 @@ namespace Emas.Tests
                 AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
             }
 
+            // The same body roll must work for both geographic and ECEF rotations.
             GeoPosition origin = new GeoPosition(52, 13, 40);
             foreach (bool earthCentered in new[] { false, true })
             {
@@ -2374,7 +2431,7 @@ namespace Emas.Tests
             Double3 earthRate = new Double3(-0.1, 0.3, 0.2);
             Quaternion attitude = Quaternion.AngleAxis(70, Vector3.up)
                 * Quaternion.AngleAxis(-35, Vector3.right) * Quaternion.AngleAxis(-40, Vector3.forward);
-            // At (0, 0), ECEF (-0.1, 0.3, 0.2) maps to Unity's axial vector (-0.3, 0.1, -0.2).
+            // At (0, 0), ECEF angular rate (-0.1, 0.3, 0.2) becomes Unity rate (-0.3, 0.1, -0.2).
             Vector3 worldAxis = new Vector3(-0.3f, 0.1f, -0.2f);
             Quaternion displacement = Quaternion.AngleAxis(worldAxis.magnitude * 0.2f * Mathf.Rad2Deg, worldAxis);
             Quaternion expected = displacement * attitude;
@@ -2391,7 +2448,7 @@ namespace Emas.Tests
                     GeographicPosition = position
                 };
                 _realm.ReferenceFrame = frame;
-                // Supplying motion before pose verifies that reader order does not bind it to an old attitude.
+                // Send motion before pose to check that reading order does not tie motion to an old rotation.
                 extrapolation.SetGeographicAngularVelocity(enuRate, sdkOrigin, sampleTime);
                 spatial.SetGeographicPosition(position, sampleTime);
                 if (space == RotationSpace.Source)
@@ -2438,6 +2495,7 @@ namespace Emas.Tests
         [Test]
         public void BodyAngularVelocity_UsesRotationTimeAndRecoversAfterClearingAndClockReset()
         {
+            // Check live and delayed playback when rotation and angular rates have separate timestamps.
             TestGhost ghost = _source.Publish("angular ordering");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
@@ -2448,6 +2506,7 @@ namespace Emas.Tests
                 _realm.ResetSpatialTime();
                 _realm.InterpolationDelay = delay;
                 spatial.SetCartesianPosition(default(Double3), new Timestamp(2, 0));
+                // Keep a later zero rate as raw input, but predict using the rate available at the rotation time.
                 spatial.SetSourceRotation(Quaternion.identity, new Timestamp(1, 0));
                 Quaternion rotation = Quaternion.AngleAxis(40, Vector3.forward);
                 spatial.SetSourceRotation(rotation, new Timestamp(2, 0));
@@ -2461,6 +2520,7 @@ namespace Emas.Tests
                 AssertRotation(ghost.transform.rotation, rotation * Quaternion.AngleAxis(4.5f, Vector3.up));
                 AssertRotation(spatial.Rotation, rotation);
 
+                // Clearing supplied rates restores the estimate from rotations. Later-only rates must not override it.
                 extrapolation.ClearAngularVelocity();
                 _realm.Update();
                 Assert.That(extrapolation.HasAngularVelocity, Is.False);
@@ -2476,6 +2536,7 @@ namespace Emas.Tests
                 Assert.Throws<ArgumentException>(() => extrapolation.SetBodyAngularVelocity(new Double3(1, 0, 0), default(CoordinateSystem)));
                 Assert.That(extrapolation.AngularVelocity, Is.EqualTo(default(Double3)), "Invalid axes leave accepted motion intact.");
 
+                // Rates without timestamps apply immediately. Disabling prediction then shows the raw rotation.
                 extrapolation.SetBodyAngularVelocity(new Double3(0, Math.PI / 2, 0), CoordinateSystem.Unity);
                 _realm.Update();
                 AssertRotation(ghost.transform.rotation, rotation * Quaternion.AngleAxis(4.5f, Vector3.up));
@@ -2485,6 +2546,7 @@ namespace Emas.Tests
                 AssertRotation(ghost.transform.rotation, rotation);
                 extrapolation.enabled = true;
 
+                // Clock reset accepts restarted timestamps. Filter reset keeps supplied rates.
                 _realm.ResetSpatialTime();
                 spatial.SetCartesianPosition(default(Double3), new Timestamp(0, 0));
                 spatial.SetSourceRotation(Quaternion.identity, new Timestamp(0, 0));
@@ -2496,6 +2558,7 @@ namespace Emas.Tests
                 _realm.Update();
                 Assert.That(extrapolation.HasAngularVelocity, Is.True, "Presentation resets retain supplied angular motion.");
                 AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(4.5f, Vector3.up));
+                // If predicted rotation is too large to calculate, keep the raw rotation. Recover when usable rates return.
                 extrapolation.MaximumExtrapolation = 2;
                 extrapolation.SetBodyAngularVelocity(new Double3(1e308, 1e308, 1e308));
                 witness.SetCartesianPosition(default(Double3), new Timestamp(4, 0));
@@ -2605,7 +2668,7 @@ namespace Emas.Tests
                     Timestamp reorderedTime = default;
                     for (int packet = 0; packet < delays.Length; packet++)
                     {
-                        // Capture actual observation time before transport delay; never stamp a future or arrival-time pose.
+                        // Record the observation time before adding delivery delay. Do not stamp it with a future time or arrival time.
                         double observedSeconds = Time.realtimeSinceStartupAsDouble - started;
                         Timestamp sampleTime = Timestamp.FromSeconds(observedSeconds);
                         double deliveryTime = Time.realtimeSinceStartupAsDouble + delays[packet];
@@ -2618,7 +2681,7 @@ namespace Emas.Tests
 
                         if (packet == 0)
                         {
-                            // Hold this original observation until newer packets have already been accepted.
+                            // Delay this original observation until newer packets have been accepted.
                             reorderedSeconds = observedSeconds;
                             reorderedTime = sampleTime;
                             continue;
@@ -2647,11 +2710,13 @@ namespace Emas.Tests
         /// <returns>An iterator that observes fresh packets followed by packets delayed by 35 milliseconds.</returns>
         private IEnumerator AssertHighRateReference(IExtrapolationStrategy strategy, Double3 bodyRate)
         {
+            // Use separate Realms for correct and reversed rates so their filter states cannot mix.
             Realm[] realms = { new Realm(), new Realm() };
             Spatial[] references = new Spatial[2];
             Extrapolation[] extrapolations = new Extrapolation[2];
             Spatial[] clocks = new Spatial[2];
             TestGhost[] targets = new TestGhost[2];
+            // Calculate a path with constant body rotation rates and the expected target direction without using Emas.
             Vector3 worldTarget = new Vector3(1000, 700, 1000);
             Vector3 angular = new Vector3((float)-bodyRate.Y, (float)bodyRate.Z, (float)-bodyRate.X);
             double radiansPerSecond = angular.magnitude;
@@ -2666,6 +2731,7 @@ namespace Emas.Tests
             double[,] maximumExcess = new double[2, 2];
             try
             {
+                // Give both cases the same observations, default smoothing and shared strategy.
                 for (int variant = 0; variant < realms.Length; variant++)
                 {
                     TestSource source = new TestSource();
@@ -2687,6 +2753,7 @@ namespace Emas.Tests
                 do
                 {
                     elapsed = Time.realtimeSinceStartupAsDouble - started;
+                    // Fresh packets check velocity at the start of prediction. Delayed packets expose wrong signs over a known delay.
                     int phase = elapsed < 0.55d ? 0 : 1;
                     double observed = elapsed - (phase == 0 ? 0 : 0.035d);
                     double angle = radiansPerSecond * observed;
@@ -2696,6 +2763,7 @@ namespace Emas.Tests
                             * (float)(observed - Math.Sin(angle) / radiansPerSecond);
                     Vector3 velocity = RotateTrajectory(initialVelocity, axis, angle);
                     Vector3 acceleration = Vector3.Cross(angular, velocity);
+                    // Send the flight in north/east/down source axes with forward/right/down body rates.
                     Quaternion rotation = conversion.ToSimulationRotation(Quaternion.AngleAxis((float)(angle * Mathf.Rad2Deg), axis));
                     Timestamp sampleTime = Timestamp.FromSeconds(1000d + observed);
                     for (int variant = 0; variant < realms.Length; variant++)
@@ -2706,12 +2774,13 @@ namespace Emas.Tests
                         extrapolations[variant].SetCartesianAcceleration(new Double3(acceleration.z, acceleration.x, -acceleration.y), sampleTime);
                         extrapolations[variant].SetBodyAngularVelocity(variant == 0 ? bodyRate : reversed, sampleTime: sampleTime);
                         double before = Time.realtimeSinceStartupAsDouble;
-                        // A current source-clock witness makes the 35 ms observation age known,
-                        // independently of the production clock's unknown absolute transport offset.
+                        // A current timestamp from another root fixes the observation age at 35 ms,
+                        // without needing to know the total delivery delay estimated by the runtime clock.
                         clocks[variant].SetCartesianPosition(default(Double3), Timestamp.FromSeconds(1000d + before - started));
                         realms[variant].Update();
                         double after = Time.realtimeSinceStartupAsDouble;
                         double now = (before + after) * 0.5d - started;
+                        // Calculate the expected pose at the measured display time, not the older packet time.
                         double currentAngle = radiansPerSecond * now;
                         Vector3 currentPosition = initialVelocity * (float)now
                             + Vector3.Cross(axis, initialVelocity) * (float)((1d - Math.Cos(currentAngle)) / radiansPerSecond)
@@ -2722,8 +2791,8 @@ namespace Emas.Tests
                         if ((phase == 0 && elapsed > 0.25d) || elapsed > 0.7d)
                         {
                             maximumErrors[variant, phase] = Math.Max(maximumErrors[variant, phase], error);
-                            // The projection instant lies inside this measured update. Bound its angular
-                            // timing uncertainty explicitly; rapid rolls magnify even sub-millisecond spans.
+                            // The pose was calculated during this measured update. Allow for rotation during
+                            // that time span, since a fast roll can move visibly in less than a millisecond.
                             maximumExcess[variant, phase] = Math.Max(maximumExcess[variant, phase],
                                 error - radiansPerSecond * Mathf.Rad2Deg * (after - before));
                         }
@@ -2733,6 +2802,7 @@ namespace Emas.Tests
                 }
                 while (elapsed < 1d);
 
+                // Report both cases to show whether error comes from tracking or deliberately reversed rates.
                 TestContext.WriteLine(strategy.GetType().Name + "; FRD rad/s=" + bodyRate
                     + "; correct bearing error fresh/delayed=" + maximumErrors[0, 0] + "/" + maximumErrors[0, 1]
                     + "; reversed sign=" + maximumErrors[1, 0] + "/" + maximumErrors[1, 1] + " deg");
@@ -2764,6 +2834,7 @@ namespace Emas.Tests
         /// <param name="mode">Zero for timed input, one for buffered input, or two for untimed input.</param>
         private IEnumerator AssertCubicPackets(int mode)
         {
+            // Roots that share a strategy must still keep separate packet corrections.
             _realm.InterpolationDelay = mode == 1 ? 0.1f : 0;
             TestGhost ghost = _source.Publish("cubic aircraft " + mode);
             TestGhost peer = _source.Publish("independent aircraft " + mode);
@@ -2788,6 +2859,7 @@ namespace Emas.Tests
             _realm.Update();
             spatial.SetCartesianPosition(new Double3(10, 0, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1001, 0));
             spatial.SetSourceRotation(Quaternion.Euler(0, 60, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1001, 0));
+            // A sudden packet change must start at the visible pose and follow the expected cubic correction curve.
             double started = Time.realtimeSinceStartupAsDouble;
             _realm.Update();
             AssertPosition(ghost.transform.position, Vector3.zero, 0.01f);
@@ -2798,7 +2870,7 @@ namespace Emas.Tests
             Assert.That(ghost.transform.position.x, Is.EqualTo(10d * weight).Within(0.15d));
             Assert.That(Quaternion.Angle(ghost.transform.rotation, Quaternion.Euler(0, (float)(60d * weight), 0)), Is.LessThan(1f));
             double beforeArrival = Time.realtimeSinceStartupAsDouble;
-            // Establish the baseline inside the measured interval; the previous yielded frame may be older.
+            // Measure the starting pose inside this time interval. The previous frame may be older.
             _realm.Update();
             Vector3 before = ghost.transform.position;
             Quaternion beforeRotation = ghost.transform.rotation;
@@ -2808,6 +2880,7 @@ namespace Emas.Tests
             double elapsed = Time.realtimeSinceStartupAsDouble - beforeArrival;
             AssertPosition(ghost.transform.position, before, (float)(0.02d + 75d * elapsed));
             Assert.That(Quaternion.Angle(ghost.transform.rotation, beforeRotation), Is.LessThan(0.1d + 450d * elapsed));
+            // Rejected old packets must not restart the correction or change the other root.
             if (time.HasValue)
             {
                 spatial.SetCartesianPosition(new Double3(1000, 0, 0), time);
@@ -2820,6 +2893,7 @@ namespace Emas.Tests
             Assert.That(spatial.Position, Is.EqualTo(new Double3(-5, 0, 0)));
             Assert.That(ghost.GetComponent<Smoothing>(), Is.Null, "The strategy supplies its own cubic packet correction.");
 
+            // Smoothing must follow motion after packet correction without adding the original prediction again.
             ghost.gameObject.AddComponent<Smoothing>();
             _realm.Update();
             ghost.GetComponent<Extrapolation>().SetCartesianVelocity(new Double3(70, 0, 0), new Timestamp(1002, 0));
@@ -2829,6 +2903,7 @@ namespace Emas.Tests
             AssertPosition(ghost.transform.position, new Vector3(-1.5f, 0, 0), 0.02f);
             ghost.GetComponent<Extrapolation>().SetCartesianVelocity(default(Double3));
 
+            // Check that filter reset and SDK clock reset each clear the corrections they own.
             spatial.SetCartesianPosition(new Double3(20, 0, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1003, 0));
             _realm.Update();
             Assert.That(ghost.transform.position.x, Is.LessThan(19));
@@ -2855,6 +2930,7 @@ namespace Emas.Tests
         /// <returns>An iterator that holds rendering until the full maneuver reaches playback time.</returns>
         private IEnumerator AssertBufferedManeuverPreservesMotion()
         {
+            // Store a rapid maneuver followed by a large velocity that playback has not reached yet.
             _realm.ResetSpatialTime();
             _realm.InterpolationDelay = 1.05f;
             TestGhost ghost = _source.Publish("buffered maneuver");
@@ -2876,6 +2952,7 @@ namespace Emas.Tests
             _realm.Update();
             AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
             double deadline = Time.realtimeSinceStartupAsDouble + 0.22;
+            // Skip across the maneuver in one frame. Smoothing must use motion at playback time, not the newest rate.
             do
             {
                 yield return null;
@@ -2915,8 +2992,8 @@ namespace Emas.Tests
             _realm.Update();
             AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
 
-            // Initialize the filter before the gap, then cross the acceleration timestamp in one step.
-            // A longer render interval remains valid because extrapolation freezes at the same zero pose.
+            // Start the filter before the gap, then cross the acceleration timestamp in one update.
+            // A slow frame is also valid because prediction stops at the same stationary pose.
             double deadline = Time.realtimeSinceStartupAsDouble + 0.03;
             do
             {
@@ -2945,8 +3022,8 @@ namespace Emas.Tests
             _realm.Update();
             AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
 
-            // Recorded playback follows supplied velocity, independently of acceleration used for gap extrapolation.
-            // Cross the acceleration timestamp while the position buffer still brackets the stationary target.
+            // Recorded playback follows supplied velocity. Acceleration is used separately to predict past recorded poses.
+            // Cross the acceleration timestamp while stored positions still cover the playback time.
             deadline = Time.realtimeSinceStartupAsDouble + 0.1;
             do
             {
@@ -3066,6 +3143,7 @@ namespace Emas.Tests
         /// <returns>An iterator that advances the moving stream, held sample and opposite correction.</returns>
         private IEnumerator AssertMotionWithoutExtrapolation(TestGhost ghost, Spatial spatial, Smoothing smoothing, Extrapolation extrapolation)
         {
+            // Compare the same smoothing settings with and without SDK velocity while prediction is disabled.
             TestGhost unassisted = _source.PublishPosition("unassisted", default(Double3));
             Spatial other = unassisted.GetComponent<Spatial>();
             Smoothing otherSmoothing = unassisted.gameObject.AddComponent<Smoothing>();
@@ -3101,6 +3179,7 @@ namespace Emas.Tests
             Assert.That(unassisted.GetComponent<Extrapolation>(), Is.Null);
             Assert.That(extrapolation.enabled, Is.False);
 
+            // Once the source stops sending positions, supplied velocity must not keep moving the displayed pose.
             Double3 heldPosition = spatial.Position;
             yield return AdvanceSmoothing(0.12);
             Assert.That(ghost.transform.position.z, Is.EqualTo(heldPosition.X).Within(0.05),
@@ -3109,6 +3188,7 @@ namespace Emas.Tests
             Assert.That(spatial.PositionTime, Is.EqualTo(sampleTime));
             Assert.That(extrapolation.Velocity, Is.EqualTo(new Double3(100, 0, 0)));
 
+            // Accept and smooth a new position behind the current one, even while velocity still points forward.
             Double3 corrected = heldPosition - new Double3(10, 0, 0);
             Timestamp correctionTime = Timestamp.FromSeconds(elapsed + 0.001);
             spatial.SetCartesianPosition(corrected, correctionTime);

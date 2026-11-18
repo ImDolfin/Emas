@@ -34,6 +34,7 @@ namespace Emas
 
             private void OnDestroy()
             {
+                // Clear the link before cleanup can try to destroy this scene object again.
                 Anchor anchor = _anchor;
                 _anchor = null;
                 if (anchor != null)
@@ -129,6 +130,7 @@ namespace Emas
                 throw new InvalidOperationException("The source is already attached to an anchor.");
             }
 
+            // Save existing roots so failed startup can leave prepared roots intact.
             HashSet<Record> previous = Realm.CaptureGhosts();
             _sources.Add(source);
             long generation = source.RegistrationGeneration + 1;
@@ -138,7 +140,7 @@ namespace Emas
             }
             catch
             {
-                // Startup callbacks may remove and reattach the same instance before throwing.
+                // OnStart may remove and attach this source again before throwing an error.
                 if (source.RegistrationGeneration == generation)
                 {
                     _sources.Remove(source);
@@ -204,6 +206,7 @@ namespace Emas
                 throw new InvalidOperationException("A source cannot restart during startup, cleanup or another restart.");
             }
 
+            // Save this source version. Cleanup callbacks may attach a new version while we wait.
             long generation = source.RegistrationGeneration;
             try
             {
@@ -213,7 +216,7 @@ namespace Emas
                     return;
                 }
 
-                // Retain roots, but require publication from the new registration before exposing their data.
+                // Keep the roots, but hide their data until the restarted source reports them again.
                 Realm.MarkUnavailable(source);
                 if (!CanContinueRestart(source, generation))
                 {
@@ -222,6 +225,7 @@ namespace Emas
 
                 try
                 {
+                    // Let the restarted source report which old roots it will keep.
                     source.Attach(this);
                     if (source.IsAttachedTo(this) && source.RegistrationGeneration == generation + 1)
                     {
@@ -279,6 +283,7 @@ namespace Emas
                 throw new InvalidOperationException("The replacement source is already registered with an anchor.");
             }
 
+            // Store the replacement before old cleanup can remove this Anchor.
             _sources[index] = replacement;
             current.Detach();
 
@@ -288,7 +293,7 @@ namespace Emas
                 return;
             }
 
-            // Transfer existing roots; the replacement makes them available as it republishes.
+            // Give old roots to the replacement. They become available when it reports them again.
             Realm.TransferSource(current, replacement);
             if (_disposed || !_sources.Contains(replacement))
             {
@@ -307,7 +312,7 @@ namespace Emas
             }
             catch
             {
-                // A failed handover releases transferred and partially initialized ghosts.
+                // If replacement startup fails, remove both old roots and any roots it just created.
                 if (replacement.IsAttachedTo(this) && replacement.RegistrationGeneration == generation)
                 {
                     Realm.RemoveSourceGhosts(replacement);
@@ -332,7 +337,7 @@ namespace Emas
             _disposed = true;
             List<PresenceDetector> sources = new List<PresenceDetector>(_sources);
             _sources.Clear();
-            // Remove registration and records before scene callbacks can reenter the realm.
+            // Remove the Anchor and its roots before scene callbacks can call back into the Realm.
             Realm.NotifyAnchorDisposed(this);
             for (int index = sources.Count - 1; index >= 0; index--)
             {
@@ -341,6 +346,7 @@ namespace Emas
                 Realm.RemoveSourceGhosts(sources[index]);
             }
 
+            // Disconnect the root setup callback after all detectors have finished cleanup.
             GhostInitializer initializer = _ghostInitializer;
             _ghostInitializer = null;
             InitializeGhost = null;
@@ -378,7 +384,7 @@ namespace Emas
             source.Detach();
             if (source.RegistrationGeneration == generation && !source.IsAttached)
             {
-                // Keep records that were prepared before this batch instead of destroying them.
+                // Keep roots prepared before these sources were added.
                 Realm.RollbackSource(source, previous);
             }
         }
@@ -405,12 +411,13 @@ namespace Emas
             }
 
             List<SourceTick> sources = new List<SourceTick>(_sources.Count);
-            // Snapshot attachment generations so a detector restarted by an earlier callback waits until the next tick.
+            // Save source versions so a detector restarted by another callback waits for the next tick.
             for (int index = 0; index < _sources.Count; index++)
             {
                 sources.Add(new SourceTick(_sources[index]));
             }
 
+            // Earlier callbacks may remove the Anchor or replace a saved source version.
             for (int index = 0; index < sources.Count; index++)
             {
                 if (_disposed)

@@ -62,6 +62,7 @@ namespace Emas.Tests
         [Test]
         public void LateParent_ResolvesChainsAndRecoversAfterRediscovery()
         {
+            // Find the last child first. It must wait for its missing parents before it can be shown.
             RegisterView();
             _partsAnchor.Transform.SetPositionAndRotation(new Vector3(100, -20, 7), Quaternion.AngleAxis(20, Vector3.up));
             _partsAnchor.Transform.localScale = new Vector3(2, 3, 4);
@@ -87,6 +88,7 @@ namespace Emas.Tests
             Assert.That(renderer.enabled, Is.False);
             Assert.That(collider.enabled, Is.False);
 
+            // Parent scale must not change the offsets. Parts must stay under their own Anchors.
             Ghost parent = _parents.Arrive("vehicle");
             Spatial parentSpatial = parent.GetComponent<Spatial>();
             parentSpatial.SetCartesianPosition(new Double3(10, 20, 30));
@@ -111,6 +113,7 @@ namespace Emas.Tests
             AssertPosition(tip, new Vector3(20, 30, 37));
             AssertRotation(tip, Quaternion.AngleAxis(90, Vector3.up) * Quaternion.AngleAxis(30, Vector3.right));
 
+            // Hide the child when a parent goes missing, but keep tracking the child.
             _parents.Leave("vehicle");
             _realm.Update();
             Assert.That(_realm.TryGetGhost(tip.Key, out IGhost retained), Is.True);
@@ -120,6 +123,7 @@ namespace Emas.Tests
             Assert.That(mountSpatial.AttachedTo, Is.EqualTo(parentKey));
             Assert.That(tip.GetComponentInChildren<View>(), Is.Null);
 
+            // Find the replacement parent by its Key. Do not keep using the old parent's transform.
             Ghost replacement = _parents.Arrive("vehicle");
             Assert.That(replacement, Is.Not.SameAs(parent));
             replacement.GetComponent<Spatial>().SetCartesianPosition(new Double3(5, 6, 7));
@@ -148,6 +152,7 @@ namespace Emas.Tests
             _realm.ReferenceFrame = frame;
             Ghost part = _parts.Arrive("part");
             Spatial spatial = part.GetComponent<Spatial>();
+            // Save a distant source position before attaching. The attachment must still place the part.
             GeoPosition stalePosition = new GeoPosition(0, 0.1, 0);
             spatial.SetGeographicPosition(stalePosition);
             spatial.SetGeographicRotation(10, 20, 30);
@@ -164,6 +169,7 @@ namespace Emas.Tests
             AssertRotation(part, frame.UnityRotation);
             Assert.That(spatial.Position, Is.EqualTo(stalePosition.ToEarthCentered()));
 
+            // Move the reference and parent while sending unrelated source positions for the part.
             GeoPosition movedPosition = new GeoPosition(10, 10, 100);
             parentSpatial.SetGeographicPosition(movedPosition);
             parentSpatial.SetGeographicRotation(180, 30, 20);
@@ -180,6 +186,7 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(spatial.IsInRange, Is.True);
 
+            // Supply the release position and rotation before detaching, so normal placement can resume.
             spatial.SetGeographicPosition(movedPosition);
             spatial.SetGeographicRotation(180, 30, 20);
             Quaternion cachedRotation = spatial.Rotation;
@@ -200,6 +207,7 @@ namespace Emas.Tests
         [Test]
         public void AttachmentCycle_HidesDependentsAndRecoversWhenBroken()
         {
+            // A part cannot be placed while its chain of parents loops back on itself.
             Ghost child = _parts.Arrive("child");
             Ghost first = _parts.Arrive("first");
             Ghost second = _parts.Arrive("second");
@@ -218,6 +226,7 @@ namespace Emas.Tests
             Assert.That(_realm.Query().Count, Is.EqualTo(3));
             Assert.That(_parts.LastError, Is.Null);
 
+            // Break the loop so Emas can place each parent before its child.
             secondSpatial.Detach();
             _realm.Update();
             AssertPosition(second, new Vector3(10, 20, 30));
@@ -251,6 +260,7 @@ namespace Emas.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => spatial.Attach(missing, Vector3.zero, default));
             Assert.That(spatial.AttachedTo, Is.EqualTo(missing));
 
+            // Detaching cannot invent a source position that was never supplied.
             spatial.Detach();
             _realm.Update();
             Assert.That(spatial.AttachedTo, Is.Null);

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Owns match intervals; callbacks may remove ghosts, dispose subscriptions or dispose the realm.
+    // Tracks when matches arrive and leave. Callbacks may remove Ghosts or dispose subscriptions or the Realm.
     internal sealed class Subscriptions
     {
         private sealed class Subscription : IDisposable
@@ -36,6 +36,7 @@ namespace Emas
                     return;
                 }
 
+                // Remove the subscription first, then clear matches and callbacks. A callback may call this method.
                 Disposed = true;
                 Owner._items.Remove(this);
                 Seen.Clear();
@@ -62,6 +63,7 @@ namespace Emas
         {
             Subscription subscription = new Subscription(this, query, callback, onLeave);
             _items.Add(subscription);
+            // Report initial matches through the normal notification pass so callbacks cannot start a nested pass.
             if (notifyImmediately && !_notifying)
             {
                 _notifying = true;
@@ -80,6 +82,7 @@ namespace Emas
 
         internal void Forget(Key key)
         {
+            // Remember a departure even if the same Key returns before the next query check.
             for (int index = 0; index < _items.Count; index++)
             {
                 Subscription subscription = _items[index];
@@ -101,7 +104,7 @@ namespace Emas
             try
             {
                 _notificationItems.Clear();
-                // New subscriptions created by a callback join the next pass, preventing recursive initial notifications.
+                // Subscriptions added by callbacks wait for the next pass, so their initial callbacks cannot nest.
                 _notificationItems.AddRange(_items);
                 for (int index = 0; index < _notificationItems.Count; index++)
                 {
@@ -141,6 +144,7 @@ namespace Emas
             HashSet<Key> keys = subscription.MatchKeys;
             try
             {
+                // Report departures before arrivals so observers see when a Ghost leaves and returns.
                 RefreshMatches(subscription, matches, keys);
                 if (!NotifyDepartures(subscription, departures))
                 {
@@ -151,6 +155,7 @@ namespace Emas
             }
             finally
             {
+                // Release Ghost references even if a callback disposes the subscription or Realm.
                 matches.Clear();
                 departures.Clear();
                 keys.Clear();
@@ -166,7 +171,7 @@ namespace Emas
                 keys.Add(matches[index].Key);
             }
 
-            // Collect departures before invoking consumers, which may mutate the realm again.
+            // Collect departures before calling observers, since their callbacks may change the Realm.
             foreach (Key key in subscription.Seen)
             {
                 if (!keys.Contains(key) && subscription.OnLeave != null)
@@ -180,10 +185,10 @@ namespace Emas
 
         private bool NotifyDepartures(Subscription subscription, List<Key> departures)
         {
-            // Drain departures before arrivals so loss and recovery of the same Key remain observable.
+            // Report departures before arrivals so observers see when the same Key leaves and returns.
             departures.Clear();
             departures.AddRange(subscription.Departures);
-            // Departures queued by these callbacks stay in Departures for the next notification pass.
+            // Departures added by these callbacks wait for the next notification pass.
             subscription.Departures.Clear();
             for (int index = 0; index < departures.Count; index++)
             {
@@ -216,12 +221,13 @@ namespace Emas
                 }
 
                 IGhost ghost = matches[index];
-                // A preceding callback can remove or invalidate another match in this snapshot.
+                // An earlier callback may have removed this Ghost or changed whether it matches.
                 if (!_realm.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
                 {
                     continue;
                 }
 
+                // Save the match before calling observers, since a callback may remove this Ghost right away.
                 if (subscription.Seen.Add(ghost.Key))
                 {
                     try

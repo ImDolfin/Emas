@@ -12,6 +12,7 @@ namespace Emas.RelativeWorld
         public override void Apply(GeoPoseReading value)
         {
             Extrapolation extrapolation = Ghost.GetRequired<Extrapolation>();
+            // Convert using the packet's geographic axes and time without using the displayed rotation.
             if (value != null && value.EastNorthUpAcceleration.HasValue)
             {
                 extrapolation.SetGeographicAcceleration(value.EastNorthUpAcceleration.Value,

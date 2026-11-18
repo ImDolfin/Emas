@@ -13,6 +13,7 @@ namespace Emas.Sample
 
         internal static Vector3 GetCarPosition(int index, float elapsedSeconds)
         {
+            // Start each car at a different point on the same ellipse in both mock SDKs.
             float phase = elapsedSeconds * 0.55f + index * (Mathf.PI * 2.0f / CarCount);
             return new Vector3(
                 Mathf.Sin(phase) * CarRadiusX,

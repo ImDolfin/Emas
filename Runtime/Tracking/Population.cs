@@ -92,6 +92,7 @@ namespace Emas
                 throw new ArgumentNullException(nameof(initialize));
             }
 
+            // Choose setup rules before creating roots so every root of this Kind follows the same rules.
             foreach (Record record in _identities.Values)
             {
                 if (record.Key.Kind == kind)
@@ -185,7 +186,7 @@ namespace Emas
                 throw new ArgumentException("Anchor, kind and entity identifiers are required.");
             }
 
-            // Reuse a compatible root whenever this identity already exists.
+            // Keep the existing root when its Key and required type match.
             Key key = new Key(anchorId, kind, entityId);
             Record record;
             if (_identities.TryGetValue(key, out record))
@@ -200,6 +201,7 @@ namespace Emas
             Kind kind, string name, Variant? variant, List<Type> capabilitySnapshot, object source,
             Anchor anchor, ManifestationBlueprintSnapshot blueprint, Action<Presence, Ghost> localInitializer)
         {
+            // Use the Anchor's setup callback when present. Otherwise use the Realm's setup rules.
             Key key = new Key(anchorId, kind, entityId);
             IPresenceInitializer initializer = null;
             Ghost root;
@@ -212,16 +214,18 @@ namespace Emas
                 root = GetOrCreate<Ghost>(detector, anchorId, entityId, kind, variant, name, anchor, blueprint);
             }
 
+            // Keep the same Presence and check whether a changed source needs new readers.
             Record record = _identities.Find(root);
             Presence presence = EnsurePresence(record);
             bool sourceChanged = source != null && presence.SetSource(source);
             if (sourceChanged)
             {
-                // Drop readers tied to the previous proxy before binding the replacement source.
+                // Release readers that still use the old source before connecting the new source.
                 ClearTraitBindings(root);
             }
 
             bool capabilitiesChanged = presence.SetMetadata(root.Name, root.Variant, capabilitySnapshot);
+            // Changing just the name or appearance does not need new readers.
             if (!record.PresenceInitialized || capabilitiesChanged || sourceChanged)
             {
                 if (localInitializer != null)
@@ -256,7 +260,7 @@ namespace Emas
             record.LastPublishedAt = _elapsedSeconds();
             if (record.IsMissing)
             {
-                // Retained roots recover at finalization; do not activate before the caller finishes updating data.
+                // Mark the root for recovery, but wait until the caller finishes its data before activating it.
                 record.IsMissing = false;
                 record.MissingUntil = 0;
                 record.PendingActivation = true;
@@ -265,6 +269,7 @@ namespace Emas
 
         internal void RemoveExpiredGhosts()
         {
+            // Use one time reading and one root list for all timeout checks in this pass.
             double now = _elapsedSeconds();
             List<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
@@ -277,6 +282,7 @@ namespace Emas
                     continue;
                 }
 
+                // Missing roots wait for grace to end. Other roots disappear after their source's timeout.
                 if (record.IsMissing)
                 {
                     if (now >= record.MissingUntil)
@@ -315,6 +321,7 @@ namespace Emas
                 return;
             }
 
+            // Hide the root now, but keep it and its view request in case the source reports it again.
             record.IsMissing = true;
             record.MissingUntil = _elapsedSeconds() + grace.TotalSeconds;
             InvalidateAvailability(record);
@@ -328,7 +335,7 @@ namespace Emas
         {
             long generation = owner.RegistrationGeneration;
             List<Record> records = _identities.OwnedBy(owner);
-            // Hide the whole population before destruction callbacks can observe or reattach it.
+            // Hide all owned roots before cleanup callbacks can use or report them again.
             for (int index = 0; index < records.Count; index++)
             {
                 InvalidateAvailability(records[index]);
@@ -337,7 +344,7 @@ namespace Emas
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];
-                // Scene callbacks may reattach this source and reclaim a root that is still in this batch.
+                // An earlier scene callback may restart this source and report a root we have not removed yet.
                 if (_identities.Contains(record) && record.Owner == owner && record.RegistrationGeneration <= generation)
                 {
                     RemoveRecord(record);
@@ -353,7 +360,7 @@ namespace Emas
                 Record record = records[index];
                 if (record.RegistrationGeneration != owner.RegistrationGeneration)
                 {
-                    // Give retained identities one update plus the startup dispatch batch to be reclaimed.
+                    // Allow one update and the queued startup work for the new source to report each old root.
                     record.HandoverUpdate = updateNumber + 1;
                     record.HandoverDispatchSequence = dispatchSequence;
                 }
@@ -371,7 +378,7 @@ namespace Emas
                     continue;
                 }
 
-                // Wait only for work queued by startup, so later traffic cannot prolong the handover indefinitely.
+                // Wait only for startup work. Later queued work must not keep old roots alive forever.
                 if (hasPendingThrough(record.HandoverDispatchSequence))
                 {
                     continue;
@@ -392,7 +399,7 @@ namespace Emas
             {
                 Record record = records[index];
                 record.Owner = replacement;
-                // Ownership transfers now, but only a publication from the replacement can claim its attachment generation.
+                // Change the owner now. The new source must report the root before it belongs to the new source version.
                 record.RegistrationGeneration = -1;
                 InvalidateAvailability(record);
             }
@@ -402,6 +409,7 @@ namespace Emas
 
         internal void MarkUnavailable(PresenceDetector owner)
         {
+            // Mark all roots unavailable before OnDisable callbacks can inspect other roots.
             List<Record> records = _identities.OwnedBy(owner);
             for (int index = 0; index < records.Count; index++)
             {
@@ -436,12 +444,13 @@ namespace Emas
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];
-                // Preserve roots reclaimed by a newer attachment during earlier scene cleanup.
+                // Keep roots already reported again by a restarted source during scene cleanup.
                 if (!_identities.Contains(record) || record.Owner != owner || record.RegistrationGeneration > generation)
                 {
                     continue;
                 }
 
+                // Remove new roots. Keep previously prepared roots for another source to use.
                 if (!previous.Contains(record))
                 {
                     RemoveRecord(record);
@@ -460,7 +469,7 @@ namespace Emas
 
         internal void RemoveRecord(Record record)
         {
-            // Remove the identity first so view/root cleanup callbacks can safely rediscover the same Key.
+            // Remove the Key first so cleanup callbacks can create a new root with that Key.
             if (!_identities.Remove(record))
             {
                 return;
@@ -468,7 +477,7 @@ namespace Emas
 
             if (record.Ghost != null)
             {
-                // Clear ownership before cleanup callbacks can observe the removed root or rediscover its identity.
+                // Clear the Anchor link before callbacks can inspect the old root or report its Key again.
                 record.Ghost.ClearAnchor();
             }
 
@@ -493,6 +502,7 @@ namespace Emas
 
         internal void RefreshTraits(List<Record> records, PresenceDetector onlyOwner)
         {
+            // Use the saved root list, but check that each source still owns the root before reading its data.
             foreach (Record record in records)
             {
                 if (!CanFinalize(record, onlyOwner) || (!record.PendingActivation && !record.Ghost.IsAvailable))
@@ -509,7 +519,7 @@ namespace Emas
                     for (int index = 0; index < traits.Count; index++)
                     {
                         Trait trait = traits[index];
-                        // A preceding reader can restart the detector or reclaim this root; stop using the old bindings.
+                        // An earlier reader may restart the detector or change owners. Stop using the old readers then.
                         if (!CanFinalize(record, onlyOwner) || record.Owner != owner
                             || record.RegistrationGeneration != generation || record.OwnershipVersion != ownership)
                         {
@@ -524,6 +534,7 @@ namespace Emas
                 }
                 catch (Exception exception)
                 {
+                    // An error from an old reader must not stop a source that restarted during that read.
                     if (owner.IsRegistration(_realm, generation))
                     {
                         owner.HandleFailure(exception, PresenceDetector.DescribeError(owner.CaptureErrorContext(),
@@ -539,6 +550,7 @@ namespace Emas
 
         internal void UpdateGhosts(List<Record> records)
         {
+            // All trait reads are finished. Run Ghost.OnUpdate only on enabled roots that still have an owner.
             foreach (Record record in records)
             {
                 if (!CanFinalize(record, null) || !record.Ghost.enabled
@@ -570,7 +582,7 @@ namespace Emas
 
         internal void ActivateRoots(List<Record> records, PresenceDetector onlyOwner)
         {
-            // Make initialized roots available before Realm refreshes their views.
+            // Make ready roots available before the Realm updates their views.
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];
@@ -584,6 +596,7 @@ namespace Emas
                 long ownership = record.OwnershipVersion;
                 try
                 {
+                    // Set IsAvailable before OnEnable so callbacks see a ready root.
                     record.PendingActivation = false;
                     record.ViewDirty = true;
                     record.Ghost.SetAvailable(true);
@@ -620,6 +633,7 @@ namespace Emas
                 throw new InvalidOperationException("The ghost is owned by another source.");
             }
 
+            // Update changed view settings even when the root and owner stay the same.
             if (!ReferenceEquals(record.ManifestationBlueprint, blueprint))
             {
                 record.ManifestationBlueprint = blueprint;
@@ -630,7 +644,7 @@ namespace Emas
                 }
             }
 
-            // Reclaim ownership before readers run; publication refreshes expiry but activation waits for finalization.
+            // Set the owner and refresh the timeout now. Activate only after the source finishes its data.
             bool variantChanged = variant.HasValue && record.Ghost.Variant != variant.Value;
             record.Owner = owner ?? record.Owner;
             if (owner != null)
@@ -642,6 +656,7 @@ namespace Emas
                 record.MissingUntil = 0;
             }
 
+            // A changed appearance needs a view refresh even when the Ghost stays the same.
             record.Ghost.SetMetadata(nameValue, variant);
             if (variantChanged)
             {
@@ -677,7 +692,7 @@ namespace Emas
 
             Transform anchorTransform = anchor.Transform;
 
-            // Keep the root inactive until its identity and initial data are ready.
+            // Keep the root inactive until its Key and first data are ready.
             GameObject staging = new GameObject("[Emas Staging]");
             staging.transform.SetParent(anchorTransform, false);
             staging.SetActive(false);
@@ -685,6 +700,7 @@ namespace Emas
             TGhost typed;
             try
             {
+                // Create under an inactive parent so OnEnable cannot run before the root gets its Key.
                 if (prefab == null)
                 {
                     GameObject gameObject = new GameObject(key.EntityId);
@@ -701,6 +717,7 @@ namespace Emas
                     }
                 }
 
+                // Set the Key, then move the inactive root under its Anchor.
                 typed.gameObject.name = key.EntityId;
                 typed.gameObject.SetActive(false);
                 typed.Initialize(anchor, key, nameValue ?? key.EntityId, variant ?? Variant.None);
@@ -715,7 +732,7 @@ namespace Emas
 
             UnityEngine.Object.Destroy(staging);
             typed.SetAvailable(false);
-            // Register only a fully initialized root; startup rollback uses this record to restore the prior population.
+            // Add the ready root to tracking so failed startup can undo it or restore a prepared root.
             Record newRecord = new Record(typed, owner, blueprint);
             newRecord.LastPublishedAt = owner == null ? 0 : _elapsedSeconds();
             newRecord.PendingActivation = owner != null;
@@ -726,6 +743,7 @@ namespace Emas
 
         private Presence EnsurePresence(Record record)
         {
+            // Name and appearance changes keep the same Presence. Only removal ends its lifetime.
             if (record.Presence == null)
             {
                 record.Presence = new Presence(_realm, record.Key, record.Ghost.Name, record.Ghost.Variant);
@@ -753,6 +771,7 @@ namespace Emas
 
         private void InvalidateAvailability(Record record)
         {
+            // Release old readers before hiding the root, even when keeping it for a restart or grace period.
             record.PendingActivation = false;
             record.PresenceInitialized = false;
             if (record.Ghost != null)
@@ -760,7 +779,7 @@ namespace Emas
                 ClearTraitBindings(record.Ghost);
             }
 
-            // Invalidate in-progress readers and view refreshes even when the root itself is retained.
+            // Change these versions so unfinished reader and view work knows it must stop using old data.
             record.OwnershipVersion++;
             record.ViewVersion++;
             record.ViewDirty = true;
@@ -775,6 +794,7 @@ namespace Emas
                 record.Presence.SetSource(null);
             }
 
+            // Report the loss to queries even if the source reports the same Key again right away.
             _subscriptions.Forget(record.Key);
         }
 
@@ -791,6 +811,7 @@ namespace Emas
 
         private void DeactivateRecords(List<Record> records, PresenceDetector owner)
         {
+            // An earlier OnDisable may report another root again. Check its owner and availability before hiding it.
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];

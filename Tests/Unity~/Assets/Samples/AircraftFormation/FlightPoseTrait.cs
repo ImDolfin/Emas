@@ -10,6 +10,7 @@ namespace Emas.AircraftFormation
         /// <param name="data">One immutable reading in Cartesian metres and Unity quaternion axes.</param>
         public override void Apply(FlightReading data)
         {
+            // Use each channel's capture time so reader order cannot change the sample's age.
             Spatial spatial = GetComponent<Spatial>();
             spatial.SetCartesianPosition(data.Position, data.SampleTime);
             spatial.SetSourceRotation(data.Rotation, data.SampleTime);

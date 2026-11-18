@@ -41,6 +41,7 @@ namespace Emas
                 return prefix + ". TryGet did not resolve a single matching root component.";
             }
 
+            // Check only components on the root. Keep their names so errors can explain what is missing or duplicated.
             List<string> matches = new List<string>();
             List<string> components = new List<string>();
             foreach (MonoBehaviour component in root.GetComponents<MonoBehaviour>())
@@ -59,6 +60,7 @@ namespace Emas
             }
 
             string context = prefix + ": found " + matches.Count + " matching root components on GameObject '" + root.name + "'. ";
+            // Explain which component to add for a missing match, or list the components causing duplicate matches.
             if (matches.Count == 0)
             {
                 return context + "Check the Ghost Prefab field in the Manifestation Blueprint for Kind '" + ghost.Key.Kind.Id

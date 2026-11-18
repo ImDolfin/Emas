@@ -12,6 +12,7 @@ namespace Emas.Editor
         /// <summary>Draws authored settings, runtime data and root-trait settings without section foldouts.</summary>
         public override void OnInspectorGUI()
         {
+            // Save the root's edits first, then edit and save each trait separately.
             serializedObject.Update();
             using (new EditorGUI.DisabledScope(true))
             {
@@ -21,6 +22,7 @@ namespace Emas.Editor
             serializedObject.ApplyModifiedProperties();
             foreach (Object value in targets)
             {
+                // Read each root's own metadata and traits when several objects are selected.
                 Ghost ghost = (Ghost)value;
                 Key key = ghost.Key;
                 bool tracked = key.Kind.IsValid;
@@ -68,6 +70,7 @@ namespace Emas.Editor
 
             using (InspectorLayout.Section("Pose debugger"))
             {
+                // Pin a single root. With several roots, let the pose tool use the current selection.
                 if (GUILayout.Button("Inspect poses in Emas"))
                 {
                     PoseTool.Instance.Open(targets.Length == 1 ? target as Ghost : null);
@@ -96,12 +99,13 @@ namespace Emas.Editor
 
         private void OnDisable()
         {
-            // Removing the owner must make any surviving trait components inspectable again.
+            // When the Ghost is removed, show its remaining traits in the Inspector again.
             TraitInspectorVisibility.QueueRefresh();
         }
 
         private static void DrawSpatial(Ghost ghost, Spatial spatial)
         {
+            // Show the last source values beside the displayed pose without reading the source again.
             using (InspectorLayout.Section("Spatial pose", "Cached absolute input and the current projected Unity world pose."))
             {
                 InspectorLayout.ReadOnly("Presentation", !spatial.enabled ? "Application controlled"
@@ -132,7 +136,7 @@ namespace Emas.Editor
 
         private static void DrawTrait(Trait trait)
         {
-            // Each trait owns separate serialized state; commit its edits through Unity's Undo/prefab pipeline.
+            // Save each trait separately through Unity so Undo and prefab changes work.
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
                 using (SerializedObject settings = new SerializedObject(trait))
