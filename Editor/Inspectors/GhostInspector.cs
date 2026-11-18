@@ -65,6 +65,14 @@ namespace Emas.Editor
                     }
                 }
             }
+
+            using (InspectorLayout.Section("Pose debugger"))
+            {
+                if (GUILayout.Button("Inspect poses in Emas"))
+                {
+                    PoseTool.Instance.Open(targets.Length == 1 ? target as Ghost : null);
+                }
+            }
         }
 
         /// <summary>Refreshes live identity, pose and trait state while the application is playing.</summary>
@@ -103,6 +111,8 @@ namespace Emas.Editor
                 InspectorLayout.ReadOnly("Attached to", spatial.AttachedTo.HasValue ? spatial.AttachedTo.Value.ToString() : "None");
                 InspectorLayout.ReadOnly("Absolute position", spatial.HasPosition ? spatial.Position.ToString() : "Not received");
                 InspectorLayout.ReadOnly("Absolute rotation", spatial.HasRotation ? spatial.Rotation.ToString("F4") : "Not received");
+                InspectorLayout.ReadOnly("Position sample time", SampleTime(spatial.PositionTime));
+                InspectorLayout.ReadOnly("Rotation sample time", SampleTime(spatial.RotationTime));
                 if (spatial.HasRotation)
                 {
                     InspectorLayout.ReadOnly("Rotation space", spatial.RotationSpace.ToString());
@@ -113,6 +123,11 @@ namespace Emas.Editor
                     EditorGUILayout.Vector3Field("Unity rotation (deg)", ghost.transform.eulerAngles);
                 }
             }
+        }
+
+        private static string SampleTime(Timestamp? time)
+        {
+            return time.HasValue ? time.Value.Seconds + "." + time.Value.Nanoseconds.ToString("D9") : "Untimed / not received";
         }
 
         private static void DrawTrait(Trait trait)

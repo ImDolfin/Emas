@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Emas.Editor
 {
-    /// <summary>Passively inspects every live Realm, its Anchors and detector health.</summary>
+    /// <summary>Provides pose comparison tools and passive tracking diagnostics for every live Realm.</summary>
     public sealed class DiagnosticsWindow : EditorWindow
     {
         private DiagnosticsPanel _panel;
@@ -12,8 +12,8 @@ namespace Emas.Editor
         [MenuItem("Window/Emas")]
         public static void ShowWindow()
         {
-            DiagnosticsWindow window = GetWindow<DiagnosticsWindow>("Emas diagnostics");
-            window.minSize = new Vector2(340f, 220f);
+            DiagnosticsWindow window = GetWindow<DiagnosticsWindow>("Emas");
+            window.minSize = new Vector2(360f, 300f);
         }
 
         private void OnInspectorUpdate()
@@ -29,7 +29,7 @@ namespace Emas.Editor
             }
             using (new EditorGUILayout.VerticalScope())
             {
-                InspectorLayout.Header("Emas diagnostics", "Live state, read-only. Package version " + Package.Version);
+                InspectorLayout.Header("Emas", "Pose comparison and live tracking. Package version " + Package.Version);
                 EditorGUILayout.Space(6f);
                 _panel.Draw(false);
             }

@@ -11,6 +11,8 @@ namespace Emas.Editor
         private Realm _selected;
         private Vector2 _scroll;
         private string _filter = string.Empty;
+        private int _tab;
+        private Vector2 _poseScroll;
         private readonly HashSet<PresenceDetector> _expandedErrors = new HashSet<PresenceDetector>();
 
         internal void Draw(bool compact)
@@ -29,6 +31,7 @@ namespace Emas.Editor
             int failed = DrawSummary(anchors);
             if (compact)
             {
+                PoseTool.Instance.DrawControls(_selected, true);
                 if (failed > 0)
                 {
                     EditorGUILayout.HelpBox("Detector failures need attention. Open diagnostics for context and details.", MessageType.Warning);
@@ -42,8 +45,18 @@ namespace Emas.Editor
                 return;
             }
 
-            DrawFilter();
-            DrawAnchors(anchors);
+            _tab = GUILayout.Toolbar(_tab, new[] { "Pose debugger", "Tracking" });
+            if (_tab == 0)
+            {
+                _poseScroll = EditorGUILayout.BeginScrollView(_poseScroll);
+                PoseTool.Instance.DrawControls(_selected, false);
+                EditorGUILayout.EndScrollView();
+            }
+            else
+            {
+                DrawFilter();
+                DrawAnchors(anchors);
+            }
         }
 
         private void SelectRealm(Realm[] realms)

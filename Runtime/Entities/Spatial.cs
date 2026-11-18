@@ -111,6 +111,47 @@ namespace Emas
 
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
+        /// <summary>Projects the latest accepted absolute observation into Unity world space without prediction or smoothing.</summary>
+        /// <param name="pose">The observed Unity pose on success; identity rotation when no attitude has been received. Undefined on failure.</param>
+        /// <returns>True when this Spatial belongs to a tracked Ghost and its observation can be projected through the current reference and range limit.</returns>
+        /// <remarks>
+        /// Call on Unity's main thread after the Realm update to compare with the presented transform. Uses the cached,
+        /// potentially predicted or smoothed reference, including for the followed Ghost itself. Position and rotation
+        /// retain their independent observation times. Reads never advance playback, prediction or filters, and retain
+        /// absolute input while attached or disabled. Returns false for missing position/reference or incompatible coordinates.
+        /// </remarks>
+        public bool TryGetObservedUnityPose(out Pose pose)
+        {
+            pose = default(Pose);
+            Ghost ghost = GetComponent<Ghost>();
+            if (!HasPosition || ghost == null || ghost.Anchor == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                ReferenceFrame frame = ghost.Anchor.Realm.ReferenceFrame;
+                ReferenceFrame.Projection projection = frame != null ? frame.Capture()
+                    : new ReferenceFrame.Projection(true, default(Double3), Vector3.zero, Quaternion.identity, CoordinateSystem.Unity, null);
+                if (!projection.TryToUnityPosition(Position, out Vector3 position))
+                {
+                    return false;
+                }
+
+                pose = new Pose(position, HasRotation ? ProjectRotation(projection, Rotation, Position) : Quaternion.identity);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
         /// <summary>Resets smoothing, estimated extrapolation and live-tuning transitions after an intentional discontinuity.</summary>
         /// <remarks>Retains raw pose, supplied motion and component settings. Clears pose playback history and seeds
         /// it with the current observation. Supply the new pose before calling this.</remarks>
@@ -354,12 +395,7 @@ namespace Emas
                 // Assign world pose so anchor transforms do not introduce a second offset.
                 if (HasRotation)
                 {
-                    Quaternion rotation = _earthCenteredBodyAxes.HasValue
-                        ? projection.ToUnityEarthCenteredRotation(PresentationRotation, _earthCenteredBodyAxes.Value)
-                        : _rotationSpace == Emas.RotationSpace.Geographic
-                            ? projection.ToUnityGeographicRotation(PresentationRotation, PresentationPosition)
-                            : projection.ToUnityRotation(PresentationRotation, PresentationPosition);
-                    transform.SetPositionAndRotation(position, rotation);
+                    transform.SetPositionAndRotation(position, ProjectRotation(projection, PresentationRotation, PresentationPosition));
                 }
                 else
                 {
@@ -392,6 +428,15 @@ namespace Emas
         internal void SetInRange(bool value)
         {
             _suppression.SetInRange(this, value);
+        }
+
+        private Quaternion ProjectRotation(ReferenceFrame.Projection projection, Quaternion rotation, Double3 position)
+        {
+            return _earthCenteredBodyAxes.HasValue
+                ? projection.ToUnityEarthCenteredRotation(rotation, _earthCenteredBodyAxes.Value)
+                : _rotationSpace == Emas.RotationSpace.Geographic
+                    ? projection.ToUnityGeographicRotation(rotation, position)
+                    : projection.ToUnityRotation(rotation, position);
         }
 
         private void ResetPoseHistory()

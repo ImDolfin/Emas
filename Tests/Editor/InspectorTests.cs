@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditor.EditorTools;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -16,6 +17,11 @@ namespace Emas.Editor.Tests
         private sealed class DiagnosticsProbe : PresenceDetector
         {
             internal int Updates;
+
+            internal Ghost Publish()
+            {
+                return GetOrCreate<Ghost>("diagnostic pose", TestKind);
+            }
 
             /// <inheritdoc />
             protected override void OnUpdate()
@@ -495,7 +501,7 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Opening diagnostics and the overlay does not advance an explicitly managed Realm or construct scene objects.
+        /// Opening the pose debugger and overlay, activating its Scene tool and changing selection leave an explicitly managed Realm and its observed pose untouched.
         /// </summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
@@ -506,12 +512,26 @@ namespace Emas.Editor.Tests
             {
                 DiagnosticsProbe detector = new DiagnosticsProbe();
                 realm.GetOrCreateAnchor("passive", detector);
-                int sceneObjects = Resources.FindObjectsOfTypeAll<GameObject>().Length;
+                Ghost ghost = detector.Publish();
+                Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+                spatial.SetCartesianPosition(new Double3(10, 20, 30), new Timestamp(1000, 0));
+                UnityEngine.Object[] previousSelection = Selection.objects;
+                Emas.Editor.PoseTool tool = ScriptableObject.CreateInstance<Emas.Editor.PoseTool>();
+                HashSet<GameObject> sceneObjects = new HashSet<GameObject>(Resources.FindObjectsOfTypeAll<GameObject>());
                 Emas.Editor.DiagnosticsWindow window = ScriptableObject.CreateInstance<Emas.Editor.DiagnosticsWindow>();
                 try
                 {
                     Emas.Editor.RealmOverlay overlay = new Emas.Editor.RealmOverlay();
                     window.rootVisualElement.Add(overlay.CreatePanelContent());
+                    Selection.activeGameObject = ghost.gameObject;
+                    ToolManager.SetActiveTool(tool);
+                    Assert.That(ToolManager.activeToolType, Is.EqualTo(typeof(Emas.Editor.PoseTool)));
+                    using (SerializedObject settings = new SerializedObject(tool))
+                    {
+                        settings.FindProperty("_pinnedGhost").objectReferenceValue = ghost;
+                        settings.ApplyModifiedPropertiesWithoutUndo();
+                    }
+                    Selection.objects = new UnityEngine.Object[0];
                     if (SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
                     {
                         window.ShowUtility();
@@ -521,10 +541,20 @@ namespace Emas.Editor.Tests
                     yield return null;
                     Assert.That(detector.Updates, Is.Zero);
                     Assert.That(realm.Anchors.Count, Is.EqualTo(1));
-                    Assert.That(Resources.FindObjectsOfTypeAll<GameObject>().Length, Is.EqualTo(sceneObjects));
+                    // Unity may release transient selection objects between frames; the debugger must add none.
+                    Assert.That(Resources.FindObjectsOfTypeAll<GameObject>(), Is.SubsetOf(sceneObjects));
+                    Assert.That(spatial.Position, Is.EqualTo(new Double3(10, 20, 30)));
+                    Assert.That(ghost.transform.position, Is.EqualTo(Vector3.zero));
+                    Assert.That(ToolManager.activeToolType, Is.EqualTo(typeof(Emas.Editor.PoseTool)), "Pinned inspection remains active after selection changes.");
                 }
                 finally
                 {
+                    if (ToolManager.activeToolType == typeof(Emas.Editor.PoseTool))
+                    {
+                        ToolManager.RestorePreviousTool();
+                    }
+                    Selection.objects = previousSelection;
+                    UnityEngine.Object.DestroyImmediate(tool);
                     if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
                     {
                         UnityEngine.Object.DestroyImmediate(window);

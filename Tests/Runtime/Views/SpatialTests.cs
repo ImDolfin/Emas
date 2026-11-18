@@ -199,6 +199,116 @@ namespace Emas.Tests
             _assets.Clear();
         }
 
+        /// <summary>Observed-pose diagnostics project accepted input through the presented reference, preserve custom attitude conventions, and leave prediction and filters untouched.</summary>
+        /// <param name="representation">Zero for Cartesian NED, one for geographic attitude, or two for ECEF attitude with custom body axes.</param>
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void ObservedPose_ProjectsRawInputThroughThePresentedReferenceWithoutMutation(int representation)
+        {
+            GeoPosition origin = new GeoPosition(48, 11, 1200);
+            GeoPosition targetLocation = new GeoPosition(48.001, 11.002, 1250);
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Space = representation == 0 ? ReferenceSpace.Cartesian : ReferenceSpace.Geographic,
+                Position = representation == 0 ? new Double3(1e9, 0, 0) : origin.ToEarthCentered(),
+                Coordinates = representation == 0 ? CoordinateSystem.NorthEastDown : CoordinateSystem.Unity,
+                MaxDistance = 5000
+            };
+            _realm.ReferenceFrame = frame;
+            TestGhost reference = _source.Publish("observed reference");
+            Spatial referenceSpatial = reference.gameObject.AddComponent<Spatial>();
+            Assert.That(referenceSpatial.TryGetObservedUnityPose(out _), Is.False);
+            Timestamp time = new Timestamp(1000, 0);
+            referenceSpatial.SetCartesianPosition(frame.Position, time);
+            referenceSpatial.SetSourceRotation(Quaternion.identity, time);
+            Extrapolation referenceExtrapolation = reference.gameObject.AddComponent<Extrapolation>();
+            referenceExtrapolation.MaximumExtrapolation = 0.1f;
+            if (representation == 0)
+            {
+                referenceExtrapolation.SetCartesianVelocity(new Double3(100, 0, 0), time);
+            }
+            else
+            {
+                referenceExtrapolation.SetGeographicVelocity(new Double3(0, 100, 0), origin, time);
+            }
+            frame.FollowedGhost = reference.Key;
+            TestGhost ghost = _source.Publish("observed target");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
+            extrapolation.MaximumExtrapolation = 0.1f;
+            extrapolation.SetCartesianVelocity(new Double3(10, 0, 0), time);
+            extrapolation.SetBodyAngularVelocity(new Double3(0, 0, 1), sampleTime: time);
+            Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 10;
+            smoothing.RotationHalfLife = 10;
+            spatial.SetCartesianPosition(representation == 0 ? frame.Position + new Double3(100, 200, -50) : targetLocation.ToEarthCentered(), time);
+            if (representation == 2)
+            {
+                ReferenceFrame local = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = targetLocation, FollowRotation = false };
+                spatial.SetEarthCenteredRotation(local.ToEarthCenteredRotation(Quaternion.identity, CoordinateSystem.EastNorthUp), CoordinateSystem.EastNorthUp, time);
+            }
+            else if (representation == 1)
+            {
+                spatial.SetGeographicRotation(0, 0, 0, time);
+            }
+            else
+            {
+                spatial.SetSourceRotation(Quaternion.identity, time);
+            }
+            _source.Publish("observation clock").gameObject.AddComponent<Spatial>()
+                .SetCartesianPosition(frame.Position, new Timestamp(1002, 0));
+            _realm.Update();
+            Assert.That(referenceSpatial.TryGetObservedUnityPose(out Pose referenceObservation), Is.True);
+            Assert.That(Vector3.Distance(referenceObservation.position, reference.transform.position), Is.EqualTo(10).Within(0.002f),
+                "The followed Ghost's observation must use the predicted reference rather than pinning the raw marker to the origin.");
+
+            time = new Timestamp(1001, 0);
+            Double3 input = representation == 0 ? frame.Position + new Double3(150, 200, -50) : new GeoPosition(48.002, 11.002, 1250).ToEarthCentered();
+            spatial.SetCartesianPosition(input, time);
+            Quaternion localRotation = Quaternion.AngleAxis(75, Vector3.up) * Quaternion.AngleAxis(-20, Vector3.right);
+            Quaternion expectedRotation;
+            if (representation == 2)
+            {
+                ReferenceFrame local = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = GeoPosition.FromEarthCentered(input), FollowRotation = false };
+                Quaternion earthRotation = local.ToEarthCenteredRotation(localRotation, CoordinateSystem.EastNorthUp);
+                spatial.SetEarthCenteredRotation(earthRotation, CoordinateSystem.EastNorthUp, time);
+                expectedRotation = frame.ToUnityEarthCenteredRotation(earthRotation, CoordinateSystem.EastNorthUp);
+            }
+            else if (representation == 1)
+            {
+                spatial.SetGeographicRotation(75, 20, 0, time);
+                expectedRotation = frame.ToUnityRotation(localRotation, GeoPosition.FromEarthCentered(input));
+            }
+            else
+            {
+                spatial.SetSourceRotation(localRotation, time);
+                expectedRotation = frame.ToUnityRotation(localRotation);
+            }
+
+            _realm.Update();
+            Vector3 presentedPosition = ghost.transform.position;
+            Quaternion presentedRotation = ghost.transform.rotation;
+            Assert.That(frame.TryToUnityPosition(input, out Vector3 expectedPosition), Is.True);
+            for (int read = 0; read < 3; read++)
+            {
+                Assert.That(spatial.TryGetObservedUnityPose(out Pose observed), Is.True);
+                AssertPosition(observed.position, expectedPosition, 0.002f);
+                AssertRotation(observed.rotation, expectedRotation);
+                Assert.That(Vector3.Distance(observed.position, presentedPosition), Is.GreaterThan(30));
+                Assert.That(Quaternion.Angle(observed.rotation, presentedRotation), Is.GreaterThan(40));
+                Assert.That(ghost.transform.position, Is.EqualTo(presentedPosition));
+                Assert.That(ghost.transform.rotation, Is.EqualTo(presentedRotation));
+                Assert.That(spatial.Position, Is.EqualTo(input));
+                Assert.That(spatial.PositionTime, Is.EqualTo(time));
+            }
+
+            frame.MaxDistance = 1;
+            Assert.That(spatial.TryGetObservedUnityPose(out _), Is.False);
+            frame.MaxDistance = 5000;
+            Assert.That(spatial.TryGetObservedUnityPose(out _), Is.True);
+        }
+
         /// <summary>
         /// An absent reference maps spatial poses to world space, including after clearing a custom frame.
         /// </summary>
@@ -215,6 +325,9 @@ namespace Emas.Tests
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(1000, 2, 10), 0.001f);
             AssertRotation(ghost.transform.rotation, rotation);
+            Assert.That(ghost.GetComponent<Spatial>().TryGetObservedUnityPose(out Pose observed), Is.True);
+            AssertPosition(observed.position, ghost.transform.position);
+            Assert.That(observed.rotation, Is.EqualTo(Quaternion.identity), "Position-only observations must not invent an attitude from the presented transform.");
 
             rotation = Quaternion.Euler(20, 60, 30);
             _source.PublishRotation("remote", rotation);

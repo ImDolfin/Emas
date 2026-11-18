@@ -102,6 +102,7 @@ Root GameObjects are named by `Key.EntityId`; `Ghost.Name` is separate display m
 | `HasPosition` / `HasRotation` / `IsInRange` | Independent channel validity and presentation permission. |
 | `Attach(parentKey, localPosition, localRotation)` / `Detach()` | Same-Realm parent presentation with Unity-local offsets; absolute channels remain cached. |
 | `ResetPresentation()` | Discard presentation histories after a deliberate discontinuity; supply the new pose first. |
+| `Spatial.TryGetObservedUnityPose(out Pose)` | Project the latest raw observation through the cached reference without advancing presentation. |
 | `Realm.ReferenceFrame` | Optional shared Cartesian/geographic projection; null is identity Cartesian placement. |
 | `ReferenceFrame.FollowedGhost` / `FollowRotation` | Follow position and optionally cancel full reference orientation. |
 | `ReferenceFrame.UnityPosition` / `UnityRotation` / `MaxDistance` | Scene placement/alignment and optional positive presentation radius. |

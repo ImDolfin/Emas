@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Turn Window/Emas into a pose debugger with a dedicated Scene tool, shared overlay controls, pinned/followed targets, framing and observed/presented pose readouts.
+- Add observed/presented pose comparison gizmos with source timestamps and position/angular differences; expose passive observed-pose projection through Spatial.TryGetObservedUnityPose.
 - Fix coordinated-turn packet correction underestimating motion at fresh observation boundaries, preventing angular tracking lag during rapid maneuvers.
 - Fix coordinated-turn packet correction retaining stale linear/angular motion when observations arrive every presentation frame; advance interrupted correction before rebasing so continuous streams converge.
 - Separate source-space playback, prediction, packet correction and filtering into an internal PosePresenter; Spatial retains input validation, attachments and transform projection.

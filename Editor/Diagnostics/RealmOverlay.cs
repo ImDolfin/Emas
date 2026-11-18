@@ -4,12 +4,12 @@ using UnityEngine.UIElements;
 
 namespace Emas.Editor
 {
-    /// <summary>Provides an optional passive Realm summary in the Scene view overlays menu.</summary>
+    /// <summary>Provides pose comparison controls and a passive Realm summary in the Scene view overlays menu.</summary>
     [Overlay(typeof(SceneView), "Emas", false)]
     public sealed class RealmOverlay : Overlay
     {
         /// <summary>Creates the compact live summary without starting a Realm.</summary>
-        /// <returns>A periodically repainted IMGUI element backed by a passive diagnostics panel.</returns>
+        /// <returns>A periodically repainted IMGUI element sharing the pose tool's settings and passive diagnostics.</returns>
         public override VisualElement CreatePanelContent()
         {
             DiagnosticsPanel panel = new DiagnosticsPanel();

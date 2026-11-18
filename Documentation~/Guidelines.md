@@ -21,7 +21,7 @@ See [Getting started](GettingStarted.md) for setup and [API](API.md) for exact l
 
 ## Diagnose and recover
 
-Use **Window > Emas** or the Scene view **Emas** overlay to inspect existing Realms. Read a failed detector's `LastErrorContext` and `LastError`, fix the cause, then restart or replace it explicitly. There is no automatic retry.
+Use **Window > Emas > Tracking** or the Scene view **Emas** overlay to inspect existing Realms. Read a failed detector's `LastErrorContext` and `LastError`, fix the cause, then restart or replace it explicitly. There is no automatic retry.
 
 A view failure leaves tracking active. Fix its prefab/binding and call `Manifest`, or change the blueprint/Variant. Missing or ambiguous root contracts identify the Key, requested type and matching components; check the Ghost prefab for that Kind.
 

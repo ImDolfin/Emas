@@ -254,6 +254,18 @@ A missing followed reference sets `IsReferenceAvailable` false and freezes its l
 
 Check `HasPosition` before inverse/reference-dependent operations. Helpers use the latest reference resolved by a Realm update. `GeoPosition.ToEarthCentered` / `FromEarthCentered` and `ToEarthCenteredVector` also work independently of a Realm.
 
+## Compare observed and presented poses
+
+Open **Window > Emas > Pose debugger** and click **Activate pose tool**, or choose **Emas pose comparison** from the Scene tools menu. The Emas Scene overlay shares the same target and drawing controls. The Ghost Inspector's **Inspect poses in Emas** shortcut opens the debugger, activates the tool and pins that Ghost.
+
+Cyan marks the latest accepted absolute observation; magenta marks the presented root after extrapolation, packet correction and smoothing. Both use the same cached presentation reference, so the followed Ghost's raw marker can differ from its origin. A yellow line connects their positions. Enable each marker, labels and the connection independently and adjust the marker size; axes use red X, green Y and blue Z. Gizmos draw while the pose tool is active.
+
+With no pinned target, selecting a Ghost or one of its view objects compares that root; multiple selected view objects on one Ghost produce one comparison. **Pin** retains the first target while you select other objects. **Selection** resumes following selection, and **Followed Ghost** pins the selected Realm's reference. **Frame comparison** fits both markers in the Scene view. The window shows the active strategy, maximum prediction horizon, source timestamps, position/angular differences and observed/presented Unity poses. Tracking health remains under its **Tracking** tab.
+
+Observed position and attitude retain their independent sample times. The gizmo represents accepted input at those times, while the presented root includes the configured processing. Missing attitude draws only a position marker. Attached roots compare their cached absolute observation with their attached presentation.
+
+The Editor controls only read existing state. For application diagnostics, call `spatial.TryGetObservedUnityPose(out Pose pose)` on the main thread after `Realm.Update()`. It projects Cartesian, geographic and ECEF observations, including custom body axes, through the cached reference and its range limit. False means the observation cannot currently be projected. Reads preserve observations, filters and transforms.
+
 ## Run the examples
 
 [Relative world](../Samples~/RelativeWorld/README.md) demonstrates WGS84 input, noisy/delayed observations, a moving reference and attachable bird feet. [Aircraft formation](../Samples~/AircraftFormation/README.md) demonstrates independently timed aircraft and angular presentation. Their guides describe controls and defaults; initializers show SDK-to-trait mappings.
