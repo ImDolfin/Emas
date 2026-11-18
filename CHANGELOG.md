@@ -2,6 +2,7 @@
 
 ## 0.2.0
 
+- Fix coordinated-turn packet correction retaining stale linear/angular motion when observations arrive every presentation frame; advance interrupted correction before rebasing so continuous streams converge.
 - Separate source-space playback, prediction, packet correction and filtering into an internal PosePresenter; Spatial retains input validation, attachments and transform projection.
 - Prevent duplicate Ghost markers on one GameObject, keeping root identity and trait ownership unambiguous.
 - Streamline the README, API, spatial, architecture and sample guides. Keep concise caller contracts in XML comments and detailed examples in the guides.

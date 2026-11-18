@@ -1521,6 +1521,65 @@ namespace Emas.Tests
             }
         }
 
+        /// <summary>Packets received every presentation frame still correct a stopped aircraft's position and attitude, with or without additional filtering and with timed, buffered or untimed input.</summary>
+        /// <returns>An iterator that continuously publishes the stopped pose while packet correction converges.</returns>
+        [UnityTest]
+        public IEnumerator CoordinatedTurn_ContinuousPacketsConvergeAfterMotionStops()
+        {
+            for (int mode = 0; mode < 3; mode++)
+            {
+                _realm.InterpolationDelay = mode == 1 ? 0.05f : 0;
+                TestGhost[] ghosts =
+                {
+                    _source.Publish("continuous packets " + mode),
+                    _source.Publish("filtered continuous packets " + mode)
+                };
+                Timestamp? initialTime = mode == 2 ? (Timestamp?)null : new Timestamp(1000, 0);
+                foreach (TestGhost ghost in ghosts)
+                {
+                    Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+                    spatial.SetCartesianPosition(default(Double3), initialTime);
+                    spatial.SetSourceRotation(Quaternion.Euler(0, 0, -30), initialTime);
+                    Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
+                    extrapolation.Strategy = new CoordinatedTurnExtrapolation();
+                    extrapolation.SetCartesianVelocity(new Double3(0, 0, 100), initialTime);
+                    extrapolation.SetBodyAngularVelocity(new Double3(0, 0.2d, 0), CoordinateSystem.Unity, initialTime);
+                }
+
+                Smoothing smoothing = ghosts[1].gameObject.AddComponent<Smoothing>();
+                smoothing.PositionHalfLife = 0.08f;
+                smoothing.RotationHalfLife = 0.04f;
+                _realm.Update();
+                double started = Time.realtimeSinceStartupAsDouble;
+                Quaternion stoppedRotation = Quaternion.Euler(10, 60, -30);
+                do
+                {
+                    yield return null;
+                    double elapsed = Time.realtimeSinceStartupAsDouble - started;
+                    Timestamp? time = mode == 2 ? (Timestamp?)null : Timestamp.FromSeconds(1000d + elapsed);
+                    foreach (TestGhost ghost in ghosts)
+                    {
+                        Spatial spatial = ghost.GetComponent<Spatial>();
+                        spatial.SetCartesianPosition(new Double3(10, 0, 0), time);
+                        spatial.SetSourceRotation(stoppedRotation, time);
+                        Extrapolation extrapolation = ghost.GetComponent<Extrapolation>();
+                        extrapolation.SetCartesianVelocity(default(Double3), time);
+                        extrapolation.SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, time);
+                    }
+
+                    _realm.Update();
+                }
+                while (Time.realtimeSinceStartupAsDouble - started < 0.9d);
+
+                foreach (TestGhost ghost in ghosts)
+                {
+                    AssertPosition(ghost.transform.position, new Vector3(10, 0, 0), 0.15f);
+                    Assert.That(Quaternion.Angle(ghost.transform.rotation, stoppedRotation), Is.LessThan(1f));
+                    Assert.That(ghost.GetComponent<Spatial>().Position, Is.EqualTo(new Double3(10, 0, 0)));
+                }
+            }
+        }
+
         /// <summary>Consumers can switch built-in and application strategies on held observations without replacing traits or losing motion; immediate, buffered and untimed presentation converge through live transitions.</summary>
         /// <returns>An iterator that lets extrapolation caps and live-setting transitions complete.</returns>
         [UnityTest]

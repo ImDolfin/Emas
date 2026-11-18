@@ -8,9 +8,10 @@ namespace Emas
     internal struct PacketSmoother
     {
         private Double3 _position;
-        private Double3 _velocity;
-        private Quaternion _rotation;
-        private Double3 _angularVelocity;
+        private Double3 _targetPosition;
+        private Double3 _targetVelocity;
+        private Quaternion _targetRotation;
+        private Double3 _targetAngularVelocity;
         private Double3 _positionOffset;
         private Double3 _positionTangent;
         private Quaternion _rotationOffset;
@@ -82,7 +83,8 @@ namespace Emas
             if (!_hasPosition)
             {
                 _position = target;
-                _velocity = velocity;
+                _targetPosition = target;
+                _targetVelocity = velocity;
                 _positionOffset = default(Double3);
                 _positionTangent = default(Double3);
                 _positionStarted = timestamp;
@@ -90,25 +92,32 @@ namespace Emas
                 return target;
             }
 
+            Double3 offset = PositionCorrection(timestamp, duration, out Double3 tangent);
             if (version != _positionVersion || motionChanged)
             {
-                // Continue the last presented pose along its tangent up to the arrival time. Rebase
-                // an interrupted correction from that state, never from the new discontinuous target.
-                _positionOffset = _position + _velocity * elapsed - target;
-                _positionTangent = _velocity - velocity;
+                // Advance the old spline BEFORE rebasing. Continuing only the last presented tangent
+                // would restart at u=0 on every packet and retain stale motion at frame-rate arrivals.
+                _positionOffset = _targetPosition + _targetVelocity * elapsed + offset - target;
+                _positionTangent = _targetVelocity + tangent - velocity;
                 _positionStarted = timestamp;
+                offset = _positionOffset;
             }
 
+            _targetPosition = target;
+            _targetVelocity = velocity;
+            _position = target + offset;
+            return _position;
+        }
+
+        private Double3 PositionCorrection(double timestamp, double duration, out Double3 tangent)
+        {
             double u = Math.Min(1d, Math.Max(0d, (timestamp - _positionStarted) / duration));
             double squared = u * u;
             double h00 = 2d * squared * u - 3d * squared + 1d;
             double h10 = squared * u - 2d * squared + u;
-            Double3 offset = _positionOffset * h00 + _positionTangent * (duration * h10);
-            Double3 tangent = _positionOffset * ((6d * squared - 6d * u) / duration)
+            tangent = _positionOffset * ((6d * squared - 6d * u) / duration)
                 + _positionTangent * (3d * squared - 4d * u + 1d);
-            _position = target + offset;
-            _velocity = velocity + tangent;
-            return _position;
+            return _positionOffset * h00 + _positionTangent * (duration * h10);
         }
 
         private Quaternion Rotation(Quaternion target, Double3 angularVelocity, long version, bool motionChanged,
@@ -116,8 +125,8 @@ namespace Emas
         {
             if (!_hasRotation)
             {
-                _rotation = target;
-                _angularVelocity = angularVelocity;
+                _targetRotation = target;
+                _targetAngularVelocity = angularVelocity;
                 _rotationOffset = Quaternion.identity;
                 _rotationControl = Quaternion.identity;
                 _rotationTangent = default(Double3);
@@ -126,34 +135,41 @@ namespace Emas
                 return target;
             }
 
-            if (version != _rotationVersion || motionChanged)
-            {
-                Quaternion continued = SpatialMath.AngularDisplacement(_angularVelocity, elapsed) * _rotation;
-                _rotationOffset = SpatialMath.NormalizeRotation(continued * Quaternion.Inverse(target), nameof(target));
-                // For Q = E*T, world angular velocity is omega_E + E*omega_T.
-                // This control point preserves the presented angular tangent at a packet boundary.
-                _rotationTangent = _angularVelocity - SpatialMath.Rotate(_rotationOffset, angularVelocity);
-                _rotationControl = SpatialMath.AngularDisplacement(_rotationTangent, duration / 3d) * _rotationOffset;
-                _rotationStarted = timestamp;
-            }
-
             double u = Math.Min(1d, Math.Max(0d, (timestamp - _rotationStarted) / duration));
             Quaternion correction = Curve(u);
-            Double3 correctionRate = default(Double3);
+            if (version != _rotationVersion || motionChanged)
+            {
+                Quaternion continuedTarget = SpatialMath.AngularDisplacement(_targetAngularVelocity, elapsed) * _targetRotation;
+                Quaternion continued = correction * continuedTarget;
+                Double3 continuedRate = RotationCorrectionRate(u, duration) + SpatialMath.Rotate(correction, _targetAngularVelocity);
+                _rotationOffset = SpatialMath.NormalizeRotation(continued * Quaternion.Inverse(target), nameof(target));
+                // For Q = E*T, world angular velocity is omega_E + E*omega_T. Evaluate the old
+                // correction's current angular tangent so frequent packets still dissipate its error.
+                _rotationTangent = continuedRate - SpatialMath.Rotate(_rotationOffset, angularVelocity);
+                _rotationControl = SpatialMath.AngularDisplacement(_rotationTangent, duration / 3d) * _rotationOffset;
+                _rotationStarted = timestamp;
+                correction = _rotationOffset;
+            }
+
+            _targetRotation = target;
+            _targetAngularVelocity = angularVelocity;
+            return SpatialMath.NormalizeRotation(correction * target, nameof(target));
+        }
+
+        private Double3 RotationCorrectionRate(double u, double duration)
+        {
             if (u <= 0)
             {
-                correctionRate = _rotationTangent;
+                return _rotationTangent;
             }
             else if (u < 1)
             {
                 double before = Math.Max(0d, u - 0.001d);
                 double after = Math.Min(1d, u + 0.001d);
-                correctionRate = SpatialMath.RotationRate(Curve(before), Curve(after), (after - before) * duration);
+                return SpatialMath.RotationRate(Curve(before), Curve(after), (after - before) * duration);
             }
 
-            _rotation = SpatialMath.NormalizeRotation(correction * target, nameof(target));
-            _angularVelocity = correctionRate + SpatialMath.Rotate(correction, angularVelocity);
-            return _rotation;
+            return default(Double3);
         }
 
         private Quaternion Curve(double u)
