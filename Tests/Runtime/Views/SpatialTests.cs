@@ -73,6 +73,36 @@ namespace Emas.Tests
             }
         }
 
+        private sealed class DistanceExtrapolation : IExtrapolationStrategy, IPacketSmoothingStrategy
+        {
+            internal int Calls;
+            private readonly ConstantAccelerationExtrapolation _motion = new ConstantAccelerationExtrapolation();
+
+            /// <summary>Enables packet correction so the distance scenario covers all motion processing stages.</summary>
+            /// <value>A quarter-second correction duration.</value>
+            public float PacketSmoothingDuration => 0.25f;
+
+            /// <summary>Records consumer model execution while retaining ordinary constant-acceleration motion.</summary>
+            /// <param name="context">The accepted motion and source-space metadata.</param>
+            /// <param name="seconds">The bounded prediction duration.</param>
+            /// <returns>The source-space displacement.</returns>
+            public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+            {
+                Calls++;
+                return _motion.ExtrapolateDisplacement(context, seconds);
+            }
+
+            /// <summary>Records consumer model execution while retaining ordinary angular prediction.</summary>
+            /// <param name="context">The accepted angular rate and source-space metadata.</param>
+            /// <param name="seconds">The bounded prediction duration.</param>
+            /// <returns>The angular displacement in the supplied vector's axes.</returns>
+            public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+            {
+                Calls++;
+                return _motion.ExtrapolateRotation(context, seconds);
+            }
+        }
+
         private sealed class EnableProbe : MonoBehaviour
         {
             internal int EnableCount { get; private set; }
@@ -911,6 +941,149 @@ namespace Emas.Tests
                 Assert.That(departures, Is.Zero);
                 AssertPosition(ghost.transform.position, new Vector3(0, 0.001f, 0));
             }
+        }
+
+        /// <summary>Per-Anchor distance bypass keeps distant poses raw and visible, preserves reference processing, and resumes from fresh filter state at the inclusive boundary.</summary>
+        /// <param name="geographic">True for metre distances in ECEF; false for large Cartesian source coordinates.</param>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AnchorProcessingDistance_BypassesDistantMotionAndRecoversAtTheBoundary(bool geographic)
+        {
+            RegisterView();
+            Assert.That(_anchor.PoseProcessingDistance, Is.Null);
+            _anchor.PoseProcessingDistance = 100;
+            foreach (double invalid in new[] { 0d, -1d, double.NaN, double.PositiveInfinity })
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(() => _anchor.PoseProcessingDistance = invalid);
+                Assert.That(_anchor.PoseProcessingDistance, Is.EqualTo(100));
+            }
+
+            // The predicted reference lies outside its own processing radius; following must still process it.
+            Double3 origin = geographic ? new GeoPosition(52, 13, 1000).ToEarthCentered() : new Double3(1e12, -1e12, 1e12);
+            Timestamp time = new Timestamp(10, 0);
+            TestGhost reference = _source.Publish("processing reference");
+            Spatial referenceSpatial = reference.gameObject.AddComponent<Spatial>();
+            SetDistancePose(referenceSpatial, origin, Quaternion.Euler(10, 25, 30), time, geographic);
+            Extrapolation referencePrediction = reference.gameObject.AddComponent<Extrapolation>();
+            referencePrediction.PredictionTime = 0.1f;
+            referencePrediction.MaximumExtrapolation = 0.1f;
+            if (geographic)
+            {
+                referencePrediction.SetEarthCenteredVelocity(new Double3(2000, 0, 0), time);
+            }
+            else
+            {
+                referencePrediction.SetCartesianVelocity(new Double3(2000, 0, 0), time);
+            }
+            referencePrediction.SetBodyAngularVelocity(new Double3(0.5, 0, 0), sampleTime: time);
+            reference.gameObject.AddComponent<Smoothing>().PositionHalfLife = 10;
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Space = geographic ? ReferenceSpace.Geographic : ReferenceSpace.Cartesian,
+                FollowedGhost = reference.Key,
+                UnityPosition = new Vector3(50, 20, -30),
+                UnityRotation = Quaternion.Euler(5, 40, -10),
+                MaxDistance = 2000
+            };
+            _realm.ReferenceFrame = frame;
+            _realm.Update();
+            Assert.That(frame.DistanceTo(referenceSpatial.Position), Is.GreaterThan(150));
+            AssertPosition(reference.transform.position, frame.UnityPosition);
+            AssertRotation(reference.transform.rotation, frame.UnityRotation);
+
+            TestSource otherSource = new TestSource();
+            Anchor otherAnchor = _realm.GetOrCreateAnchor("unlimited processing", otherSource);
+            Spatial distant = _source.Publish("distant processing").gameObject.AddComponent<Spatial>();
+            Spatial control = otherSource.Publish("unlimited control").gameObject.AddComponent<Spatial>();
+            DistanceExtrapolation limitedModel = new DistanceExtrapolation();
+            Spatial[] poses = { distant, control };
+            for (int index = 0; index < poses.Length; index++)
+            {
+                SetDistancePose(poses[index], frame.Position + new Double3(500, 0, 0), Quaternion.identity, time, geographic);
+                Extrapolation prediction = poses[index].gameObject.AddComponent<Extrapolation>();
+                prediction.Strategy = index == 0 ? limitedModel : new DistanceExtrapolation();
+                prediction.PredictionTime = 0.1f;
+                prediction.MaximumExtrapolation = 0.1f;
+                if (geographic)
+                {
+                    prediction.SetEarthCenteredVelocity(new Double3(200, 0, 0), time);
+                }
+                else
+                {
+                    prediction.SetCartesianVelocity(new Double3(200, 0, 0), time);
+                }
+                prediction.SetBodyAngularVelocity(new Double3(0, 0, 1), sampleTime: time);
+                Smoothing smoothing = poses[index].gameObject.AddComponent<Smoothing>();
+                smoothing.PositionHalfLife = 10;
+                smoothing.RotationHalfLife = 10;
+            }
+            _realm.Update();
+            Assert.That(distant.TryGetObservedUnityPose(out Pose observed), Is.True);
+            AssertPosition(distant.transform.position, observed.position, 0.01f);
+            AssertRotation(distant.transform.rotation, observed.rotation);
+            Assert.That(limitedModel.Calls, Is.Zero, "Distant entities must not execute the prediction model.");
+            Assert.That(Vector3.Distance(distant.transform.position, control.transform.position), Is.GreaterThan(10));
+            View view = _realm.Manifest(distant.GetComponent<TestGhost>());
+            Assert.That(view, Is.Not.Null);
+
+            // New distant packets bypass both buffered playback and the very slow filters.
+            _realm.InterpolationDelay = 0.15f;
+            time = new Timestamp(11, 0);
+            SetDistancePose(distant, frame.Position + new Double3(700, 0, 0), Quaternion.Euler(30, 80, 10), time, geographic);
+            _realm.Update();
+            Assert.That(distant.TryGetObservedUnityPose(out observed), Is.True);
+            AssertPosition(distant.transform.position, observed.position, 0.01f);
+            AssertRotation(distant.transform.rotation, observed.rotation);
+            Assert.That(limitedModel.Calls, Is.Zero);
+            Assert.That(ActiveView(distant.GetComponent<TestGhost>()), Is.SameAs(view));
+            Assert.That(distant.IsInRange, Is.True);
+
+            // The raw point exactly on the boundary is processed even if prediction places it farther out.
+            _realm.InterpolationDelay = 0;
+            time = new Timestamp(12, 0);
+            Double3 boundary = frame.Position + new Double3(100, 0, 0);
+            SetDistancePose(distant, boundary, Quaternion.Euler(0, 50, 0), time, geographic);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                _realm.Update();
+                Assert.That(limitedModel.Calls, Is.GreaterThan(0));
+                Double3 actual = frame.ToSimulationPosition(distant.transform.position);
+                Assert.That(Double3.Distance(actual, boundary + new Double3(20, 0, 0)), Is.LessThan(0.01));
+            }
+
+            // Leaving again immediately discards packet correction, smoothing and settings-transition offsets.
+            limitedModel.Calls = 0;
+            SetDistancePose(distant, frame.Position + new Double3(100.01, 0, 0), Quaternion.Euler(0, -60, 0), new Timestamp(13, 0), geographic);
+            _realm.Update();
+            Assert.That(distant.TryGetObservedUnityPose(out observed), Is.True);
+            AssertPosition(distant.transform.position, observed.position, 0.01f);
+            AssertRotation(distant.transform.rotation, observed.rotation);
+            Assert.That(limitedModel.Calls, Is.Zero);
+            Assert.That(distant.GetComponent<Extrapolation>().enabled, Is.True);
+            Assert.That(distant.GetComponent<Extrapolation>().HasVelocity, Is.True);
+            Assert.That(distant.GetComponent<Smoothing>().PositionHalfLife, Is.EqualTo(10));
+            Assert.That(otherAnchor.PoseProcessingDistance, Is.Null);
+            AssertPosition(reference.transform.position, frame.UnityPosition);
+
+            _anchor.PoseProcessingDistance = null;
+            _realm.Update();
+            Assert.That(limitedModel.Calls, Is.GreaterThan(0));
+            Assert.That(Double3.Distance(frame.ToSimulationPosition(distant.transform.position),
+                distant.Position + new Double3(20, 0, 0)), Is.LessThan(0.01));
+
+            if (!geographic)
+            {
+                // Without a reference, source zero defines the radius rather than the Anchor scene transform.
+                _anchor.PoseProcessingDistance = 100;
+                _realm.ReferenceFrame = null;
+                limitedModel.Calls = 0;
+                _realm.Update();
+                Assert.That(limitedModel.Calls, Is.Zero);
+                Assert.That(distant.TryGetObservedUnityPose(out observed), Is.True);
+                AssertPosition(distant.transform.position, observed.position);
+            }
+            otherAnchor.Dispose();
+            Assert.Throws<ObjectDisposedException>(() => otherAnchor.PoseProcessingDistance = 100);
         }
 
         /// <summary>
@@ -3609,6 +3782,20 @@ namespace Emas.Tests
         {
             Assert.That(Vector3.Distance(actual, expected), Is.LessThanOrEqualTo(tolerance),
                 "Expected position " + expected.ToString("F6") + ", got " + actual.ToString("F6"));
+        }
+
+        private static void SetDistancePose(Spatial spatial, Double3 position, Quaternion rotation, Timestamp time, bool geographic)
+        {
+            // Use each supported absolute-position contract with the same local/source attitude axes.
+            if (geographic)
+            {
+                spatial.SetEarthCenteredPosition(position, time);
+            }
+            else
+            {
+                spatial.SetCartesianPosition(position, time);
+            }
+            spatial.SetSourceRotation(rotation, time);
         }
 
         private static void AssertRotation(Quaternion actual, Quaternion expected)

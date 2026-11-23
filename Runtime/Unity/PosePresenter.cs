@@ -46,6 +46,15 @@ namespace Emas
             _hasPose = true;
         }
 
+        internal void Observe(Spatial spatial)
+        {
+            // Distant roots use accepted input immediately, including when the Realm has buffered playback.
+            _position = spatial.Position;
+            _observation = spatial.Position;
+            _rotation = spatial.Rotation;
+            _hasPose = true;
+        }
+
         internal void Reset()
         {
             _hasPose = false;

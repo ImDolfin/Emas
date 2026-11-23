@@ -23,8 +23,16 @@ namespace Emas.Editor
                 InspectorLayout.Field(serializedObject, "_anchorId", "Anchor ID");
                 InspectorLayout.Field(serializedObject, "_automaticViews", "Automatic views");
             }
+            using (InspectorLayout.Section("Pose processing", "Distant entities use their latest raw pose through the reference frame."))
+            {
+                InspectorLayout.Field(serializedObject, "_limitPoseProcessing", "Limit processing distance");
+                using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(serializedObject.FindProperty("_limitPoseProcessing"))))
+                {
+                    InspectorLayout.Field(serializedObject, "_poseProcessingDistance", "Processing distance");
+                }
+            }
             serializedObject.ApplyModifiedProperties();
-            // Show each Anchor's current connections without changing them while settings are edited.
+            // Apply pose controls, then show each Anchor's current connections and live limits.
             foreach (Object value in targets)
             {
                 AnchorSetup setup = (AnchorSetup)value;
@@ -46,6 +54,14 @@ namespace Emas.Editor
                 }
                 if (setup.Anchor != null)
                 {
+                    setup.ApplyPoseProcessingSettings();
+                    string processingError = setup.GetPoseProcessingError();
+                    if (processingError != null)
+                    {
+                        EditorGUILayout.HelpBox(processingError, MessageType.Error);
+                    }
+                    InspectorLayout.ReadOnly("Processing distance (live)", setup.Anchor.PoseProcessingDistance.HasValue
+                        ? setup.Anchor.PoseProcessingDistance.Value.ToString("G6") : "Unlimited");
                     InspectorLayout.ReadOnly("Available entities", setup.Anchor.Realm.Query().InAnchor(setup.Anchor.Id).Count.ToString());
                     foreach (PresenceDetector detector in setup.Anchor.Detectors)
                     {

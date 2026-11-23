@@ -125,7 +125,7 @@ namespace Emas
                 : frame.Capture();
         }
 
-        private void PreparePresentation(Record record, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
+        private void PreparePresentation(Record record, double timestamp, float interpolationDelay, ReferenceFrame.Projection projection)
         {
             // Place the reference using the exact presentation pose already saved in the captured frame.
             if (CanProject(record) && record != _preparedReference)
@@ -133,7 +133,10 @@ namespace Emas
                 Spatial spatial = record.Ghost.GetComponent<Spatial>();
                 if (spatial != null)
                 {
-                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay, sourceAxes);
+                    double? distance = record.Ghost.Anchor.PoseProcessingDistance;
+                    bool directPose = distance.HasValue && spatial.HasPosition
+                        && !projection.IsWithinDistance(spatial.Position, distance.Value);
+                    spatial.PreparePresentation(_clock, timestamp, interpolationDelay, projection.Coordinates, directPose);
                 }
             }
         }
@@ -192,7 +195,7 @@ namespace Emas
             for (int index = _chain.Count - 1; index >= 0 && !_realm.IsDisposed; index--)
             {
                 Record item = _chain[index];
-                PreparePresentation(item, timestamp, interpolationDelay, projection.Coordinates);
+                PreparePresentation(item, timestamp, interpolationDelay, projection);
                 Project(item, projection);
                 _projected.Add(item);
             }

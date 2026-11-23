@@ -113,6 +113,9 @@ namespace Emas.Editor
                     : !spatial.IsInRange ? "Suppressed / awaiting pose or parent"
                     : spatial.AttachedTo.HasValue ? "Attached" : "In range");
                 InspectorLayout.ReadOnly("Attached to", spatial.AttachedTo.HasValue ? spatial.AttachedTo.Value.ToString() : "None");
+                InspectorLayout.ReadOnly("Pose processing", !spatial.enabled ? "Application controlled"
+                    : spatial.AttachedTo.HasValue ? "Inherited from parent"
+                    : spatial.IsPoseProcessingBypassed ? "Direct (Anchor distance)" : "Configured traits");
                 InspectorLayout.ReadOnly("Absolute position", spatial.HasPosition ? spatial.Position.ToString() : "Not received");
                 InspectorLayout.ReadOnly("Absolute rotation", spatial.HasRotation ? spatial.Rotation.ToString("F4") : "Not received");
                 InspectorLayout.ReadOnly("Position sample time", SampleTime(spatial.PositionTime));

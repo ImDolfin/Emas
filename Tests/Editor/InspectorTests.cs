@@ -293,7 +293,7 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Authored anchors use the realm blueprint, while automatic view requests remain optional per anchor.
+        /// Authored anchors keep independent view and pose-processing settings through live edits, Undo/Redo and restart.
         /// </summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
@@ -307,6 +307,8 @@ namespace Emas.Editor.Tests
             AnchorSetup manual = CreateAnchor(setup, "manual");
             SerializedObject serialized = new SerializedObject(manual);
             serialized.FindProperty("_automaticViews").boolValue = false;
+            serialized.FindProperty("_limitPoseProcessing").boolValue = true;
+            serialized.FindProperty("_poseProcessingDistance").doubleValue = 250;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             setup.gameObject.SetActive(true);
             setup.StartRealm();
@@ -316,6 +318,7 @@ namespace Emas.Editor.Tests
             {
                 Ghost ghost = (Ghost)setup.Realm.Query().InAnchor(id).Single();
                 Assert.That(ghost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("realm view"));
+                Assert.That(ghost.Anchor.PoseProcessingDistance, Is.Null);
             }
 
             Ghost manualGhost = (Ghost)setup.Realm.Query().InAnchor("manual").Single();
@@ -323,6 +326,60 @@ namespace Emas.Editor.Tests
             Assert.That(manualGhost.IsAvailable, Is.True);
             Assert.That(manualGhost.GetComponentInChildren<View>(true), Is.Null);
             Assert.That(setup.Realm.Manifest(manualGhost).gameObject.name, Is.EqualTo("realm view"));
+
+            // Live distance authoring is independent of view requests and survives Undo, Redo and restart.
+            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(250));
+            Undo.IncrementCurrentGroup();
+            serialized.Update();
+            serialized.FindProperty("_poseProcessingDistance").doubleValue = 125;
+            serialized.ApplyModifiedProperties();
+            Undo.FlushUndoRecordObjects();
+            yield return null;
+            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(125));
+            manual.Anchor.PoseProcessingDistance = 90;
+            yield return null;
+            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(90), "Repaint and Update must preserve direct runtime Anchor edits.");
+            Undo.PerformUndo();
+            yield return null;
+            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(250));
+            Undo.PerformRedo();
+            yield return null;
+            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(125));
+            serialized.Update();
+            serialized.FindProperty("_limitPoseProcessing").boolValue = false;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            yield return null;
+            Assert.That(manual.Anchor.PoseProcessingDistance, Is.Null);
+            serialized.Update();
+            serialized.FindProperty("_limitPoseProcessing").boolValue = true;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            yield return null;
+            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(125));
+            setup.StopRealm();
+            setup.StartRealm();
+            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(125));
+            Undo.ClearUndo(manual);
+        }
+
+        /// <summary>Invalid Anchor processing radii prevent startup before a Realm or its source population is created.</summary>
+        [Test]
+        public void SerializedAnchorProcessingDistance_ValidatesBeforeStartingSources()
+        {
+            RealmSetup setup = CreateRealm();
+            AnchorSetup anchor = CreateAnchor(setup, "limited processing");
+            setup.gameObject.SetActive(true);
+            using (SerializedObject settings = new SerializedObject(anchor))
+            {
+                settings.FindProperty("_limitPoseProcessing").boolValue = true;
+                foreach (double invalid in new[] { 0d, double.NaN, double.PositiveInfinity })
+                {
+                    settings.FindProperty("_poseProcessingDistance").doubleValue = invalid;
+                    settings.ApplyModifiedPropertiesWithoutUndo();
+                    Assert.That(Assert.Throws<InvalidOperationException>(() => setup.StartRealm()).Message,
+                        Does.Contain("pose processing distance must be positive and finite"));
+                    Assert.That(setup.Realm, Is.Null);
+                }
+            }
         }
 
         /// <summary>

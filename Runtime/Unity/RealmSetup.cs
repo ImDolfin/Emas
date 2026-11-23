@@ -408,6 +408,7 @@ namespace Emas
 
                 // Set the scene owner and initializers before a detector can report its first entity.
                 anchor = realm.GetOrCreateAnchor(setup.Id, setup.transform);
+                anchor.PoseProcessingDistance = setup.PoseProcessingDistance;
                 setup.Bind(anchor, this);
                 GhostInitializer initializer = setup.GetComponent<GhostInitializer>();
                 if (initializer != null && initializer.enabled)

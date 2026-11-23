@@ -40,6 +40,12 @@ namespace Emas
                 _maxDistance = maxDistance;
             }
 
+            internal bool IsWithinDistance(Double3 position, double distance)
+            {
+                // Compare source coordinates before float conversion or scene alignment changes their precision.
+                return _hasPosition && Double3.Distance(_position, position) <= distance;
+            }
+
             internal bool TryToUnityPosition(Double3 position, out Vector3 result)
             {
                 result = default(Vector3);

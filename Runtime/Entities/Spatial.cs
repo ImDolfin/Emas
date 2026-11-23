@@ -19,6 +19,7 @@ namespace Emas
         private readonly PoseHistory _history = new PoseHistory();
         private readonly PosePresenter _presenter = new PosePresenter();
         private readonly PresentationSuppression _suppression = new PresentationSuppression();
+        private bool _directPose;
         private RotationSpace _rotationSpace;
         private CoordinateSystem? _earthCenteredBodyAxes;
         private Key? _attachedTo;
@@ -112,6 +113,8 @@ namespace Emas
 
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
+        internal bool IsPoseProcessingBypassed => _directPose;
+
         /// <summary>Projects the latest accepted absolute observation into Unity world space without prediction or smoothing.</summary>
         /// <param name="pose">The observed Unity pose on success; identity rotation when no attitude has been received. Undefined on failure.</param>
         /// <returns>True when this Spatial belongs to a tracked Ghost and its observation can be projected through the current reference and range limit.</returns>
@@ -163,6 +166,7 @@ namespace Emas
         {
             // Reset all filters together, then restart playback from the stored observations.
             _presenter.Reset();
+            _directPose = false;
             ResetPoseHistory();
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)
@@ -362,13 +366,33 @@ namespace Emas
         }
 
         // Apply prediction and smoothing after all SDK readers run and before saving the shared reference.
-        internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
+        internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes,
+            bool directPose = false)
         {
             // Attached roots get their displayed pose from the parent. Clear their separate prediction state.
             if (!enabled || AttachedTo.HasValue)
             {
                 ResetPresentation();
                 return;
+            }
+
+            if (directPose)
+            {
+                // Discard old corrections once on entry. Repeated distant updates only copy accepted input.
+                if (!_directPose)
+                {
+                    ResetPresentation();
+                    _directPose = true;
+                }
+
+                _presenter.Observe(this);
+                return;
+            }
+
+            if (_directPose)
+            {
+                // Returning to processed presentation must start from current input, not a stale nearby filter.
+                ResetPresentation();
             }
 
             _presenter.Prepare(this, clock, timestamp, interpolationDelay, sourceAxes);
@@ -395,7 +419,8 @@ namespace Emas
             // Prediction and smoothing must not display an observation that is outside the range limit.
             Double3 observation = _presenter.HasPose ? _presenter.Observation : Position;
             bool observationVisible = HasPosition && projection.TryToUnityPosition(observation, out position);
-            bool visible = observationVisible && projection.TryToUnityPosition(PresentationPosition, out position);
+            // Direct poses are the observation, so reuse its projection instead of converting the same point twice.
+            bool visible = observationVisible && (_directPose || projection.TryToUnityPosition(PresentationPosition, out position));
             if (!observationVisible)
             {
                 // Clear filter state when the observation is missing or outside range. If only the

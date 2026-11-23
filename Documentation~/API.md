@@ -32,7 +32,7 @@ Author the Ghost's components before detection. Initializers bind readers; they 
 | `Update()` | Advance an application-owned Realm. Reentrant updates are rejected; disposed Realms do nothing. |
 | `Dispose()` | Idempotent cleanup. Subsequent reads are empty; configuration and subscription mutations throw. |
 
-`Anchor` exposes `Id`, `Transform`, `Realm` and a `Detectors` snapshot. `AddDetector`, `RemoveDetector`, `RestartDetector` and `ReplaceDetector` manage attachments. A detector can belong to only one attachment. `Dispose()` removes the Anchor and its objects. Blueprint registration belongs to the Realm.
+`Anchor` exposes `Id`, `Transform`, `Realm` and a `Detectors` snapshot. `PoseProcessingDistance` optionally limits buffering, extrapolation and smoothing to a radius around the Realm reference; farther roots project their latest raw pose directly and stay visible. Null, the default, processes all distances. `AddDetector`, `RemoveDetector`, `RestartDetector` and `ReplaceDetector` manage attachments. A detector can belong to only one attachment. `Dispose()` removes the Anchor and its objects. Blueprint registration belongs to the Realm.
 
 Successful restart/replacement preserves compatible roots, Presence handles and view requests reported during startup handover. Unreported identities are removed after startup dispatch and the next update complete. Failure/removal bypasses grace and removes the population; failed restarts remain attached for explicit retry. See [failure and cleanup](Architecture.md#failure-and-cleanup).
 

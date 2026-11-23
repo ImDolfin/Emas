@@ -257,6 +257,23 @@ Subtract reference positions in doubles before casting to Unity floats. Converti
 
 Geographic distance/range is straight-line ECEF distance in metres, not surface distance. At exact poles, longitude zero defines the tangent axes. Keep the desired Unity reference near the scene origin. Network scenery should share projection; a local cockpit may remain fixed.
 
+## Limit motion processing by Anchor
+
+Enable **Anchor Setup > Pose processing > Limit processing distance** and set **Processing distance**. This can be edited during Play Mode. Code-owned Anchors use the same runtime setting:
+
+```csharp
+anchor.PoseProcessingDistance = 2000.0; // Source units; metres in Geographic space.
+// anchor.PoseProcessingDistance = null; // Restore processing at every distance.
+```
+
+Inside and exactly on the radius, poses use their configured buffering, extrapolation, packet correction and smoothing. Outside it, the latest accepted position and rotation are applied directly through the captured reference. No prediction strategy or presentation filter runs there. Source reads, tracking and view requests continue normally, and trait settings remain intact. The Ghost Inspector reports **Pose processing: Direct (Anchor distance)** while bypassed. The default is unlimited processing.
+
+Distance uses the raw source position and the captured reference position in doubles, independently of the Anchor scene transform or Unity scene alignment. Geographic space measures the ECEF chord in metres. With no reference, source zero is the distance origin. The radius must be positive and finite.
+
+The followed reference always keeps its normal pose processing, including when it belongs to a limited Anchor. Attached roots continue inheriting their parent's processed or direct pose. Crossing the processing boundary clears old filters, packet corrections and estimated-motion state; returning starts from current input rather than an old nearby pose. Raw inputs and supplied motion are retained.
+
+This setting controls processing cost and pose detail, independently for each Anchor. It does not hide entities. `ReferenceFrame.MaxDistance` remains the separate visibility limit described below.
+
 ## Limit distant presentation
 
 `MaxDistance` is a positive optional radius in source units (metres for Geographic); null disables the limit. Both the buffered observation and processed pose must fit the reference/range and finite Unity floats. Missing raw input invalidates presentation history; an otherwise valid filtered pose outside range keeps settling rather than repeatedly resetting.
