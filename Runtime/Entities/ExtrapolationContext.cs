@@ -116,7 +116,7 @@ namespace Emas
             LatestAccelerationTime = latestAccelerationTime;
             LatestAngularVelocityTime = latestAngularVelocityTime;
             RotationSpace = spatial.RotationSpace;
-            Ghost ghost = spatial.GetComponent<Ghost>();
+            Ghost ghost = spatial.Ghost;
             ReferenceFrame frame = ghost != null && ghost.Anchor != null ? ghost.Anchor.Realm.ReferenceFrame : null;
             Space = frame != null ? frame.Space : ReferenceSpace.Cartesian;
             SourceCoordinates = sourceCoordinates;

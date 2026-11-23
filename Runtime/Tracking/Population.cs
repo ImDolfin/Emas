@@ -271,7 +271,7 @@ namespace Emas
         {
             // Use one time reading and one root list for all timeout checks in this pass.
             double now = _elapsedSeconds();
-            List<Record> records = _identities.Snapshot();
+            IReadOnlyList<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
             {
                 Record record = records[index];
@@ -369,7 +369,7 @@ namespace Emas
 
         internal void RemoveUnpublishedHandoverGhosts(long updateNumber, Func<long, bool> hasPendingThrough)
         {
-            List<Record> records = _identities.Snapshot();
+            IReadOnlyList<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];
@@ -421,7 +421,7 @@ namespace Emas
 
         internal void RemoveAnchorGhosts(string anchorId)
         {
-            List<Record> records = _identities.Snapshot();
+            IReadOnlyList<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];
@@ -500,11 +500,12 @@ namespace Emas
                 && record.Owner.IsRegistration(_realm, record.RegistrationGeneration);
         }
 
-        internal void RefreshTraits(List<Record> records, PresenceDetector onlyOwner)
+        internal void RefreshTraits(IReadOnlyList<Record> records, PresenceDetector onlyOwner)
         {
             // Use the saved root list, but check that each source still owns the root before reading its data.
-            foreach (Record record in records)
+            for (int recordIndex = 0; recordIndex < records.Count; recordIndex++)
             {
+                Record record = records[recordIndex];
                 if (!CanFinalize(record, onlyOwner) || (!record.PendingActivation && !record.Ghost.IsAvailable))
                 {
                     continue;
@@ -548,11 +549,12 @@ namespace Emas
             }
         }
 
-        internal void UpdateGhosts(List<Record> records)
+        internal void UpdateGhosts(IReadOnlyList<Record> records)
         {
             // All trait reads are finished. Run Ghost.OnUpdate only on enabled roots that still have an owner.
-            foreach (Record record in records)
+            for (int recordIndex = 0; recordIndex < records.Count; recordIndex++)
             {
+                Record record = records[recordIndex];
                 if (!CanFinalize(record, null) || !record.Ghost.enabled
                     || (!record.PendingActivation && !record.Ghost.IsAvailable))
                 {
@@ -580,7 +582,7 @@ namespace Emas
             }
         }
 
-        internal void ActivateRoots(List<Record> records, PresenceDetector onlyOwner)
+        internal void ActivateRoots(IReadOnlyList<Record> records, PresenceDetector onlyOwner)
         {
             // Make ready roots available before the Realm updates their views.
             for (int index = 0; index < records.Count; index++)
@@ -809,7 +811,7 @@ namespace Emas
             }
         }
 
-        private void DeactivateRecords(List<Record> records, PresenceDetector owner)
+        private void DeactivateRecords(IReadOnlyList<Record> records, PresenceDetector owner)
         {
             // An earlier OnDisable may report another root again. Check its owner and availability before hiding it.
             for (int index = 0; index < records.Count; index++)

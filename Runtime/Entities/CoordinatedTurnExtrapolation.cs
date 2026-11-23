@@ -77,20 +77,23 @@ namespace Emas
                 return default(Double3);
             }
 
-            if (!TryAttitude(context, out Quaternion attitude))
+            // The tangent axes depend only on this observation. Reuse them for attitude,
+            // velocity, acceleration and the resulting displacement.
+            GeographicBasis basis = Basis(context);
+            if (!TryAttitude(context, basis, out Quaternion attitude))
             {
                 return context.Velocity.Value * seconds
                     + context.Acceleration.GetValueOrDefault() * (0.5d * seconds * seconds);
             }
 
             // Convert world motion to local Unity axes, then calculate motion in the turning body axes.
-            Double3 velocity = ToLocal(context, context.Velocity.Value);
+            Double3 velocity = ToLocal(context, basis, context.Velocity.Value);
             Double3 bodyVelocity = SpatialMath.Rotate(Quaternion.Inverse(attitude), velocity);
-            Double3 rate = BodyRate(context, attitude, velocity);
+            Double3 rate = BodyRate(context, basis, attitude, velocity);
             Double3 bodyAcceleration = default(Double3);
             if (context.Acceleration.HasValue)
             {
-                Double3 acceleration = ToLocal(context, context.Acceleration.Value);
+                Double3 acceleration = ToLocal(context, basis, context.Acceleration.Value);
                 // d(v_body)/dt = R^-1*a_world - omega_body x v_body. Feeding inertial
                 // acceleration directly into this calculation would count the acceleration caused by turning twice.
                 bodyAcceleration = SpatialMath.Rotate(Quaternion.Inverse(attitude), acceleration) - Cross(rate, bodyVelocity);
@@ -99,7 +102,7 @@ namespace Emas
             // Convert the movement back to source axes before mapping the position into Unity.
             Double3 displacement = SpatialMath.Rotate(attitude, Integrate(bodyVelocity, bodyAcceleration, rate, seconds));
             return context.Space == ReferenceSpace.Geographic
-                ? Basis(context).ToEarthCentered(displacement) : context.SourceCoordinates.ToSource(displacement);
+                ? basis.ToEarthCentered(displacement) : context.SourceCoordinates.ToSource(displacement);
         }
 
         /// <summary>Integrates a constant angular vector with a quaternion exponential, retaining body or world composition.</summary>
@@ -115,15 +118,16 @@ namespace Emas
                 return SpatialMath.AngularDisplacement(context.AngularVelocity.Value, seconds);
             }
 
-            if (!TryAttitude(context, out Quaternion attitude) || !context.Velocity.HasValue)
+            GeographicBasis basis = Basis(context);
+            if (!TryAttitude(context, basis, out Quaternion attitude) || !context.Velocity.HasValue)
             {
                 return Quaternion.identity;
             }
 
-            return SpatialMath.AngularDisplacement(BodyRate(context, attitude, ToLocal(context, context.Velocity.Value)), seconds);
+            return SpatialMath.AngularDisplacement(BodyRate(context, basis, attitude, ToLocal(context, basis, context.Velocity.Value)), seconds);
         }
 
-        private Double3 BodyRate(ExtrapolationContext context, Quaternion attitude, Double3 velocity)
+        private Double3 BodyRate(in ExtrapolationContext context, in GeographicBasis basis, Quaternion attitude, Double3 velocity)
         {
             // Use supplied or estimated turn rates, including zero, before trying to infer a turn from bank.
             if (context.AngularVelocity.HasValue)
@@ -133,7 +137,7 @@ namespace Emas
                 {
                     if (context.RotationSpace == RotationSpace.EarthCentered)
                     {
-                        rate = Basis(context).ToLocal(rate) * -1d;
+                        rate = basis.ToLocal(rate) * -1d;
                     }
 
                     rate = SpatialMath.Rotate(Quaternion.Inverse(attitude), rate);
@@ -168,7 +172,7 @@ namespace Emas
             return SpatialMath.Rotate(Quaternion.Inverse(attitude), new Double3(0, turnRate, 0));
         }
 
-        private static bool TryAttitude(ExtrapolationContext context, out Quaternion attitude)
+        private static bool TryAttitude(in ExtrapolationContext context, in GeographicBasis basis, out Quaternion attitude)
         {
             // Calculate turns from the local body rotation, even when the SDK supplies an ECEF rotation.
             attitude = Quaternion.identity;
@@ -185,7 +189,7 @@ namespace Emas
                     return false;
                 }
 
-                attitude = Basis(context).ToLocalEarthCenteredRotation(rotation, context.EarthCenteredBodyAxes.Value);
+                attitude = basis.ToLocalEarthCenteredRotation(rotation, context.EarthCenteredBodyAxes.Value);
             }
             else
             {
@@ -195,14 +199,16 @@ namespace Emas
             return true;
         }
 
-        private static Double3 ToLocal(ExtrapolationContext context, Double3 vector)
+        private static Double3 ToLocal(in ExtrapolationContext context, in GeographicBasis basis, Double3 vector)
         {
-            return context.Space == ReferenceSpace.Geographic ? Basis(context).ToLocal(vector) : context.SourceCoordinates.ToUnity(vector);
+            return context.Space == ReferenceSpace.Geographic ? basis.ToLocal(vector) : context.SourceCoordinates.ToUnity(vector);
         }
 
-        private static GeographicBasis Basis(ExtrapolationContext context)
+        private static GeographicBasis Basis(in ExtrapolationContext context)
         {
-            return new GeographicBasis(GeoPosition.FromEarthCentered(context.ObservationPosition.Value));
+            return context.ObservationRotation.HasValue && context.ObservationPosition.HasValue
+                && (context.Space == ReferenceSpace.Geographic || context.RotationSpace == RotationSpace.EarthCentered)
+                    ? new GeographicBasis(GeoPosition.FromEarthCentered(context.ObservationPosition.Value)) : default(GeographicBasis);
         }
 
         private static Double3 Integrate(Double3 velocity, Double3 acceleration, Double3 rate, double seconds)

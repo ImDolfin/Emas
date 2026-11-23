@@ -103,15 +103,16 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Filter changes report one departure and a fresh entry when the ghost matches again.
+        /// Metadata and component changes report one departure and a fresh entry when the ghost matches again.
         /// </summary>
         [Test]
         public void Observe_ReportsVariantMembershipChanges()
         {
             Variant red = new Variant("red");
-            _source.Publish("one", red, "selected");
+            TestGhost root = _source.Publish("one", red, "selected");
+            Spatial spatial = root.gameObject.AddComponent<Spatial>();
             _realm.Update();
-            Query query = _realm.Query().WithVariant(red);
+            Query query = _realm.Query().WithVariant(red).With<Spatial>();
             List<string> events = new List<string>();
             query.Observe(ghost => events.Add("enter"), key => events.Add("leave"));
             // Make the same root stop matching the filter, then match it again.
@@ -121,6 +122,15 @@ namespace Emas.Tests
             _source.Publish("one", red, "selected");
             _realm.Update();
             Assert.That(events, Is.EqualTo(new[] { "enter", "leave", "enter" }));
+
+            // Component membership remains live after several unchanged query passes.
+            _realm.Update();
+            UnityEngine.Object.DestroyImmediate(spatial);
+            _realm.Update();
+            _realm.Update();
+            root.gameObject.AddComponent<Spatial>();
+            _realm.Update();
+            Assert.That(events, Is.EqualTo(new[] { "enter", "leave", "enter", "leave", "enter" }));
         }
 
         /// <summary>

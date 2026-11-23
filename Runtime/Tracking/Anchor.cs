@@ -45,6 +45,7 @@ namespace Emas
         }
 
         private readonly List<PresenceDetector> _sources = new List<PresenceDetector>();
+        private readonly List<SourceTick> _sourceTicks = new List<SourceTick>();
         private readonly HashSet<PresenceDetector> _restarting = new HashSet<PresenceDetector>();
         private readonly GameObject _gameObject;
         private bool _disposed;
@@ -441,26 +442,34 @@ namespace Emas
                 return;
             }
 
-            List<SourceTick> sources = new List<SourceTick>(_sources.Count);
+            List<SourceTick> sources = _sourceTicks;
             // Save source versions so a detector restarted by another callback waits for the next tick.
             for (int index = 0; index < _sources.Count; index++)
             {
                 sources.Add(new SourceTick(_sources[index]));
             }
 
-            // Earlier callbacks may remove the Anchor or replace a saved source version.
-            for (int index = 0; index < sources.Count; index++)
+            try
             {
-                if (_disposed)
+                // Earlier callbacks may remove the Anchor or replace a saved source version.
+                for (int index = 0; index < sources.Count; index++)
                 {
-                    break;
-                }
+                    if (_disposed)
+                    {
+                        break;
+                    }
 
-                SourceTick current = sources[index];
-                if (_sources.Contains(current.Source) && current.Source.RegistrationGeneration == current.Generation)
-                {
-                    current.Source.Tick();
+                    SourceTick current = sources[index];
+                    if (_sources.Contains(current.Source) && current.Source.RegistrationGeneration == current.Generation)
+                    {
+                        current.Source.Tick();
+                    }
                 }
+            }
+            finally
+            {
+                // Keep capacity without retaining detached detectors between updates.
+                sources.Clear();
             }
         }
 

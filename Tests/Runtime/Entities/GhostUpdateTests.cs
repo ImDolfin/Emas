@@ -188,5 +188,34 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(first.UpdateCount + second.UpdateCount, Is.EqualTo(1));
         }
+
+        /// <summary>Callbacks can replace population without changing the update's saved membership; new roots run on the next pass.</summary>
+        [Test]
+        public void OnUpdate_PopulationChangesWaitForNextPass()
+        {
+            Detector detector = new Detector();
+            _realm.GetOrCreateAnchor("sdk", detector);
+            PipelineGhost original = detector.Publish("one");
+            _realm.Update();
+            _realm.Update();
+            PipelineGhost replacement = null;
+            original.Updating = () =>
+            {
+                detector.Lose("one");
+                replacement = detector.Publish("one");
+            };
+
+            // Removal invalidates the current population, while the Ghost pass keeps its original snapshot.
+            _realm.Update();
+            Assert.That(replacement, Is.Not.SameAs(original));
+            Assert.That(replacement.UpdateCount, Is.Zero);
+            Assert.That(replacement.IsAvailable, Is.False);
+            Assert.That(_realm.Ghosts.Count, Is.EqualTo(1));
+
+            _realm.Update();
+            Assert.That(replacement.UpdateCount, Is.EqualTo(1));
+            Assert.That(replacement.IsAvailable, Is.True);
+            Assert.That(_realm.Query().Single(), Is.SameAs(replacement));
+        }
     }
 }

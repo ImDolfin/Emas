@@ -21,7 +21,7 @@ namespace Emas
             _identities = identities;
         }
 
-        internal void Project(List<Record> records, ReferenceFrame frame)
+        internal void Project(IReadOnlyList<Record> records, ReferenceFrame frame)
         {
             // Use one display time and reference for all roots, including attachments.
             double timestamp = Time.realtimeSinceStartupAsDouble;
@@ -58,13 +58,14 @@ namespace Emas
             }
         }
 
-        internal void ResetTime(List<Record> records)
+        internal void ResetTime(IReadOnlyList<Record> records)
         {
             // When the SDK clock restarts, reset the shared clock and every root's stored history together.
             _clock.Reset();
             double timestamp = Time.realtimeSinceStartupAsDouble;
-            foreach (Record record in records)
+            for (int recordIndex = 0; recordIndex < records.Count; recordIndex++)
             {
+                Record record = records[recordIndex];
                 if (record.Ghost != null)
                 {
                     Spatial spatial = record.Ghost.GetComponent<Spatial>();
@@ -76,7 +77,7 @@ namespace Emas
             }
         }
 
-        internal void RefreshSuppression(List<Record> records)
+        internal void RefreshSuppression(IReadOnlyList<Record> records)
         {
             for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
             {
@@ -141,11 +142,12 @@ namespace Emas
             }
         }
 
-        private void ObserveTimes(List<Record> records)
+        private void ObserveTimes(IReadOnlyList<Record> records)
         {
             // Use any valid pose timestamp to improve the shared clock, regardless of anchor or pose type.
-            foreach (Record record in records)
+            for (int recordIndex = 0; recordIndex < records.Count; recordIndex++)
             {
+                Record record = records[recordIndex];
                 if (CanProject(record))
                 {
                     Spatial spatial = record.Ghost.GetComponent<Spatial>();

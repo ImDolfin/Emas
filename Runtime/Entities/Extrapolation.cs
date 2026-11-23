@@ -44,6 +44,12 @@ namespace Emas
         private Double3 _motionExtrapolation;
         private PacketSmoother _packetSmoother;
         private long _motionVersion;
+        private Spatial _spatial;
+        private ExtrapolationContext _context;
+        private bool _hasContext;
+        private long _contextPositionVersion;
+        private long _contextRotationVersion;
+        private long _contextMotionVersion;
 
         /// <summary>Gets or sets the linear and angular gap extrapolation model on Unity's main thread.</summary>
         /// <value>A non-null strategy; defaults to <see cref="ConstantAccelerationExtrapolation"/>.</value>
@@ -131,6 +137,20 @@ namespace Emas
         /// <value>True after an angular velocity setter accepts a sample, until the channel is cleared or unbound.</value>
         public bool HasAngularVelocity => _hasAngularVelocity;
 
+        private Spatial Spatial
+        {
+            get
+            {
+                // Spatial is required and unique. Resolve again if Unity destroyed the previous component.
+                if (_spatial == null)
+                {
+                    _spatial = GetComponent<Spatial>();
+                }
+
+                return _spatial;
+            }
+        }
+
         /// <summary>Supplies velocity in shared Cartesian source units per second; older or duplicate timed observations are ignored.</summary>
         /// <param name="velocity">Finite velocity in the same source axes and distance units as the Cartesian position.</param>
         /// <param name="sampleTime">The original SDK observation time, or null for untimed input.</param>
@@ -173,7 +193,7 @@ namespace Emas
             _hasVelocity = false;
             _velocity = default(Double3);
             _velocityTime = null;
-            Spatial spatial = GetComponent<Spatial>();
+            Spatial spatial = Spatial;
             if (spatial != null)
             {
                 spatial.History.ClearVelocity();
@@ -222,7 +242,7 @@ namespace Emas
             _hasAcceleration = false;
             _acceleration = default(Double3);
             _accelerationTime = null;
-            Spatial spatial = GetComponent<Spatial>();
+            Spatial spatial = Spatial;
             if (spatial != null)
             {
                 spatial.History.ClearAcceleration();
@@ -296,7 +316,7 @@ namespace Emas
             _angularVelocity = default(Double3);
             _angularVelocityIsWorld = false;
             _angularVelocityTime = null;
-            Spatial spatial = GetComponent<Spatial>();
+            Spatial spatial = Spatial;
             if (spatial != null)
             {
                 spatial.History.ClearAngularVelocity();
@@ -308,6 +328,7 @@ namespace Emas
         public void Reset()
         {
             // Keep motion supplied by the application. Clear estimated motion and this root's filter state.
+            _hasContext = false;
             _positionVersion = -1;
             _previousTime = null;
             _hasEstimatedVelocity = false;
@@ -320,6 +341,7 @@ namespace Emas
 
         internal void Prepare(Spatial spatial, double timestamp)
         {
+            _hasContext = false;
             ObservePosition(spatial);
             _elapsed = _projectionTime.HasValue ? Math.Max(0d, timestamp - _projectionTime.Value) : 0d;
             _projectionTime = timestamp;
@@ -484,6 +506,22 @@ namespace Emas
 
         private ExtrapolationContext CreateContext(Spatial spatial, CoordinateSystem sourceAxes, Timestamp? observationTime)
         {
+            // Position, rotation and packet-correction previews often sample the same SDK time.
+            // Reuse that motion sample within this preparation, while allowing a custom strategy
+            // to change input or reference settings before another channel is evaluated.
+            Ghost ghost = spatial.Ghost;
+            ReferenceFrame frame = ghost != null && ghost.Anchor != null ? ghost.Anchor.Realm.ReferenceFrame : null;
+            ReferenceSpace space = frame != null ? frame.Space : ReferenceSpace.Cartesian;
+            if (_hasContext && _contextPositionVersion == spatial.PositionVersion
+                && _contextRotationVersion == spatial.RotationVersion && _contextMotionVersion == _motionVersion
+                && Nullable.Equals(_context.ObservationTime, observationTime) && _context.Space == space
+                && _context.SourceCoordinates.Right == sourceAxes.Right
+                && _context.SourceCoordinates.Up == sourceAxes.Up
+                && _context.SourceCoordinates.Forward == sourceAxes.Forward)
+            {
+                return _context;
+            }
+
             // Use supplied velocity at the requested time when available. Otherwise, estimate from known poses.
             PoseHistory history = spatial.History;
             bool suppliedVelocity = _hasVelocity && (!observationTime.HasValue || HasVelocityAt(history, observationTime.Value));
@@ -520,9 +558,14 @@ namespace Emas
             // Tell each strategy where the angular rate came from and whether it uses body or world axes.
             Double3? angularVelocity = AngularMotion(spatial, sourceAxes, observationTime,
                 out bool estimatedAngularVelocity, out bool worldAngularVelocity);
-            return new ExtrapolationContext(spatial, sourceAxes, observationTime, velocity, acceleration,
+            _context = new ExtrapolationContext(spatial, sourceAxes, observationTime, velocity, acceleration,
                 angularVelocity, estimatedVelocity, estimatedAngularVelocity, worldAngularVelocity,
                 _velocityTime, _accelerationTime, _angularVelocityTime);
+            _contextPositionVersion = spatial.PositionVersion;
+            _contextRotationVersion = spatial.RotationVersion;
+            _contextMotionVersion = _motionVersion;
+            _hasContext = true;
+            return _context;
         }
 
         private Double3? AngularMotion(Spatial spatial, CoordinateSystem sourceAxes, Timestamp? observationTime,
@@ -646,7 +689,7 @@ namespace Emas
                 return;
             }
 
-            PoseHistory history = GetComponent<Spatial>().History;
+            PoseHistory history = Spatial.History;
             if (!_hasAngularVelocity || _angularVelocity != angularVelocity || _angularVelocityIsWorld != world
                 || sampleTime.HasValue || _angularVelocityTime.HasValue)
             {
@@ -779,7 +822,7 @@ namespace Emas
                 _velocity = velocity;
                 _velocityTime = sampleTime;
                 _hasVelocity = true;
-                PoseHistory history = GetComponent<Spatial>().History;
+                PoseHistory history = Spatial.History;
                 if (sampleTime.HasValue)
                 {
                     history.AddVelocity(velocity, sampleTime.Value);
@@ -805,7 +848,7 @@ namespace Emas
                 _acceleration = acceleration;
                 _accelerationTime = sampleTime;
                 _hasAcceleration = true;
-                PoseHistory history = GetComponent<Spatial>().History;
+                PoseHistory history = Spatial.History;
                 if (sampleTime.HasValue)
                 {
                     history.AddAcceleration(acceleration, sampleTime.Value);

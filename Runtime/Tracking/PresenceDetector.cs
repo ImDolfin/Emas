@@ -22,6 +22,7 @@ namespace Emas
         private int _lifecycleDepth;
         private TimeSpan? _inactivityTimeout;
         private TimeSpan _disappearanceGracePeriod;
+        private Action _updateAction;
 
         /// <summary>Gets the anchor currently hosting this source.</summary>
         /// <value>The attached anchor, or null while detached.</value>
@@ -343,7 +344,12 @@ namespace Emas
             try
             {
                 // Wait for the complete OnUpdate callback before making its data visible.
-                ApplySourceChanges(anchor.Realm, OnUpdate);
+                if (_updateAction == null)
+                {
+                    _updateAction = OnUpdate;
+                }
+
+                ApplySourceChanges(anchor.Realm, _updateAction);
                 if (IsRegistration(anchor.Realm, generation))
                 {
                     anchor.Realm.FinalizeSource(this);

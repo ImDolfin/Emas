@@ -25,6 +25,7 @@ namespace Emas
         private Key? _attachedTo;
         private Vector3 _attachmentPosition;
         private Quaternion _attachmentRotation = Quaternion.identity;
+        private Ghost _ghost;
 
         /// <summary>Gets the latest accepted position sample time, or null for arrival-timed input.</summary>
         /// <value>The original SDK timestamp for the stored position; null before timed input or after a spatial clock reset.</value>
@@ -114,6 +115,20 @@ namespace Emas
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
         internal bool IsPoseProcessingBypassed => _directPose;
+
+        internal Ghost Ghost
+        {
+            get
+            {
+                // A root's Ghost is unique. Resolve lazily because data can arrive before activation.
+                if (_ghost == null)
+                {
+                    _ghost = GetComponent<Ghost>();
+                }
+
+                return _ghost;
+            }
+        }
 
         /// <summary>Projects the latest accepted absolute observation into Unity world space without prediction or smoothing.</summary>
         /// <param name="pose">The observed Unity pose on success; identity rotation when no attitude has been received. Undefined on failure.</param>

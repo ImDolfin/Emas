@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Reduce steady-state update allocations by reusing population snapshots, Anchor/source tick buffers and detector callbacks. Avoid duplicate query component checks, repeated motion sampling and geographic tangent-axis calculations while retaining live component and input changes.
+- Add Unity Profiler markers for the Realm update, trait readers, Ghost behavior, projection, views and query notifications.
 - Add per-Anchor PoseProcessingDistance with live authoring controls. Distant entities project their latest raw pose without buffering, prediction, packet correction or smoothing; reference processing and visibility remain independent, and filters restart cleanly on return.
 - Add Extrapolation.PredictionTime as actual forward prediction shared by all existing strategies; distinguish it from the prediction limit and count known packet age once. Cover sustained constant-rate flight with uniform transport delay and the 0.2-to-0.4 prediction contract.
 - Show shared playback delay in pose diagnostics and observed/reference geographic bank in the Ghost Inspector; clarify immediate bank/pitch cancellation, view frames, prediction limits and input attitude direction.

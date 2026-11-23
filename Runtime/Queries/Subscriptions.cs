@@ -221,6 +221,14 @@ namespace Emas
                 }
 
                 IGhost ghost = matches[index];
+                Key key = ghost.Key;
+                // Existing matches were checked by RefreshMatches. Only arrivals need a second check
+                // after callbacks, including roots removed and republished during this notification pass.
+                if (subscription.Seen.Contains(key))
+                {
+                    continue;
+                }
+
                 // An earlier callback may have removed this Ghost or changed whether it matches.
                 if (!_realm.IsCurrentGhost(ghost) || !subscription.Query.Matches(ghost))
                 {
@@ -228,7 +236,7 @@ namespace Emas
                 }
 
                 // Save the match before calling observers, since a callback may remove this Ghost right away.
-                if (subscription.Seen.Add(ghost.Key))
+                if (subscription.Seen.Add(key))
                 {
                     try
                     {

@@ -7,8 +7,9 @@ namespace Emas
     internal sealed class IdentityMap
     {
         private readonly Dictionary<Key, Record> _records = new Dictionary<Key, Record>();
+        private IReadOnlyList<Record> _snapshot;
 
-        internal IEnumerable<Record> Values
+        internal Dictionary<Key, Record>.ValueCollection Values
         {
             get
             {
@@ -25,6 +26,7 @@ namespace Emas
 
             // Add must fail if another root already has this Key.
             _records.Add(record.Key, record);
+            _snapshot = null;
         }
 
         internal bool TryGetValue(Key key, out Record record)
@@ -57,7 +59,9 @@ namespace Emas
             }
 
             // Cleanup for an old root must not remove its replacement.
-            return _records.Remove(record.Key);
+            bool removed = _records.Remove(record.Key);
+            _snapshot = null;
+            return removed;
         }
 
         internal bool Contains(Record record)
@@ -71,9 +75,15 @@ namespace Emas
             return _records.TryGetValue(record.Key, out current) && ReferenceEquals(current, record);
         }
 
-        internal List<Record> Snapshot()
+        internal IReadOnlyList<Record> Snapshot()
         {
-            return new List<Record>(_records.Values);
+            // Membership changes replace the snapshot. Callbacks can keep iterating the old one safely.
+            if (_snapshot == null)
+            {
+                _snapshot = new List<Record>(_records.Values);
+            }
+
+            return _snapshot;
         }
 
         internal List<Record> OwnedBy(PresenceDetector owner)

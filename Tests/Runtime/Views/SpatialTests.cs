@@ -2103,6 +2103,43 @@ namespace Emas.Tests
             AssertRotation(ghost.transform.rotation, Quaternion.Euler(0, 135, 0));
         }
 
+        /// <summary>A custom strategy's input changes are visible to later channels within the same presentation pass.</summary>
+        [Test]
+        public void ExtrapolationStrategies_ObserveInputChangesBetweenChannels()
+        {
+            TestGhost ghost = _source.Publish("changing-strategy");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
+            Timestamp time = new Timestamp(1000, 0);
+            spatial.SetCartesianPosition(default(Double3), time);
+            spatial.SetSourceRotation(Quaternion.identity, time);
+            extrapolation.SetCartesianVelocity(new Double3(10, 0, 0), time);
+            extrapolation.SetBodyAngularVelocity(new Double3(0, 1, 0), CoordinateSystem.Unity, time);
+            extrapolation.PredictionTime = 0.1f;
+            bool changed = false;
+            ExtrapolationContext angular = default(ExtrapolationContext);
+            extrapolation.Strategy = new HalfSpeedExtrapolation
+            {
+                PositionObserved = context =>
+                {
+                    if (!changed)
+                    {
+                        changed = true;
+                        // Replace timed motion from inside application model code.
+                        extrapolation.ClearAngularVelocity();
+                        extrapolation.SetBodyAngularVelocity(new Double3(0, 0.5, 0), CoordinateSystem.Unity, time);
+                    }
+                },
+                RotationObserved = context => angular = context
+            };
+
+            _realm.Update();
+            Assert.That(changed, Is.True);
+            Assert.That(angular.AngularVelocity, Is.EqualTo(new Double3(0, 0.5, 0)));
+            _realm.Update();
+            Assert.That(angular.AngularVelocity, Is.EqualTo(new Double3(0, 0.5, 0)));
+        }
+
         /// <summary>Application models receive the full pose and independently timed motion sampled at the channel being extrapolated, including unavailable future acceleration and coordinate metadata.</summary>
         [Test]
         public void ExtrapolationContext_AlignsAllMotionToEachPoseChannel()

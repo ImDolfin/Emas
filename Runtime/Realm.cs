@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace Emas
@@ -25,7 +26,14 @@ namespace Emas
             }
         }
 
+        private static readonly ProfilerMarker UpdateMarker = new ProfilerMarker("Emas.Update");
+        private static readonly ProfilerMarker TraitsMarker = new ProfilerMarker("Emas.Traits");
+        private static readonly ProfilerMarker GhostsMarker = new ProfilerMarker("Emas.Ghosts");
+        private static readonly ProfilerMarker ProjectionMarker = new ProfilerMarker("Emas.Projection");
+        private static readonly ProfilerMarker ViewsMarker = new ProfilerMarker("Emas.Views");
+        private static readonly ProfilerMarker QueriesMarker = new ProfilerMarker("Emas.Queries");
         private readonly Dictionary<string, Anchor> _anchors = new Dictionary<string, Anchor>();
+        private readonly List<Anchor> _updateAnchors = new List<Anchor>();
         private readonly IdentityMap _identities = new IdentityMap();
         private readonly ManifestationBlueprintRegistry _blueprints = new ManifestationBlueprintRegistry();
         private readonly Subscriptions _subscriptions;
@@ -36,6 +44,7 @@ namespace Emas
         private float _interpolationDelay;
         private readonly SceneChangeQueue _sceneChanges = new SceneChangeQueue();
         private readonly CommandQueue<DispatchCommand> _dispatch;
+        private readonly Func<long, bool> _hasPendingThrough;
         private const int MaxDispatchActionsPerUpdate = 256;
         private long _updateNumber;
         private int _sourceDepth;
@@ -162,6 +171,7 @@ namespace Emas
         {
             // Set up shared tracking and scene changes before queries can see this Realm.
             _dispatch = new CommandQueue<DispatchCommand>(ExecuteDispatch);
+            _hasPendingThrough = _dispatch.HasPendingThrough;
             _subscriptions = new Subscriptions(this);
             _views = new ViewManager(_identities, _sceneChanges);
             _spatial = new SpatialManager(this, _identities);
@@ -500,13 +510,15 @@ namespace Emas
 
             _updating = true;
             _updateNumber++;
+            UpdateMarker.Begin();
             try
             {
                 // Run only work queued before this update. New work waits for the next update.
                 _dispatch.ExecutePending(MaxDispatchActionsPerUpdate);
 
                 // Copy the Anchor list because source callbacks may remove Anchors as we go.
-                List<Anchor> anchors = new List<Anchor>(_anchors.Values);
+                List<Anchor> anchors = _updateAnchors;
+                anchors.AddRange(_anchors.Values);
                 for (int index = 0; index < anchors.Count && !_disposed; index++)
                 {
                     Anchor anchor = anchors[index];
@@ -528,19 +540,24 @@ namespace Emas
                 if (!_disposed)
                 {
                     // Apply fresh reports before checking which Ghosts have gone quiet for too long.
-                    _population.RemoveUnpublishedHandoverGhosts(_updateNumber, _dispatch.HasPendingThrough);
+                    _population.RemoveUnpublishedHandoverGhosts(_updateNumber, _hasPendingThrough);
                     _population.RemoveExpiredGhosts();
                     // Finish data and views before telling observers about changes.
                     FinalizeChanges(null, updateGhosts: true);
                     // Arrival callbacks may request views. Use the reference pose already chosen for this update.
                     _notifyingUpdateQueries = true;
-                    _subscriptions.NotifyAll();
+                    using (QueriesMarker.Auto())
+                    {
+                        _subscriptions.NotifyAll();
+                    }
                 }
             }
             finally
             {
+                _updateAnchors.Clear();
                 _notifyingUpdateQueries = false;
                 _updating = false;
+                UpdateMarker.End();
             }
         }
 
@@ -568,7 +585,7 @@ namespace Emas
             }
 
             // Remove any roots left after Anchor cleanup, then release blueprint and reference settings.
-            List<Record> records = _identities.Snapshot();
+            IReadOnlyList<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count; index++)
             {
                 _population.RemoveRecord(records[index]);
@@ -952,7 +969,7 @@ namespace Emas
         private void RebindManifestationBlueprints(Kind kind)
         {
             // Copy the root list before view callbacks can change tracking.
-            List<Record> records = _identities.Snapshot();
+            IReadOnlyList<Record> records = _identities.Snapshot();
             for (int index = 0; index < records.Count; index++)
             {
                 Record record = records[index];
@@ -996,31 +1013,43 @@ namespace Emas
             _finalizing = true;
             try
             {
-                List<Record> records = _identities.Snapshot();
+                IReadOnlyList<Record> records = _identities.Snapshot();
                 // Work on one copy of the root list. New roots wait for the next pass.
                 // Read all traits before any Ghost.OnUpdate can use another root's data.
-                _population.RefreshTraits(records, onlyOwner);
+                using (TraitsMarker.Auto())
+                {
+                    _population.RefreshTraits(records, onlyOwner);
+                }
                 if (updateGhosts)
                 {
-                    _population.UpdateGhosts(records);
+                    using (GhostsMarker.Auto())
+                    {
+                        _population.UpdateGhosts(records);
+                    }
                 }
 
                 // Place roots using their finished data before activating roots or views.
-                _spatial.Project(records, _referenceFrame);
-                _population.ActivateRoots(records, onlyOwner);
-                // Activation callbacks may cancel or replace a view request. Refresh only requests still needing work.
-                for (int index = 0; index < records.Count; index++)
+                using (ProjectionMarker.Auto())
                 {
-                    Record record = records[index];
-                    if (!_population.CanFinalize(record, onlyOwner) || !record.Ghost.IsAvailable || !record.ViewDirty)
+                    _spatial.Project(records, _referenceFrame);
+                }
+                using (ViewsMarker.Auto())
+                {
+                    _population.ActivateRoots(records, onlyOwner);
+                    // Activation callbacks may cancel or replace a view request. Refresh only requests still needing work.
+                    for (int index = 0; index < records.Count; index++)
                     {
-                        continue;
+                        Record record = records[index];
+                        if (!_population.CanFinalize(record, onlyOwner) || !record.Ghost.IsAvailable || !record.ViewDirty)
+                        {
+                            continue;
+                        }
+
+                        _views.Refresh(record);
                     }
 
-                    _views.Refresh(record);
+                    _spatial.RefreshSuppression(records);
                 }
-
-                _spatial.RefreshSuppression(records);
             }
             finally
             {
