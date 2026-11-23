@@ -8,7 +8,8 @@ namespace Emas
     /// Place on the Ghost root. While enabled, realm projection owns its world pose; disable to release placement
     /// and range suppression. Setters retain raw double-precision input for the next projection. Timed channels
     /// share one SDK clock and reject older or duplicate samples independently. Optional Smoothing and Extrapolation
-    /// modify presentation only.
+    /// modify presentation only. Repeating identical untimed pose input retains its observation age;
+    /// provide SDK timestamps to identify fresh stationary observations.
     /// </remarks>
     [DisallowMultipleComponent]
     [AddComponentMenu("Emas/Spatial")]
@@ -280,12 +281,13 @@ namespace Emas
         {
             // Check the packet time before changing rotation axes. Rejected packets must leave axes and filters unchanged.
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
-            if (!_data.SetRotation(normalized, sampleTime, Time.realtimeSinceStartupAsDouble))
+            bool representationChanged = _rotationSpace != Emas.RotationSpace.Source;
+            if (!_data.SetRotation(normalized, sampleTime, Time.realtimeSinceStartupAsDouble, representationChanged))
             {
                 return;
             }
 
-            if (_rotationSpace != Emas.RotationSpace.Source)
+            if (representationChanged)
             {
                 ResetRotationSmoothing();
             }
@@ -310,12 +312,13 @@ namespace Emas
         {
             // Store yaw, pitch and roll using local geographic axes, regardless of the source axis settings.
             Quaternion rotation = SpatialMath.GeographicRotation(yawDegrees, pitchDegrees, rollDegrees);
-            if (!_data.SetRotation(rotation, sampleTime, Time.realtimeSinceStartupAsDouble))
+            bool representationChanged = _rotationSpace != Emas.RotationSpace.Geographic;
+            if (!_data.SetRotation(rotation, sampleTime, Time.realtimeSinceStartupAsDouble, representationChanged))
             {
                 return;
             }
 
-            if (_rotationSpace != Emas.RotationSpace.Geographic)
+            if (representationChanged)
             {
                 ResetRotationSmoothing();
             }
@@ -337,12 +340,13 @@ namespace Emas
             // Changing body axes clears old corrections even when the rotation still uses ECEF.
             Quaternion normalized = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             CoordinateSystem axes = CoordinateSystem.RequireRightHandedBodyAxes(bodyAxes);
-            if (!_data.SetRotation(normalized, sampleTime, Time.realtimeSinceStartupAsDouble))
+            bool representationChanged = _rotationSpace != Emas.RotationSpace.EarthCentered || !_earthCenteredBodyAxes.Equals(axes);
+            if (!_data.SetRotation(normalized, sampleTime, Time.realtimeSinceStartupAsDouble, representationChanged))
             {
                 return;
             }
 
-            if (_rotationSpace != Emas.RotationSpace.EarthCentered || !_earthCenteredBodyAxes.Equals(axes))
+            if (representationChanged)
             {
                 ResetRotationSmoothing();
             }

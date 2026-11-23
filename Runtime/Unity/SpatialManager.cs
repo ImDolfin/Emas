@@ -13,6 +13,7 @@ namespace Emas
         private readonly HashSet<Record> _visiting = new HashSet<Record>();
         private readonly SpatialClock _clock = new SpatialClock();
         private readonly List<Record> _chain = new List<Record>();
+        private Record _preparedReference;
 
         internal SpatialManager(Realm realm, IdentityMap identities)
         {
@@ -25,11 +26,11 @@ namespace Emas
             // Use one display time and reference for all roots, including attachments.
             double timestamp = Time.realtimeSinceStartupAsDouble;
             float interpolationDelay = _realm.InterpolationDelay;
-            // Update the shared SDK clock before predicting any root, including the followed reference.
-            ObserveTimes(records);
-            ReferenceFrame.Projection projection = Capture(frame, timestamp, interpolationDelay);
             try
             {
+                // Update the shared SDK clock before predicting any root, including the followed reference.
+                ObserveTimes(records);
+                ReferenceFrame.Projection projection = Capture(frame, timestamp, interpolationDelay);
                 for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
                 {
                     ProjectChain(records[index], projection, timestamp, interpolationDelay);
@@ -113,6 +114,7 @@ namespace Emas
                 if (spatial != null)
                 {
                     spatial.PreparePresentation(_clock, timestamp, interpolationDelay, frame.Coordinates);
+                    _preparedReference = reference;
                 }
 
                 frame.UpdateFollowedPose(spatial);
@@ -125,7 +127,8 @@ namespace Emas
 
         private void PreparePresentation(Record record, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
         {
-            if (CanProject(record))
+            // Place the reference using the exact presentation pose already saved in the captured frame.
+            if (CanProject(record) && record != _preparedReference)
             {
                 Spatial spatial = record.Ghost.GetComponent<Spatial>();
                 if (spatial != null)
@@ -164,6 +167,7 @@ namespace Emas
             _projected.Clear();
             _visiting.Clear();
             _chain.Clear();
+            _preparedReference = null;
         }
 
         private void ProjectChain(Record record, ReferenceFrame.Projection projection, double timestamp, float interpolationDelay)

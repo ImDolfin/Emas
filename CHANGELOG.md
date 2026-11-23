@@ -2,6 +2,9 @@
 
 ## 0.2.0
 
+- Preserve angular prediction age when readers repeat an unchanged untimed attitude; recognize small attitude and representation changes as fresh input.
+- Reuse the captured reference presentation when placing its root, avoiding a second prediction/filter preparation in the same projection pass.
+- Clarify that target pose comparisons exclude followed-reference processing; guide reference-angle and extrapolation checks for distant cockpit targets.
 - Turn Window/Emas into a pose debugger with a dedicated Scene tool, shared overlay controls, pinned/followed targets, framing and observed/presented pose readouts.
 - Add observed/presented pose comparison gizmos with source timestamps and position/angular differences; expose passive observed-pose projection through Spatial.TryGetObservedUnityPose.
 - Fix coordinated-turn packet correction underestimating motion at fresh observation boundaries, preventing angular tracking lag during rapid maneuvers.

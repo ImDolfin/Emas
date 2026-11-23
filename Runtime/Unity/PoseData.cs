@@ -37,7 +37,7 @@ namespace Emas
             return true;
         }
 
-        internal bool SetRotation(Quaternion rotation, Timestamp? sampleTime, double receivedTime)
+        internal bool SetRotation(Quaternion rotation, Timestamp? sampleTime, double receivedTime, bool representationChanged)
         {
             // Check rotation times separately from position. An old rotation must not reset correction or sample age.
             if (!Accepts(RotationTime, sampleTime))
@@ -45,15 +45,17 @@ namespace Emas
                 return false;
             }
 
-            if (!HasRotation || Rotation != rotation || sampleTime.HasValue || RotationTime.HasValue)
+            // An unchanged untimed cache is not a new observation. Compare components exactly:
+            // Unity's approximate quaternion equality can hide small, real attitude updates.
+            if (!HasRotation || !Rotation.Equals(rotation) || representationChanged || sampleTime.HasValue || RotationTime.HasValue)
             {
+                RotationReceivedTime = receivedTime;
                 RotationVersion++;
             }
 
             Rotation = rotation;
             RotationTime = sampleTime;
             HasRotation = true;
-            RotationReceivedTime = receivedTime;
             return true;
         }
 

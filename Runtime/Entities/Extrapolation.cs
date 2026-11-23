@@ -588,7 +588,7 @@ namespace Emas
 
             if (end == start && extrapolation == previousExtrapolation)
             {
-                // Add no movement after the prediction limit or when preparing the same reference twice.
+                // Add no movement after the prediction limit or when evaluating the same playback time again.
                 return default(Double3);
             }
 

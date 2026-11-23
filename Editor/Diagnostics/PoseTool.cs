@@ -182,6 +182,12 @@ namespace Emas.Editor
             {
                 DrawGhost(ghost, compact);
             }
+
+            if (followed != null && !_ghosts.Contains(followed))
+            {
+                // Target comparisons share the presented reference and therefore hide its own pose processing.
+                EditorGUILayout.HelpBox("Target differences exclude changes to the followed reference. Choose Followed Ghost to inspect its position and rotation differences.", MessageType.Info);
+            }
         }
 
         private void CollectGhosts()
@@ -218,7 +224,7 @@ namespace Emas.Editor
                     return;
                 }
 
-                // Both poses use the same reference, so their difference shows the effect of smoothing and extrapolation.
+                // Both poses use the same reference, so the difference shows only this root's pose processing.
                 InspectorLayout.ReadOnly("Position difference", Vector3.Distance(observed.position, ghost.transform.position).ToString("G6") + " units");
                 InspectorLayout.ReadOnly("Rotation difference", spatial.HasRotation
                     ? Quaternion.Angle(observed.rotation, ghost.transform.rotation).ToString("G6") + " deg" : "No observed attitude");

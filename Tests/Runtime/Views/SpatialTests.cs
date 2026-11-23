@@ -1921,6 +1921,67 @@ namespace Emas.Tests
                 "A model can use linear motion and raw attitude to predict orientation without a supplied or estimated angular rate.");
         }
 
+        /// <summary>Rereading a cached untimed attitude preserves bounded reference prediction between SDK packets; a small new attitude refreshes its age and keeps distant targets aligned.</summary>
+        /// <returns>An iterator that presents a held bank observation at approximately 60 Hz.</returns>
+        [UnityTest]
+        public IEnumerator UntimedExtrapolation_CachedReferenceAttitudeKeepsItsObservationAge()
+        {
+            // Read the same SDK cache every display frame while the aircraft continues banking.
+            TestGhost reference = _source.PublishPosition("cached reference", new Double3(1e9, 0, 0));
+            Spatial spatial = reference.GetRequired<Spatial>();
+            Extrapolation extrapolation = reference.gameObject.AddComponent<Extrapolation>();
+            extrapolation.MaximumExtrapolation = 0.1f;
+            extrapolation.SetBodyAngularVelocity(new Double3(4d * Math.PI, 0, 0));
+            ReferenceFrame frame = new ReferenceFrame { FollowedGhost = reference.Key };
+            _realm.ReferenceFrame = frame;
+            Vector3 offset = new Vector3(3000, 700, 5000);
+            TestGhost target = _source.PublishPosition("distant target", spatial.Position + new Double3(offset.x, offset.y, offset.z));
+            double receivedBefore = Time.realtimeSinceStartupAsDouble;
+            spatial.SetSourceRotation(Quaternion.identity);
+            double receivedAfter = Time.realtimeSinceStartupAsDouble;
+            _realm.Update();
+
+            double after;
+            do
+            {
+                yield return new WaitForSecondsRealtime(1f / 60f);
+                spatial.SetSourceRotation(Quaternion.identity);
+                double before = Time.realtimeSinceStartupAsDouble;
+                _realm.Update();
+                after = Time.realtimeSinceStartupAsDouble;
+                double age = (before + after - receivedBefore - receivedAfter) * 0.5d;
+                Quaternion expected = Quaternion.AngleAxis((float)(-720d * Math.Min(age, extrapolation.MaximumExtrapolation)), Vector3.forward);
+                float tolerance = 0.1f + 720f * (float)(after - before + receivedAfter - receivedBefore);
+                Assert.That(Quaternion.Angle(frame.Rotation, expected), Is.LessThan(tolerance),
+                    "Repeated cache reads must not restart angular prediction from zero age.");
+                Assert.That(Vector3.Angle(target.transform.position, Quaternion.Inverse(expected) * offset), Is.LessThan(tolerance));
+                AssertRotation(reference.transform.rotation, frame.UnityRotation);
+            }
+            while (after - receivedAfter < 0.14d);
+
+            // Even a change below Unity's approximate quaternion equality threshold is a new observation.
+            Quaternion correction = Quaternion.AngleAxis(0.02f, Vector3.right);
+            double correctedAt = Time.realtimeSinceStartupAsDouble;
+            spatial.SetSourceRotation(correction);
+            _realm.Update();
+            float correctionTolerance = 0.1f + 720f * (float)(Time.realtimeSinceStartupAsDouble - correctedAt);
+            Assert.That(Quaternion.Angle(frame.Rotation, correction), Is.LessThan(correctionTolerance),
+                "A changed untimed attitude must refresh its own age without retaining the old capped lead.");
+            Assert.That(spatial.RotationTime, Is.Null);
+
+            // Changing the attitude representation is fresh input even when its quaternion components match.
+            spatial.SetSourceRotation(Quaternion.identity);
+            yield return new WaitForSecondsRealtime(0.04f);
+            _realm.Update();
+            Assert.That(Quaternion.Angle(frame.Rotation, Quaternion.identity), Is.GreaterThan(10));
+            frame.Space = ReferenceSpace.Geographic;
+            correctedAt = Time.realtimeSinceStartupAsDouble;
+            spatial.SetGeographicRotation(0, 0, 0);
+            _realm.Update();
+            correctionTolerance = 0.1f + 720f * (float)(Time.realtimeSinceStartupAsDouble - correctedAt);
+            Assert.That(Quaternion.Angle(frame.Rotation, Quaternion.identity), Is.LessThan(correctionTolerance));
+        }
+
         /// <summary>Timestamped entities use one estimated source clock, reject older pose/motion packets and refresh stationary sample age; behavior traits can be disabled independently.</summary>
         [Test]
         public void TimestampedExtrapolation_AlignsPacketAgesAndRejectsOlderChannels()
@@ -2336,7 +2397,7 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Rapid pitch, roll and combined maneuvers preserve a stationary target's independently calculated bearing with fresh or delayed packets; reversed body-rate signs produce a distinct angular offset.</summary>
+        /// <summary>Rapid pitch, roll and combined maneuvers preserve near, far and off-axis target bearings with fresh or delayed packets; disabled prediction and reversed rates expose reference-angle errors.</summary>
         /// <returns>An iterator that compares all moving strategies during continuous high-rate flight.</returns>
         [UnityTest]
         public IEnumerator TimestampedExtrapolation_HighRateReferenceMatchesIndependentTargetBearing()
@@ -2704,20 +2765,27 @@ namespace Emas.Tests
             }
         }
 
-        /// <summary>Compares a known high-rate flight with a control whose pitch or roll rate has the opposite sign.</summary>
-        /// <param name="strategy">The immutable prediction model shared by the two isolated Realms.</param>
+        /// <summary>Compares supplied and estimated high-rate flight with reversed-rate and disabled-prediction controls across target offsets.</summary>
+        /// <param name="strategy">The immutable prediction model shared by the isolated Realms.</param>
         /// <param name="bodyRate">Constant forward/right/down body rates in radians per second.</param>
         /// <returns>An iterator that observes fresh packets followed by packets delayed by 35 milliseconds.</returns>
         private IEnumerator AssertHighRateReference(IExtrapolationStrategy strategy, Double3 bodyRate)
         {
-            // Use separate Realms for correct and reversed rates so their filter states cannot mix.
-            Realm[] realms = { new Realm(), new Realm() };
-            Spatial[] references = new Spatial[2];
-            Extrapolation[] extrapolations = new Extrapolation[2];
-            Spatial[] clocks = new Spatial[2];
-            TestGhost[] targets = new TestGhost[2];
+            // Isolate supplied rates, reversed rates, disabled prediction and estimated rates with identical observations.
+            Realm[] realms = { new Realm(), new Realm(), new Realm(), new Realm() };
+            Spatial[] references = new Spatial[realms.Length];
+            Extrapolation[] extrapolations = new Extrapolation[realms.Length];
+            Spatial[] clocks = new Spatial[realms.Length];
+            Vector3[] worldTargets =
+            {
+                new Vector3(1000, 700, 1000),
+                new Vector3(3000, 700, 1000),
+                new Vector3(30000, 7000, 10000),
+                new Vector3(-3000, 700, 1000),
+                new Vector3(0, 0, 1000)
+            };
+            TestGhost[,] targets = new TestGhost[realms.Length, worldTargets.Length];
             // Calculate a path with constant body rotation rates and the expected target direction without using Emas.
-            Vector3 worldTarget = new Vector3(1000, 700, 1000);
             Vector3 angular = new Vector3((float)-bodyRate.Y, (float)bodyRate.Z, (float)-bodyRate.X);
             double radiansPerSecond = angular.magnitude;
             Vector3 axis = angular.normalized;
@@ -2727,24 +2795,36 @@ namespace Emas.Tests
                 : new Double3(-bodyRate.X, bodyRate.Y, bodyRate.Z);
             CoordinateSystem axes = CoordinateSystem.NorthEastDown;
             ReferenceFrame conversion = new ReferenceFrame { Coordinates = axes, Position = default(Double3), FollowRotation = false };
-            double[,] maximumErrors = new double[2, 2];
-            double[,] maximumExcess = new double[2, 2];
+            double[,] maximumErrors = new double[realms.Length, 2];
+            double[,] maximumExcess = new double[realms.Length, 2];
+            double maximumReferenceLead = 0;
+            double maximumTargetPoseDifference = 0;
+            double maximumWrongRateNearError = 0;
+            double maximumWrongRateFarError = 0;
             try
             {
-                // Give both cases the same observations, default smoothing and shared strategy.
+                // Measure supplied rates without Smoothing, and retain default motion-assisted filtering coverage with estimated rates.
                 for (int variant = 0; variant < realms.Length; variant++)
                 {
                     TestSource source = new TestSource();
                     realms[variant].GetOrCreateAnchor("simulation", source);
                     TestGhost reference = source.Publish("rapid ownship");
                     references[variant] = reference.gameObject.AddComponent<Spatial>();
-                    reference.gameObject.AddComponent<Smoothing>();
                     extrapolations[variant] = reference.gameObject.AddComponent<Extrapolation>();
                     extrapolations[variant].Strategy = strategy;
+                    extrapolations[variant].enabled = variant != 2;
+                    if (variant == 3)
+                    {
+                        reference.gameObject.AddComponent<Smoothing>();
+                    }
                     realms[variant].ReferenceFrame = new ReferenceFrame { Coordinates = axes, FollowedGhost = reference.Key };
-                    targets[variant] = source.Publish("stationary target");
-                    targets[variant].gameObject.AddComponent<Spatial>().SetCartesianPosition(
-                        new Double3(worldTarget.z, worldTarget.x, -worldTarget.y));
+                    for (int target = 0; target < worldTargets.Length; target++)
+                    {
+                        Vector3 point = worldTargets[target];
+                        targets[variant, target] = source.Publish("stationary target " + target);
+                        targets[variant, target].gameObject.AddComponent<Spatial>().SetCartesianPosition(
+                            new Double3(point.z, point.x, -point.y));
+                    }
                     clocks[variant] = source.Publish("current source clock").gameObject.AddComponent<Spatial>();
                 }
 
@@ -2772,7 +2852,10 @@ namespace Emas.Tests
                         references[variant].SetSourceRotation(rotation, sampleTime);
                         extrapolations[variant].SetCartesianVelocity(new Double3(velocity.z, velocity.x, -velocity.y), sampleTime);
                         extrapolations[variant].SetCartesianAcceleration(new Double3(acceleration.z, acceleration.x, -acceleration.y), sampleTime);
-                        extrapolations[variant].SetBodyAngularVelocity(variant == 0 ? bodyRate : reversed, sampleTime: sampleTime);
+                        if (variant != 3)
+                        {
+                            extrapolations[variant].SetBodyAngularVelocity(variant == 1 ? reversed : bodyRate, sampleTime: sampleTime);
+                        }
                         double before = Time.realtimeSinceStartupAsDouble;
                         // A current timestamp from another root fixes the observation age at 35 ms,
                         // without needing to know the total delivery delay estimated by the runtime clock.
@@ -2786,29 +2869,71 @@ namespace Emas.Tests
                             + Vector3.Cross(axis, initialVelocity) * (float)((1d - Math.Cos(currentAngle)) / radiansPerSecond)
                             + Vector3.Cross(axis, Vector3.Cross(axis, initialVelocity))
                                 * (float)(now - Math.Sin(currentAngle) / radiansPerSecond);
-                        Vector3 expected = RotateTrajectory(worldTarget - currentPosition, axis, -currentAngle);
-                        double error = Vector3.Angle(expected, targets[variant].transform.position);
-                        if ((phase == 0 && elapsed > 0.25d) || elapsed > 0.7d)
+                        for (int target = 0; target < worldTargets.Length; target++)
                         {
-                            maximumErrors[variant, phase] = Math.Max(maximumErrors[variant, phase], error);
-                            // The pose was calculated during this measured update. Allow for rotation during
-                            // that time span, since a fast roll can move visibly in less than a millisecond.
-                            maximumExcess[variant, phase] = Math.Max(maximumExcess[variant, phase],
-                                error - radiansPerSecond * Mathf.Rad2Deg * (after - before));
+                            Vector3 expected = RotateTrajectory(worldTargets[target] - currentPosition, axis, -currentAngle);
+                            TestGhost targetGhost = targets[variant, target];
+                            double error = Vector3.Angle(expected, targetGhost.transform.position);
+                            // Estimated rates need a second attitude first. Let the coordinated-turn
+                            // packet correction settle after that initial rate becomes available.
+                            double warmup = variant == 3 ? 0.4d : 0.25d;
+                            if ((phase == 0 && elapsed > warmup) || elapsed > 0.7d)
+                            {
+                                maximumErrors[variant, phase] = Math.Max(maximumErrors[variant, phase], error);
+                                // Allow for rotation during the measured update, which matters at high roll rates.
+                                maximumExcess[variant, phase] = Math.Max(maximumExcess[variant, phase],
+                                    error - radiansPerSecond * Mathf.Rad2Deg * (after - before));
+                                if (variant == 1 && phase == 1)
+                                {
+                                    double displacement = Vector3.Distance(expected, targetGhost.transform.position);
+                                    if (target == 1)
+                                    {
+                                        maximumWrongRateNearError = Math.Max(maximumWrongRateNearError, displacement);
+                                    }
+                                    else if (target == 2)
+                                    {
+                                        maximumWrongRateFarError = Math.Max(maximumWrongRateFarError, displacement);
+                                    }
+                                }
+                            }
+
+                            // Target diagnostics share the presented reference. They cannot expose its angle error.
+                            Assert.That(targetGhost.GetRequired<Spatial>().TryGetObservedUnityPose(out Pose observedPose), Is.True);
+                            maximumTargetPoseDifference = Math.Max(maximumTargetPoseDifference,
+                                Vector3.Distance(observedPose.position, targetGhost.transform.position));
+                        }
+
+                        if (variant == 0 && phase == 1)
+                        {
+                            Assert.That(references[variant].TryGetObservedUnityPose(out Pose observedReference), Is.True);
+                            maximumReferenceLead = Math.Max(maximumReferenceLead,
+                                Quaternion.Angle(observedReference.rotation, references[variant].transform.rotation));
                         }
                     }
 
-                    yield return null;
+                    // Bound capture frequency independently of the headless runner's rendering speed.
+                    yield return new WaitForSecondsRealtime(1f / 120f);
                 }
                 while (elapsed < 1d);
 
-                // Report both cases to show whether error comes from tracking or deliberately reversed rates.
+                // Report the controls as well as correct tracking so a sign error is easy to identify.
                 TestContext.WriteLine(strategy.GetType().Name + "; FRD rad/s=" + bodyRate
                     + "; correct bearing error fresh/delayed=" + maximumErrors[0, 0] + "/" + maximumErrors[0, 1]
-                    + "; reversed sign=" + maximumErrors[1, 0] + "/" + maximumErrors[1, 1] + " deg");
+                    + "; reversed sign=" + maximumErrors[1, 0] + "/" + maximumErrors[1, 1]
+                    + "; disabled=" + maximumErrors[2, 0] + "/" + maximumErrors[2, 1]
+                    + "; estimated=" + maximumErrors[3, 0] + "/" + maximumErrors[3, 1] + " deg"
+                    + "; reference lead=" + maximumReferenceLead + " deg; target observed/presented gap=" + maximumTargetPoseDifference
+                    + "; reversed-rate near/far displacement=" + maximumWrongRateNearError + "/" + maximumWrongRateFarError);
                 Assert.That(maximumExcess[0, 0], Is.LessThan(0.25d), "Fresh-packet high-rate bearing must match independent flight geometry.");
                 Assert.That(maximumExcess[0, 1], Is.LessThan(0.25d), "Delayed-packet high-rate bearing must match independent flight geometry.");
+                Assert.That(maximumExcess[3, 0], Is.LessThan(0.25d), "Estimated rates must preserve fresh-packet high-rate bearings.");
+                Assert.That(maximumExcess[3, 1], Is.LessThan(0.25d), "Estimated rates must preserve delayed-packet high-rate bearings.");
                 Assert.That(maximumErrors[1, 1], Is.GreaterThan(2d), "A reversed pitch/roll sign must reproduce a visible maneuver offset.");
+                Assert.That(maximumErrors[2, 1], Is.GreaterThan(2d), "Disabling extrapolation must expose the known observation delay.");
+                Assert.That(maximumReferenceLead, Is.GreaterThan(2d), "The followed reference must actually extrapolate its attitude.");
+                Assert.That(maximumTargetPoseDifference, Is.LessThan(0.001d), "A stationary target's comparison excludes reference prediction.");
+                Assert.That(maximumWrongRateFarError, Is.GreaterThan(maximumWrongRateNearError * 8d),
+                    "Reference-angle errors must grow with target distance even when target diagnostics show no difference.");
             }
             finally
             {

@@ -94,7 +94,7 @@ spatial.SetGeographicRotation(heading, pitch, roll, time);
 
 Use one shared SDK clock per Realm, advancing in real-time seconds. `Timestamp` assumes no epoch; `ElapsedSince` subtracts whole seconds before converting to doubles. `FromSeconds(double)` is available when the SDK already supplies floating-point time.
 
-Channels independently reject older/duplicate timed samples. A newer stationary observation refreshes age. Untimed input clears that channel's ordering guard; repeated identical untimed positions do not refresh age. `PositionTime` and `RotationTime` expose the accepted times.
+Channels independently reject older/duplicate timed samples. A newer stationary observation refreshes age. Untimed input clears that channel's ordering guard; repeated identical untimed positions and rotations do not refresh age. This lets prediction continue while readers reread an SDK cache between packets. Even small quaternion component changes refresh untimed rotation age; changing the attitude representation or ECEF body axes also counts as fresh input. `PositionTime` and `RotationTime` expose the accepted times.
 
 The Realm aligns SDK time from the least-delayed observed arrival and advances with Unity's unscaled clock. Every root uses one captured presentation time. This estimates relative packet age; absolute transport latency remains unknown. For unrelated SDK clocks, use separate Realms or convert clocks in the application.
 
@@ -263,6 +263,16 @@ Cyan marks the latest accepted absolute observation; magenta marks the presented
 With no pinned target, selecting a Ghost or one of its view objects compares that root; multiple selected view objects on one Ghost produce one comparison. **Pin** retains the first target while you select other objects. **Selection** resumes following selection, and **Followed Ghost** pins the selected Realm's reference. **Frame comparison** fits both markers in the Scene view. The window shows the active strategy, maximum prediction horizon, source timestamps, position/angular differences and observed/presented Unity poses. Tracking health remains under its **Tracking** tab.
 
 Observed position and attitude retain their independent sample times. The gizmo represents accepted input at those times, while the presented root includes the configured processing. Missing attitude draws only a position marker. Attached roots compare their cached absolute observation with their attached presentation.
+
+Target differences exclude prediction and filtering of the followed reference, because both markers use that same reference. A stationary target can show zero difference even while reference prediction rotates it across the scene. Choose **Followed Ghost** to inspect the reference's own position and angular differences. These differences measure processing, not error against the true aircraft pose. Position smoothing can also offset prediction, so a small net difference does not prove prediction is inactive.
+
+For a cockpit with a fixed camera, a small reference-angle error grows with target range and offset. A one-degree pitch error moves a target about 17.5 metres vertically per kilometre forward; a one-degree bank error moves it about 17.5 metres vertically per kilometre sideways. This can make distant targets jitter while their own observed/presented markers overlap.
+
+To isolate maneuver drift, disable Extrapolation on the reference only and wait at least 0.25 unscaled seconds for the live-edit transition. If the wrong-direction movement remains, inspect the raw reference attitude, source-axis mapping and sample times.
+
+If it disappears, check supplied angular-rate signs, units and body/world axes. `ClearAngularVelocity()` selects estimation from timed attitudes instead of supplied rates; noisy attitudes can make this estimate noisy too.
+
+When using Constant Acceleration with Smoothing disabled, no packet correction or rotation filter is active. Prediction still uses estimated relative packet age, which can be close to zero for the freshest stream. The maximum horizon is a cap, not a fixed lead or a correction for unknown absolute latency.
 
 The Editor controls only read existing state. For application diagnostics, call `spatial.TryGetObservedUnityPose(out Pose pose)` on the main thread after `Realm.Update()`. It projects Cartesian, geographic and ECEF observations, including custom body axes, through the cached reference and its range limit. False means the observation cannot currently be projected. Reads preserve observations, filters and transforms.
 
