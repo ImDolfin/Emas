@@ -109,26 +109,32 @@ namespace Emas
         {
             motion = default(Double3);
             observation = spatial.Position;
+            // Each channel starts its requested forward interval at receipt, counting known sample age once.
+            // Filters and tuning still use real presentation time, and extrapolation still applies its own cap.
+            double positionTime = extrapolation != null
+                ? extrapolation.PredictionTimestamp(clock, spatial.PositionTime, spatial.PositionReceivedTime, timestamp, settings.PredictionTime) : timestamp;
+            double rotationTime = extrapolation != null
+                ? extrapolation.PredictionTimestamp(clock, spatial.RotationTime, spatial.RotationReceivedTime, timestamp, settings.PredictionTime) : timestamp;
             PresentationPose pose;
             // With a playback delay, read stored samples. Otherwise, start at the latest position and rotation.
             if (settings.InterpolationDelay > 0)
             {
-                pose = BufferedPose(spatial, clock, timestamp, extrapolation, sourceAxes, settings, preview, out motion, out observation);
+                pose = BufferedPose(spatial, clock, positionTime, rotationTime, extrapolation, sourceAxes, settings, preview, out motion, out observation);
             }
             else
             {
                 Double3 position = extrapolation != null
-                    ? extrapolation.Project(spatial, clock, timestamp, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion) : spatial.Position;
+                    ? extrapolation.Project(spatial, clock, positionTime, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion) : spatial.Position;
                 Quaternion rotation = spatial.Rotation;
                 if (spatial.History.NewestRotationTime.HasValue)
                 {
-                    double age = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, timestamp);
+                    double age = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, rotationTime);
                     spatial.History.SampleRotation(age, out rotation);
                 }
 
                 if (extrapolation != null && spatial.HasRotation)
                 {
-                    double age = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, timestamp);
+                    double age = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, rotationTime);
                     rotation = extrapolation.ProjectRotation(spatial, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
                 }
 
@@ -138,7 +144,7 @@ namespace Emas
             return pose;
         }
 
-        private PresentationPose BufferedPose(Spatial spatial, SpatialClock clock, double timestamp, Extrapolation extrapolation,
+        private PresentationPose BufferedPose(Spatial spatial, SpatialClock clock, double positionTime, double rotationTime, Extrapolation extrapolation,
             CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
         {
             Double3 position = spatial.Position;
@@ -148,7 +154,7 @@ namespace Emas
             // Position and rotation share the playback clock, but each keeps its own sample times.
             if (spatial.History.NewestPositionTime.HasValue)
             {
-                double offset = clock.OffsetFrom(spatial.History.NewestPositionTime.Value, timestamp, settings.InterpolationDelay);
+                double offset = clock.OffsetFrom(spatial.History.NewestPositionTime.Value, positionTime, settings.InterpolationDelay);
                 spatial.History.SamplePosition(offset, out position);
                 observation = position;
                 if (extrapolation != null)
@@ -159,12 +165,12 @@ namespace Emas
             else if (extrapolation != null)
             {
                 // With no timestamp, use time since arrival because there are no SDK times to interpolate.
-                position = extrapolation.Project(spatial, clock, timestamp, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion);
+                position = extrapolation.Project(spatial, clock, positionTime, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion);
             }
 
             if (spatial.History.NewestRotationTime.HasValue)
             {
-                double offset = clock.OffsetFrom(spatial.History.NewestRotationTime.Value, timestamp, settings.InterpolationDelay);
+                double offset = clock.OffsetFrom(spatial.History.NewestRotationTime.Value, rotationTime, settings.InterpolationDelay);
                 spatial.History.SampleRotation(offset, out rotation);
                 if (extrapolation != null)
                 {
@@ -173,7 +179,7 @@ namespace Emas
             }
             else if (extrapolation != null && spatial.HasRotation)
             {
-                double age = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, timestamp);
+                double age = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, rotationTime);
                 rotation = extrapolation.ProjectRotation(spatial, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
             }
 

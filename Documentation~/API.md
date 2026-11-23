@@ -109,7 +109,7 @@ Root GameObjects are named by `Key.EntityId`; `Ghost.Name` is separate display m
 | `Realm.InterpolationDelay` | Nonnegative shared playback delay in seconds for timed channels. |
 | `Realm.ResetSpatialTime()` | Reset SDK clock alignment and sample ordering before a restarted clock publishes. |
 | `Smoothing.PositionHalfLife` / `RotationHalfLife` | Independent nonnegative seconds to halve correction error; zero applies immediately. |
-| `Extrapolation.Strategy` / `MaximumExtrapolation` | Non-null gap algorithm and nonnegative prediction horizon in seconds. |
+| `Extrapolation.Strategy` / `PredictionTime` / `MaximumExtrapolation` | Existing motion algorithm, requested forward interval, and total prediction limit in seconds. A 0.2-second interval projects a received pose at SDK time 0.2 toward time 0.4 when the limit allows it. |
 | Extrapolation motion setters / `ClearVelocity`, `ClearAcceleration`, `ClearAngularVelocity` | Optional independently timed motion; clear channels when unavailable. |
 
 Enabled Spatial owns the root's world pose. Optional Smoothing/Extrapolation modify presentation only. Original timestamps share one SDK clock; older/duplicate timed samples are ignored per channel. Supplied zero motion overrides estimates. Missing references/attachment parents and range suppression affect presentation, not tracking membership.

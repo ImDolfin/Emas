@@ -233,10 +233,17 @@ namespace Emas.Editor
                 Extrapolation extrapolation = ghost.GetComponent<Extrapolation>();
                 InspectorLayout.ReadOnly("Prediction", extrapolation == null ? "No Extrapolation trait" : !extrapolation.enabled ? "Disabled"
                     : ObjectNames.NicifyVariableName(extrapolation.Strategy.GetType().Name).Replace(" Extrapolation", string.Empty));
+                // Buffered playback still applies when prediction and both filters are disabled.
+                InspectorLayout.ReadOnly("Playback delay", ghost.Anchor.Realm.InterpolationDelay.ToString("G4") + " s");
+                if (extrapolation != null)
+                {
+                    InspectorLayout.ReadOnly("Forward prediction", extrapolation.PredictionTime.ToString("G4") + " s"
+                        + (!extrapolation.enabled || extrapolation.MaximumExtrapolation <= 0 ? " (inactive)" : string.Empty));
+                }
                 if (!compact)
                 {
                     // Show the Unity coordinates in the full window to keep the overlay small.
-                    InspectorLayout.ReadOnly("Prediction horizon", extrapolation != null ? extrapolation.MaximumExtrapolation.ToString("G4") + " s (maximum)" : "None");
+                    InspectorLayout.ReadOnly("Prediction limit", extrapolation != null ? extrapolation.MaximumExtrapolation.ToString("G4") + " s (maximum)" : "None");
                     using (new EditorGUI.DisabledScope(true))
                     {
                         EditorGUILayout.Vector3Field("Observed position", observed.position);

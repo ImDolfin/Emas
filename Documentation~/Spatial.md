@@ -67,6 +67,12 @@ For fixed references, assign `Position` in Cartesian space or `GeographicPositio
 
 `FollowRotation = true` cancels the reference's full heading, pitch and roll for positions and attitudes. For a cockpit, keep the camera fixed relative to the desired Unity reference pose; applying SDK attitude to that camera adds another rotation. With false, only position is followed. A followed reference uses the same processed presentation time as its peers.
 
+In an aircraft-fixed view, a right-wing-down bank moves a world-stationary target on the right upward and a target on the left downward. At 30 degrees of bank, an initially level target 100 metres to the right has a body-relative height of +50 metres. A nose-up pitch moves a target straight ahead downward. This is the inverse reference rotation, not extra target movement. A world-level view instead uses `FollowRotation = false` and shows the reference aircraft model banking while world-stationary targets stay level.
+
+Accepted attitude changes apply their full angle, including sudden large changes. Extrapolation predicts gaps; it does not set the strength of reference rotation cancellation. For an immediate-input comparison, disable Extrapolation and Smoothing, set `realm.InterpolationDelay = 0`, and allow 0.25 unscaled seconds for live-setting transitions. Disabling those components alone does not disable buffered playback. With processing bypassed, an opposite bank/pitch response calls for checking the input attitude direction and coordinate contract: named geographic angles use positive nose-up pitch and right-wing-down bank; source and ECEF quaternions must map body vectors into the declared world axes, rather than the inverse.
+
+For Geographic input, the Ghost Inspector shows **Observed bank** from the latest accepted attitude and **Reference bank** from the followed reference's processed attitude. Compare these during a near-level maneuver to see how much reference processing leads or trails the accepted input. They show principal bank angles and become undefined at vertical pitch. Neither reading measures the unknown age of the SDK data against the actual aircraft. The pose debugger also shows the shared **Playback delay**, including while Extrapolation is disabled. Constant Acceleration predicts orientation with a constant angular rate; its acceleration term applies to position only. A sudden rate change cannot be predicted before an observation or rate sample reports it.
+
 ## Choose source coordinates
 
 `ReferenceFrame.Coordinates` maps signed source axes to Unity right/up/forward:
@@ -155,6 +161,24 @@ extrapolation.Strategy = new NoExtrapolation();
 | No extrapolation | Hold observations after recorded playback; retain interpolation and SDK motion assistance. |
 
 `MaximumExtrapolation` caps age beyond the newest observation; it defaults to 0.15 seconds. Larger horizons bridge longer gaps but risk overshooting stops and turns. Zero or a disabled trait bypasses all strategies, including packet correction.
+
+### Request actual forward prediction
+
+**Forward prediction (s)** is `Extrapolation.PredictionTime`. It requests an actual interval from each received observation, using the selected existing strategy. **Prediction limit (s)** is `MaximumExtrapolation`; increasing that limit alone does not request a longer interval.
+
+```csharp
+extrapolation.Strategy = new ConstantAccelerationExtrapolation();
+extrapolation.PredictionTime = 0.2f;       // Request 200 ms from each received pose.
+extrapolation.MaximumExtrapolation = 0.5f; // Allow up to 500 ms of total prediction.
+```
+
+A pose sampled at SDK time 0.2 targets time 0.4 at receipt with this configuration. If its known delivery age is already 0.1 seconds, that age counts toward the 0.2-second interval; it is not added twice. When the known age exceeds the requested interval, ordinary age-based prediction still catches up. Time after receipt continues advancing the pose until the limit is reached. Position and rotation use their own observation times and rates.
+
+This works with Constant Velocity, Constant Acceleration, Singer and Coordinated Turn. No Extrapolation still holds recorded poses. The setting defaults to zero, preserving ordinary age-based prediction. Its calculation belongs to the Extrapolation trait; no SDK adapter, packet or timestamp interface changes are needed. Live edits blend over 0.25 unscaled seconds.
+
+The shared clock cannot identify constant transport latency from an unrelated SDK epoch. Forward prediction supplies the requested interval even when clock alignment hides that constant delay. For example, 100 ms of forward prediction removes the steady bank offset from a stream delayed uniformly by 100 ms at a constant known angular rate. Configure peer intervals to reach the same presentation time; independently delayed streams may need different values.
+
+Timed playback buffering subtracts `Realm.InterpolationDelay` before prediction. With 50 ms of buffered playback, request 150 ms to retain a net 100 ms interval at receipt. Untimed input ignores that buffer. The total prediction beyond a recorded pose always remains limited by `MaximumExtrapolation`; zero or disabled Extrapolation also disables forward prediction.
 
 Built-in position models need supplied or estimated velocity; acceleration alone does not invent velocity. Consecutive timed positions can estimate velocity. Supplied angular rates can extend one attitude; otherwise the last two timed rotations estimate a shortest-arc rate. A supplied zero overrides estimates. Coupled models can use angular motion for translation as well.
 
@@ -260,7 +284,7 @@ Open **Window > Emas > Pose debugger** and click **Activate pose tool**, or choo
 
 Cyan marks the latest accepted absolute observation; magenta marks the presented root after extrapolation, packet correction and smoothing. Both use the same cached presentation reference, so the followed Ghost's raw marker can differ from its origin. A yellow line connects their positions. Enable each marker, labels and the connection independently and adjust the marker size; axes use red X, green Y and blue Z. Gizmos draw while the pose tool is active.
 
-With no pinned target, selecting a Ghost or one of its view objects compares that root; multiple selected view objects on one Ghost produce one comparison. **Pin** retains the first target while you select other objects. **Selection** resumes following selection, and **Followed Ghost** pins the selected Realm's reference. **Frame comparison** fits both markers in the Scene view. The window shows the active strategy, maximum prediction horizon, source timestamps, position/angular differences and observed/presented Unity poses. Tracking health remains under its **Tracking** tab.
+With no pinned target, selecting a Ghost or one of its view objects compares that root; multiple selected view objects on one Ghost produce one comparison. **Pin** retains the first target while you select other objects. **Selection** resumes following selection, and **Followed Ghost** pins the selected Realm's reference. **Frame comparison** fits both markers in the Scene view. The window shows the active strategy, maximum prediction horizon, shared playback delay, source timestamps, position/angular differences and observed/presented Unity poses. Tracking health remains under its **Tracking** tab.
 
 Observed position and attitude retain their independent sample times. The gizmo represents accepted input at those times, while the presented root includes the configured processing. Missing attitude draws only a position marker. Attached roots compare their cached absolute observation with their attached presentation.
 

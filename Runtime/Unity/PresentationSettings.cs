@@ -9,6 +9,7 @@ namespace Emas
         internal readonly float InterpolationDelay;
         internal readonly IExtrapolationStrategy Strategy;
         internal readonly float PacketSmoothingDuration;
+        internal readonly float PredictionTime;
 
         internal PresentationSettings(Extrapolation extrapolation, Smoothing smoothing, float interpolationDelay)
         {
@@ -21,20 +22,21 @@ namespace Emas
             IPacketSmoothingStrategy packetSmoothing = Strategy as IPacketSmoothingStrategy;
             PacketSmoothingDuration = extrapolation != null && extrapolation.enabled && MaximumExtrapolation > 0 && packetSmoothing != null
                 ? ValidTime(packetSmoothing.PacketSmoothingDuration) : 0;
+            PredictionTime = MaximumExtrapolation > 0 ? ValidTime(extrapolation.PredictionTime) : 0;
         }
 
         internal bool SamePosition(PresentationSettings other)
         {
             return MaximumExtrapolation.Equals(other.MaximumExtrapolation) && PositionHalfLife.Equals(other.PositionHalfLife)
                 && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy)
-                && PacketSmoothingDuration.Equals(other.PacketSmoothingDuration);
+                && PacketSmoothingDuration.Equals(other.PacketSmoothingDuration) && PredictionTime.Equals(other.PredictionTime);
         }
 
         internal bool SameRotation(PresentationSettings other)
         {
             return RotationHalfLife.Equals(other.RotationHalfLife) && MaximumExtrapolation.Equals(other.MaximumExtrapolation)
                 && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy)
-                && PacketSmoothingDuration.Equals(other.PacketSmoothingDuration);
+                && PacketSmoothingDuration.Equals(other.PacketSmoothingDuration) && PredictionTime.Equals(other.PredictionTime);
         }
 
         private static float ValidTime(float value)

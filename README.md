@@ -65,7 +65,7 @@ Filters return new queries; results have no ordering guarantee. Views and spatia
 
 Add `Spatial` to a Ghost for shared-coordinate placement. Supply Cartesian `Double3`, WGS84 `GeoPosition`, or ECEF input, then configure an optional fixed or followed `ReferenceFrame`. Global positions remain doubles until projection near the Unity origin.
 
-Optional `Smoothing` filters position and rotation independently. Optional `Extrapolation` predicts gaps after observations. Configure both inline under **Ghost > Traits**; raw input remains unchanged.
+Optional `Smoothing` filters position and rotation independently. Optional `Extrapolation` predicts gaps after observations. Its **Forward prediction** setting requests an actual interval from each received pose; **Prediction limit** caps that interval. Configure both traits inline under **Ghost > Traits**; raw input remains unchanged.
 
 | Extrapolation strategy | Use |
 | --- | --- |
@@ -86,7 +86,7 @@ extrapolation.Strategy = new SingerExtrapolation
 };
 ```
 
-Use original SDK timestamps on one shared clock. `Realm.InterpolationDelay` adds shared playback buffering; half-lives control filtering, and `MaximumExtrapolation` caps prediction. These are separate settings. See [Spatial input, timing and strategies](Documentation~/Spatial.md) for units, axes and examples of every strategy.
+Use original SDK timestamps on one shared clock. `Realm.InterpolationDelay` adds shared playback buffering; half-lives control filtering, `PredictionTime` requests forward prediction, and `MaximumExtrapolation` caps prediction. These are separate settings. See [Spatial input, timing and strategies](Documentation~/Spatial.md) for units, axes and examples of every strategy.
 
 ## Samples and documentation
 

@@ -16,7 +16,10 @@ namespace Emas
     {
         [Tooltip("Gap extrapolation model. Change at runtime to compare methods without losing observations or supplied motion.")]
         [SerializeReference] private IExtrapolationStrategy _strategy = new ConstantAccelerationExtrapolation();
-        [Tooltip("Maximum gap prediction in seconds beyond recorded poses. Zero holds the latest observation; 0.05-0.15 s bridges short gaps. Larger values risk overshooting stops and turns.")]
+        [Tooltip("Requested forward interval in seconds from each observation at receipt, shared by every strategy. A 0.2 s interval predicts a pose at time 0.2 toward time 0.4. Known sample age counts toward this interval; the prediction limit caps the total. Zero adds no forward time.")]
+        [Range(0, 0.5f)]
+        [SerializeField] private float _predictionTime;
+        [Tooltip("Maximum total prediction in seconds beyond a recorded pose, including forward prediction time. This is a limit, not a requested duration. Zero disables prediction.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _maximumExtrapolation = 0.15f;
         private Double3 _velocity;
@@ -46,7 +49,8 @@ namespace Emas
         /// <value>A non-null strategy; defaults to <see cref="ConstantAccelerationExtrapolation"/>.</value>
         /// <remarks>Replacing the instance blends the presentation difference over 0.25 seconds without
         /// clearing observations, supplied motion or smoothing. Strategies may be shared when immutable;
-        /// in-place configuration changes require assigning a new instance to start that transition.
+        /// packet correction duration edits also blend. Other in-place configuration changes
+        /// require assigning a new instance to start that transition.
         /// Serializable implementations persist with the component; ordinary implementations can be assigned at runtime.</remarks>
         /// <exception cref="ArgumentNullException">The assigned strategy is null.</exception>
         public IExtrapolationStrategy Strategy
@@ -64,12 +68,32 @@ namespace Emas
             set => _strategy = value ?? throw new ArgumentNullException(nameof(value));
         }
 
-        /// <summary>Gets or sets the maximum extrapolated sample age in seconds; defaults to 0.15, independently of smoothing.</summary>
+        /// <summary>Gets or sets the requested forward interval from a received position or rotation observation.</summary>
+        /// <value>Finite, nonnegative seconds; zero by default preserves age-based gap prediction.</value>
+        /// <remarks>Known sample age counts toward this interval. Time after receipt continues advancing it,
+        /// and MaximumExtrapolation caps the total duration. A sample at SDK time 0.2 with PredictionTime 0.2
+        /// targets SDK time 0.4 at receipt when its known age is at most 0.2 and the limit is at least 0.2.
+        /// Buffered playback consumes forward time first. Applies to every strategy;
+        /// NoExtrapolation still holds recorded poses. Disabling this trait or a zero limit disables forward prediction.
+        /// Live edits blend over 0.25 unscaled seconds. Raw input and SDK timestamps remain unchanged.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN or infinite.</exception>
+        public float PredictionTime
+        {
+            get => _predictionTime;
+            set
+            {
+                Smoothing.ValidateTime(value, nameof(value));
+                _predictionTime = value;
+            }
+        }
+
+        /// <summary>Gets or sets the maximum prediction duration beyond a recorded pose, including PredictionTime; defaults to 0.15 seconds.</summary>
         /// <value>A finite, nonnegative horizon in seconds. Zero disables extrapolation, retaining SDK motion assistance for smoothing new observations.</value>
         /// <remarks>Live edits blend the setting-induced displacement over 0.25 seconds of real time, including zero
         /// and enabled changes, with or without Smoothing. Filter history, raw input, timestamps and motion remain intact.
         /// During that transition presentation can retain some of the previous limit's lead. Reaching the limit
-        /// stops motion from held observations, while new timed observations retain supplied SDK motion assistance.</remarks>
+        /// stops motion from held observations, while new timed observations retain supplied SDK motion assistance.
+        /// This is a cap, not a requested forward duration; use PredictionTime to predict farther ahead.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned horizon is negative, NaN or infinite.</exception>
         public float MaximumExtrapolation
         {
@@ -299,6 +323,15 @@ namespace Emas
             ObservePosition(spatial);
             _elapsed = _projectionTime.HasValue ? Math.Max(0d, timestamp - _projectionTime.Value) : 0d;
             _projectionTime = timestamp;
+        }
+
+        internal double PredictionTimestamp(SpatialClock clock, Timestamp? sampleTime, double receivedTime,
+            double timestamp, float predictionTime)
+        {
+            // Count known sample age toward the requested interval, then keep advancing after receipt.
+            // This makes a 0.2-second request start at the observed pose without adding known latency twice.
+            return predictionTime > 0
+                ? timestamp + Math.Max(0d, predictionTime - clock.Age(sampleTime, receivedTime, receivedTime)) : timestamp;
         }
 
         internal Double3 Project(Spatial spatial, SpatialClock clock, double timestamp,

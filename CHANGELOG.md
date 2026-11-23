@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Add Extrapolation.PredictionTime as actual forward prediction shared by all existing strategies; distinguish it from the prediction limit and count known packet age once. Cover sustained constant-rate flight with uniform transport delay and the 0.2-to-0.4 prediction contract.
+- Show shared playback delay in pose diagnostics and observed/reference geographic bank in the Ghost Inspector; clarify immediate bank/pitch cancellation, view frames, prediction limits and input attitude direction.
 - Preserve angular prediction age when readers repeat an unchanged untimed attitude; recognize small attitude and representation changes as fresh input.
 - Reuse the captured reference presentation when placing its root, avoiding a second prediction/filter preparation in the same projection pass.
 - Clarify that target pose comparisons exclude followed-reference processing; guide reference-angle and extrapolation checks for distant cockpit targets.

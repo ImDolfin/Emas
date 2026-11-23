@@ -120,6 +120,16 @@ namespace Emas.Editor
                 if (spatial.HasRotation)
                 {
                     InspectorLayout.ReadOnly("Rotation space", spatial.RotationSpace.ToString());
+                    if (spatial.RotationSpace == RotationSpace.Geographic)
+                    {
+                        DrawGeographicBank("Observed bank", spatial.Rotation);
+                        ReferenceFrame frame = ghost.Anchor != null ? ghost.Anchor.Realm.ReferenceFrame : null;
+                        if (frame != null && frame.FollowedGhost.HasValue && frame.FollowedGhost.Value.Equals(ghost.Key)
+                            && frame.RotationSpace == RotationSpace.Geographic)
+                        {
+                            DrawGeographicBank("Reference bank", frame.Rotation);
+                        }
+                    }
                 }
                 using (new EditorGUI.DisabledScope(true))
                 {
@@ -127,6 +137,19 @@ namespace Emas.Editor
                     EditorGUILayout.Vector3Field("Unity rotation (deg)", ghost.transform.eulerAngles);
                 }
             }
+        }
+
+        private static void DrawGeographicBank(string label, Quaternion rotation)
+        {
+            // Named geographic attitudes already use local Unity axes. Their right/up heights
+            // isolate bank from heading and pitch, with right-wing-down bank positive.
+            Vector3 right = rotation * Vector3.right;
+            Vector3 up = rotation * Vector3.up;
+            float horizontalWeight = right.y * right.y + up.y * up.y;
+            string value = horizontalWeight > 1e-8f
+                ? (Mathf.Atan2(-right.y, up.y) * Mathf.Rad2Deg).ToString("F3") + " deg (right-wing-down +)"
+                : "Undefined at vertical pitch";
+            InspectorLayout.ReadOnly(label, value);
         }
 
         private static string SampleTime(Timestamp? time)
@@ -175,7 +198,11 @@ namespace Emas.Editor
                 string label = property.displayName;
                 if (settings.targetObject is Extrapolation && property.name == "_maximumExtrapolation")
                 {
-                    label = "Prediction horizon (s)";
+                    label = "Prediction limit (s)";
+                }
+                else if (settings.targetObject is Extrapolation && property.name == "_predictionTime")
+                {
+                    label = "Forward prediction (s)";
                 }
                 else if (settings.targetObject is Smoothing)
                 {

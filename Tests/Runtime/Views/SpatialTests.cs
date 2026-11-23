@@ -314,6 +314,83 @@ namespace Emas.Tests
             Assert.That(spatial.TryGetObservedUnityPose(out _), Is.True);
         }
 
+        /// <summary>Sudden bank and pitch changes apply the full inverse reference attitude without motion traits or playback delay, even when position observations are older.</summary>
+        /// <param name="geographic">True for WGS84 and named aircraft angles; false for Cartesian NED input.</param>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ReferenceAttitude_SuddenBankAndPitchImmediatelyRepositionSideTargets(bool geographic)
+        {
+            // Keep positions still and independently timed so rotation alone determines the response.
+            GeoPosition location = new GeoPosition(52, 13, 1000);
+            Double3 origin = geographic ? location.ToEarthCentered() : new Double3(1e9, 0, 0);
+            TestGhost reference = _source.PublishPosition("banking reference", origin);
+            Spatial spatial = reference.GetRequired<Spatial>();
+            spatial.SetCartesianPosition(origin, new Timestamp(1, 0));
+            reference.gameObject.AddComponent<Extrapolation>().enabled = false;
+            reference.gameObject.AddComponent<Smoothing>().enabled = false;
+            ReferenceFrame frame = new ReferenceFrame
+            {
+                Space = geographic ? ReferenceSpace.Geographic : ReferenceSpace.Cartesian,
+                Coordinates = geographic ? CoordinateSystem.Unity : CoordinateSystem.NorthEastDown,
+                FollowedGhost = reference.Key
+            };
+            _realm.ReferenceFrame = frame;
+            _realm.InterpolationDelay = 0;
+            Vector3[] offsets = { new Vector3(100, 0, 500), new Vector3(-100, 0, 500), new Vector3(10000, 0, 5000) };
+            TestGhost[] targets = new TestGhost[offsets.Length];
+            for (int index = 0; index < targets.Length; index++)
+            {
+                Vector3 offset = offsets[index];
+                Double3 displacement = geographic
+                    ? location.ToEarthCenteredVector(new Double3(offset.x, offset.z, offset.y))
+                    : new Double3(offset.z, offset.x, -offset.y);
+                targets[index] = _source.PublishPosition("side target " + index, origin + displacement);
+            }
+
+            // Step directly between large angles. Prediction must not be needed to apply an accepted attitude.
+            Vector2[] attitudes = { new Vector2(0, 30), new Vector2(0, 85), new Vector2(0, -85), new Vector2(60, 70) };
+            for (int step = 0; step < attitudes.Length; step++)
+            {
+                float pitch = attitudes[step].x;
+                float bank = attitudes[step].y;
+                Timestamp time = new Timestamp(2 + step, 0);
+                if (geographic)
+                {
+                    spatial.SetGeographicRotation(0, pitch, bank, time);
+                }
+                else
+                {
+                    spatial.SetSourceRotation(Quaternion.AngleAxis(pitch, Vector3.up)
+                        * Quaternion.AngleAxis(bank, Vector3.right), time);
+                }
+
+                _realm.Update();
+                AssertRotation(reference.transform.rotation, Quaternion.identity);
+                Assert.That(spatial.PositionTime, Is.EqualTo(new Timestamp(1, 0)));
+                double p = pitch * Math.PI / 180d;
+                double r = bank * Math.PI / 180d;
+                for (int index = 0; index < targets.Length; index++)
+                {
+                    // Undo pitch, then bank, directly with scalar trigonometry rather than Emas conversion helpers.
+                    Vector3 offset = offsets[index];
+                    Vector3 expected = new Vector3(
+                        (float)(offset.x * Math.Cos(r) + offset.z * Math.Sin(p) * Math.Sin(r)),
+                        (float)(offset.x * Math.Sin(r) - offset.z * Math.Sin(p) * Math.Cos(r)),
+                        (float)(offset.z * Math.Cos(p)));
+                    AssertPosition(targets[index].transform.position, expected, 0.02f);
+                }
+            }
+
+            // A world-level view follows position only: its targets stay level while the reference model banks.
+            frame.FollowRotation = false;
+            _realm.Update();
+            for (int index = 0; index < targets.Length; index++)
+            {
+                AssertPosition(targets[index].transform.position, offsets[index], 0.02f);
+            }
+            Assert.That(Quaternion.Angle(reference.transform.rotation, Quaternion.identity), Is.GreaterThan(60));
+        }
+
         /// <summary>
         /// An absent reference maps spatial poses to world space, including after clearing a custom frame.
         /// </summary>
@@ -2419,6 +2496,177 @@ namespace Emas.Tests
                 foreach (Double3 rate in bodyRates)
                 {
                     yield return AssertHighRateReference(strategy, rate);
+                }
+            }
+        }
+
+        /// <summary>All moving strategies apply requested forward time during a constant bank with uniform packet latency, count known age once, and respect buffering, caps and disabling.</summary>
+        /// <returns>An iterator that delivers delayed geographic attitudes at approximately 60 Hz.</returns>
+        [UnityTest]
+        public IEnumerator TimestampedExtrapolation_ConstantLatencyBankMatchesCurrentTargetBearing()
+        {
+            IExtrapolationStrategy[] strategies =
+            {
+                new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(),
+                new SingerExtrapolation(), new CoordinatedTurnExtrapolation()
+            };
+            foreach (IExtrapolationStrategy strategy in strategies)
+            {
+                // Both streams are delayed equally. No fresh witness is allowed to reveal the hidden latency.
+                GeoPosition origin = new GeoPosition(52, 13, 1000);
+                Realm[] realms = { new Realm(), new Realm() };
+                TestSource[] sources = { new TestSource(), new TestSource() };
+                Spatial[] references = new Spatial[2];
+                Spatial[] targets = new Spatial[2];
+                Extrapolation[,] predictions = new Extrapolation[2, 2];
+
+                double[] maximumBearingError = new double[2];
+                double[] maximumReferenceError = new double[2];
+                double[] maximumLinearError = new double[2];
+                try
+                {
+                    for (int variant = 0; variant < realms.Length; variant++)
+                    {
+                        realms[variant].GetOrCreateAnchor("simulation", sources[variant]);
+                        TestGhost reference = sources[variant].PublishEarthCenteredPosition("delayed ownship", origin.ToEarthCentered());
+                        references[variant] = reference.GetRequired<Spatial>();
+                        targets[variant] = sources[variant].Publish("moving target").gameObject.AddComponent<Spatial>();
+                        predictions[variant, 0] = reference.gameObject.AddComponent<Extrapolation>();
+                        predictions[variant, 1] = targets[variant].gameObject.AddComponent<Extrapolation>();
+                        for (int channel = 0; channel < 2; channel++)
+                        {
+                            predictions[variant, channel].MaximumExtrapolation = 0.2f;
+                            predictions[variant, channel].Strategy = strategy;
+                            Assert.That(predictions[variant, channel].PredictionTime, Is.Zero);
+                            predictions[variant, channel].PredictionTime = variant == 0 ? 0 : 0.1f;
+                        }
+                        realms[variant].ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, FollowedGhost = reference.Key };
+                    }
+
+                    Assert.Throws<ArgumentOutOfRangeException>(() => predictions[1, 0].PredictionTime = -0.1f);
+                    Assert.Throws<ArgumentOutOfRangeException>(() => predictions[1, 0].PredictionTime = float.NaN);
+                    Assert.Throws<ArgumentOutOfRangeException>(() => predictions[1, 0].PredictionTime = float.PositiveInfinity);
+                    Assert.That(predictions[1, 0].PredictionTime, Is.EqualTo(0.1f));
+                    double started = Time.realtimeSinceStartupAsDouble - 0.2d;
+                    double elapsed;
+                    do
+                    {
+                        elapsed = Time.realtimeSinceStartupAsDouble - started;
+                        double captured = elapsed - 0.1d;
+                        Timestamp sampleTime = Timestamp.FromSeconds(1000d + captured);
+                        for (int variant = 0; variant < realms.Length; variant++)
+                        {
+                            references[variant].SetGeographicRotation(0, 0, 180d * captured, sampleTime);
+                            predictions[variant, 0].SetBodyAngularVelocity(new Double3(Math.PI, 0, 0), sampleTime: sampleTime);
+                            targets[variant].SetEarthCenteredPosition(origin.ToEarthCentered()
+                                + origin.ToEarthCenteredVector(new Double3(500d + 20d * captured, 2000, 0)), sampleTime);
+                            predictions[variant, 1].SetEarthCenteredVelocity(origin.ToEarthCenteredVector(new Double3(20, 0, 0)), sampleTime);
+                            double before = Time.realtimeSinceStartupAsDouble;
+                            realms[variant].Update();
+                            double after = Time.realtimeSinceStartupAsDouble;
+                            double now = (before + after) * 0.5d - started;
+                            double bank = Math.PI * now;
+                            Vector3 expected = new Vector3((float)((500d + 20d * now) * Math.Cos(bank)),
+                                (float)((500d + 20d * now) * Math.Sin(bank)), 2000);
+                            Quaternion expectedRotation = Quaternion.AngleAxis((float)(-180d * now), Vector3.forward);
+                            Double3 expectedPosition = origin.ToEarthCentered()
+                                + origin.ToEarthCenteredVector(new Double3(500d + 20d * now, 2000, 0));
+                            if (elapsed > 0.35d)
+                            {
+                                double timing = after - before;
+                                maximumBearingError[variant] = Math.Max(maximumBearingError[variant],
+                                    Vector3.Angle(expected, targets[variant].transform.position) - 180d * timing);
+                                maximumReferenceError[variant] = Math.Max(maximumReferenceError[variant],
+                                    Quaternion.Angle(expectedRotation, realms[variant].ReferenceFrame.Rotation) - 180d * timing);
+                                maximumLinearError[variant] = Math.Max(maximumLinearError[variant],
+                                    Double3.Distance(expectedPosition, realms[variant].ReferenceFrame.ToSimulationPosition(targets[variant].transform.position)) - 20d * timing);
+                            }
+                        }
+                        yield return new WaitForSecondsRealtime(1f / 60f);
+                    }
+                    while (elapsed < 0.7d);
+
+                    TestContext.WriteLine(strategy.GetType().Name + "; uniform 100 ms latency, 180 deg/s bank: ordinary/forward prediction bearing="
+                        + maximumBearingError[0] + "/" + maximumBearingError[1] + " deg; reference="
+                        + maximumReferenceError[0] + "/" + maximumReferenceError[1] + " deg; position="
+                        + maximumLinearError[0] + "/" + maximumLinearError[1] + " m");
+                    Assert.That(maximumReferenceError[0], Is.GreaterThan(15d));
+                    Assert.That(maximumBearingError[0], Is.GreaterThan(3d));
+                    Assert.That(maximumLinearError[0], Is.GreaterThan(1.5d));
+                    Assert.That(maximumReferenceError[1], Is.LessThan(0.25d));
+                    Assert.That(maximumBearingError[1], Is.LessThan(0.25d));
+                    Assert.That(maximumLinearError[1], Is.LessThan(0.05d));
+
+                    // A playback delay consumes lead first. The remaining 100 ms still compensates this stream.
+                    for (int channel = 0; channel < 2; channel++)
+                    {
+                        predictions[1, channel].PredictionTime = 0.15f;
+                    }
+                    realms[1].InterpolationDelay = 0.05f;
+                    references[1].ResetPresentation();
+                    targets[1].ResetPresentation();
+                    double bufferedBefore = Time.realtimeSinceStartupAsDouble;
+                    realms[1].Update();
+                    double bufferedAfter = Time.realtimeSinceStartupAsDouble;
+                    Quaternion current = Quaternion.AngleAxis((float)(-180d * ((bufferedBefore + bufferedAfter) * 0.5d - started)), Vector3.forward);
+                    Assert.That(Quaternion.Angle(current, realms[1].ReferenceFrame.Rotation),
+                        Is.LessThan(0.25d + 180d * (bufferedAfter - bufferedBefore)));
+
+                    // Compensation must respect the horizon and stop entirely when its trait is disabled.
+                    for (int channel = 0; channel < 2; channel++)
+                    {
+                        predictions[1, channel].MaximumExtrapolation = 0.04f;
+                    }
+                    references[1].ResetPresentation();
+                    targets[1].ResetPresentation();
+                    realms[1].Update();
+                    Assert.That(Quaternion.Angle(references[1].Rotation, realms[1].ReferenceFrame.Rotation), Is.EqualTo(7.2d).Within(0.05d));
+                    Assert.That(Double3.Distance(targets[1].Position, realms[1].ReferenceFrame.ToSimulationPosition(targets[1].transform.position)),
+                        Is.EqualTo(0.8d).Within(0.01d));
+                    realms[1].InterpolationDelay = 0;
+                    for (int channel = 0; channel < 2; channel++)
+                    {
+                        predictions[1, channel].enabled = false;
+                    }
+                    references[1].ResetPresentation();
+                    targets[1].ResetPresentation();
+                    realms[1].Update();
+                    AssertRotation(realms[1].ReferenceFrame.Rotation, references[1].Rotation);
+                    Assert.That(Double3.Distance(targets[1].Position,
+                        realms[1].ReferenceFrame.ToSimulationPosition(targets[1].transform.position)), Is.LessThan(0.01d));
+
+                    // A packet at SDK time 0.2 with 0.2 seconds of forward prediction targets time 0.4.
+                    realms[1].ResetSpatialTime();
+                    Timestamp packetTime = new Timestamp(0, 200000000);
+                    for (int channel = 0; channel < 2; channel++)
+                    {
+                        predictions[1, channel].enabled = true;
+                        predictions[1, channel].MaximumExtrapolation = 0.5f;
+                        predictions[1, channel].PredictionTime = 0.2f;
+                    }
+                    references[1].SetGeographicRotation(0, 0, 36, packetTime);
+                    predictions[1, 0].SetBodyAngularVelocity(new Double3(Math.PI, 0, 0), sampleTime: packetTime);
+                    targets[1].SetEarthCenteredPosition(origin.ToEarthCentered()
+                        + origin.ToEarthCenteredVector(new Double3(2, 2000, 0)), packetTime);
+                    predictions[1, 1].SetEarthCenteredVelocity(origin.ToEarthCenteredVector(new Double3(10, 0, 0)), packetTime);
+                    // Knowing that delivery is at SDK time 0.3 must not add that 0.1 seconds twice.
+                    sources[1].PublishEarthCenteredPosition("delivery clock", origin.ToEarthCentered()).GetRequired<Spatial>()
+                        .SetEarthCenteredPosition(origin.ToEarthCentered(), new Timestamp(0, 300000000));
+                    double packetBefore = Time.realtimeSinceStartupAsDouble;
+                    realms[1].Update();
+                    double packetAfter = Time.realtimeSinceStartupAsDouble;
+                    Assert.That(Quaternion.Angle(realms[1].ReferenceFrame.Rotation, Quaternion.AngleAxis(-72, Vector3.forward)),
+                        Is.LessThan(0.25d + 180d * (packetAfter - packetBefore)));
+                    Double3 atPointFour = origin.ToEarthCentered() + origin.ToEarthCenteredVector(new Double3(4, 2000, 0));
+                    Assert.That(Double3.Distance(atPointFour, realms[1].ReferenceFrame.ToSimulationPosition(targets[1].transform.position)),
+                        Is.LessThan(0.02d + 10d * (packetAfter - packetBefore)));
+                }
+                finally
+                {
+                    foreach (Realm realm in realms)
+                    {
+                        realm.Dispose();
+                    }
                 }
             }
         }

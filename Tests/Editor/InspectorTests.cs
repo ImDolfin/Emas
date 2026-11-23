@@ -866,6 +866,7 @@ namespace Emas.Editor.Tests
                 Assert.That(restoredSmoothing.PositionHalfLife, Is.EqualTo(0.15f));
                 Assert.That(restoredSmoothing.RotationHalfLife, Is.EqualTo(0.03f));
                 Assert.That(restoredExtrapolation.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(restoredExtrapolation.PredictionTime, Is.EqualTo(0.1f));
                 Assert.That(restoredExtrapolation.Strategy, Is.TypeOf<CoordinatedTurnExtrapolation>());
                 CoordinatedTurnExtrapolation restoredStrategy = (CoordinatedTurnExtrapolation)restoredExtrapolation.Strategy;
                 Assert.That(restoredStrategy.PacketSmoothingDuration, Is.EqualTo(0.12f));
@@ -1172,6 +1173,7 @@ namespace Emas.Editor.Tests
             using (SerializedObject settings = new SerializedObject(extrapolation))
             {
                 settings.FindProperty("_maximumExtrapolation").floatValue = 0.2f;
+                settings.FindProperty("_predictionTime").floatValue = 0.1f;
                 settings.FindProperty("_strategy").managedReferenceValue = new CoordinatedTurnExtrapolation
                 {
                     PacketSmoothingDuration = 0.12f,
@@ -1208,6 +1210,7 @@ namespace Emas.Editor.Tests
                 Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.08f));
                 Assert.That(smoothing.RotationHalfLife, Is.Zero);
                 Assert.That(extrapolation.MaximumExtrapolation, Is.EqualTo(0.15f));
+                Assert.That(extrapolation.PredictionTime, Is.Zero);
                 Assert.That(extrapolation.Strategy, Is.TypeOf<ConstantAccelerationExtrapolation>());
                 Assert.That(custom.Value, Is.EqualTo(7));
                 Assert.That(smoothing.enabled, Is.False);
@@ -1219,6 +1222,7 @@ namespace Emas.Editor.Tests
                 Assert.That(smoothing.PositionHalfLife, Is.EqualTo(0.15f));
                 Assert.That(smoothing.RotationHalfLife, Is.EqualTo(0.03f));
                 Assert.That(extrapolation.MaximumExtrapolation, Is.EqualTo(0.2f));
+                Assert.That(extrapolation.PredictionTime, Is.EqualTo(0.1f));
                 Assert.That(extrapolation.Strategy, Is.TypeOf<CoordinatedTurnExtrapolation>());
                 Assert.That(((CoordinatedTurnExtrapolation)extrapolation.Strategy).PacketSmoothingDuration, Is.EqualTo(0.12f));
                 Assert.That(custom.Value, Is.EqualTo(23));
