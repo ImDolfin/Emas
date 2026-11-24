@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Hide the Constant Turn gravity setting in the Inspector while retaining its code API and serialized value.
+- Fix Constant Turn predicting from a lagging position chord. Reconstruct endpoint velocity from bounded timestamped history using the rotating-body model, including supplied inertial acceleration. Support cold packet batches and reset windows while preserving supplied velocity and zero overrides.
 - Make Constant Acceleration estimate missing linear and angular acceleration from timestamped position, orientation and SDK rate histories. Fit irregular samples in a bounded window, preserve supplied motion and zero-rate overrides, integrate body/world angular changes, and expose read-only strategy history access without new UI or SDK setters.
 - Keep shared clock policy in the code-only ReferenceFrame.TimestampClock, ClockOffset and PredictionTime APIs. Ghosts supply timestamped data; the reference applies calibration once across the Realm and selects the shared target independently of Ghost processing traits.
 - Automatically compensate Unix creation timestamps on the followed Ghost against UTC receipt time using rolling medians. Expose the shared Realm.ProjectedTime while retaining individual models and caps. Support automatic Unix recognition, explicit UTC and arbitrary simulation epochs; reset alignment on reference changes and clock restarts.

@@ -153,9 +153,6 @@ namespace Emas.Editor
                     case "_useBankAngleWhenRatesUnavailable":
                         label = "Infer turn from bank";
                         break;
-                    case "_gravity":
-                        label = "Gravity (units/s²)";
-                        break;
                 }
             }
 
