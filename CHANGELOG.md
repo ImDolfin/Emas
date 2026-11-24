@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0
+
+- Update the package and runtime metadata version to 0.3.0.
+
 ## 0.2.0
 
 - Set the minimum prediction limit to 0.007 s (7 ms, rounded up from one 144 Hz frame) in the API, Inspector and saved settings. Smaller nonnegative limits clamp to the minimum; disable the Extrapolation trait to stop prediction.

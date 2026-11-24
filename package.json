@@ -1,6 +1,6 @@
 {
   "name": "com.emas.core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "displayName": "Emas",
   "description": "Entity tracking, reusable traits, optional views and double-precision spatial presentation for Unity.",
   "unity": "2022.3",
