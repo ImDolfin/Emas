@@ -110,6 +110,29 @@ namespace Emas
                 _count = 0;
             }
 
+            internal bool Read(int lookback, Timestamp? through, out Timestamp time, out Double3 value, Timestamp? since = null)
+            {
+                // Address retained raw samples without interpolation or future-only input.
+                int index = _count - 1;
+                while (index >= 0 && through.HasValue && At(index).Time.CompareTo(through.Value) > 0)
+                {
+                    index--;
+                }
+
+                index -= lookback;
+                time = default(Timestamp);
+                value = default(Double3);
+                if (index < 0 || (since.HasValue && At(index).Time.CompareTo(since.Value) < 0))
+                {
+                    return false;
+                }
+
+                VectorSample sample = At(index);
+                time = sample.Time;
+                value = sample.Value;
+                return true;
+            }
+
             internal bool Integrate(double start, double end, out Double3 value)
             {
                 value = default(Double3);
@@ -229,6 +252,10 @@ namespace Emas
         private readonly RotationSample[] _rotations = new RotationSample[Capacity];
         private int _rotationStart;
         private int _rotationCount;
+        private Timestamp? _positionEstimateStart;
+        private Timestamp? _velocityEstimateStart;
+        private Timestamp? _rotationEstimateStart;
+        private Timestamp? _angularEstimateStart;
 
         internal Timestamp? NewestPositionTime => _positions.NewestTime;
 
@@ -289,6 +316,53 @@ namespace Emas
         internal void AddAngularVelocity(Double3 angularVelocity, Timestamp time)
         {
             _angularVelocities.Add(angularVelocity, time);
+        }
+
+        internal bool ReadPosition(int lookback, Timestamp? through, out Timestamp time, out Double3 value)
+        {
+            return _positions.Read(lookback, through, out time, out value, _positionEstimateStart);
+        }
+
+        internal bool ReadVelocity(int lookback, Timestamp? through, out Timestamp time, out Double3 value)
+        {
+            return _velocities.Read(lookback, through, out time, out value, _velocityEstimateStart);
+        }
+
+        internal bool ReadAngularVelocity(int lookback, Timestamp? through, out Timestamp time, out Double3 value)
+        {
+            return _angularVelocities.Read(lookback, through, out time, out value, _angularEstimateStart);
+        }
+
+        internal bool ReadRotation(int lookback, Timestamp? through, out Timestamp time, out Quaternion value)
+        {
+            int index = _rotationCount - 1;
+            while (index >= 0 && through.HasValue && RotationAt(index).Time.CompareTo(through.Value) > 0)
+            {
+                index--;
+            }
+
+            index -= lookback;
+            time = default(Timestamp);
+            value = Quaternion.identity;
+            if (index < 0 || (_rotationEstimateStart.HasValue && RotationAt(index).Time.CompareTo(_rotationEstimateStart.Value) < 0))
+            {
+                return false;
+            }
+
+            RotationSample sample = RotationAt(index);
+            time = sample.Time;
+            value = sample.Value;
+            return true;
+        }
+
+        internal void RestartEstimation()
+        {
+            // Reset derivative fits without discarding independently timed SDK data needed
+            // for playback or interpolation. The latest sample seeds each new fitting window.
+            _positionEstimateStart = NewestPositionTime;
+            _velocityEstimateStart = NewestVelocityTime;
+            _rotationEstimateStart = NewestRotationTime;
+            _angularEstimateStart = NewestAngularVelocityTime;
         }
 
         // Offsets are playback time minus the newest sample time. Negative offsets read
@@ -377,17 +451,20 @@ namespace Emas
         internal void ClearPosition()
         {
             _positions.Clear();
+            _positionEstimateStart = null;
         }
 
         internal void ClearRotation()
         {
             _rotationStart = 0;
             _rotationCount = 0;
+            _rotationEstimateStart = null;
         }
 
         internal void ClearVelocity()
         {
             _velocities.Clear();
+            _velocityEstimateStart = null;
         }
 
         internal void ClearAcceleration()
@@ -398,6 +475,7 @@ namespace Emas
         internal void ClearAngularVelocity()
         {
             _angularVelocities.Clear();
+            _angularEstimateStart = null;
         }
 
         internal void Clear()
@@ -419,7 +497,8 @@ namespace Emas
                 newestIndex--;
             }
 
-            if (newestIndex < 1)
+            if (newestIndex < 1 || (_rotationEstimateStart.HasValue
+                && RotationAt(newestIndex - 1).Time.CompareTo(_rotationEstimateStart.Value) < 0))
             {
                 return false;
             }

@@ -71,7 +71,7 @@ In an aircraft-fixed view, a right-wing-down bank moves a world-stationary targe
 
 Accepted attitude changes apply their full angle, including sudden large changes. Extrapolation predicts gaps; it does not set the strength of reference rotation cancellation. For an immediate-input comparison, disable Extrapolation and Smoothing, set `realm.InterpolationDelay = 0`, and allow 0.25 unscaled seconds for live-setting transitions. Disabling those components alone does not disable buffered playback. With processing bypassed, an opposite bank/pitch response calls for checking the input attitude direction and coordinate contract: named geographic angles use positive nose-up pitch and right-wing-down bank; source and ECEF quaternions must map body vectors into the declared world axes, rather than the inverse.
 
-For Geographic input, the Ghost Inspector shows **Observed bank** from the latest accepted attitude and **Reference bank** from the followed reference's processed attitude. Compare these during a near-level maneuver to see how much reference processing leads or trails the accepted input. They show principal bank angles and become undefined at vertical pitch. Neither reading measures the unknown age of the SDK data against the actual aircraft. The pose debugger also shows the shared **Playback delay**, including while Extrapolation is disabled. Constant Acceleration predicts orientation with a constant angular rate; its acceleration term applies to position only. A sudden rate change cannot be predicted before an observation or rate sample reports it.
+For Geographic input, the Ghost Inspector shows **Observed bank** from the latest accepted attitude and **Reference bank** from the followed reference's processed attitude. Compare these during a near-level maneuver to see how much reference processing leads or trails the accepted input. They show principal bank angles and become undefined at vertical pitch. Neither reading measures the unknown age of the SDK data against the actual aircraft. The pose debugger also shows the shared **Playback delay**, including while Extrapolation is disabled. Constant Acceleration estimates angular acceleration from eligible rate or quaternion history when enough timed samples exist. A sudden rate change cannot be predicted before an observation or rate sample reports it.
 
 ## Choose source coordinates
 
@@ -168,13 +168,23 @@ extrapolation.Strategy = new NoExtrapolation();
 
 | Model | Gap behavior |
 | --- | --- |
-| Constant acceleration (default) | `velocity*t + acceleration*t*t/2`; constant angular velocity. |
+| Constant acceleration (default) | Uses supplied linear acceleration or fits missing linear/angular acceleration from timestamped history. |
 | Constant velocity | Continue linear/angular rates, ignoring linear acceleration. |
 | Singer | Integrate velocity with exponentially decaying acceleration; constant angular velocity. |
 | Coordinated turn | Rotating-body second-order motion and cubic packet correction. |
 | No extrapolation | Hold observations after recorded playback; retain interpolation and SDK motion assistance. |
 
 `MaximumExtrapolation` caps age beyond the newest observation; it defaults to 0.15 seconds. Larger horizons bridge longer gaps but risk overshooting stops and turns. Zero or a disabled trait bypasses all strategies, including packet correction.
+
+### History-based constant acceleration
+
+Constant Acceleration owns its motion estimation. SDK linear velocity and acceleration remain authoritative, including supplied zero acceleration. If acceleration is missing, the strategy fits a line through retained SDK velocities. Without enough velocity observations, it fits a quadratic through positions and obtains both acceleration and velocity at the latest observation. This avoids treating the last interval's average velocity as the current velocity while accelerating.
+
+Angular acceleration comes from SDK angular-rate history or from consecutive quaternion arcs. Arc rates are fitted at their interval midpoints, recovering the rate at the attitude timestamp without Euler-angle wrapping. Supplied zero angular velocity holds orientation. A fixed-axis accelerating bank has an exact quaternion exponential; changing axes use bounded midpoint integration with the proper body/world multiplication order.
+
+Fits use actual SDK timestamp differences and at most eight vector observations or nine orientations. The preferred window is 0.25 seconds; slower feeds retain the minimum two rates or three poses needed for estimation. Least-squares fitting reduces sensitivity to individual noisy samples. Degenerate or unrepresentable fits fall back to available motion. A single pose cannot provide velocity, and fewer than three poses cannot determine position-derived acceleration. Untimed observations do not invent an acceleration estimate.
+
+The strategy reads only history eligible at its observation time, including packets received between render updates. It does not accumulate estimates from rendered transforms or keep shared mutable estimator state. Clock/presentation resets and channel/frame changes restart the relevant fitting windows. Older SDK samples needed for playback or interpolation remain available to that pipeline, but do not re-enter a reset derivative fit. Other strategies retain their own estimation rules; no new SDK setter calls or authoring controls are required.
 
 ### Request actual forward prediction
 
@@ -251,7 +261,7 @@ Motion is sampled at each pose channel's own observation time; future-only sampl
 
 Implement `IExtrapolationStrategy` with deterministic, non-mutating methods. Both receive `ExtrapolationContext` and bounded seconds; preview/tangent evaluation may call them repeatedly. Return zero displacement or identity rotation at zero seconds. Return finite source-space displacement and a finite nonzero quaternion offset.
 
-The context contains raw accepted poses with their own timestamps, time-aligned observation pose/motion, supplied/estimated provenance, world/body angular convention and coordinate metadata. Newest motion timestamps may be later than effective sampled motion. Emas owns interpolation, composition, coordinate conversion and per-root histories.
+The context contains raw accepted poses with their own timestamps, time-aligned observation pose/motion, supplied/estimated provenance, world/body angular convention and coordinate metadata. TryGetPositionSample, TryGetVelocitySample, TryGetRotationSample and TryGetAngularVelocitySample expose retained raw observations at or before ObservationTime for strategy-specific estimation. Read these bounded live views only during the strategy call; they allocate no memory and do not mutate or interpolate observations. SDK world angular samples remain ECEF even when the prepared AngularVelocity was converted to tangent axes. Newest motion timestamps may be later than effective sampled motion. Emas owns interpolation, composition, coordinate conversion and per-root histories.
 
 A `[Serializable]` concrete class with a public parameterless constructor appears in the selector with its serialized settings. Runtime-only implementations need no serialization attribute. Null assignment is rejected; missing serialized references use the default strategy. Replace instances for a blended live transition; in-place setting edits are immediate. Finite-result overflows reported as `ArgumentOutOfRangeException` fall back to observed pose; other application exceptions propagate.
 

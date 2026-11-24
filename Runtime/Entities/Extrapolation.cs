@@ -328,7 +328,7 @@ namespace Emas
             }
         }
 
-        /// <summary>Clears estimated motion and packet-correction history after a teleport while retaining supplied SDK motion and extrapolation settings.</summary>
+        /// <summary>Restarts motion-estimation windows and packet correction after a teleport while retaining supplied SDK motion and settings.</summary>
         /// <remarks>Use <see cref="Spatial.ResetPresentation"/> when smoothing history must be reset at the same time.</remarks>
         public void Reset()
         {
@@ -343,6 +343,11 @@ namespace Emas
             _motionOffset = 0;
             _motionExtrapolation = default(Double3);
             _packetSmoother = default(PacketSmoother);
+            Spatial spatial = Spatial;
+            if (spatial != null)
+            {
+                spatial.History.RestartEstimation();
+            }
         }
 
         internal void Prepare(Spatial spatial, double timestamp)

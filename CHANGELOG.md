@@ -2,6 +2,7 @@
 
 ## 0.2.0
 
+- Make Constant Acceleration estimate missing linear and angular acceleration from timestamped position, orientation and SDK rate histories. Fit irregular samples in a bounded window, preserve supplied motion and zero-rate overrides, integrate body/world angular changes, and expose read-only strategy history access without new UI or SDK setters.
 - Keep shared clock policy in the code-only ReferenceFrame.TimestampClock, ClockOffset and PredictionTime APIs. Ghosts supply timestamped data; the reference applies calibration once across the Realm and selects the shared target independently of Ghost processing traits.
 - Automatically compensate Unix creation timestamps on the followed Ghost against UTC receipt time using rolling medians. Expose the shared Realm.ProjectedTime while retaining individual models and caps. Support automatic Unix recognition, explicit UTC and arbitrary simulation epochs; reset alignment on reference changes and clock restarts.
 - Compensate angular smoothing with known model motion so sustained turns do not require extra prediction lead. Keep packet correction movement separate from motion assistance so half-life filters still reduce correction error when cubic correction is enabled.

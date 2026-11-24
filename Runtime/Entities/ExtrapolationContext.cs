@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Emas
@@ -6,9 +7,13 @@ namespace Emas
     /// <remarks>Created by Emas on the main thread. Motion is sampled at ObservationTime independently
     /// for position and rotation extrapolation; future-only motion is unavailable. Pose properties retain
     /// the latest accepted observations and their own timestamps, which may differ from ObservationTime.
-    /// Null motion means unavailable; a supplied zero remains available and overrides estimation.</remarks>
+    /// Null motion means unavailable; a supplied zero remains available and overrides estimation.
+    /// Raw readers expose the current estimation window, valid during the strategy call. Presentation/estimator
+    /// resets restart that window while older SDK motion may remain available for playback and interpolation.</remarks>
     public readonly struct ExtrapolationContext
     {
+        private readonly PoseHistory _history;
+
         /// <summary>Gets the latest accepted source position.</summary>
         /// <value>Cartesian source distance units or ECEF metres; null before position input.</value>
         public Double3? Position { get; }
@@ -42,8 +47,9 @@ namespace Emas
         /// <value>Source distance units per second, or ECEF metres per second; null when unavailable.</value>
         public Double3? Velocity { get; }
 
-        /// <summary>Gets optional acceleration sampled at ObservationTime.</summary>
-        /// <value>Source distance units per second squared, or ECEF metres per second squared; null when unavailable.</value>
+        /// <summary>Gets supplied SDK acceleration sampled at ObservationTime.</summary>
+        /// <value>Source distance units per second squared, or ECEF metres per second squared; null when no eligible SDK value exists.</value>
+        /// <remarks>Strategies can estimate missing acceleration using the raw history readers without changing this value.</remarks>
         public Double3? Acceleration { get; }
 
         /// <summary>Gets angular velocity sampled at ObservationTime, or an observed rotation-arc estimate.</summary>
@@ -98,6 +104,7 @@ namespace Emas
             bool angularVelocityIsEstimated, bool angularVelocityIsWorld, Timestamp? latestVelocityTime,
             Timestamp? latestAccelerationTime, Timestamp? latestAngularVelocityTime)
         {
+            _history = spatial.History;
             // Keep the latest raw values separate from the pose at the time being predicted.
             Position = spatial.HasPosition ? spatial.Position : (Double3?)null;
             Rotation = spatial.HasRotation ? spatial.Rotation : (Quaternion?)null;
@@ -123,6 +130,72 @@ namespace Emas
             EarthCenteredBodyAxes = spatial.EarthCenteredBodyAxes;
         }
 
+        /// <summary>Reads a retained timestamped source position for strategy-specific motion estimation.</summary>
+        /// <param name="lookback">Zero for the newest eligible sample, one for its predecessor, and so on.</param>
+        /// <param name="time">The sample's original SDK timestamp, or default when unavailable.</param>
+        /// <param name="position">Cartesian source coordinates or ECEF metres, or default when unavailable.</param>
+        /// <returns>True when the raw sample is in the current estimation window at or before ObservationTime.</returns>
+        /// <remarks>Use on the main thread during the strategy call. This reads the entity's live bounded history;
+        /// do not retain it as a snapshot. Untimed contexts have no cutoff. No interpolation, allocation or mutation occurs.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Lookback is negative.</exception>
+        public bool TryGetPositionSample(int lookback, out Timestamp time, out Double3 position)
+        {
+            ValidateLookback(lookback);
+            time = default(Timestamp);
+            position = default(Double3);
+            return _history != null && _history.ReadPosition(lookback, ObservationTime, out time, out position);
+        }
+
+        /// <summary>Reads a retained timestamped SDK velocity for strategy-specific acceleration estimation.</summary>
+        /// <param name="lookback">Zero for the newest eligible sample; positive values read earlier samples.</param>
+        /// <param name="time">The original SDK timestamp, or default when unavailable.</param>
+        /// <param name="velocity">Source units per second or ECEF metres per second; default when unavailable.</param>
+        /// <returns>True when the raw SDK sample is in the current estimation window at or before ObservationTime.</returns>
+        /// <remarks>Use only during the strategy call on the main thread. Estimates are not stored as SDK observations.
+        /// Untimed contexts have no cutoff. Reading the bounded live history allocates no memory and changes no state.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Lookback is negative.</exception>
+        public bool TryGetVelocitySample(int lookback, out Timestamp time, out Double3 velocity)
+        {
+            ValidateLookback(lookback);
+            time = default(Timestamp);
+            velocity = default(Double3);
+            return _history != null && _history.ReadVelocity(lookback, ObservationTime, out time, out velocity);
+        }
+
+        /// <summary>Reads a retained timestamped orientation for strategy-specific angular-motion estimation.</summary>
+        /// <param name="lookback">Zero for the newest eligible orientation; positive values read earlier ones.</param>
+        /// <param name="time">The original SDK timestamp, or default when unavailable.</param>
+        /// <param name="rotation">The quaternion in RotationSpace, or identity when unavailable.</param>
+        /// <returns>True when the raw orientation is in the current estimation window at or before ObservationTime.</returns>
+        /// <remarks>Use only during the strategy call on the main thread. Untimed contexts have no cutoff.
+        /// This is a bounded live history view, not a retained snapshot; reads neither interpolate nor mutate samples.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Lookback is negative.</exception>
+        public bool TryGetRotationSample(int lookback, out Timestamp time, out Quaternion rotation)
+        {
+            ValidateLookback(lookback);
+            time = default(Timestamp);
+            rotation = Quaternion.identity;
+            return _history != null && _history.ReadRotation(lookback, ObservationTime, out time, out rotation);
+        }
+
+        /// <summary>Reads a retained timestamped SDK angular rate for strategy-specific angular-acceleration estimation.</summary>
+        /// <param name="lookback">Zero for the newest eligible rate; positive values read earlier rates.</param>
+        /// <param name="time">The original SDK timestamp, or default when unavailable.</param>
+        /// <param name="angularVelocity">Body rates in model right/up/forward axes, or world rates in right-handed ECEF XYZ;
+        /// units are radians per second. Default when unavailable.</param>
+        /// <returns>True when the raw SDK rate is in the current estimation window at or before ObservationTime.</returns>
+        /// <remarks>Use only during the strategy call on the main thread. World SDK samples remain ECEF even when
+        /// AngularVelocity has been converted to local tangent axes. Frame changes clear the channel's history.
+        /// Untimed contexts have no cutoff. This bounded live view allocates no memory and does not include estimated rates.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Lookback is negative.</exception>
+        public bool TryGetAngularVelocitySample(int lookback, out Timestamp time, out Double3 angularVelocity)
+        {
+            ValidateLookback(lookback);
+            time = default(Timestamp);
+            angularVelocity = default(Double3);
+            return _history != null && _history.ReadAngularVelocity(lookback, ObservationTime, out time, out angularVelocity);
+        }
+
         internal static Double3? SamplePosition(Spatial spatial, Timestamp? time)
         {
             // Treat input without a timestamp as current. Otherwise, require a sample at or before the requested time.
@@ -143,6 +216,14 @@ namespace Emas
 
             spatial.History.SamplePosition(time.Value.ElapsedSince(spatial.History.NewestPositionTime.Value), out Double3 position);
             return position;
+        }
+
+        private static void ValidateLookback(int lookback)
+        {
+            if (lookback < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(lookback));
+            }
         }
 
         private static Quaternion? SampleRotation(Spatial spatial, Timestamp? time)

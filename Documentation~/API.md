@@ -115,6 +115,8 @@ Root GameObjects are named by `Key.EntityId`; `Ghost.Name` is separate display m
 | `Smoothing.PositionHalfLife` / `RotationHalfLife` | Independent nonnegative seconds to halve correction error; zero applies immediately. |
 | `Extrapolation.Strategy` / `PredictionTime` / `MaximumExtrapolation` | Motion algorithm, individual forward interval when no timed reference is followed, and total prediction limit in seconds. With a timed followed Ghost, ReferenceFrame.PredictionTime supplies the common target; individual trait intervals are ignored. |
 | Extrapolation motion setters / `ClearVelocity`, `ClearAcceleration`, `ClearAngularVelocity` | Optional independently timed motion; clear channels when unavailable. |
+| `ConstantAccelerationExtrapolation` | Estimates missing linear/angular acceleration from bounded timestamped histories. Supplied linear motion takes priority; zero angular rates hold orientation. Fits and integration are stateless across entities. |
+| `ExtrapolationContext.TryGetPositionSample` / `TryGetVelocitySample` / `TryGetRotationSample` / `TryGetAngularVelocitySample` | Read raw samples in the current estimation window newest-first, excluding timestamps after ObservationTime and before the last estimator reset. Use only during the strategy call on Unity's main thread. No allocations, interpolation or mutation; world SDK angular samples retain ECEF axes. |
 
 Enabled Spatial owns the root's world pose. Optional Smoothing/Extrapolation modify presentation only. Original timestamps share one SDK clock; older/duplicate timed samples are ignored per channel. Supplied zero motion overrides estimates. Missing references/attachment parents and range suppression affect presentation, not tracking membership.
 

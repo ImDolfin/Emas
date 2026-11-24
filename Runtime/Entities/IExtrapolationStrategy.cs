@@ -5,7 +5,8 @@ namespace Emas
     /// <summary>Calculates future pose offsets using pose, motion and timing observations.</summary>
     /// <remarks>Called on Unity's main thread, potentially more than once per projection for live tuning.
     /// Implementations must be deterministic and must not advance history or mutate inputs. The caller owns
-    /// timing, horizon limits, motion estimation, coordinate conversion, interpolation and smoothing.
+    /// timing, horizon limits, timestamped history, coordinate conversion, interpolation and smoothing.
+    /// Strategies choose their own history-based estimation; shared motion values remain available as fallbacks.
     /// Use a serializable class to persist an implementation on a Extrapolation component.</remarks>
     public interface IExtrapolationStrategy
     {
