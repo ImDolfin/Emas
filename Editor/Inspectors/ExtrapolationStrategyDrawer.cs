@@ -135,6 +135,11 @@ namespace Emas.Editor
                 return "Constant Turn and Acceleration (CTA)";
             }
 
+            if (type == typeof(ConstantTurnClimbAccelerationExtrapolation))
+            {
+                return "Constant Turn, Climb and Acceleration (CTCA)";
+            }
+
             string name = ObjectNames.NicifyVariableName(type.Name);
             const string suffix = " Extrapolation";
             return type == typeof(NoExtrapolation) || !name.EndsWith(suffix, StringComparison.Ordinal)
@@ -148,7 +153,8 @@ namespace Emas.Editor
             {
                 label = "Maneuver decay (s)";
             }
-            else if (strategy is CoordinatedTurnExtrapolation || strategy is ConstantTurnAccelerationExtrapolation)
+            else if (strategy is CoordinatedTurnExtrapolation || strategy is ConstantTurnAccelerationExtrapolation
+                || strategy is ConstantTurnClimbAccelerationExtrapolation)
             {
                 switch (property.name)
                 {

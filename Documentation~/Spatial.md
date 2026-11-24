@@ -173,6 +173,7 @@ extrapolation.Strategy = new NoExtrapolation();
 | Singer | Integrate velocity with exponentially decaying acceleration; constant angular velocity. |
 | Coordinated turn | Rotating-body second-order motion and cubic packet correction. |
 | Constant Turn and Acceleration (CTA) | Coordinated turns with missing body acceleration estimated from velocity or position history. |
+| Constant Turn, Climb and Acceleration (CTCA) | Horizontal turning and tangential acceleration with constant vertical climb rate. |
 | Spline | Cubic Bézier continuation fitted to timestamped poses or SDK velocities; quaternion-log rotation. |
 | No extrapolation | Hold observations after recorded playback; retain interpolation and SDK motion assistance. |
 
@@ -265,6 +266,22 @@ Fits use up to eight samples in 0.25 seconds, retaining the minimum needed for s
 Sparse or ill-conditioned history falls back to Coordinated Turn. Missing attitude uses Constant Acceleration's world-space prediction. Acceleration alone cannot invent velocity. Presentation and clock resets discard old fits, while immutable strategy instances may be shared. The existing projected time, prediction cap and optional Smoothing trait apply.
 
 CTA has the same packet-correction duration and optional bank-derived turn fallback as Coordinated Turn. Packet correction defaults to 0.1 unscaled seconds; zero applies corrections immediately. Gravity remains available through code and serialization, hidden in the Inspector. [Implementation](../Runtime/Entities/ConstantTurnAccelerationExtrapolation.cs).
+
+### Constant Turn, Climb and Acceleration (CTCA)
+
+```csharp
+extrapolation.Strategy = new ConstantTurnClimbAccelerationExtrapolation();
+```
+
+Select **Constant Turn, Climb and Acceleration (CTCA)** in the strategy selector. The model holds horizontal turn rate, tangential acceleration and vertical climb rate constant over each prediction gap. Horizontal speed follows `speed(t) = speed(0) + acceleration*t`; course follows `course(t) = course(0) + turnRate*t`; height follows `height(t) = height(0) + climbRate*t`. Cartesian motion uses the configured up axis. Geographic motion uses local east/up/north at the observation and returns ECEF displacement.
+
+Climb rate comes from supplied vertical velocity, or a linear height fit over retained positions. Vertical acceleration is excluded from forward motion and from aligning an older SDK climb rate to the pose timestamp. Horizontal velocity still aligns through the turning model. Supplied inertial acceleration contributes its along-course component to horizontal acceleration; normal acceleration is already represented by turning. Without supplied acceleration, the shared rotating-motion fit estimates horizontal velocity and acceleration. No new SDK setters are needed.
+
+Horizontal turn rate uses the heading change implied by available angular motion and attitude. It differentiates the projected forward direction instead of taking the world-up component of angular velocity alone. This prevents pure roll at a pitched attitude from becoming a false horizontal turn. Missing attitude can use world angular rates or supplied normal acceleration. Missing angular motion can use course changes from SDK velocity or position history, then the optional coordinated bank fallback. Course-only fits refine the turn rate to remove residual lateral acceleration. Supplied zero angular rate overrides turn inference.
+
+Attitude retains full body/world angular prediction. When angular motion is unavailable, inferred course motion can advance yaw while retaining the observed bank and pitch. Roll and pitch do not rotate the separate climb velocity into lateral motion. Fits use at most eight eligible observations from a short window, with bounded course refinement. Sparse input lowers the estimate order; acceleration alone cannot invent velocity. Current SDK motion, estimator resets, shared projected time and prediction caps retain their existing contracts.
+
+Packet correction defaults to 0.1 unscaled seconds and uses the existing per-root pipeline. Optional Smoothing applies separately. Gravity stays available through code and serialization, hidden in the Inspector. [Implementation](../Runtime/Entities/ConstantTurnClimbAccelerationExtrapolation.cs).
 
 ## Supply SDK motion
 

@@ -2687,7 +2687,7 @@ namespace Emas.Tests
         }
 
         /// <summary>Rapid pitch, roll and combined maneuvers preserve near, far and off-axis target bearings with fresh or delayed packets; disabled prediction and reversed rates expose reference-angle errors.</summary>
-        /// <returns>An iterator that compares all moving strategies during continuous high-rate flight.</returns>
+        /// <returns>An iterator that compares three-dimensional motion strategies during continuous high-rate flight with changing vertical speed.</returns>
         [UnityTest]
         public IEnumerator TimestampedExtrapolation_HighRateReferenceMatchesIndependentTargetBearing()
         {
@@ -2831,7 +2831,7 @@ namespace Emas.Tests
         public IEnumerator Smoothing_SharedPredictionTracksTurnsAndFiltersPacketCorrections()
         {
             foreach (IExtrapolationStrategy strategy in new IExtrapolationStrategy[]
-                { new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(), new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation(), new ConstantTurnAccelerationExtrapolation() })
+                { new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(), new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation(), new ConstantTurnAccelerationExtrapolation(), new ConstantTurnClimbAccelerationExtrapolation() })
             {
                 using (Realm realm = new Realm())
                 {
@@ -2958,7 +2958,7 @@ namespace Emas.Tests
             IExtrapolationStrategy[] strategies =
             {
                 new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(),
-                new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation(), new ConstantTurnAccelerationExtrapolation()
+                new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation(), new ConstantTurnAccelerationExtrapolation(), new ConstantTurnClimbAccelerationExtrapolation()
             };
             foreach (IExtrapolationStrategy strategy in strategies)
             {

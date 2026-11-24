@@ -212,6 +212,28 @@ namespace Emas
             }
         }
 
+        internal static bool LocalAttitude(in ExtrapolationContext context, in GeographicBasis basis, out Quaternion attitude)
+        {
+            return TryAttitude(context, basis, out attitude);
+        }
+
+        internal static Double3 BodyAngularVelocity(in ExtrapolationContext context, in GeographicBasis basis,
+            Quaternion attitude, Double3 velocity, bool useBank, float gravity)
+        {
+            return BodyRate(context, basis, attitude, velocity, useBank, gravity);
+        }
+
+        internal static bool EndpointVelocity(in ExtrapolationContext context, in GeographicBasis basis,
+            Quaternion attitude, Double3 rate, out Double3 velocity)
+        {
+            return TryEndpointVelocity(context, basis, attitude, rate, out velocity);
+        }
+
+        internal static Double3 IntegrateMotion(Double3 velocity, Double3 acceleration, Double3 rate, double seconds)
+        {
+            return Integrate(velocity, acceleration, rate, seconds);
+        }
+
         private static bool EstimateMotion(in ExtrapolationContext context, in GeographicBasis basis, Quaternion attitude,
             bool useBank, float gravity, ref Double3 rate, ref Double3 velocity, out Double3 acceleration)
         {

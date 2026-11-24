@@ -992,6 +992,28 @@ namespace Emas.Editor.Tests
                 Assert.That(restoredCta.PacketSmoothingDuration, Is.EqualTo(0.18f));
                 Assert.That(restoredCta.UseBankAngleWhenRatesUnavailable, Is.False);
                 Assert.That(restoredCta.Gravity, Is.EqualTo(12f));
+
+                PrefabUtility.UnloadPrefabContents(contents);
+                contents = null;
+                using (SerializedObject settings = new SerializedObject(extrapolation))
+                {
+                    settings.FindProperty("_strategy").managedReferenceValue = new ConstantTurnClimbAccelerationExtrapolation
+                    {
+                        PacketSmoothingDuration = 0.14f, UseBankAngleWhenRatesUnavailable = false, Gravity = 11f
+                    };
+                    settings.ApplyModifiedProperties();
+                    ExtrapolationStrategyDrawer drawer = new ExtrapolationStrategyDrawer();
+                    Assert.That(drawer.GetPropertyHeight(settings.FindProperty("_strategy"), GUIContent.none),
+                        Is.EqualTo(3f * EditorGUIUtility.singleLineHeight + 2f * EditorGUIUtility.standardVerticalSpacing));
+                }
+
+                Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
+                contents = PrefabUtility.LoadPrefabContents(path);
+                ConstantTurnClimbAccelerationExtrapolation restoredCtca = contents.GetComponent<Extrapolation>().Strategy as ConstantTurnClimbAccelerationExtrapolation;
+                Assert.That(restoredCtca, Is.Not.Null);
+                Assert.That(restoredCtca.PacketSmoothingDuration, Is.EqualTo(0.14f));
+                Assert.That(restoredCtca.UseBankAngleWhenRatesUnavailable, Is.False);
+                Assert.That(restoredCtca.Gravity, Is.EqualTo(11f));
             }
             finally
             {

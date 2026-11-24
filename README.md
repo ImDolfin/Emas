@@ -74,6 +74,7 @@ Optional `Smoothing` filters position and rotation independently. Optional `Extr
 | `SingerExtrapolation` | Gradually decay observed acceleration during a gap. |
 | `CoordinatedTurnExtrapolation` | Rotating-body aircraft motion and cubic packet correction. |
 | `ConstantTurnAccelerationExtrapolation` | Continue turning while speed changes; estimate missing body acceleration from history. |
+| `ConstantTurnClimbAccelerationExtrapolation` | Accelerate through a horizontal turn while holding vertical climb rate constant. |
 | `SplineExtrapolation` | Continue cubic Bézier motion fitted to timestamped pose or velocity history. |
 | `NoExtrapolation` | Hold observations during gaps; retain buffered interpolation. |
 
