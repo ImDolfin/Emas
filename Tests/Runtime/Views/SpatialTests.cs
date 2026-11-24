@@ -2701,7 +2701,7 @@ namespace Emas.Tests
             IExtrapolationStrategy[] strategies =
             {
                 new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(),
-                new SingerExtrapolation(), new CoordinatedTurnExtrapolation()
+                new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation()
             };
             foreach (IExtrapolationStrategy strategy in strategies)
             {
@@ -2831,7 +2831,7 @@ namespace Emas.Tests
         public IEnumerator Smoothing_SharedPredictionTracksTurnsAndFiltersPacketCorrections()
         {
             foreach (IExtrapolationStrategy strategy in new IExtrapolationStrategy[]
-                { new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(), new SingerExtrapolation(), new CoordinatedTurnExtrapolation() })
+                { new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(), new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation() })
             {
                 using (Realm realm = new Realm())
                 {
@@ -2958,7 +2958,7 @@ namespace Emas.Tests
             IExtrapolationStrategy[] strategies =
             {
                 new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(),
-                new SingerExtrapolation(), new CoordinatedTurnExtrapolation()
+                new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation()
             };
             foreach (IExtrapolationStrategy strategy in strategies)
             {
@@ -3096,22 +3096,37 @@ namespace Emas.Tests
                         predictions[1, channel].PredictionTime = 0.2f;
                     }
                     realms[1].ReferenceFrame.PredictionTime = 0.2f;
+                    double packetReceivedBefore = Time.realtimeSinceStartupAsDouble;
                     references[1].SetGeographicRotation(0, 0, 36, packetTime);
+                    double packetReceivedAfter = Time.realtimeSinceStartupAsDouble;
                     predictions[1, 0].SetBodyAngularVelocity(new Double3(Math.PI, 0, 0), sampleTime: packetTime);
                     targets[1].SetEarthCenteredPosition(origin.ToEarthCentered()
                         + origin.ToEarthCenteredVector(new Double3(2, 2000, 0)), packetTime);
                     predictions[1, 1].SetEarthCenteredVelocity(origin.ToEarthCenteredVector(new Double3(10, 0, 0)), packetTime);
+                    // Let time pass after receipt. Prediction must include that elapsed
+                    // time as well as the requested interval, even before Update starts.
+                    yield return new WaitForSecondsRealtime(0.01f);
                     // Knowing that delivery is at SDK time 0.3 must not add that 0.1 seconds twice.
                     sources[1].PublishEarthCenteredPosition("delivery clock", origin.ToEarthCentered()).GetRequired<Spatial>()
                         .SetEarthCenteredPosition(origin.ToEarthCentered(), new Timestamp(0, 300000000));
                     double packetBefore = Time.realtimeSinceStartupAsDouble;
                     realms[1].Update();
                     double packetAfter = Time.realtimeSinceStartupAsDouble;
-                    Assert.That(Quaternion.Angle(realms[1].ReferenceFrame.Rotation, Quaternion.AngleAxis(-72, Vector3.forward)),
-                        Is.LessThan(0.25d + 180d * (packetAfter - packetBefore)));
-                    Double3 atPointFour = origin.ToEarthCentered() + origin.ToEarthCenteredVector(new Double3(4, 2000, 0));
-                    Assert.That(Double3.Distance(atPointFour, realms[1].ReferenceFrame.ToSimulationPosition(targets[1].transform.position)),
-                        Is.LessThan(0.02d + 10d * (packetAfter - packetBefore)));
+                    // Bound receipt and projection with public clock reads. Measuring only
+                    // Update omits data-setting time and can reject correct clock progress.
+                    double minimumTarget = 0.4d + packetBefore - packetReceivedAfter;
+                    double maximumTarget = 0.4d + packetAfter - packetReceivedBefore;
+                    double target = (minimumTarget + maximumTarget) * 0.5d;
+                    double uncertainty = (maximumTarget - minimumTarget) * 0.5d;
+                    Assert.That(Quaternion.Angle(realms[1].ReferenceFrame.Rotation,
+                        Quaternion.AngleAxis((float)(-180d * target), Vector3.forward)),
+                        Is.LessThan(0.25d + 180d * uncertainty),
+                        strategy.GetType().Name + "; projected=" + realms[1].ProjectedTime
+                        + "; expected=" + minimumTarget + " to " + maximumTarget);
+                    Double3 expectedPacketPosition = origin.ToEarthCentered()
+                        + origin.ToEarthCenteredVector(new Double3(2d + 10d * (target - 0.2d), 2000, 0));
+                    Assert.That(Double3.Distance(expectedPacketPosition, realms[1].ReferenceFrame.ToSimulationPosition(targets[1].transform.position)),
+                        Is.LessThan(0.02d + 10d * uncertainty));
                 }
                 finally
                 {

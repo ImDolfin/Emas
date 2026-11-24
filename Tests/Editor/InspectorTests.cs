@@ -952,6 +952,22 @@ namespace Emas.Editor.Tests
                 Extrapolation singerExtrapolation = contents.GetComponent<Extrapolation>();
                 Assert.That(singerExtrapolation.Strategy, Is.TypeOf<SingerExtrapolation>());
                 Assert.That(((SingerExtrapolation)singerExtrapolation.Strategy).ManeuverTimeConstant, Is.EqualTo(0.35f));
+
+                PrefabUtility.UnloadPrefabContents(contents);
+                contents = null;
+                using (SerializedObject settings = new SerializedObject(extrapolation))
+                {
+                    settings.FindProperty("_strategy").managedReferenceValue = new SplineExtrapolation();
+                    settings.ApplyModifiedProperties();
+                    // Stateless strategies persist by type and add no settings rows.
+                    ExtrapolationStrategyDrawer drawer = new ExtrapolationStrategyDrawer();
+                    Assert.That(drawer.GetPropertyHeight(settings.FindProperty("_strategy"), GUIContent.none),
+                        Is.EqualTo(EditorGUIUtility.singleLineHeight));
+                }
+
+                Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
+                contents = PrefabUtility.LoadPrefabContents(path);
+                Assert.That(contents.GetComponent<Extrapolation>().Strategy, Is.TypeOf<SplineExtrapolation>());
             }
             finally
             {

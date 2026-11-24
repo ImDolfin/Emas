@@ -2,6 +2,7 @@
 
 ## 0.2.0
 
+- Add SplineExtrapolation with timestamp-fitted cubic Bézier continuation for position and quaternion rotation. Use supplied velocity histories when available, preserve SDK derivative overrides, reduce curve order for sparse input, and retain shared timing, caps, smoothing and reset behavior without new Inspector settings.
 - Hide the Constant Turn gravity setting in the Inspector while retaining its code API and serialized value.
 - Fix Constant Turn predicting from a lagging position chord. Reconstruct endpoint velocity from bounded timestamped history using the rotating-body model, including supplied inertial acceleration. Support cold packet batches and reset windows while preserving supplied velocity and zero overrides.
 - Make Constant Acceleration estimate missing linear and angular acceleration from timestamped position, orientation and SDK rate histories. Fit irregular samples in a bounded window, preserve supplied motion and zero-rate overrides, integrate body/world angular changes, and expose read-only strategy history access without new UI or SDK setters.

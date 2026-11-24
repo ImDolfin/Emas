@@ -172,6 +172,7 @@ extrapolation.Strategy = new NoExtrapolation();
 | Constant velocity | Continue linear/angular rates, ignoring linear acceleration. |
 | Singer | Integrate velocity with exponentially decaying acceleration; constant angular velocity. |
 | Coordinated turn | Rotating-body second-order motion and cubic packet correction. |
+| Spline | Cubic Bézier continuation fitted to timestamped poses or SDK velocities; quaternion-log rotation. |
 | No extrapolation | Hold observations after recorded playback; retain interpolation and SDK motion assistance. |
 
 `MaximumExtrapolation` caps age beyond the newest observation; it defaults to 0.15 seconds. Larger horizons bridge longer gaps but risk overshooting stops and turns. Zero or a disabled trait bypasses all strategies, including packet correction.
@@ -215,6 +216,22 @@ Built-in position models need supplied or estimated velocity; acceleration alone
 `ManeuverTimeConstant` is a positive duration in seconds, default 1. Acceleration follows `a(t) = a(0)*exp(-t/tau)`; after tau, about 37% remains. Smaller tau approaches constant velocity; larger tau approaches constant acceleration. Velocity is integrated, not damped toward zero. Missing acceleration gives constant velocity.
 
 This is a deterministic mean trajectory, with no estimator or process noise. It does not enable packet correction. Assign a new instance to blend a setting change; editing an existing instance takes effect directly. [Implementation](../Runtime/Entities/SingerExtrapolation.cs).
+
+### Spline prediction
+
+```csharp
+extrapolation.Strategy = new SplineExtrapolation();
+```
+
+Spline uses cubic Bézier continuation. It fits recent samples using their creation timestamps, anchors the curve at the newest observation, and evaluates beyond that observation. It uses up to eight samples within 0.25 seconds, retaining the minimum needed at low source rates. Two pose samples give a line, three give a quadratic, and four or more allow a cubic least-squares fit. Samples closer than 0.1 ms are skipped to avoid unstable derivatives. Resets discard the previous fitting window, and future-only samples cannot contribute.
+
+The curve is stored as `c1*u + c2*u² + c3*u³`, with time scaled by the history span. Its equivalent Bézier controls are `B0 = 0`, `B1 = c1/3`, `B2 = (2*c1 + c2)/3`, and `B3 = c1 + c2 + c3`. Power-form evaluation avoids cancellation near the observation and preserves double-precision source offsets. See [PBRT's cubic Bézier definition](https://www.pbr-book.org/4ed/Utilities/Mathematical_Infrastructure) for the curve basis.
+
+Supplied SDK velocities take priority over pose-derived motion. Their own timestamped histories fit quadratic velocity curves, which integrate to cubic displacement. One supplied velocity gives constant-rate motion until more samples arrive. When a fitted SDK velocity predates the pose, its curve advances that velocity to the pose timestamp. Supplied linear acceleration, including zero, sets the current curvature; linear velocity already aligned by supplied acceleration is not advanced twice. Its absence allows curvature from history. Without enough history or a supplied velocity, position holds; acceleration alone does not invent velocity. Untimed input uses supplied velocity and acceleration.
+
+Pose-derived rotation fits quaternion-log offsets around the newest orientation, then maps the predicted offset back to a unit quaternion. Source, geographic and ECEF orientations retain their body-axis conventions. The fit stops at a shortest-arc branch jump instead of treating angle wrapping as acceleration. Supplied angular rates use their own histories and the selected body/world composition. Changing axes use bounded quaternion integration; collinear rates integrate directly. Supplied zero angular velocity holds orientation.
+
+Select **Spline** in the strategy selector, or assign it through code. There are no extra settings or built-in packet corrections. The existing projected time, prediction cap and optional Smoothing trait still apply. Cubic continuation suits short gaps with smoothly changing motion; noisy samples or abrupt stops can produce overshoot over longer gaps. [Implementation](../Runtime/Entities/SplineExtrapolation.cs).
 
 ### Aircraft body-frame dead reckoning and coordinated turns
 

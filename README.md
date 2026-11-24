@@ -73,6 +73,7 @@ Optional `Smoothing` filters position and rotation independently. Optional `Extr
 | `ConstantVelocityExtrapolation` | Continue linear and angular velocity. |
 | `SingerExtrapolation` | Gradually decay observed acceleration during a gap. |
 | `CoordinatedTurnExtrapolation` | Rotating-body aircraft motion and cubic packet correction. |
+| `SplineExtrapolation` | Continue cubic Bézier motion fitted to timestamped pose or velocity history. |
 | `NoExtrapolation` | Hold observations during gaps; retain buffered interpolation. |
 
 For example, inside an initializer where `ghost` has an authored Extrapolation trait:
