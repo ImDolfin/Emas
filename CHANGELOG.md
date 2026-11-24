@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Set the minimum prediction limit to 0.007 s (7 ms, rounded up from one 144 Hz frame) in the API, Inspector and saved settings. Smaller nonnegative limits clamp to the minimum; disable the Extrapolation trait to stop prediction.
+- Replace prediction explanation boxes with a compact timing row and label tooltips. Show buffered or over-limit intervals beside their values instead of separate warning boxes. Clarify that zero fallback lead preserves automatic prediction.
 - Hide Ghost identity, spatial pose, pose-debugger controls and live timing readouts outside Play Mode. Defer trait component-card visibility changes until after Inspector callbacks to avoid rebuilding Unity's editor list during trait insertion or drawing; retain serialized settings and Undo.
 - Explain automatic reference prediction in each Ghost's Extrapolation Inspector. Show the shared projected time, independent sample-to-target intervals, inactive processing states and prediction-limit warnings. Hide the unused individual forward control during shared timing and label it as a fallback otherwise. Keep reference clock settings code-only.
 - Reduce many-entity update overhead with direct identity membership checks, reader-only trait guards, shared geographic input conversions and cached tangent bases. Reuse built-in motion preparation across prediction previews and unchanged input, retaining independent channel times, live history/settings changes, callback safety and zero warmed allocations.

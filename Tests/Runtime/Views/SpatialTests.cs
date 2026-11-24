@@ -636,7 +636,7 @@ namespace Emas.Tests
             TestGhost ghost = _source.Publish("independent geographic traits");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation motion = ghost.gameObject.AddComponent<Extrapolation>();
-            motion.MaximumExtrapolation = 0;
+            motion.enabled = false;
             GeoPosition first = new GeoPosition(48, 11, 1000);
             GeoPosition second = new GeoPosition(-30, -70, -100);
             GeoPosition angularOrigin = new GeoPosition(10, 120, 0);
@@ -2547,6 +2547,55 @@ namespace Emas.Tests
             }
         }
 
+        /// <summary>Enabled extrapolation clamps small and saved zero limits to 7 ms for both pose channels, while disabling retains motion data without predicting.</summary>
+        [Test]
+        public void Extrapolation_MinimumLimitPredictsUntilTheTraitIsDisabled()
+        {
+            TestGhost ghost = _source.Publish("minimum prediction");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation motion = ghost.gameObject.AddComponent<Extrapolation>();
+            Timestamp sample = new Timestamp(1000, 0);
+            spatial.SetCartesianPosition(default(Double3), sample);
+            spatial.SetSourceRotation(Quaternion.identity, sample);
+            motion.SetCartesianVelocity(new Double3(100, 0, 0), sample);
+            motion.SetBodyAngularVelocity(new Double3(0, 1, 0), CoordinateSystem.Unity, sample);
+            TestGhost clock = _source.Publish("minimum prediction clock");
+            clock.gameObject.AddComponent<Spatial>().SetCartesianPosition(default(Double3), new Timestamp(1001, 0));
+
+            // Known sample age exceeds every requested cap. Each fresh presentation
+            // must therefore use exactly the minimum limit for position and attitude.
+            foreach (float limit in new[] { 0f, 0.001f, 0.007f })
+            {
+                motion.MaximumExtrapolation = limit;
+                Assert.That(motion.MaximumExtrapolation, Is.EqualTo(0.007f));
+                spatial.ResetPresentation();
+                _realm.Update();
+                AssertPosition(ghost.transform.position, new Vector3(0.7f, 0, 0), 0.001f);
+                AssertRotation(ghost.transform.rotation, Quaternion.AngleAxis(0.007f * Mathf.Rad2Deg, Vector3.up));
+            }
+
+            // Runtime deserialization can bypass the setter and editor validation.
+            JsonUtility.FromJsonOverwrite("{\"_maximumExtrapolation\":0}", motion);
+            Assert.That(motion.MaximumExtrapolation, Is.EqualTo(0.007f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => motion.MaximumExtrapolation = -1);
+            Assert.Throws<ArgumentOutOfRangeException>(() => motion.MaximumExtrapolation = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => motion.MaximumExtrapolation = float.PositiveInfinity);
+            spatial.ResetPresentation();
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(0.7f, 0, 0), 0.001f);
+
+            motion.enabled = false;
+            spatial.ResetPresentation();
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero);
+            AssertRotation(ghost.transform.rotation, Quaternion.identity);
+            Assert.That(motion.HasVelocity && motion.HasAngularVelocity, Is.True);
+            motion.enabled = true;
+            spatial.ResetPresentation();
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(0.7f, 0, 0), 0.001f);
+        }
+
         /// <summary>Extrapolation and shared-delay tuning preserve the displayed pose, settle to the new timeline and keep a moving stream advancing through repeated edits without changing raw observations.</summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
@@ -2583,7 +2632,7 @@ namespace Emas.Tests
             AssertPosition(ghost.transform.position, new Vector3(3, 0, 0), 0.001f);
             ChangeAndAssertContinuity(() => extrapolation.MaximumExtrapolation = 0);
             yield return AdvanceSmoothing(0.3);
-            AssertPosition(ghost.transform.position, Vector3.zero);
+            AssertPosition(ghost.transform.position, new Vector3(0.7f, 0, 0), 0.001f);
 
             ChangeAndAssertContinuity(() => extrapolation.MaximumExtrapolation = 0.15f);
             yield return AdvanceSmoothing(0.08);

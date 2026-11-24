@@ -244,8 +244,9 @@ namespace Emas.Editor
         {
             if (!Application.isPlaying)
             {
-                // Prefabs explain the timing model without showing empty runtime data.
-                EditorGUILayout.HelpBox("Following a timestamped reference enables automatic prediction for the Realm. Unix creation timestamps compensate sample age. Fallback prediction applies only without a timed reference.", MessageType.Info);
+                // Keep the mode visible on prefabs; longer explanations belong in tooltips.
+                InspectorLayout.ReadOnly("Prediction timing", "Automatic with reference",
+                    "A timed followed reference selects the shared target for the Realm. Unix clocks compensate sample age automatically. Without a timed reference, the individual fallback interval applies. ReferenceFrame exposes clock calibration and shared lead in code.");
                 return false;
             }
 
@@ -259,10 +260,10 @@ namespace Emas.Editor
                 && realm.TryGetGhost(frame.FollowedGhost.Value, out followed) && followed.IsAvailable
                 && followed.TryGet(out reference) && reference.enabled
                 && (reference.PositionTime.HasValue || reference.RotationTime.HasValue);
-            InspectorLayout.ReadOnly("Prediction timing", shared ? "Automatic (Realm reference)" : "Individual (no timed reference)");
-            EditorGUILayout.HelpBox(shared
-                ? "All entities target the reference's shared projected time. Unix creation timestamps automatically compensate sample age. Extra lead and clock calibration use the ReferenceFrame API."
-                : "Following a timestamped reference enables automatic prediction for the Realm. Unix creation timestamps compensate sample age. Fallback prediction applies only without a timed reference.", MessageType.Info);
+            InspectorLayout.ReadOnly("Prediction timing", shared ? "Automatic (Realm reference)" : "Individual (no timed reference)",
+                shared
+                    ? "All entities target the shared projected time using their selected strategy and prediction limit. Unix clocks compensate sample age automatically. ReferenceFrame exposes clock calibration and shared lead in code."
+                    : "No available timed reference is followed. This entity uses its own fallback prediction interval.");
 
             Spatial spatial;
             if (!ghost.TryGet(out spatial))
@@ -275,8 +276,7 @@ namespace Emas.Editor
                 : !ghost.IsAvailable ? "Ghost unavailable"
                 : spatial.AttachedTo.HasValue ? "Inherited from parent"
                 : spatial.IsPoseProcessingBypassed ? "Direct pose (Anchor distance)"
-                : extrapolation.Strategy is NoExtrapolation ? "Hold recorded poses"
-                : extrapolation.MaximumExtrapolation <= 0 ? "Prediction limit is zero" : null;
+                : extrapolation.Strategy is NoExtrapolation ? "Hold recorded poses" : null;
             if (inactive != null)
             {
                 InspectorLayout.ReadOnly("Prediction status", inactive);
@@ -285,36 +285,34 @@ namespace Emas.Editor
             Timestamp? target = shared ? realm.ProjectedTime : null;
             if (shared)
             {
-                InspectorLayout.ReadOnly("Projected time", target.HasValue ? SampleTime(target) : "Awaiting projection pass");
+                InspectorLayout.ReadOnly("Projected time", target.HasValue ? SampleTime(target) : "Awaiting projection pass",
+                    "The shared target captured by the last Realm projection pass, including playback delay and shared lead.");
             }
             if (target.HasValue)
             {
                 // These are signed sample-to-target intervals, not measured display lag.
                 // Negative values mean buffered playback; smoothing can still alter the pose.
-                bool positionCapped = DrawPredictionOffset("Position to target (s)", spatial.PositionTime, target.Value,
+                DrawPredictionOffset("Position to target (s)", spatial.PositionTime, target.Value,
                     extrapolation.MaximumExtrapolation);
-                bool rotationCapped = DrawPredictionOffset("Rotation to target (s)", spatial.RotationTime, target.Value,
+                DrawPredictionOffset("Rotation to target (s)", spatial.RotationTime, target.Value,
                     extrapolation.MaximumExtrapolation);
-                if (inactive == null && (positionCapped || rotationCapped))
-                {
-                    EditorGUILayout.HelpBox("Prediction limit is below the sample-to-target interval. This entity cannot extrapolate all the way to the shared time.", MessageType.Warning);
-                }
             }
 
             return shared;
         }
 
-        private static bool DrawPredictionOffset(string label, Timestamp? sample, Timestamp target, float limit)
+        private static void DrawPredictionOffset(string label, Timestamp? sample, Timestamp target, float limit)
         {
             if (!sample.HasValue)
             {
                 InspectorLayout.ReadOnly(label, "Untimed / not received");
-                return false;
+                return;
             }
 
             double seconds = target.ElapsedSince(sample.Value);
-            InspectorLayout.ReadOnly(label, seconds.ToString("F3") + (seconds < 0 ? " (buffered)" : string.Empty));
-            return seconds > limit;
+            string status = seconds < 0 ? " (buffered)" : seconds > limit ? " (over limit)" : string.Empty;
+            InspectorLayout.ReadOnly(label, seconds.ToString("F3") + status,
+                "Signed interval from this channel's sample to the shared target. Negative means buffered playback. Over limit means prediction cannot reach that time with the current cap. This interval does not measure the final smoothed pose or display latency.");
         }
 
         private static void ShowTraitMenu(Trait trait)

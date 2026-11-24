@@ -14,13 +14,16 @@ namespace Emas
     [AddComponentMenu("Emas/Extrapolation")]
     public sealed class Extrapolation : Trait
     {
+        // Round one 144 Hz frame upward to a practical millisecond limit.
+        private const float MinimumPredictionLimit = 0.007f;
+
         [Tooltip("Gap extrapolation model. Change at runtime to compare methods without losing observations or supplied motion.")]
         [SerializeReference] private IExtrapolationStrategy _strategy = new ConstantAccelerationExtrapolation();
-        [Tooltip("Requested forward interval in seconds from receipt, shared by every strategy. A timed followed reference uses ReferenceFrame.PredictionTime instead of individual intervals. Known sample age counts toward it, and each root retains its own prediction limit. Zero adds no forward time.")]
+        [Tooltip("Manual forward interval in seconds when no timed reference is followed. Zero keeps automatic age-based prediction active, with no manual lead. Known sample age counts toward a nonzero interval. With a timed reference, this value is ignored and ReferenceFrame selects the shared target. Prediction limit caps the total prediction.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _predictionTime;
-        [Tooltip("Maximum total prediction in seconds beyond a recorded pose, including forward prediction time. This is a limit, not a requested duration. Zero disables prediction.")]
-        [Range(0, 0.5f)]
+        [Tooltip("Maximum total prediction beyond a recorded pose, including automatic age-based prediction and manual lead. Minimum: 0.007 seconds (7 ms, rounded up from one 144 Hz frame). This cap does not force a prediction interval. Disable this trait to stop extrapolation.")]
+        [Range(MinimumPredictionLimit, 0.5f)]
         [SerializeField] private float _maximumExtrapolation = 0.15f;
         private Double3 _velocity;
         private Double3 _acceleration;
@@ -87,7 +90,7 @@ namespace Emas
         /// and MaximumExtrapolation caps the total duration. A sample at SDK time 0.2 with PredictionTime 0.2
         /// targets SDK time 0.4 at receipt when its known age is at most 0.2 and the limit is at least 0.2.
         /// Buffered playback consumes forward time first. Applies to every strategy;
-        /// NoExtrapolation still holds recorded poses. Disabling this trait or a zero limit disables forward prediction.
+        /// NoExtrapolation still holds recorded poses. Disabling this trait disables forward prediction.
         /// ReferenceFrame.PredictionTime supplies the shared interval when following timed data; individual intervals are ignored.
         /// Each peer retains its own strategy and prediction limit. Without a timed followed Ghost, intervals are individual.
         /// Live edits blend over 0.25 unscaled seconds. Raw input and SDK timestamps remain unchanged.</remarks>
@@ -103,20 +106,23 @@ namespace Emas
         }
 
         /// <summary>Gets or sets the maximum prediction duration beyond a recorded pose, including PredictionTime; defaults to 0.15 seconds.</summary>
-        /// <value>A finite, nonnegative horizon in seconds. Zero disables extrapolation, retaining SDK motion assistance for smoothing new observations.</value>
-        /// <remarks>Live edits blend the setting-induced displacement over 0.25 seconds of real time, including zero
-        /// and enabled changes, with or without Smoothing. Filter history, raw input, timestamps and motion remain intact.
+        /// <value>A finite horizon of at least 0.007 seconds (7 ms, rounded up from one 144 Hz frame).
+        /// Nonnegative assignments below this minimum, including zero, clamp to 0.007 seconds.</value>
+        /// <remarks>Disable this trait to stop extrapolation while retaining SDK motion assistance for smoothing.
+        /// Saved values below the minimum also use 0.007 seconds. The minimum is a cap floor, not a forced forward interval.
+        /// Live edits blend the setting-induced displacement over 0.25 seconds of real time, including enabled
+        /// changes, with or without Smoothing. Filter history, raw input, timestamps and motion remain intact.
         /// During that transition presentation can retain some of the previous limit's lead. Reaching the limit
         /// stops motion from held observations, while new timed observations retain supplied SDK motion assistance.
         /// This is a cap, not a requested forward duration; use PredictionTime to predict farther ahead.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned horizon is negative, NaN or infinite.</exception>
         public float MaximumExtrapolation
         {
-            get => _maximumExtrapolation;
+            get => ClampPredictionLimit(_maximumExtrapolation);
             set
             {
                 Smoothing.ValidateTime(value, nameof(value));
-                _maximumExtrapolation = value;
+                _maximumExtrapolation = ClampPredictionLimit(value);
             }
         }
 
@@ -882,6 +888,18 @@ namespace Emas
             double offset = observationTime.ElapsedSince(history.NewestAccelerationTime.Value);
             history.SampleAcceleration(offset, out acceleration);
             return acceleration;
+        }
+
+        private void OnValidate()
+        {
+            // Serialized edits bypass the API setter. Normalize saved values here, and
+            // keep the getter safe for existing prefabs loaded directly in a player.
+            _maximumExtrapolation = ClampPredictionLimit(_maximumExtrapolation);
+        }
+
+        private static float ClampPredictionLimit(float value)
+        {
+            return SpatialMath.IsFinite(value) && value >= MinimumPredictionLimit ? value : MinimumPredictionLimit;
         }
 
         private void ObservePosition(Spatial spatial)

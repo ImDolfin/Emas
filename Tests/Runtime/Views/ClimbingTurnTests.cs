@@ -167,7 +167,7 @@ namespace Emas.Tests
             // Independent midpoint integral, 80,000 steps over t=0.1..0.5 with
             // speed=8*t and course=0.6*t. Step halving agrees within 2e-11 metres.
             Assert.That(Error(spatial, new Double3(1000.196606352d, 102, 0.937648240d)), Is.LessThan(0.001d));
-            motion.MaximumExtrapolation = 0;
+            motion.enabled = false;
             spatial.ResetPresentation();
             _realm.Update();
             Assert.That(Error(spatial, new Double3(1000, 100, 0)), Is.LessThan(0.001d));

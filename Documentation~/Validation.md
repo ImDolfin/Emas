@@ -48,6 +48,8 @@ Reopen Unity if the tests remain hidden. [Unity requires this opt-in for install
 
 Tests exercise public Emas APIs, supported detector extension points and Unity serialized authoring. They do not use friend assemblies or reflection into private package state. Each test's XML summary states its consumer contract.
 
+Prediction-limit coverage checks the 7 ms minimum through API assignments, runtime deserialization and live Inspector edits, plus disabling and re-enabling prediction while retaining supplied motion.
+
 | Area | Contracts |
 | --- | --- |
 | Entities | Identity, variants, root-only contract lookup, duplicate/missing diagnostics, inactive trait access, membership snapshots and double-precision/time values. |

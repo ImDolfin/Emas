@@ -743,9 +743,10 @@ namespace Emas.Editor.Tests
                 yield return HoldLiveTuningSample(realm, source, 0.35);
                 AssertLiveTuningTarget(realm, source, 0.03f);
                 AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_maximumExtrapolation", 0),
-                    "Zero extrapolation horizon");
+                    "Clamping a zero horizon to the minimum prediction limit");
                 yield return HoldLiveTuningSample(realm, source, 0.35);
-                AssertLiveTuningTarget(realm, source, 0);
+                Assert.That(source.Edited.GetComponent<Extrapolation>().MaximumExtrapolation, Is.EqualTo(0.007f));
+                AssertLiveTuningTarget(realm, source, 0.007f);
 
                 AssertContinuousLiveTuning(realm, source, () =>
                 {

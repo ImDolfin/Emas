@@ -26,11 +26,11 @@ namespace Emas.Editor
             EditorGUILayout.PropertyField(value, new GUIContent(label, value.tooltip), true);
         }
 
-        internal static void ReadOnly(string label, string value)
+        internal static void ReadOnly(string label, string value, string tooltip = null)
         {
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.PrefixLabel(label);
+                EditorGUILayout.PrefixLabel(new GUIContent(label, tooltip));
                 EditorGUILayout.SelectableLabel(value ?? "?", GUILayout.Height(EditorGUIUtility.singleLineHeight));
             }
         }
