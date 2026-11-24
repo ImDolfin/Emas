@@ -130,6 +130,11 @@ namespace Emas.Editor
 
         private static string StrategyName(Type type)
         {
+            if (type == typeof(ConstantTurnAccelerationExtrapolation))
+            {
+                return "Constant Turn and Acceleration (CTA)";
+            }
+
             string name = ObjectNames.NicifyVariableName(type.Name);
             const string suffix = " Extrapolation";
             return type == typeof(NoExtrapolation) || !name.EndsWith(suffix, StringComparison.Ordinal)
@@ -143,7 +148,7 @@ namespace Emas.Editor
             {
                 label = "Maneuver decay (s)";
             }
-            else if (strategy is CoordinatedTurnExtrapolation)
+            else if (strategy is CoordinatedTurnExtrapolation || strategy is ConstantTurnAccelerationExtrapolation)
             {
                 switch (property.name)
                 {

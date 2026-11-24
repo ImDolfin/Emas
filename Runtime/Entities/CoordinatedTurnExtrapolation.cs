@@ -26,6 +26,7 @@ namespace Emas
         private const int MaximumPositionSamples = 8;
         private const double PositionWindowSeconds = 0.25d;
         private const double MinimumSpan = 0.0001d;
+        private static readonly ConstantAccelerationExtrapolation _linearFallback = new ConstantAccelerationExtrapolation();
 
         /// <summary>Gets or sets cubic packet correction duration in unscaled seconds.</summary>
         /// <value>A finite, nonnegative duration, defaulting to 0.1 seconds. Zero bypasses packet correction.</value>
@@ -76,6 +77,22 @@ namespace Emas
         /// <exception cref="ArgumentOutOfRangeException">Duration or the resulting displacement is invalid.</exception>
         public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
         {
+            return PredictDisplacement(context, seconds, _useBankAngleWhenRatesUnavailable, _gravity, false);
+        }
+
+        /// <summary>Integrates a constant angular vector with the existing body or world composition.</summary>
+        /// <param name="context">Time-aligned rates and attitude. Missing rates may use the bank fallback.</param>
+        /// <param name="seconds">Finite, nonnegative seconds already bounded by the extrapolation horizon.</param>
+        /// <returns>The quaternion offset expected by the body's rotation representation.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Duration or angular displacement is invalid.</exception>
+        public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+        {
+            return PredictRotation(context, seconds, _useBankAngleWhenRatesUnavailable, _gravity, false);
+        }
+
+        internal static Double3 PredictDisplacement(ExtrapolationContext context, double seconds,
+            bool useBank, float gravity, bool estimateAcceleration)
+        {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
             if (seconds == 0)
             {
@@ -100,21 +117,23 @@ namespace Emas
             GeographicBasis basis = Basis(context);
             if (!TryAttitude(context, basis, out Quaternion attitude))
             {
-                return sourceVelocity.Value * seconds
+                return estimateAcceleration ? _linearFallback.ExtrapolateDisplacement(context, seconds) : sourceVelocity.Value * seconds
                     + context.Acceleration.GetValueOrDefault() * (0.5d * seconds * seconds);
             }
 
             // Convert world motion to local Unity axes, then calculate motion in the turning body axes.
             Double3 velocity = ToLocal(context, basis, sourceVelocity.Value);
             Double3 bodyVelocity = SpatialMath.Rotate(Quaternion.Inverse(attitude), velocity);
-            Double3 rate = BodyRate(context, basis, attitude, velocity);
-            if ((!context.Velocity.HasValue || context.VelocityIsEstimated)
+            Double3 rate = BodyRate(context, basis, attitude, velocity, useBank, gravity);
+            Double3 bodyAcceleration = default(Double3);
+            bool estimated = estimateAcceleration && EstimateMotion(context, basis, attitude, useBank, gravity,
+                ref rate, ref bodyVelocity, out bodyAcceleration);
+            if (!estimated && (!context.Velocity.HasValue || context.VelocityIsEstimated)
                 && TryEndpointVelocity(context, basis, attitude, rate, out Double3 endpointVelocity))
             {
                 bodyVelocity = endpointVelocity;
             }
 
-            Double3 bodyAcceleration = default(Double3);
             if (context.Acceleration.HasValue)
             {
                 Double3 acceleration = ToLocal(context, basis, context.Acceleration.Value);
@@ -134,7 +153,8 @@ namespace Emas
         /// <param name="seconds">Finite, nonnegative seconds already bounded by the extrapolation horizon.</param>
         /// <returns>The quaternion offset expected by Extrapolation's body/world composition pipeline.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or angular displacement is invalid.</exception>
-        public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+        internal static Quaternion PredictRotation(ExtrapolationContext context, double seconds,
+            bool useBank, float gravity, bool estimateAcceleration)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
             if (context.AngularVelocity.HasValue)
@@ -154,10 +174,72 @@ namespace Emas
                 return Quaternion.identity;
             }
 
-            return SpatialMath.AngularDisplacement(BodyRate(context, basis, attitude, ToLocal(context, basis, velocity.Value)), seconds);
+            Double3 localVelocity = ToLocal(context, basis, velocity.Value);
+            Double3 rate = BodyRate(context, basis, attitude, localVelocity, useBank, gravity);
+            if (estimateAcceleration)
+            {
+                Double3 bodyVelocity = SpatialMath.Rotate(Quaternion.Inverse(attitude), localVelocity);
+                EstimateMotion(context, basis, attitude, useBank, gravity, ref rate, ref bodyVelocity, out _);
+            }
+
+            return SpatialMath.AngularDisplacement(rate, seconds);
         }
 
-        private Double3 BodyRate(in ExtrapolationContext context, in GeographicBasis basis, Quaternion attitude, Double3 velocity)
+        internal static Double3 ToLocal(in ExtrapolationContext context, in GeographicBasis basis, Double3 vector)
+        {
+            return context.Space == ReferenceSpace.Geographic ? basis.ToLocal(vector) : context.SourceCoordinates.ToUnity(vector);
+        }
+
+        internal static void Factors(double angle, out double f1, out double f2, out double f3, out double f4)
+        {
+            if (Math.Abs(angle) < 0.01d)
+            {
+                // For nearly straight flight, use a series expansion to avoid rounding errors and division by a tiny rate.
+                double squared = angle * angle;
+                f1 = angle * (0.5d + squared * (-1d / 24d + squared / 720d));
+                f2 = squared * (1d / 6d + squared * (-1d / 120d + squared / 5040d));
+                f3 = angle * (1d / 3d + squared * (-1d / 30d + squared / 840d));
+                f4 = squared * (1d / 8d + squared * (-1d / 144d + squared / 5760d));
+            }
+            else
+            {
+                double sine = Math.Sin(angle);
+                double cosine = Math.Cos(angle);
+                f1 = (1d - cosine) / angle;
+                f2 = 1d - sine / angle;
+                f3 = (sine - angle * cosine) / (angle * angle);
+                f4 = 0.5d - sine / angle + (1d - cosine) / (angle * angle);
+            }
+        }
+
+        private static bool EstimateMotion(in ExtrapolationContext context, in GeographicBasis basis, Quaternion attitude,
+            bool useBank, float gravity, ref Double3 rate, ref Double3 velocity, out Double3 acceleration)
+        {
+            acceleration = default(Double3);
+            if (context.Acceleration.HasValue || !TurnAcceleration.TryEstimate(context, basis, attitude, rate, ref velocity, out acceleration))
+            {
+                return false;
+            }
+
+            if (!context.AngularVelocity.HasValue && useBank)
+            {
+                // Bank inference needs the endpoint speed. Refine the coupled fit once,
+                // and use that same rate for both position and orientation prediction.
+                Double3 refinedRate = BodyRate(context, basis, attitude, SpatialMath.Rotate(attitude, velocity), useBank, gravity);
+                Double3 refinedVelocity = velocity;
+                if (TurnAcceleration.TryEstimate(context, basis, attitude, refinedRate, ref refinedVelocity, out Double3 refinedAcceleration))
+                {
+                    rate = refinedRate;
+                    velocity = refinedVelocity;
+                    acceleration = refinedAcceleration;
+                }
+            }
+
+            return true;
+        }
+
+        private static Double3 BodyRate(in ExtrapolationContext context, in GeographicBasis basis, Quaternion attitude,
+            Double3 velocity, bool useBank, float gravity)
         {
             // Use supplied or estimated turn rates, including zero, before trying to infer a turn from bank.
             if (context.AngularVelocity.HasValue)
@@ -176,7 +258,7 @@ namespace Emas
                 return rate;
             }
 
-            if (!_useBankAngleWhenRatesUnavailable || !SpatialMath.IsFinite(_gravity) || _gravity <= 0)
+            if (!useBank || !SpatialMath.IsFinite(gravity) || gravity <= 0)
             {
                 return default(Double3);
             }
@@ -198,7 +280,7 @@ namespace Emas
                 return default(Double3);
             }
 
-            double turnRate = _gravity * Math.Tan(bank) / speed;
+            double turnRate = gravity * Math.Tan(bank) / speed;
             return SpatialMath.Rotate(Quaternion.Inverse(attitude), new Double3(0, turnRate, 0));
         }
 
@@ -227,11 +309,6 @@ namespace Emas
             }
 
             return true;
-        }
-
-        private static Double3 ToLocal(in ExtrapolationContext context, in GeographicBasis basis, Double3 vector)
-        {
-            return context.Space == ReferenceSpace.Geographic ? basis.ToLocal(vector) : context.SourceCoordinates.ToUnity(vector);
         }
 
         private static GeographicBasis Basis(in ExtrapolationContext context)
@@ -374,28 +451,6 @@ namespace Emas
             Double3 aCross = Cross(axis, acceleration);
             return (velocity + vCross * f1 + Cross(axis, vCross) * f2) * seconds
                 + (acceleration * 0.5d + aCross * f3 + Cross(axis, aCross) * f4) * (seconds * seconds);
-        }
-
-        private static void Factors(double angle, out double f1, out double f2, out double f3, out double f4)
-        {
-            if (Math.Abs(angle) < 0.01d)
-            {
-                // For nearly straight flight, use a series expansion to avoid rounding errors and division by a tiny rate.
-                double squared = angle * angle;
-                f1 = angle * (0.5d + squared * (-1d / 24d + squared / 720d));
-                f2 = squared * (1d / 6d + squared * (-1d / 120d + squared / 5040d));
-                f3 = angle * (1d / 3d + squared * (-1d / 30d + squared / 840d));
-                f4 = squared * (1d / 8d + squared * (-1d / 144d + squared / 5760d));
-            }
-            else
-            {
-                double sine = Math.Sin(angle);
-                double cosine = Math.Cos(angle);
-                f1 = (1d - cosine) / angle;
-                f2 = 1d - sine / angle;
-                f3 = (sine - angle * cosine) / (angle * angle);
-                f4 = 0.5d - sine / angle + (1d - cosine) / (angle * angle);
-            }
         }
 
         private static Double3 Cross(Double3 left, Double3 right)

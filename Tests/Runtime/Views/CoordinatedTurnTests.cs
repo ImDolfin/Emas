@@ -194,7 +194,151 @@ namespace Emas.Tests
             Assert.That(maxAngularError, Is.LessThan(0.2f));
         }
 
-        private Spatial Create(string id, CoordinatedTurnExtrapolation model, out Extrapolation motion)
+        /// <summary>CTA recovers constant body acceleration from poses or SDK velocities in Cartesian and ECEF flight, including independently timed channels.</summary>
+        /// <param name="geographic">Whether the feed uses ECEF positions and world angular rates rather than Cartesian NED and pose-derived rates.</param>
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ConstantTurnAcceleration_EstimatesAcceleratingTurns(bool geographic)
+        {
+            GeoPosition origin = new GeoPosition(48, 11, 1200);
+            if (geographic)
+            {
+                _realm.ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = origin };
+            }
+
+            ConstantTurnAccelerationExtrapolation strategy = new ConstantTurnAccelerationExtrapolation { PacketSmoothingDuration = 0 };
+            Spatial poses = Create("CTA poses", strategy, out Extrapolation poseMotion);
+            Spatial supplied = Create("CTA velocities", strategy, out Extrapolation suppliedMotion);
+            Spatial currentOnly = Create("CTA current velocity", strategy, out Extrapolation currentMotion);
+            Spatial control = Create("constant body speed", new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0 }, out Extrapolation controlMotion);
+            Quaternion initial = Quaternion.Euler(15, 20, -30);
+            Double3 rate = new Double3(0.2d, 1.2d, -0.3d);
+            Double3 velocity = new Double3(4, 2, 150);
+            Double3 acceleration = new Double3(1, -2, 8);
+            foreach (double time in new[] { 0d, 0.03d, 0.075d, 0.12d, 0.18d, 0.24d })
+            {
+                Quaternion attitude = Attitude(initial, rate, time);
+                Double3 position = Path(initial, rate, velocity, acceleration, time);
+                SetPose(poses, position, attitude, time);
+                SetPose(supplied, position, attitude, time);
+                SetPose(currentOnly, position, attitude, time);
+                SetPose(control, position, attitude, time);
+                Double3 sourceVelocity = ToSourceVector(Rotate(attitude, velocity + acceleration * time));
+                suppliedMotion.SetCartesianVelocity(sourceVelocity, Stamp(time));
+                controlMotion.SetCartesianVelocity(sourceVelocity, Stamp(time));
+                if (geographic)
+                {
+                    Double3 world = Rotate(attitude, rate);
+                    Double3 enu = new Double3(-world.X, -world.Z, -world.Y);
+                    poseMotion.SetGeographicAngularVelocity(enu, origin, Stamp(time));
+                    suppliedMotion.SetGeographicAngularVelocity(enu, origin, Stamp(time));
+                    currentMotion.SetGeographicAngularVelocity(enu, origin, Stamp(time));
+                    controlMotion.SetGeographicAngularVelocity(enu, origin, Stamp(time));
+                }
+            }
+
+            // A feed may expose only one current SDK velocity. Retained positions can
+            // still determine acceleration while keeping that velocity authoritative.
+            currentMotion.SetCartesianVelocity(ToSourceVector(Rotate(Attitude(initial, rate, 0.24d),
+                velocity + acceleration * 0.24d)), Stamp(0.24d));
+            AdvanceClock();
+            _realm.Update();
+            Double3 expected = Path(initial, rate, velocity, acceleration, 0.64d);
+            double poseError = Error(poses, expected);
+            double velocityError = Error(supplied, expected);
+            double turnError = Error(control, expected);
+            TestContext.WriteLine("Accelerating turn: CTA poses=" + poseError + " m; CTA velocities=" + velocityError + " m; CT=" + turnError + " m");
+            Assert.That(poseError, Is.LessThan(0.008d));
+            Assert.That(velocityError, Is.LessThan(0.008d));
+            Assert.That(Error(currentOnly, expected), Is.LessThan(0.008d));
+            Assert.That(turnError, Is.GreaterThan(0.3d));
+            Assert.That(Quaternion.Angle(poses.transform.rotation, Attitude(initial, rate, 0.64d)), Is.LessThan(0.08f));
+            _realm.Update();
+            Assert.That(Error(poses, expected), Is.LessThan(0.008d));
+            Assert.That(poses.PositionTime, Is.EqualTo(Stamp(0.24d)));
+
+            // SDK velocity predates the new pose. The fit must supply its endpoint value,
+            // rather than starting the next prediction with an old held speed.
+            SetPose(supplied, Path(initial, rate, velocity, acceleration, 0.3d), Attitude(initial, rate, 0.3d), 0.3d);
+            _realm.Update();
+            Assert.That(Error(supplied, Path(initial, rate, velocity, acceleration, 0.7d)), Is.LessThan(0.008d));
+        }
+
+        /// <summary>Supplied inertial acceleration and zero motion override CTA fits, while reset windows recover from held through linear and accelerating motion.</summary>
+        [Test]
+        public void ConstantTurnAcceleration_PreservesSdkOverridesAndResetRecovery()
+        {
+            ConstantTurnAccelerationExtrapolation strategy = new ConstantTurnAccelerationExtrapolation { PacketSmoothingDuration = 0 };
+            Spatial spatial = Create("CTA overrides", strategy, out Extrapolation motion);
+            Quaternion initial = Quaternion.Euler(15, 20, -30);
+            Double3 rate = new Double3(0.2d, 1.2d, -0.3d);
+            Double3 velocity = new Double3(4, 2, 150);
+            Double3 acceleration = new Double3(1, -2, 8);
+            foreach (double time in new[] { 0d, 0.06d, 0.12d, 0.18d, 0.24d })
+            {
+                Quaternion attitude = Attitude(initial, rate, time);
+                SetPose(spatial, Path(initial, rate, velocity, acceleration, time), attitude, time);
+                motion.SetCartesianVelocity(ToSourceVector(Rotate(attitude, velocity + acceleration * time)), Stamp(time));
+                motion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+            }
+
+            AdvanceClock();
+            _realm.Update();
+            Double3 position = Path(initial, rate, velocity, acceleration, 0.24d);
+            Quaternion observed = Attitude(initial, rate, 0.24d);
+            Double3 currentVelocity = velocity + acceleration * 0.24d;
+            motion.SetCartesianAcceleration(default(Double3), Stamp(0.24d));
+            _realm.Update();
+            Double3 expected = position + Path(observed, rate, currentVelocity, Cross(rate, currentVelocity) * -1d, 0.4d);
+            Assert.That(Error(spatial, expected), Is.LessThan(0.008d));
+
+            motion.ClearVelocity();
+            motion.SetCartesianVelocity(default(Double3), Stamp(0.24d));
+            _realm.Update();
+            Assert.That(Error(spatial, position), Is.LessThan(0.002d));
+
+            motion.ClearVelocity();
+            motion.ClearAcceleration();
+            motion.ClearAngularVelocity();
+            SetPose(spatial, new Double3(1000, 0, 0), Quaternion.identity, 0.3d);
+            spatial.ResetPresentation();
+            _realm.Update();
+            Assert.That(Error(spatial, new Double3(1000, 0, 0)), Is.LessThan(0.001d));
+            SetPose(spatial, new Double3(1001, 0, 0), Quaternion.identity, 0.4d);
+            _realm.Update();
+            Assert.That(Error(spatial, new Double3(1005, 0, 0)), Is.LessThan(0.001d));
+            SetPose(spatial, new Double3(1004, 0, 0), Quaternion.identity, 0.5d);
+            _realm.Update();
+            Assert.That(Error(spatial, new Double3(1036, 0, 0)), Is.LessThan(0.001d));
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Gravity = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.PacketSmoothingDuration = -0.1f);
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ExtrapolateDisplacement(default(ExtrapolationContext), -1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ExtrapolateRotation(default(ExtrapolationContext), double.PositiveInfinity));
+        }
+
+        /// <summary>CTA without attitude uses world acceleration fits and does not invent velocity from acceleration alone.</summary>
+        [Test]
+        public void ConstantTurnAcceleration_MissingAttitudeUsesWorldMotion()
+        {
+            Spatial spatial = Create("CTA no attitude", new ConstantTurnAccelerationExtrapolation { PacketSmoothingDuration = 0 }, out Extrapolation motion);
+            Double3 origin = _realm.ReferenceFrame.Position;
+            spatial.SetCartesianPosition(origin, Stamp(0.2d));
+            motion.SetCartesianVelocity(new Double3(5, 0, 0), Stamp(0));
+            motion.SetCartesianVelocity(new Double3(7, 0, 0), Stamp(0.1d));
+            AdvanceClock();
+            _realm.Update();
+            Assert.That(Double3.Distance(_realm.ReferenceFrame.ToSimulationPosition(spatial.transform.position),
+                origin + new Double3(5.2d, 0, 0)), Is.LessThan(0.001d));
+
+            motion.ClearVelocity();
+            motion.SetCartesianAcceleration(new Double3(20, 0, 0), Stamp(0.2d));
+            spatial.ResetPresentation();
+            _realm.Update();
+            Assert.That(Double3.Distance(_realm.ReferenceFrame.ToSimulationPosition(spatial.transform.position), origin), Is.LessThan(0.001d));
+        }
+
+        private Spatial Create(string id, IExtrapolationStrategy model, out Extrapolation motion)
         {
             Ghost ghost = _source.Publish(id);
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();

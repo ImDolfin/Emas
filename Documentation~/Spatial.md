@@ -172,6 +172,7 @@ extrapolation.Strategy = new NoExtrapolation();
 | Constant velocity | Continue linear/angular rates, ignoring linear acceleration. |
 | Singer | Integrate velocity with exponentially decaying acceleration; constant angular velocity. |
 | Coordinated turn | Rotating-body second-order motion and cubic packet correction. |
+| Constant Turn and Acceleration (CTA) | Coordinated turns with missing body acceleration estimated from velocity or position history. |
 | Spline | Cubic Bézier continuation fitted to timestamped poses or SDK velocities; quaternion-log rotation. |
 | No extrapolation | Hold observations after recorded playback; retain interpolation and SDK motion assistance. |
 
@@ -248,6 +249,22 @@ Supplied/estimated rates, including zero, override the optional bank fallback. O
 `PacketSmoothingDuration` defaults to 0.1 unscaled seconds. Position uses a cubic Hermite error spline; rotation uses a spherical cubic quaternion correction. Accepted pose/motion updates advance the prior correction to the arrival time before rebasing its pose and tangent, so correction still progresses when a packet arrives every presentation frame. Held/rejected samples do not restart it. Each root owns its state, so immutable strategies can be shared. The correction reaches the capped trajectory with zero remaining correction/tangent at the end; it can finish after the extrapolation horizon.
 
 Zero duration bypasses packet correction. Omit Smoothing to evaluate cubic correction alone. With Smoothing present, known target velocity and angular rate advance its filters; movement from the packet correction curve remains error for the half-life filters to smooth. Smoothing therefore still reduces correction steps when cubic packet correction is enabled. Presentation/clock resets discard packet state. Custom models can request this pipeline through `IPacketSmoothingStrategy`.
+
+### Constant Turn and Acceleration (CTA)
+
+```csharp
+extrapolation.Strategy = new ConstantTurnAccelerationExtrapolation();
+```
+
+Select **Constant Turn and Acceleration (CTA)** in the strategy selector. CTA extends the same three-dimensional rotating-body model as Coordinated Turn. It holds angular rate and body-frame acceleration constant over each prediction gap, integrating `R(t)*(vBody + aBody*t)` with the shared exact turn integrals. For forward motion in a horizontal plane, this reduces to the usual [constant acceleration and turn-rate model](https://autowarefoundation.gitlab.io/autoware.auto/AutowareAuto/motion-model-design.html). Acceleration changes speed along the turning path; the general 3D form also supports body-sideways and vertical acceleration. Angular rate itself remains constant during prediction.
+
+Coordinated Turn already uses supplied inertial acceleration. CTA adds estimation when it is missing. It first fits the change in timestamped SDK velocity after removing the body's rotation at each sample time. With a current SDK velocity but insufficient velocity history, positions can determine the missing acceleration. Without supplied velocity, at least three positions jointly determine endpoint velocity and body acceleration. The position fit uses integrated rotating motion, preserving turn curvature instead of adding a world-space acceleration fit on top of it. A steady turn therefore estimates zero body acceleration without counting centripetal motion twice.
+
+Fits use up to eight samples in 0.25 seconds, retaining the minimum needed for slower streams. All observations must belong to the current estimation window and be at or before the channel's observation time. Current/interpolated SDK velocity stays authoritative. Older held SDK velocity advances to the pose timestamp through the fit. Supplied gravity-free inertial acceleration, including zero, overrides inferred acceleration and keeps the existing `aBody = inverse(R)*aWorld - cross(omegaBody,vBody)` convention. No new SDK setters are needed.
+
+Sparse or ill-conditioned history falls back to Coordinated Turn. Missing attitude uses Constant Acceleration's world-space prediction. Acceleration alone cannot invent velocity. Presentation and clock resets discard old fits, while immutable strategy instances may be shared. The existing projected time, prediction cap and optional Smoothing trait apply.
+
+CTA has the same packet-correction duration and optional bank-derived turn fallback as Coordinated Turn. Packet correction defaults to 0.1 unscaled seconds; zero applies corrections immediately. Gravity remains available through code and serialization, hidden in the Inspector. [Implementation](../Runtime/Entities/ConstantTurnAccelerationExtrapolation.cs).
 
 ## Supply SDK motion
 

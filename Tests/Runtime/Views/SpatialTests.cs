@@ -2701,7 +2701,7 @@ namespace Emas.Tests
             IExtrapolationStrategy[] strategies =
             {
                 new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(),
-                new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation()
+                new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation(), new ConstantTurnAccelerationExtrapolation()
             };
             foreach (IExtrapolationStrategy strategy in strategies)
             {
@@ -2831,7 +2831,7 @@ namespace Emas.Tests
         public IEnumerator Smoothing_SharedPredictionTracksTurnsAndFiltersPacketCorrections()
         {
             foreach (IExtrapolationStrategy strategy in new IExtrapolationStrategy[]
-                { new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(), new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation() })
+                { new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(), new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation(), new ConstantTurnAccelerationExtrapolation() })
             {
                 using (Realm realm = new Realm())
                 {
@@ -2958,7 +2958,7 @@ namespace Emas.Tests
             IExtrapolationStrategy[] strategies =
             {
                 new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(),
-                new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation()
+                new SingerExtrapolation(), new CoordinatedTurnExtrapolation(), new SplineExtrapolation(), new ConstantTurnAccelerationExtrapolation()
             };
             foreach (IExtrapolationStrategy strategy in strategies)
             {
