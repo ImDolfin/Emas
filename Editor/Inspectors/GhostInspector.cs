@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Emas.Editor
 {
-    /// <summary>Shows Ghost identity, spatial presentation and editable root traits in open sections.</summary>
+    /// <summary>Shows editable Ghost traits, with identity and pose diagnostics during Play Mode.</summary>
     [CustomEditor(typeof(Ghost), true)]
     [CanEditMultipleObjects]
     public sealed class GhostInspector : UnityEditor.Editor
@@ -23,34 +23,21 @@ namespace Emas.Editor
             foreach (Object value in targets)
             {
                 // Read each root's own metadata and traits when several objects are selected.
-                Ghost ghost = (Ghost)value;
-                Key key = ghost.Key;
-                bool tracked = key.Kind.IsValid;
+                Ghost ghost = value as Ghost;
+                if (ghost == null)
+                {
+                    continue;
+                }
                 if (targets.Length > 1)
                 {
                     InspectorLayout.Header(ghost.name, null);
                 }
-                using (InspectorLayout.Section("Identity", "Read-only metadata supplied by the detector."))
+                if (Application.isPlaying)
                 {
-                    InspectorLayout.ReadOnly("Status", !tracked ? "Not tracked / prefab" : ghost.IsAvailable ? "Available" : "Pending / unavailable");
-                    if (tracked)
-                    {
-                        InspectorLayout.ReadOnly("Anchor ID", key.AnchorId);
-                        InspectorLayout.ReadOnly("Kind ID", key.Kind.Id);
-                        InspectorLayout.ReadOnly("Entity ID", key.EntityId);
-                        InspectorLayout.ReadOnly("Display name", ghost.Name);
-                        InspectorLayout.ReadOnly("Variant", ghost.Variant == Variant.None ? "None (default)" : ghost.Variant.ToString());
-                    }
-                }
-
-                Spatial spatial;
-                if (ghost.TryGet<Spatial>(out spatial))
-                {
-                    DrawSpatial(ghost, spatial);
+                    DrawRuntime(ghost);
                 }
 
                 IReadOnlyList<Trait> traits = ghost.Traits;
-                TraitInspectorVisibility.Synchronize(traits, true);
                 using (InspectorLayout.Section("Traits (" + traits.Count + ")",
                     "Edit and enable root traits here. Disabled traits remain listed but skip bound reader updates."))
                 {
@@ -62,18 +49,21 @@ namespace Emas.Editor
                     {
                         if (trait != null)
                         {
-                            DrawTrait(trait);
+                            DrawTrait(ghost, trait);
                         }
                     }
                 }
             }
 
-            using (InspectorLayout.Section("Pose debugger"))
+            if (Application.isPlaying)
             {
-                // Pin a single root. With several roots, let the pose tool use the current selection.
-                if (GUILayout.Button("Inspect poses in Emas"))
+                using (InspectorLayout.Section("Pose debugger"))
                 {
-                    PoseTool.Instance.Open(targets.Length == 1 ? target as Ghost : null);
+                    // Pin a single root. With several roots, let the pose tool use the current selection.
+                    if (GUILayout.Button("Inspect poses in Emas"))
+                    {
+                        PoseTool.Instance.Open(targets.Length == 1 ? target as Ghost : null);
+                    }
                 }
             }
         }
@@ -87,20 +77,39 @@ namespace Emas.Editor
 
         private void OnEnable()
         {
-            foreach (Object value in targets)
-            {
-                Ghost ghost = value as Ghost;
-                if (ghost != null)
-                {
-                    TraitInspectorVisibility.Synchronize(ghost.gameObject);
-                }
-            }
+            // Unity is still constructing its editor list here. Changing component
+            // visibility now can rebuild that list inside its own creation or GUI pass.
+            TraitInspectorVisibility.QueueRefresh();
         }
 
         private void OnDisable()
         {
             // When the Ghost is removed, show its remaining traits in the Inspector again.
             TraitInspectorVisibility.QueueRefresh();
+        }
+
+        private static void DrawRuntime(Ghost ghost)
+        {
+            Key key = ghost.Key;
+            bool tracked = key.Kind.IsValid;
+            using (InspectorLayout.Section("Identity", "Read-only metadata supplied by the detector."))
+            {
+                InspectorLayout.ReadOnly("Status", !tracked ? "Not tracked" : ghost.IsAvailable ? "Available" : "Pending / unavailable");
+                if (tracked)
+                {
+                    InspectorLayout.ReadOnly("Anchor ID", key.AnchorId);
+                    InspectorLayout.ReadOnly("Kind ID", key.Kind.Id);
+                    InspectorLayout.ReadOnly("Entity ID", key.EntityId);
+                    InspectorLayout.ReadOnly("Display name", ghost.Name);
+                    InspectorLayout.ReadOnly("Variant", ghost.Variant == Variant.None ? "None (default)" : ghost.Variant.ToString());
+                }
+            }
+
+            Spatial spatial;
+            if (ghost.TryGet(out spatial))
+            {
+                DrawSpatial(ghost, spatial);
+            }
         }
 
         private static void DrawSpatial(Ghost ghost, Spatial spatial)
@@ -160,7 +169,7 @@ namespace Emas.Editor
             return time.HasValue ? time.Value.Seconds + "." + time.Value.Nanoseconds.ToString("D9") : "Untimed / not received";
         }
 
-        private static void DrawTrait(Trait trait)
+        private static void DrawTrait(Ghost ghost, Trait trait)
         {
             // Save each trait separately through Unity so Undo and prefab changes work.
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
@@ -180,14 +189,16 @@ namespace Emas.Editor
                         }
                     }
 
-                    DrawTraitSettings(settings);
+                    DrawTraitSettings(ghost, settings);
                     settings.ApplyModifiedProperties();
                 }
             }
         }
 
-        private static void DrawTraitSettings(SerializedObject settings)
+        private static void DrawTraitSettings(Ghost ghost, SerializedObject settings)
         {
+            Extrapolation extrapolation = settings.targetObject as Extrapolation;
+            bool sharedTiming = extrapolation != null && DrawPredictionTiming(ghost, extrapolation);
             SerializedProperty property = settings.GetIterator();
             bool enterChildren = true;
             while (property.NextVisible(enterChildren))
@@ -205,7 +216,13 @@ namespace Emas.Editor
                 }
                 else if (settings.targetObject is Extrapolation && property.name == "_predictionTime")
                 {
-                    label = "Forward prediction (s)";
+                    // Keep the saved fallback, but do not offer a control that the active
+                    // reference timeline ignores. Clock policy stays on ReferenceFrame.
+                    if (sharedTiming)
+                    {
+                        continue;
+                    }
+                    label = "Fallback prediction (s)";
                 }
                 else if (settings.targetObject is Smoothing)
                 {
@@ -221,6 +238,83 @@ namespace Emas.Editor
 
                 EditorGUILayout.PropertyField(property, new GUIContent(label, property.tooltip), true);
             }
+        }
+
+        private static bool DrawPredictionTiming(Ghost ghost, Extrapolation extrapolation)
+        {
+            if (!Application.isPlaying)
+            {
+                // Prefabs explain the timing model without showing empty runtime data.
+                EditorGUILayout.HelpBox("Following a timestamped reference enables automatic prediction for the Realm. Unix creation timestamps compensate sample age. Fallback prediction applies only without a timed reference.", MessageType.Info);
+                return false;
+            }
+
+            // Read cached observations only. Inspecting a Ghost must never advance the
+            // Realm, sample an SDK reader or change the reference's clock settings.
+            Realm realm = ghost.Anchor != null ? ghost.Anchor.Realm : null;
+            ReferenceFrame frame = realm != null ? realm.ReferenceFrame : null;
+            IGhost followed;
+            Spatial reference;
+            bool shared = frame != null && frame.FollowedGhost.HasValue
+                && realm.TryGetGhost(frame.FollowedGhost.Value, out followed) && followed.IsAvailable
+                && followed.TryGet(out reference) && reference.enabled
+                && (reference.PositionTime.HasValue || reference.RotationTime.HasValue);
+            InspectorLayout.ReadOnly("Prediction timing", shared ? "Automatic (Realm reference)" : "Individual (no timed reference)");
+            EditorGUILayout.HelpBox(shared
+                ? "All entities target the reference's shared projected time. Unix creation timestamps automatically compensate sample age. Extra lead and clock calibration use the ReferenceFrame API."
+                : "Following a timestamped reference enables automatic prediction for the Realm. Unix creation timestamps compensate sample age. Fallback prediction applies only without a timed reference.", MessageType.Info);
+
+            Spatial spatial;
+            if (!ghost.TryGet(out spatial))
+            {
+                return shared;
+            }
+
+            string inactive = !extrapolation.enabled ? "Extrapolation disabled"
+                : !spatial.enabled ? "Spatial disabled"
+                : !ghost.IsAvailable ? "Ghost unavailable"
+                : spatial.AttachedTo.HasValue ? "Inherited from parent"
+                : spatial.IsPoseProcessingBypassed ? "Direct pose (Anchor distance)"
+                : extrapolation.Strategy is NoExtrapolation ? "Hold recorded poses"
+                : extrapolation.MaximumExtrapolation <= 0 ? "Prediction limit is zero" : null;
+            if (inactive != null)
+            {
+                InspectorLayout.ReadOnly("Prediction status", inactive);
+            }
+
+            Timestamp? target = shared ? realm.ProjectedTime : null;
+            if (shared)
+            {
+                InspectorLayout.ReadOnly("Projected time", target.HasValue ? SampleTime(target) : "Awaiting projection pass");
+            }
+            if (target.HasValue)
+            {
+                // These are signed sample-to-target intervals, not measured display lag.
+                // Negative values mean buffered playback; smoothing can still alter the pose.
+                bool positionCapped = DrawPredictionOffset("Position to target (s)", spatial.PositionTime, target.Value,
+                    extrapolation.MaximumExtrapolation);
+                bool rotationCapped = DrawPredictionOffset("Rotation to target (s)", spatial.RotationTime, target.Value,
+                    extrapolation.MaximumExtrapolation);
+                if (inactive == null && (positionCapped || rotationCapped))
+                {
+                    EditorGUILayout.HelpBox("Prediction limit is below the sample-to-target interval. This entity cannot extrapolate all the way to the shared time.", MessageType.Warning);
+                }
+            }
+
+            return shared;
+        }
+
+        private static bool DrawPredictionOffset(string label, Timestamp? sample, Timestamp target, float limit)
+        {
+            if (!sample.HasValue)
+            {
+                InspectorLayout.ReadOnly(label, "Untimed / not received");
+                return false;
+            }
+
+            double seconds = target.ElapsedSince(sample.Value);
+            InspectorLayout.ReadOnly(label, seconds.ToString("F3") + (seconds < 0 ? " (buffered)" : string.Empty));
+            return seconds > limit;
         }
 
         private static void ShowTraitMenu(Trait trait)

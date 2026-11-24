@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -15,29 +14,14 @@ namespace Emas.Editor
             EditorApplication.hierarchyChanged += OnHierarchyChanged;
             ObjectChangeEvents.changesPublished += OnObjectChanges;
             Undo.undoRedoPerformed += QueueRefresh;
-            Selection.selectionChanged += SynchronizeSelection;
+            Selection.selectionChanged += QueueRefresh;
             QueueRefresh();
-        }
-
-        internal static void Synchronize(GameObject root)
-        {
-            if (root != null)
-            {
-                Synchronize(root.GetComponents<Trait>(), root.GetComponent<Ghost>() != null);
-            }
-        }
-
-        internal static void Synchronize(IReadOnlyList<Trait> traits, bool hasGhost)
-        {
-            for (int index = 0; index < traits.Count; index++)
-            {
-                SetVisibility(traits[index], hasGhost);
-            }
         }
 
         internal static void QueueRefresh()
         {
-            // Group object changes so one edit or Undo action scans loaded traits only once.
+            // Inspector creation, drawing and selection callbacks may run while Unity is
+            // rebuilding its component cards. Always change hide flags after that pass.
             if (_refreshQueued)
             {
                 return;
@@ -49,8 +33,8 @@ namespace Emas.Editor
 
         private static void OnHierarchyChanged()
         {
-            // Do not scan the whole scene each frame when tracked objects change.
-            // GhostInspector refreshes the traits of the roots being inspected.
+            // Do not scan the whole scene for ordinary tracked movement. Component
+            // structure changes still queue a refresh through OnObjectChanges in Play Mode.
             if (!EditorApplication.isPlaying)
             {
                 QueueRefresh();
@@ -70,14 +54,6 @@ namespace Emas.Editor
                     QueueRefresh();
                     return;
                 }
-            }
-        }
-
-        private static void SynchronizeSelection()
-        {
-            foreach (GameObject root in Selection.gameObjects)
-            {
-                Synchronize(root);
             }
         }
 

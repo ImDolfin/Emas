@@ -191,7 +191,9 @@ The strategy reads only history eligible at its observation time, including pack
 
 ### Request actual forward prediction
 
-When following timed data, `ReferenceFrame.PredictionTime` requests a shared forward interval through the code API. Each entity uses its selected strategy to reach that target. Without a timed followed reference, **Forward prediction (s)** uses the individual `Extrapolation.PredictionTime`. **Prediction limit (s)** is `MaximumExtrapolation`; increasing that limit alone does not request a longer interval.
+The Ghost Inspector's Extrapolation section explains automatic prediction, including on prefabs. With a live timed reference, **Prediction timing** shows **Automatic (Realm reference)**, followed by the cached **Projected time** and independent position/rotation sample-to-target intervals. Negative intervals mean buffered playback. A warning identifies intervals beyond the entity's prediction limit. These intervals describe the requested target, not the final smoothed pose or measured display latency. Disabled, attached and distant direct-pose entities report their processing status. Inspection never advances the Realm or reads the SDK.
+
+When following timed data, `ReferenceFrame.PredictionTime` requests a shared forward interval through the code API. Each entity uses its selected strategy to reach that target. The individual forward field is hidden while shared timing applies. Without a timed followed reference, **Fallback prediction (s)** uses the individual `Extrapolation.PredictionTime`. Its saved value is retained when following a reference. **Prediction limit (s)** is `MaximumExtrapolation`; increasing that limit alone does not request a longer interval. Clock calibration and shared lead remain code-only on `ReferenceFrame`.
 
 ```csharp
 extrapolation.Strategy = new ConstantAccelerationExtrapolation();
@@ -388,7 +390,7 @@ Check `HasPosition` before inverse/reference-dependent operations. Helpers use t
 
 ## Compare observed and presented poses
 
-Open **Window > Emas > Pose debugger** and click **Activate pose tool**, or choose **Emas pose comparison** from the Scene tools menu. The Emas Scene overlay shares the same target and drawing controls. The Ghost Inspector's **Inspect poses in Emas** shortcut opens the debugger, activates the tool and pins that Ghost.
+Open **Window > Emas > Pose debugger** and click **Activate pose tool**, or choose **Emas pose comparison** from the Scene tools menu. The Emas Scene overlay shares the same target and drawing controls. In Play Mode, the Ghost Inspector's **Inspect poses in Emas** shortcut opens the debugger, activates the tool and pins that Ghost. The Inspector hides **Identity**, **Spatial pose**, the **Pose debugger** shortcut and live prediction readouts outside Play Mode. Trait authoring and the automatic-prediction explanation stay visible on prefabs. Adding or removing traits updates component-card visibility after Unity's current Inspector pass, retaining Undo and prefab settings.
 
 Cyan marks the latest accepted absolute observation; magenta marks the presented root after extrapolation, packet correction and smoothing. Both use the same cached presentation reference, so the followed Ghost's raw marker can differ from its origin. A yellow line connects their positions. Enable each marker, labels and the connection independently and adjust the marker size; axes use red X, green Y and blue Z. Gizmos draw while the pose tool is active.
 

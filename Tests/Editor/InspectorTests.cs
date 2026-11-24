@@ -780,7 +780,7 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Ghost authoring owns trait visibility while serialized settings and enabled states remain editable with Undo.
+        /// Ghost authoring defers component-card changes until after Inspector creation while settings and component edits retain Undo.
         /// </summary>
         /// <returns>An iterator that waits for delayed editor visibility updates after component changes.</returns>
         [UnityTest]
@@ -805,6 +805,8 @@ namespace Emas.Editor.Tests
             try
             {
                 inspector = UnityEditor.Editor.CreateEditor(ghost);
+                Assert.That(smoothing.hideFlags, Is.EqualTo(HideFlags.DontUnloadUnusedAsset),
+                    "Creating an Inspector must not rebuild its component cards before Unity finishes creating the editor list.");
                 AssertGhostAuthoringMetadata(ghost);
                 yield return WaitForTraitVisibility(root, true);
                 Assert.That(ghost.Traits, Is.EquivalentTo(new Trait[] { smoothing, extrapolation, custom }));
@@ -893,8 +895,9 @@ namespace Emas.Editor.Tests
         /// <summary>
         /// Hidden built-in traits retain serialized settings and enabled states when an authored Ghost prefab is saved and reopened.
         /// </summary>
-        [Test]
-        public void GhostAuthoring_PersistsTraitSettingsInPrefabs()
+        /// <returns>An iterator that waits for safe component-card refreshes before saving and inspecting the prefab.</returns>
+        [UnityTest]
+        public IEnumerator GhostAuthoring_PersistsTraitSettingsInPrefabs()
         {
             GameObject root = new GameObject("ghost trait prefab");
             _objects.Add(root);
@@ -908,6 +911,7 @@ namespace Emas.Editor.Tests
             try
             {
                 inspector = UnityEditor.Editor.CreateEditor(ghost);
+                yield return WaitForTraitVisibility(root, true);
                 SetSerializedTraitSettings(smoothing, extrapolation, false);
                 Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
                 UnityEngine.Object.DestroyImmediate(inspector);
@@ -919,6 +923,7 @@ namespace Emas.Editor.Tests
                 Smoothing restoredSmoothing = contents.GetComponent<Smoothing>();
                 Extrapolation restoredExtrapolation = contents.GetComponent<Extrapolation>();
                 inspector = UnityEditor.Editor.CreateEditor(restored);
+                yield return WaitForTraitVisibility(contents, true);
                 Assert.That(restored.Traits, Is.EquivalentTo(new Trait[] { restoredSmoothing, restoredExtrapolation }));
                 Assert.That(restoredSmoothing.PositionHalfLife, Is.EqualTo(0.15f));
                 Assert.That(restoredSmoothing.RotationHalfLife, Is.EqualTo(0.03f));
