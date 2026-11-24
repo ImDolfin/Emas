@@ -14,6 +14,17 @@ namespace Emas
     [Serializable]
     public sealed class CoordinatedTurnExtrapolation : IExtrapolationStrategy, IPacketSmoothingStrategy
     {
+        private struct Motion
+        {
+            internal bool HasVelocity;
+            internal bool HasAttitude;
+            internal GeographicBasis Basis;
+            internal Quaternion Attitude;
+            internal Double3 Velocity;
+            internal Double3 Acceleration;
+            internal Double3 Rate;
+        }
+
         [Tooltip("Cubic position and quaternion correction duration on accepted packet arrivals, in unscaled seconds. Zero: immediate correction. Independent of the extrapolation horizon.")]
         [Min(0)]
         [SerializeField] private float _packetSmoothingDuration = 0.1f;
@@ -99,53 +110,29 @@ namespace Emas
                 return default(Double3);
             }
 
-            // Raw history also covers a batch received before the first presentation pass.
-            // The common velocity estimate only observes positions between presentation passes.
-            Double3? sourceVelocity = context.Velocity;
-            if (!sourceVelocity.HasValue && TryChord(context, out Double3 chord))
+            int options = (useBank ? 1 : 0) | (estimateAcceleration ? 2 : 0);
+            if (!context.TryPrediction(typeof(CoordinatedTurnExtrapolation), options, gravity, out Motion motion))
             {
-                sourceVelocity = chord;
+                motion = PrepareMotion(context, useBank, gravity, estimateAcceleration);
+                context.StorePrediction(typeof(CoordinatedTurnExtrapolation), options, gravity, motion);
             }
 
-            if (!sourceVelocity.HasValue)
+            if (!motion.HasVelocity)
             {
                 return default(Double3);
             }
 
-            // The tangent axes depend only on this observation. Reuse them for attitude,
-            // velocity, acceleration and the resulting displacement.
-            GeographicBasis basis = Basis(context);
-            if (!TryAttitude(context, basis, out Quaternion attitude))
+            if (!motion.HasAttitude)
             {
-                return estimateAcceleration ? _linearFallback.ExtrapolateDisplacement(context, seconds) : sourceVelocity.Value * seconds
-                    + context.Acceleration.GetValueOrDefault() * (0.5d * seconds * seconds);
+                return estimateAcceleration ? _linearFallback.ExtrapolateDisplacement(context, seconds) : motion.Velocity * seconds
+                    + motion.Acceleration * (0.5d * seconds * seconds);
             }
 
-            // Convert world motion to local Unity axes, then calculate motion in the turning body axes.
-            Double3 velocity = ToLocal(context, basis, sourceVelocity.Value);
-            Double3 bodyVelocity = SpatialMath.Rotate(Quaternion.Inverse(attitude), velocity);
-            Double3 rate = BodyRate(context, basis, attitude, velocity, useBank, gravity);
-            Double3 bodyAcceleration = default(Double3);
-            bool estimated = estimateAcceleration && EstimateMotion(context, basis, attitude, useBank, gravity,
-                ref rate, ref bodyVelocity, out bodyAcceleration);
-            if (!estimated && (!context.Velocity.HasValue || context.VelocityIsEstimated)
-                && TryEndpointVelocity(context, basis, attitude, rate, out Double3 endpointVelocity))
-            {
-                bodyVelocity = endpointVelocity;
-            }
-
-            if (context.Acceleration.HasValue)
-            {
-                Double3 acceleration = ToLocal(context, basis, context.Acceleration.Value);
-                // d(v_body)/dt = R^-1*a_world - omega_body x v_body. Feeding inertial
-                // acceleration directly into this calculation would count the acceleration caused by turning twice.
-                bodyAcceleration = SpatialMath.Rotate(Quaternion.Inverse(attitude), acceleration) - Cross(rate, bodyVelocity);
-            }
-
-            // Convert the movement back to source axes before mapping the position into Unity.
-            Double3 displacement = SpatialMath.Rotate(attitude, Integrate(bodyVelocity, bodyAcceleration, rate, seconds));
+            // Evaluate the prepared trajectory at this exact duration. Filtering and
+            // packet previews share preparation without sharing their evaluated poses.
+            Double3 displacement = SpatialMath.Rotate(motion.Attitude, Integrate(motion.Velocity, motion.Acceleration, motion.Rate, seconds));
             return context.Space == ReferenceSpace.Geographic
-                ? basis.ToEarthCentered(displacement) : context.SourceCoordinates.ToSource(displacement);
+                ? motion.Basis.ToEarthCentered(displacement) : context.SourceCoordinates.ToSource(displacement);
         }
 
         /// <summary>Integrates a constant angular vector with a quaternion exponential, retaining body or world composition.</summary>
@@ -232,6 +219,56 @@ namespace Emas
         internal static Double3 IntegrateMotion(Double3 velocity, Double3 acceleration, Double3 rate, double seconds)
         {
             return Integrate(velocity, acceleration, rate, seconds);
+        }
+
+        private static Motion PrepareMotion(in ExtrapolationContext context, bool useBank, float gravity, bool estimateAcceleration)
+        {
+            Motion motion = default(Motion);
+            // Raw history also covers a batch received before the first presentation pass.
+            Double3? sourceVelocity = context.Velocity;
+            if (!sourceVelocity.HasValue && TryChord(context, out Double3 chord))
+            {
+                sourceVelocity = chord;
+            }
+
+            if (!sourceVelocity.HasValue)
+            {
+                return motion;
+            }
+
+            motion.HasVelocity = true;
+            motion.Velocity = sourceVelocity.Value;
+            motion.Acceleration = context.Acceleration.GetValueOrDefault();
+            motion.Basis = Basis(context);
+            motion.HasAttitude = TryAttitude(context, motion.Basis, out motion.Attitude);
+            if (!motion.HasAttitude)
+            {
+                return motion;
+            }
+
+            // Convert once to the turning body frame. The velocity and acceleration fit
+            // depends on observations and model settings, not the requested future time.
+            Double3 localVelocity = ToLocal(context, motion.Basis, sourceVelocity.Value);
+            Quaternion inverse = Quaternion.Inverse(motion.Attitude);
+            motion.Velocity = SpatialMath.Rotate(inverse, localVelocity);
+            motion.Rate = BodyRate(context, motion.Basis, motion.Attitude, localVelocity, useBank, gravity);
+            motion.Acceleration = default(Double3);
+            bool estimated = estimateAcceleration && EstimateMotion(context, motion.Basis, motion.Attitude, useBank, gravity,
+                ref motion.Rate, ref motion.Velocity, out motion.Acceleration);
+            if (!estimated && (!context.Velocity.HasValue || context.VelocityIsEstimated)
+                && TryEndpointVelocity(context, motion.Basis, motion.Attitude, motion.Rate, out Double3 endpoint))
+            {
+                motion.Velocity = endpoint;
+            }
+
+            if (context.Acceleration.HasValue)
+            {
+                // Remove centripetal acceleration already represented by turning.
+                Double3 acceleration = ToLocal(context, motion.Basis, context.Acceleration.Value);
+                motion.Acceleration = SpatialMath.Rotate(inverse, acceleration) - Cross(motion.Rate, motion.Velocity);
+            }
+
+            return motion;
         }
 
         private static bool EstimateMotion(in ExtrapolationContext context, in GeographicBasis basis, Quaternion attitude,
@@ -337,7 +374,7 @@ namespace Emas
         {
             return context.ObservationRotation.HasValue && context.ObservationPosition.HasValue
                 && (context.Space == ReferenceSpace.Geographic || context.RotationSpace == RotationSpace.EarthCentered)
-                    ? new GeographicBasis(GeoPosition.FromEarthCentered(context.ObservationPosition.Value)) : default(GeographicBasis);
+                    ? context.GeographicBasis : default(GeographicBasis);
         }
 
         private static bool TryChord(in ExtrapolationContext context, out Double3 velocity)

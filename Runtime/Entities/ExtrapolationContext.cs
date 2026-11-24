@@ -13,6 +13,9 @@ namespace Emas
     public readonly struct ExtrapolationContext
     {
         private readonly PoseHistory _history;
+        private readonly Spatial _spatial;
+        private readonly PredictionCache _predictions;
+        private readonly long _predictionContext;
 
         /// <summary>Gets the latest accepted source position.</summary>
         /// <value>Cartesian source distance units or ECEF metres; null before position input.</value>
@@ -99,12 +102,17 @@ namespace Emas
         /// <value>The accepted right-handed body mapping, or null for other rotation representations.</value>
         public CoordinateSystem? EarthCenteredBodyAxes { get; }
 
+        internal GeographicBasis GeographicBasis => _spatial.BasisAt(ObservationPosition.Value);
+
         internal ExtrapolationContext(Spatial spatial, CoordinateSystem sourceCoordinates, Timestamp? observationTime,
             Double3? velocity, Double3? acceleration, Double3? angularVelocity, bool velocityIsEstimated,
             bool angularVelocityIsEstimated, bool angularVelocityIsWorld, Timestamp? latestVelocityTime,
-            Timestamp? latestAccelerationTime, Timestamp? latestAngularVelocityTime)
+            Timestamp? latestAccelerationTime, Timestamp? latestAngularVelocityTime, PredictionCache predictions, long predictionContext)
         {
             _history = spatial.History;
+            _spatial = spatial;
+            _predictions = predictions;
+            _predictionContext = predictionContext;
             // Keep the latest raw values separate from the pose at the time being predicted.
             Position = spatial.HasPosition ? spatial.Position : (Double3?)null;
             Rotation = spatial.HasRotation ? spatial.Rotation : (Quaternion?)null;
@@ -194,6 +202,25 @@ namespace Emas
             time = default(Timestamp);
             angularVelocity = default(Double3);
             return _history != null && _history.ReadAngularVelocity(lookback, ObservationTime, out time, out angularVelocity);
+        }
+
+        internal bool TryPrediction<T>(object model, int options, float parameter, out T value) where T : struct
+        {
+            if (_predictions != null)
+            {
+                return _predictions.TryGet(_predictionContext, _history.Version, model, options, parameter, out value);
+            }
+
+            value = default(T);
+            return false;
+        }
+
+        internal void StorePrediction<T>(object model, int options, float parameter, T value) where T : struct
+        {
+            if (_predictions != null)
+            {
+                _predictions.Store(_predictionContext, _history.Version, model, options, parameter, value);
+            }
         }
 
         internal static Double3? SamplePosition(Spatial spatial, Timestamp? time)

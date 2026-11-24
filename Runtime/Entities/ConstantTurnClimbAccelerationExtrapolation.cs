@@ -14,6 +14,7 @@ namespace Emas
     {
         private struct Motion
         {
+            internal bool HasVelocity;
             internal GeographicBasis Basis;
             internal Quaternion Attitude;
             internal bool HasAttitude;
@@ -129,11 +130,24 @@ namespace Emas
 
         private bool TryMotion(in ExtrapolationContext context, out Motion motion)
         {
+            int options = _useBankAngleWhenRatesUnavailable ? 1 : 0;
+            if (!context.TryPrediction(typeof(ConstantTurnClimbAccelerationExtrapolation), options, _gravity, out motion))
+            {
+                bool available = ComputeMotion(context, out motion);
+                motion.HasVelocity = available;
+                context.StorePrediction(typeof(ConstantTurnClimbAccelerationExtrapolation), options, _gravity, motion);
+            }
+
+            return motion.HasVelocity;
+        }
+
+        private bool ComputeMotion(in ExtrapolationContext context, out Motion motion)
+        {
             motion = default(Motion);
             if (context.ObservationPosition.HasValue && (context.Space == ReferenceSpace.Geographic
                 || context.RotationSpace == RotationSpace.EarthCentered))
             {
-                motion.Basis = new GeographicBasis(GeoPosition.FromEarthCentered(context.ObservationPosition.Value));
+                motion.Basis = context.GeographicBasis;
             }
 
             Double3? velocity = context.Velocity;
@@ -325,9 +339,16 @@ namespace Emas
 
                 if (motion.HasAttitude)
                 {
-                    Double3 body = CoordinatedTurnExtrapolation.BodyAngularVelocity(context, motion.Basis,
-                        motion.Attitude, motion.Velocity, false, _gravity);
-                    Double3 angular = SpatialMath.Rotate(motion.Attitude, body);
+                    Double3 angular;
+                    if (context.AngularVelocityIsWorld)
+                    {
+                        angular = context.RotationSpace == RotationSpace.EarthCentered
+                            ? motion.Basis.ToLocal(context.AngularVelocity.Value) * -1d : context.AngularVelocity.Value;
+                    }
+                    else
+                    {
+                        angular = SpatialMath.Rotate(motion.Attitude, context.AngularVelocity.Value);
+                    }
                     Double3 forward = SpatialMath.Rotate(motion.Attitude, new Double3(0, 0, 1));
                     double horizontal = HorizontalSquared(forward);
                     if (horizontal >= MinimumSpeedSquared)

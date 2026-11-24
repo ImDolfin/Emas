@@ -13,8 +13,8 @@ namespace Emas
         internal GeographicBasis(GeoPosition position)
         {
             position.Validate();
-            double latitude = position.LatitudeDegrees * Math.PI / 180.0;
-            double longitude = position.LongitudeDegrees * Math.PI / 180.0;
+            double latitude = position.LatitudeDegrees * (Math.PI / 180.0);
+            double longitude = position.LongitudeDegrees * (Math.PI / 180.0);
             double sinLatitude = Math.Sin(latitude);
             double cosLatitude = Math.Cos(latitude);
             double sinLongitude = Math.Sin(longitude);
@@ -33,13 +33,33 @@ namespace Emas
 
         internal Double3 ToEarthCentered(Double3 displacement)
         {
-            return _east * displacement.X + _up * displacement.Y + _north * displacement.Z;
+            // Validate the final vector once instead of constructing five intermediate
+            // Double3 values for every velocity, acceleration and angular-rate input.
+            return new Double3(_east.X * displacement.X + _up.X * displacement.Y + _north.X * displacement.Z,
+                _east.Y * displacement.X + _up.Y * displacement.Y + _north.Y * displacement.Z,
+                _east.Z * displacement.X + _up.Z * displacement.Y + _north.Z * displacement.Z);
+        }
+
+        internal Double3 ToEarthCenteredPosition(double height)
+        {
+            // The stored axes retain all four latitude/longitude trigonometric values.
+            // Preserve GeoPosition.ToEarthCentered's multiplication order and precision.
+            double sin = _up.Z;
+            double radius = GeoPosition.SemiMajorAxis / Math.Sqrt(1d - GeoPosition.EccentricitySquared * sin * sin);
+            return new Double3((radius + height) * _north.Z * _east.Y,
+                (radius + height) * _north.Z * -_east.X,
+                (radius * (1d - GeoPosition.EccentricitySquared) + height) * sin);
         }
 
         internal Quaternion RotationFrom(GeoPosition position)
         {
             // Convert the other location's north/up directions to these local axes to account for Earth's curve.
             GeographicBasis other = new GeographicBasis(position);
+            return RotationFrom(other);
+        }
+
+        internal Quaternion RotationFrom(in GeographicBasis other)
+        {
             Double3 forward = ToLocal(other._north);
             Double3 up = ToLocal(other._up);
             return Quaternion.LookRotation(new Vector3((float)forward.X, (float)forward.Y, (float)forward.Z),

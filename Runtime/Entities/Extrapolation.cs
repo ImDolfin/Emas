@@ -47,12 +47,16 @@ namespace Emas
         private Spatial _spatial;
         private ExtrapolationContext _context;
         private bool _hasContext;
+        private ExtrapolationContext _alternateContext;
+        private bool _hasAlternateContext;
         private long _contextPositionVersion;
         private long _contextRotationVersion;
         private long _contextMotionVersion;
         private bool _hasRotationMotion;
         private Timestamp? _rotationMotionSampleTime;
         private double _rotationMotionOffset;
+        private readonly PredictionCache _predictions = new PredictionCache();
+        private long _predictionContext;
 
         /// <summary>Gets or sets the linear and angular gap extrapolation model on Unity's main thread.</summary>
         /// <value>A non-null strategy; defaults to <see cref="ConstantAccelerationExtrapolation"/>.</value>
@@ -142,6 +146,8 @@ namespace Emas
         /// <value>True after an angular velocity setter accepts a sample, until the channel is cleared or unbound.</value>
         public bool HasAngularVelocity => _hasAngularVelocity;
 
+        internal override bool NeedsRefresh => false;
+
         private Spatial Spatial
         {
             get
@@ -183,7 +189,7 @@ namespace Emas
         /// <exception cref="ArgumentOutOfRangeException">The origin or velocity is invalid, or conversion produces a nonfinite coordinate.</exception>
         public void SetGeographicVelocity(Double3 velocity, GeoPosition origin, Timestamp? sampleTime = null)
         {
-            StoreVelocity(origin.ToEarthCenteredVector(velocity), sampleTime);
+            StoreVelocity(Spatial.Geographic.Velocity(origin, velocity), sampleTime);
         }
 
         /// <summary>Clears supplied velocity; timestamp-based estimation remains available.</summary>
@@ -232,7 +238,7 @@ namespace Emas
         /// <exception cref="ArgumentOutOfRangeException">The origin or acceleration is invalid, or conversion produces a nonfinite coordinate.</exception>
         public void SetGeographicAcceleration(Double3 acceleration, GeoPosition origin, Timestamp? sampleTime = null)
         {
-            StoreAcceleration(origin.ToEarthCenteredVector(acceleration), sampleTime);
+            StoreAcceleration(Spatial.Geographic.Acceleration(origin, acceleration), sampleTime);
         }
 
         /// <summary>Clears acceleration while retaining supplied or estimated velocity.</summary>
@@ -305,7 +311,7 @@ namespace Emas
         /// <example><code>extrapolation.SetGeographicAngularVelocity(enuAngularVelocity, sdkTangentOrigin, sampleTime);</code></example>
         public void SetGeographicAngularVelocity(Double3 angularVelocity, GeoPosition origin, Timestamp? sampleTime = null)
         {
-            SetEarthCenteredAngularVelocity(origin.ToEarthCenteredVector(angularVelocity), sampleTime);
+            SetEarthCenteredAngularVelocity(Spatial.Geographic.AngularVelocity(origin, angularVelocity), sampleTime);
         }
 
         /// <summary>Clears supplied angular velocity, restoring extrapolation from consecutive timed rotations when available.</summary>
@@ -334,6 +340,7 @@ namespace Emas
         {
             // Keep motion supplied by the application. Clear estimated motion and this root's filter state.
             _hasContext = false;
+            _hasAlternateContext = false;
             _hasRotationMotion = false;
             _positionVersion = -1;
             _previousTime = null;
@@ -352,7 +359,8 @@ namespace Emas
 
         internal void Prepare(Spatial spatial, double timestamp)
         {
-            _hasContext = false;
+            // Context values depend on accepted inputs, not the render clock. Keep an
+            // unchanged context across frames; CreateContext checks every input version.
             ObservePosition(spatial);
             _elapsed = _projectionTime.HasValue ? Math.Max(0d, timestamp - _projectionTime.Value) : 0d;
             _projectionTime = timestamp;
@@ -587,14 +595,32 @@ namespace Emas
             Ghost ghost = spatial.Ghost;
             ReferenceFrame frame = ghost != null && ghost.Anchor != null ? ghost.Anchor.Realm.ReferenceFrame : null;
             ReferenceSpace space = frame != null ? frame.Space : ReferenceSpace.Cartesian;
-            if (_hasContext && _contextPositionVersion == spatial.PositionVersion
+            bool sameInputs = _hasContext && _contextPositionVersion == spatial.PositionVersion
                 && _contextRotationVersion == spatial.RotationVersion && _contextMotionVersion == _motionVersion
-                && Nullable.Equals(_context.ObservationTime, observationTime) && _context.Space == space
+                && _context.Space == space
                 && _context.SourceCoordinates.Right == sourceAxes.Right
                 && _context.SourceCoordinates.Up == sourceAxes.Up
-                && _context.SourceCoordinates.Forward == sourceAxes.Forward)
+                && _context.SourceCoordinates.Forward == sourceAxes.Forward;
+            if (sameInputs && Nullable.Equals(_context.ObservationTime, observationTime))
             {
                 return _context;
+            }
+
+            if (sameInputs && _hasAlternateContext && Nullable.Equals(_alternateContext.ObservationTime, observationTime))
+            {
+                return _alternateContext;
+            }
+
+            // Position and orientation may have different SDK times. Retain both samples
+            // so packet previews do not repeatedly rebuild them as channels alternate.
+            if (sameInputs)
+            {
+                _alternateContext = _context;
+                _hasAlternateContext = true;
+            }
+            else
+            {
+                _hasAlternateContext = false;
             }
 
             // Use supplied velocity at the requested time when available. Otherwise, estimate from known poses.
@@ -635,7 +661,7 @@ namespace Emas
                 out bool estimatedAngularVelocity, out bool worldAngularVelocity);
             _context = new ExtrapolationContext(spatial, sourceAxes, observationTime, velocity, acceleration,
                 angularVelocity, estimatedVelocity, estimatedAngularVelocity, worldAngularVelocity,
-                _velocityTime, _accelerationTime, _angularVelocityTime);
+                _velocityTime, _accelerationTime, _angularVelocityTime, _predictions, ++_predictionContext);
             _contextPositionVersion = spatial.PositionVersion;
             _contextRotationVersion = spatial.RotationVersion;
             _contextMotionVersion = _motionVersion;
@@ -694,7 +720,7 @@ namespace Emas
                             return null;
                         }
 
-                        GeographicBasis basis = new GeographicBasis(GeoPosition.FromEarthCentered(position.Value));
+                        GeographicBasis basis = spatial.BasisAt(position.Value);
                         rate = basis.ToLocal(rate) * -1d;
                     }
                 }
@@ -760,6 +786,12 @@ namespace Emas
         {
             // Check angular-rate times separately so an old rate cannot replace a newer one.
             if (!PoseData.Accepts(_angularVelocityTime, sampleTime))
+            {
+                return;
+            }
+
+            if (_hasAngularVelocity && !sampleTime.HasValue && !_angularVelocityTime.HasValue
+                && _angularVelocity == angularVelocity && _angularVelocityIsWorld == world)
             {
                 return;
             }
@@ -887,6 +919,11 @@ namespace Emas
         {
             // Store timestamped motion for playback. Clear that history when input has no timestamp.
             ReferenceFrame.ValidatePosition(velocity, nameof(velocity));
+            if (_hasVelocity && !sampleTime.HasValue && !_velocityTime.HasValue && _velocity == velocity)
+            {
+                return;
+            }
+
             if (PoseData.Accepts(_velocityTime, sampleTime))
             {
                 if (!_hasVelocity || _velocity != velocity || sampleTime.HasValue || _velocityTime.HasValue)
@@ -913,6 +950,11 @@ namespace Emas
         {
             // Store acceleration separately so later acceleration cannot change predictions from older poses.
             ReferenceFrame.ValidatePosition(acceleration, nameof(acceleration));
+            if (_hasAcceleration && !sampleTime.HasValue && !_accelerationTime.HasValue && _acceleration == acceleration)
+            {
+                return;
+            }
+
             if (PoseData.Accepts(_accelerationTime, sampleTime))
             {
                 if (!_hasAcceleration || _acceleration != acceleration || sampleTime.HasValue || _accelerationTime.HasValue)

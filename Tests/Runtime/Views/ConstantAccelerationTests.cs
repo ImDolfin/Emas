@@ -179,6 +179,42 @@ namespace Emas.Tests
                 "Reset must discard derivative fits while retaining SDK interpolation at the pose time.");
         }
 
+        /// <summary>A strategy can evaluate a built-in model again after restarting estimation during the same callback; retained raw readers stay live and later samples recover prediction.</summary>
+        [Test]
+        public void StrategyComposition_SeesLiveHistoryResetWithinOneCall()
+        {
+            Probe probe = new Probe();
+            Spatial spatial = Create("live history", probe, 0.1f, out Extrapolation motion);
+            foreach (double time in new[] { 0d, 0.1d, 0.2d })
+            {
+                spatial.SetCartesianPosition(new Double3(time * time, 0, 0), Stamp(time));
+            }
+
+            bool checkedHistory = false;
+            probe.Observed = context =>
+            {
+                if (checkedHistory)
+                {
+                    return;
+                }
+
+                Double3 before = probe.Model.ExtrapolateDisplacement(context, 0.1d);
+                motion.Reset();
+                Double3 after = probe.Model.ExtrapolateDisplacement(context, 0.1d);
+                Assert.That(before.X, Is.EqualTo(0.05d).Within(0.00001d));
+                Assert.That(after, Is.EqualTo(default(Double3)));
+                checkedHistory = true;
+            };
+            AdvanceClock(1.2d);
+            _realm.Update();
+            Assert.That(checkedHistory, Is.True);
+            Assert.That(spatial.transform.position.x, Is.EqualTo(0.04d).Within(0.00001d));
+            spatial.SetCartesianPosition(new Double3(0.09d, 0, 0), Stamp(0.3d));
+            spatial.SetCartesianPosition(new Double3(0.16d, 0, 0), Stamp(0.4d));
+            _realm.Update();
+            Assert.That(spatial.transform.position.x, Is.EqualTo(0.25d).Within(0.00001d));
+        }
+
         /// <summary>Accelerating bank is recovered from orientation or body/world rate histories across axis conventions, including quaternion wrap and zero-rate/reset recovery.</summary>
         /// <param name="space">The source attitude representation used by the SDK mapping.</param>
         [TestCase(RotationSpace.Source)]

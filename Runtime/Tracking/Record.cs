@@ -7,6 +7,7 @@ namespace Emas
     {
         internal readonly Key Key;
         internal readonly Ghost Ghost;
+        internal IdentityMap IdentityMap;
         internal Presence Presence;
         internal PresenceDetector Owner;
         internal ManifestationBlueprintSnapshot ManifestationBlueprint;

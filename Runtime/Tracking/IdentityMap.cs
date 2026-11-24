@@ -26,6 +26,7 @@ namespace Emas
 
             // Add must fail if another root already has this Key.
             _records.Add(record.Key, record);
+            record.IdentityMap = this;
             _snapshot = null;
         }
 
@@ -60,19 +61,20 @@ namespace Emas
 
             // Cleanup for an old root must not remove its replacement.
             bool removed = _records.Remove(record.Key);
+            if (removed)
+            {
+                record.IdentityMap = null;
+            }
             _snapshot = null;
             return removed;
         }
 
         internal bool Contains(Record record)
         {
-            if (record == null)
-            {
-                return false;
-            }
-
-            Record current;
-            return _records.TryGetValue(record.Key, out current) && ReferenceEquals(current, record);
+            // Records are inserted and removed only through this map. The membership
+            // token avoids hashing the identity before every application callback and
+            // rejects old records even if a replacement has exactly the same Key.
+            return record != null && ReferenceEquals(record.IdentityMap, this);
         }
 
         internal IReadOnlyList<Record> Snapshot()

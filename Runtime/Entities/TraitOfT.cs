@@ -8,6 +8,8 @@ namespace Emas
     {
         private Func<TData> _read;
 
+        internal override bool NeedsRefresh => _read != null;
+
         /// <summary>Connects this trait to a value reader without depending on the SDK's proxy type.</summary>
         /// <param name="read">Reads the latest value on Unity's main thread.</param>
         /// <remarks>

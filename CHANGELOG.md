@@ -2,6 +2,7 @@
 
 ## 0.2.0
 
+- Reduce many-entity update overhead with direct identity membership checks, reader-only trait guards, shared geographic input conversions and cached tangent bases. Reuse built-in motion preparation across prediction previews and unchanged input, retaining independent channel times, live history/settings changes, callback safety and zero warmed allocations.
 - Add Constant Turn, Climb and Acceleration (CTCA): horizontal turns with tangential acceleration and independent constant climb rate. Infer missing course/motion from timestamped history, retain full attitude prediction, and prevent pure roll/pitch or vertical acceleration from bending the climb trajectory. Reuse shared timing, caps, packet correction and smoothing; keep Gravity hidden.
 - Add Constant Turn and Acceleration (CTA), extending rotating-body turns with history-derived body acceleration and endpoint velocity. Preserve supplied inertial acceleration and SDK velocity overrides, reuse coordinated-turn geometry and packet correction, and keep Gravity hidden in the Inspector.
 - Add SplineExtrapolation with timestamp-fitted cubic Bézier continuation for position and quaternion rotation. Use supplied velocity histories when available, preserve SDK derivative overrides, reduce curve order for sparse input, and retain shared timing, caps, smoothing and reset behavior without new Inspector settings.

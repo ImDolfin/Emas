@@ -35,6 +35,12 @@ namespace Emas
             }
         }
 
+        private struct LinearMotion
+        {
+            internal bool HasVelocity;
+            internal Curve Curve;
+        }
+
         private struct Fit
         {
             internal int Count;
@@ -118,6 +124,11 @@ namespace Emas
                 return default(Double3);
             }
 
+            if (context.TryPrediction(typeof(SplineExtrapolation), 0, 0, out LinearMotion prepared))
+            {
+                return prepared.HasVelocity ? prepared.Curve.Evaluate(seconds) : default(Double3);
+            }
+
             Curve curve = new Curve { Span = 1d, Linear = context.Velocity.GetValueOrDefault() };
             bool hasVelocity = context.Velocity.HasValue;
             try
@@ -138,6 +149,7 @@ namespace Emas
 
             if (!hasVelocity)
             {
+                context.StorePrediction(typeof(SplineExtrapolation), 0, 0, new LinearMotion());
                 return default(Double3);
             }
 
@@ -147,6 +159,7 @@ namespace Emas
                 curve.Quadratic = context.Acceleration.Value * (0.5d * curve.Span * curve.Span);
             }
 
+            context.StorePrediction(typeof(SplineExtrapolation), 0, 0, new LinearMotion { HasVelocity = true, Curve = curve });
             return curve.Evaluate(seconds);
         }
 
@@ -164,8 +177,14 @@ namespace Emas
                 return Quaternion.identity;
             }
 
-            Curve curve = new Curve { Span = 1d, Linear = context.AngularVelocity.GetValueOrDefault() };
             bool supplied = context.AngularVelocity.HasValue && !context.AngularVelocityIsEstimated;
+            if (context.TryPrediction(typeof(SplineExtrapolation), 1, 0, out Curve prepared))
+            {
+                return supplied ? IntegrateAngular(prepared, seconds, context.AngularVelocityIsWorld)
+                    : SpatialMath.AngularDisplacement(prepared.Evaluate(seconds), 1d);
+            }
+
+            Curve curve = new Curve { Span = 1d, Linear = context.AngularVelocity.GetValueOrDefault() };
             try
             {
                 bool fitted = supplied ? TryRateCurve(context, true, out Curve prediction)
@@ -180,6 +199,7 @@ namespace Emas
                 // Preserve constant-rate prediction when a history fit cannot be represented.
             }
 
+            context.StorePrediction(typeof(SplineExtrapolation), 1, 0, curve);
             return supplied ? IntegrateAngular(curve, seconds, context.AngularVelocityIsWorld)
                 : SpatialMath.AngularDisplacement(curve.Evaluate(seconds), 1d);
         }
@@ -302,7 +322,7 @@ namespace Emas
             Curve rates = fit.Solve(span, false);
             if (angular && context.AngularVelocityIsWorld && context.RotationSpace != RotationSpace.EarthCentered)
             {
-                GeographicBasis basis = new GeographicBasis(GeoPosition.FromEarthCentered(context.ObservationPosition.Value));
+                GeographicBasis basis = context.GeographicBasis;
                 rates.Linear = basis.ToLocal(rates.Linear) * -1d;
                 rates.Quadratic = basis.ToLocal(rates.Quadratic) * -1d;
             }

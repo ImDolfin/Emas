@@ -26,6 +26,9 @@ namespace Emas
         private Vector3 _attachmentPosition;
         private Quaternion _attachmentRotation = Quaternion.identity;
         private Ghost _ghost;
+        private readonly GeographicInput _geographic = new GeographicInput();
+        private GeographicPoint _rawGeography;
+        private GeographicPoint _sampledGeography;
 
         /// <summary>Gets the latest accepted position sample time, or null for arrival-timed input.</summary>
         /// <value>The original SDK timestamp for the stored position; null before timed input or after a spatial clock reset.</value>
@@ -103,6 +106,8 @@ namespace Emas
         internal double RotationReceivedTime => _data.RotationReceivedTime;
 
         internal PoseHistory History => _history;
+
+        internal GeographicInput Geographic => _geographic;
 
         internal long PositionVersion => _data.PositionVersion;
 
@@ -285,7 +290,7 @@ namespace Emas
         /// <exception cref="ArgumentOutOfRangeException">The geographic input is invalid or conversion produces nonfinite ECEF coordinates.</exception>
         public void SetGeographicPosition(GeoPosition position, Timestamp? sampleTime = null)
         {
-            StorePosition(position.ToEarthCentered(), sampleTime);
+            StorePosition(_geographic.Position(position), sampleTime);
         }
 
         /// <summary>
@@ -479,6 +484,14 @@ namespace Emas
             return visible;
         }
 
+        internal GeographicBasis BasisAt(Double3 position)
+        {
+            // The observed point is sampled repeatedly by model preparation. Keep it
+            // separate from interpolated/presented points to avoid evicting it on previews.
+            return position == Position ? _rawGeography.Get(position, _geographic)
+                : _sampledGeography.Get(position, _geographic);
+        }
+
         internal void SetInRange(bool value)
         {
             _suppression.SetInRange(this, value);
@@ -486,11 +499,20 @@ namespace Emas
 
         private Quaternion ProjectRotation(ReferenceFrame.Projection projection, Quaternion rotation, Double3 position)
         {
-            return _earthCenteredBodyAxes.HasValue
-                ? projection.ToUnityEarthCenteredRotation(rotation, _earthCenteredBodyAxes.Value)
-                : _rotationSpace == Emas.RotationSpace.Geographic
-                    ? projection.ToUnityGeographicRotation(rotation, position)
-                    : projection.ToUnityRotation(rotation, position);
+            if (_earthCenteredBodyAxes.HasValue)
+            {
+                return projection.ToUnityEarthCenteredRotation(rotation, _earthCenteredBodyAxes.Value);
+            }
+
+            if (projection.IsGeographic)
+            {
+                GeographicBasis basis = BasisAt(position);
+                return _rotationSpace == Emas.RotationSpace.Geographic
+                    ? projection.ToUnityGeographicRotation(rotation, basis) : projection.ToUnityRotation(rotation, basis);
+            }
+
+            return _rotationSpace == Emas.RotationSpace.Geographic
+                ? projection.ToUnityGeographicRotation(rotation, position) : projection.ToUnityRotation(rotation, position);
         }
 
         private void ResetPoseHistory()

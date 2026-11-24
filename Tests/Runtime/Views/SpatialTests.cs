@@ -629,6 +629,73 @@ namespace Emas.Tests
             Assert.That(ActiveView(target), Is.SameAs(view));
         }
 
+        /// <summary>Independent geographic input channels retain their tangent origins and validate stale packets while height, origins and input representations change.</summary>
+        [Test]
+        public void GeographicInputs_KeepIndependentOriginsAcrossRepeatedAndChangedSamples()
+        {
+            TestGhost ghost = _source.Publish("independent geographic traits");
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            Extrapolation motion = ghost.gameObject.AddComponent<Extrapolation>();
+            motion.MaximumExtrapolation = 0;
+            GeoPosition first = new GeoPosition(48, 11, 1000);
+            GeoPosition second = new GeoPosition(-30, -70, -100);
+            GeoPosition angularOrigin = new GeoPosition(10, 120, 0);
+            Double3 velocity = new Double3(3, 4, 5);
+            Double3 acceleration = new Double3(1, 2, 3);
+            Double3 angular = new Double3(0.01d, 0.02d, 0.03d);
+            GeoPosition[] positions = { first, new GeoPosition(48, 11, 1250), second, first };
+            for (int index = 0; index < positions.Length; index++)
+            {
+                GeoPosition position = positions[index];
+                Timestamp time = new Timestamp(1000 + index, 0);
+                _realm.ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = position };
+                // Model separate physical traits, including different SDK tangent origins.
+                motion.SetGeographicVelocity(velocity, position, time);
+                if (index == 2)
+                {
+                    spatial.SetEarthCenteredPosition(position.ToEarthCentered(), time);
+                }
+                else
+                {
+                    spatial.SetGeographicPosition(position, time);
+                }
+
+                motion.SetGeographicAcceleration(acceleration, second, time);
+                motion.SetGeographicAngularVelocity(angular, angularOrigin, time);
+                spatial.SetGeographicRotation(0, 0, 0, time);
+                _realm.Update();
+                Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()));
+                Assert.That(motion.Velocity, Is.EqualTo(position.ToEarthCenteredVector(velocity)));
+                Assert.That(motion.Acceleration, Is.EqualTo(second.ToEarthCenteredVector(acceleration)));
+                Assert.That(motion.AngularVelocity, Is.EqualTo(angularOrigin.ToEarthCenteredVector(angular)));
+                AssertPosition(ghost.transform.position, Vector3.zero, 0.001f);
+                AssertRotation(ghost.transform.rotation, Quaternion.identity);
+
+                // Repeat the same timed input after other channels changed their origins.
+                // A height-only change cannot affect vector axes or make this packet fresh.
+                GeoPosition sameAxes = new GeoPosition(position.LatitudeDegrees, position.LongitudeDegrees, position.HeightMeters + 50);
+                motion.SetGeographicVelocity(velocity, sameAxes, time);
+                spatial.SetGeographicPosition(position, time);
+                Assert.That(spatial.PositionTime, Is.EqualTo(time));
+                Assert.That(motion.Velocity, Is.EqualTo(position.ToEarthCenteredVector(velocity)));
+            }
+
+            GeoPosition invalid = JsonUtility.FromJson<GeoPosition>("{\"_latitudeDegrees\":91,\"_longitudeDegrees\":11,\"_heightMeters\":1000}");
+            Assert.Throws<ArgumentOutOfRangeException>(() => spatial.SetGeographicPosition(invalid, new Timestamp(1, 0)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => motion.SetGeographicVelocity(velocity, invalid, new Timestamp(1, 0)));
+            for (int repeat = 0; repeat < 2; repeat++)
+            {
+                spatial.SetGeographicPosition(first);
+                motion.SetGeographicVelocity(velocity, first);
+                motion.SetGeographicAcceleration(acceleration, second);
+                motion.SetGeographicAngularVelocity(angular, angularOrigin);
+            }
+
+            Assert.That(spatial.PositionTime, Is.Null);
+            Assert.That(motion.HasVelocity && motion.HasAcceleration && motion.HasAngularVelocity, Is.True);
+            Assert.That(motion.Velocity, Is.EqualTo(first.ToEarthCenteredVector(velocity)));
+        }
+
         /// <summary>
         /// Bound WGS84 readers follow another anchor's position and full attitude without shrinking separation or rediscovery.
         /// </summary>

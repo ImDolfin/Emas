@@ -261,6 +261,8 @@ namespace Emas
 
         internal Timestamp? OldestPositionTime => _positions.OldestTime;
 
+        internal long Version { get; private set; }
+
         internal Timestamp? NewestRotationTime => _rotationCount == 0
             ? (Timestamp?)null : RotationAt(_rotationCount - 1).Time;
 
@@ -281,11 +283,13 @@ namespace Emas
 
         internal void AddPosition(Double3 position, Timestamp time)
         {
+            Version++;
             _positions.Add(position, time);
         }
 
         internal void AddRotation(Quaternion rotation, Timestamp time)
         {
+            Version++;
             if (_rotationCount > 0 && time.CompareTo(RotationAt(_rotationCount - 1).Time) <= 0)
             {
                 return;
@@ -305,16 +309,19 @@ namespace Emas
 
         internal void AddVelocity(Double3 velocity, Timestamp time)
         {
+            Version++;
             _velocities.Add(velocity, time);
         }
 
         internal void AddAcceleration(Double3 acceleration, Timestamp time)
         {
+            Version++;
             _accelerations.Add(acceleration, time);
         }
 
         internal void AddAngularVelocity(Double3 angularVelocity, Timestamp time)
         {
+            Version++;
             _angularVelocities.Add(angularVelocity, time);
         }
 
@@ -357,6 +364,7 @@ namespace Emas
 
         internal void RestartEstimation()
         {
+            Version++;
             // Reset derivative fits without discarding independently timed SDK data needed
             // for playback or interpolation. The latest sample seeds each new fitting window.
             _positionEstimateStart = NewestPositionTime;
@@ -450,12 +458,14 @@ namespace Emas
 
         internal void ClearPosition()
         {
+            Version++;
             _positions.Clear();
             _positionEstimateStart = null;
         }
 
         internal void ClearRotation()
         {
+            Version++;
             _rotationStart = 0;
             _rotationCount = 0;
             _rotationEstimateStart = null;
@@ -463,17 +473,20 @@ namespace Emas
 
         internal void ClearVelocity()
         {
+            Version++;
             _velocities.Clear();
             _velocityEstimateStart = null;
         }
 
         internal void ClearAcceleration()
         {
+            Version++;
             _accelerations.Clear();
         }
 
         internal void ClearAngularVelocity()
         {
+            Version++;
             _angularVelocities.Clear();
             _angularEstimateStart = null;
         }

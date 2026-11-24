@@ -520,6 +520,13 @@ namespace Emas
                     for (int index = 0; index < traits.Count; index++)
                     {
                         Trait trait = traits[index];
+                        // Unbound traits and presentation-only traits cannot call user code.
+                        // Check ownership immediately before each actual reader instead.
+                        if (trait == null || !trait.enabled || !trait.NeedsRefresh)
+                        {
+                            continue;
+                        }
+
                         // An earlier reader may restart the detector or change owners. Stop using the old readers then.
                         if (!CanFinalize(record, onlyOwner) || record.Owner != owner
                             || record.RegistrationGeneration != generation || record.OwnershipVersion != ownership)
@@ -527,10 +534,7 @@ namespace Emas
                             break;
                         }
 
-                        if (trait != null && trait.enabled)
-                        {
-                            trait.Refresh();
-                        }
+                        trait.Refresh();
                     }
                 }
                 catch (Exception exception)

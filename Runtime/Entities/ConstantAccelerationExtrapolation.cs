@@ -18,6 +18,18 @@ namespace Emas
             AngularVelocity
         }
 
+        private struct LinearMotion
+        {
+            internal Double3? Velocity;
+            internal Double3? Acceleration;
+        }
+
+        private struct AngularMotion
+        {
+            internal Double3 Velocity;
+            internal Double3 Acceleration;
+        }
+
         private struct Fit
         {
             internal double Count;
@@ -102,25 +114,29 @@ namespace Emas
                 return default(Double3);
             }
 
-            Double3? velocity = context.Velocity;
-            Double3? acceleration = context.Acceleration;
-            if (context.ObservationTime.HasValue)
+            if (!context.TryPrediction(typeof(ConstantAccelerationExtrapolation), 0, 0, out LinearMotion motion))
             {
-                try
+                motion = new LinearMotion { Velocity = context.Velocity, Acceleration = context.Acceleration };
+                if (context.ObservationTime.HasValue)
                 {
-                    EstimateLinear(context, ref velocity, ref acceleration);
+                    try
+                    {
+                        EstimateLinear(context, ref motion.Velocity, ref motion.Acceleration);
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        // Unrepresentable fits cannot invalidate otherwise usable SDK motion.
+                        motion.Velocity = context.Velocity;
+                        motion.Acceleration = context.Acceleration;
+                    }
                 }
-                catch (ArgumentOutOfRangeException)
-                {
-                    // Unrepresentable fits cannot invalidate otherwise usable SDK motion.
-                    velocity = context.Velocity;
-                    acceleration = context.Acceleration;
-                }
+
+                context.StorePrediction(typeof(ConstantAccelerationExtrapolation), 0, 0, motion);
             }
 
             // Acceleration alone does not tell us the starting velocity.
-            return velocity.HasValue ? velocity.Value * seconds
-                + acceleration.GetValueOrDefault() * (0.5d * seconds * seconds) : default(Double3);
+            return motion.Velocity.HasValue ? motion.Velocity.Value * seconds
+                + motion.Acceleration.GetValueOrDefault() * (0.5d * seconds * seconds) : default(Double3);
         }
 
         /// <summary>Integrates angular velocity and history-derived angular acceleration in the supplied body or world frame.</summary>
@@ -137,22 +153,26 @@ namespace Emas
                 return Quaternion.identity;
             }
 
-            Double3 velocity = context.AngularVelocity.GetValueOrDefault();
-            Double3 acceleration = default(Double3);
-            if (context.ObservationTime.HasValue)
+            if (!context.TryPrediction(typeof(ConstantAccelerationExtrapolation), 1, 0, out AngularMotion motion))
             {
-                try
+                motion = new AngularMotion { Velocity = context.AngularVelocity.GetValueOrDefault() };
+                if (context.ObservationTime.HasValue)
                 {
-                    EstimateAngular(context, ref velocity, ref acceleration);
+                    try
+                    {
+                        EstimateAngular(context, ref motion.Velocity, ref motion.Acceleration);
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        motion.Velocity = context.AngularVelocity.GetValueOrDefault();
+                        motion.Acceleration = default(Double3);
+                    }
                 }
-                catch (ArgumentOutOfRangeException)
-                {
-                    velocity = context.AngularVelocity.GetValueOrDefault();
-                    acceleration = default(Double3);
-                }
+
+                context.StorePrediction(typeof(ConstantAccelerationExtrapolation), 1, 0, motion);
             }
 
-            return IntegrateAngular(velocity, acceleration, seconds, context.AngularVelocityIsWorld);
+            return IntegrateAngular(motion.Velocity, motion.Acceleration, seconds, context.AngularVelocityIsWorld);
         }
 
         private static void EstimateLinear(in ExtrapolationContext context, ref Double3? velocity, ref Double3? acceleration)
@@ -206,7 +226,7 @@ namespace Emas
                             return;
                         }
 
-                        GeographicBasis basis = new GeographicBasis(GeoPosition.FromEarthCentered(context.ObservationPosition.Value));
+                        GeographicBasis basis = context.GeographicBasis;
                         slope = basis.ToLocal(slope) * -1d;
                     }
 

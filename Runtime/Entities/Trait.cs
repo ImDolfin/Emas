@@ -32,6 +32,8 @@ namespace Emas
             }
         }
 
+        internal virtual bool NeedsRefresh => true;
+
         internal abstract void Refresh();
         internal abstract void ClearBinding();
     }

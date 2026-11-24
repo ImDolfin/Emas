@@ -58,6 +58,8 @@ namespace Emas
             }
         }
 
+        internal override bool NeedsRefresh => false;
+
         /// <summary>Discards both filter histories so the next projection uses the current input directly.</summary>
         /// <remarks>Also clears any live-tuning transition. Retains settings, raw Spatial input and separate Extrapolation history.</remarks>
         public void Reset()

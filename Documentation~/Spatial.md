@@ -312,6 +312,14 @@ Body rates are true angular-vector components, not Euler-angle derivatives. A bo
 
 Motion is sampled at each pose channel's own observation time; future-only samples are excluded. Accepted angular body/world frame changes clear incompatible history. Call `ClearVelocity`, `ClearAcceleration` or `ClearAngularVelocity` when a supplied channel disappears; clearing angular velocity restores history estimation. Resetting estimates retains supplied channels.
 
+## Input and prediction work
+
+Separate physical-value traits can keep using the existing Spatial and Extrapolation setters. Each root shares geographic tangent calculations across position, velocity, acceleration and angular input. Unchanged geographic input reuses its conversion. Height-only changes preserve vector axes. Explicit SDK tangent origins stay independent for each motion channel, and stale packets still validate their input.
+
+Bound trait readers continue running each update. Unbound and presentation-only traits skip the reader pass. Ownership and source-generation checks remain immediately before each application reader and Ghost callback, including removal, restart and replacement during callbacks.
+
+Built-in strategies reuse prepared motion on their owning Extrapolation component. Preparation depends on observations, eligible history, source axes and model settings; each requested duration still evaluates its own future pose. Position and orientation keep independent sampling times. New observations, history resets and live model-setting changes invalidate the relevant preparation. Shared strategy instances retain no mutable entity state, and custom strategy callbacks keep their existing evaluation behavior.
+
 ## Implement a custom strategy
 
 Implement `IExtrapolationStrategy` with deterministic, non-mutating methods. Both receive `ExtrapolationContext` and bounded seconds; preview/tangent evaluation may call them repeatedly. Return zero displacement or identity rotation at zero seconds. Return finite source-space displacement and a finite nonzero quaternion offset.

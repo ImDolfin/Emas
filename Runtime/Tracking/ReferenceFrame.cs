@@ -26,13 +26,15 @@ namespace Emas
 
             internal CoordinateSystem Coordinates => _coordinates;
 
+            internal bool IsGeographic => _space == ReferenceSpace.Geographic;
+
             internal Projection(bool hasPosition, Double3 position, Vector3 unityPosition, Quaternion alignment, CoordinateSystem coordinates, double? maxDistance,
-                ReferenceSpace space = ReferenceSpace.Cartesian)
+                ReferenceSpace space = ReferenceSpace.Cartesian, GeographicBasis? geographicBasis = null)
             {
                 _hasPosition = hasPosition;
                 _space = space;
                 _geographicBasis = space == ReferenceSpace.Geographic && hasPosition
-                    ? new GeographicBasis(GeoPosition.FromEarthCentered(position)) : default;
+                    ? geographicBasis ?? new GeographicBasis(GeoPosition.FromEarthCentered(position)) : default;
                 _coordinates = coordinates;
                 _position = position;
                 _unityPosition = unityPosition;
@@ -103,6 +105,17 @@ namespace Emas
                     * _coordinates.ToUnityRotation(rotation), nameof(rotation));
             }
 
+            internal Quaternion ToUnityRotation(Quaternion rotation, in GeographicBasis basis)
+            {
+                return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(basis)
+                    * _coordinates.ToUnityRotation(rotation), nameof(rotation));
+            }
+
+            internal Quaternion ToUnityGeographicRotation(Quaternion rotation, in GeographicBasis basis)
+            {
+                return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(basis) * rotation, nameof(rotation));
+            }
+
             internal Quaternion ToUnityGeographicRotation(Quaternion rotation, Double3 position)
             {
                 if (_space != ReferenceSpace.Geographic)
@@ -156,6 +169,7 @@ namespace Emas
         private Key? _followedGhost;
         private bool _hasPosition;
         private bool _isReferenceAvailable;
+        private GeographicPoint _geography;
         private TimestampClock _timestampClock;
         private double _clockOffset;
         private float _predictionTime;
@@ -678,8 +692,8 @@ namespace Emas
             {
                 try
                 {
-                    GeoPosition.FromEarthCentered(spatial.Position);
-                    GeoPosition.FromEarthCentered(spatial.PresentationPosition);
+                    spatial.BasisAt(spatial.Position);
+                    spatial.BasisAt(spatial.PresentationPosition);
                 }
                 catch (ArgumentOutOfRangeException)
                 {
@@ -696,6 +710,10 @@ namespace Emas
             // Follow the predicted and smoothed pose so the reference matches its displayed root.
             _position = spatial.PresentationPosition;
             _hasPosition = true;
+            if (_space == ReferenceSpace.Geographic)
+            {
+                _geography.Set(_position, spatial.BasisAt(_position));
+            }
 
             // Position-only updates keep the previous rotation and whether it uses local or ECEF axes.
             if (spatial.HasRotation)
@@ -708,6 +726,8 @@ namespace Emas
 
         internal Projection Capture()
         {
+            GeographicBasis basis = _space == ReferenceSpace.Geographic && _hasPosition
+                ? _geography.Get(_position) : default(GeographicBasis);
             // Convert the saved rotation from its source, local or ECEF axes into local Unity axes.
             Quaternion referenceRotation = _rotationSpace == Emas.RotationSpace.Geographic
                 ? _rotation : _coordinates.ToUnityRotation(_rotation);
@@ -720,15 +740,14 @@ namespace Emas
             {
                 RequireGeographic();
                 referenceRotation = _hasPosition
-                    ? new GeographicBasis(GeoPosition.FromEarthCentered(_position))
-                        .ToLocalEarthCenteredRotation(_rotation, _earthCenteredBodyAxes.Value)
+                    ? basis.ToLocalEarthCenteredRotation(_rotation, _earthCenteredBodyAxes.Value)
                     : Quaternion.identity;
             }
 
             // Remove the reference rotation, then apply the desired Unity scene rotation.
             Quaternion alignment = _unityRotation * (FollowRotation ? Quaternion.Inverse(referenceRotation) : Quaternion.identity);
             return new Projection(_hasPosition, _position, _unityPosition,
-                SpatialMath.NormalizeRotation(alignment, nameof(Rotation)), _coordinates, _maxDistance, _space);
+                SpatialMath.NormalizeRotation(alignment, nameof(Rotation)), _coordinates, _maxDistance, _space, basis);
         }
 
         internal static void ValidatePosition(Double3 position, string parameter)

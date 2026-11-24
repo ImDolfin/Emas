@@ -9,9 +9,9 @@ namespace Emas
     [Serializable]
     public struct GeoPosition
     {
-        private const double SemiMajorAxis = 6378137.0;
+        internal const double SemiMajorAxis = 6378137.0;
+        internal const double EccentricitySquared = Flattening * (2.0 - Flattening);
         private const double Flattening = 1.0 / 298.257223563;
-        private const double EccentricitySquared = Flattening * (2.0 - Flattening);
         private const double RadiansPerDegree = Math.PI / 180.0;
 
         [Tooltip("WGS84 latitude in degrees north, from -90 to 90.")]
