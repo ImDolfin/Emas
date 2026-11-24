@@ -235,11 +235,6 @@ namespace Emas.Editor
                     : ObjectNames.NicifyVariableName(extrapolation.Strategy.GetType().Name).Replace(" Extrapolation", string.Empty));
                 // Buffered playback still applies when prediction and both filters are disabled.
                 InspectorLayout.ReadOnly("Playback delay", ghost.Anchor.Realm.InterpolationDelay.ToString("G4") + " s");
-                if (extrapolation != null)
-                {
-                    InspectorLayout.ReadOnly("Forward prediction", extrapolation.PredictionTime.ToString("G4") + " s"
-                        + (!extrapolation.enabled || extrapolation.MaximumExtrapolation <= 0 ? " (inactive)" : string.Empty));
-                }
                 if (!compact)
                 {
                     // Show the Unity coordinates in the full window to keep the overlay small.

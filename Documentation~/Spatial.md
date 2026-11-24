@@ -102,7 +102,21 @@ Use one shared SDK clock per Realm, advancing in real-time seconds. `Timestamp` 
 
 Channels independently reject older/duplicate timed samples. A newer stationary observation refreshes age. Untimed input clears that channel's ordering guard; repeated identical untimed positions and rotations do not refresh age. This lets prediction continue while readers reread an SDK cache between packets. Even small quaternion component changes refresh untimed rotation age; changing the attitude representation or ECEF body axes also counts as fresh input. `PositionTime` and `RotationTime` expose the accepted times.
 
-The Realm aligns SDK time from the least-delayed observed arrival and advances with Unity's unscaled clock. Every root uses one captured presentation time. This estimates relative packet age; absolute transport latency remains unknown. For unrelated SDK clocks, use separate Realms or convert clocks in the application.
+With Unix creation timestamps on the followed Ghost, that aircraft drives the Realm's timeline. Emas compares creation time with UTC at receipt and takes rolling medians over its latest 31 distinct packets. Duplicate channel timestamps and repeated cached reads count once. This removes measured delivery age from clock alignment and selects current UTC as the shared target, advancing with Unity's unscaled clock between arrivals. Other entities cannot advance that clock. Packet jitter cannot move the target backward. Replacing the reference or resetting spatial time clears its offset history.
+
+`ReferenceFrame.TimestampClock` defaults to `Automatic`. It recognizes reference timestamps within one day of calibrated host UTC as Unix seconds/nanoseconds. No extra SDK clock calls are needed. Set it to `Unix` for timestamps outside that detection window, or `Simulation` for an arbitrary epoch, replay or a simulation clock that happens to resemble UTC. Source and host UTC clocks must agree after calibration for measured packet ages to be accurate. Arbitrary simulation clocks retain least-delayed-arrival alignment across roots; their absolute delivery delay remains unknown.
+
+Reference clock configuration is code-only. Set `ReferenceFrame.ClockOffset` to `simulation UTC - host UTC`. For a simulation clock 80 ms ahead, use `0.080`; for 80 ms behind, use `-0.080`:
+
+```csharp
+realm.ReferenceFrame.ClockOffset = 0.080;
+```
+
+The clock uses `simulation now = host UTC now + ClockOffset`. Calibrate this difference independently of packet delivery delay. The reference applies it once to the entire Realm. Ghosts supply timestamped observations and retain their own motion processing; they do not store clock configuration. Keep raw creation timestamps unchanged and leave `ReferenceFrame.PredictionTime` at zero for automatic age compensation. Changes reset alignment on the next projection pass, including corrections toward an earlier time. `Simulation` mode ignores this UTC correction because relative alignment already absorbs clock origins. The default offset is zero.
+
+`Realm.ProjectedTime` exposes the timestamp selected by the last projection pass, including shared forward prediction and playback delay. It stays fixed between passes. Each entity samples or predicts from its own creation time toward that shared target using its selected strategy and prediction limit. Attachments inherit their parent; distant direct-pose entities still bypass prediction.
+
+Unix creation timestamps align independently aged observations automatically without a manual forward interval. Different delays require different extrapolation durations toward the same target. For unrelated SDK clocks, use separate Realms or convert clocks in the application.
 
 Call `realm.ResetSpatialTime()` before publishing after an SDK clock restart. It clears alignment, ordering and presentation histories while retaining raw pose, supplied motion and settings.
 
@@ -131,9 +145,9 @@ A half-life is seconds to halve remaining correction error: 50% remains after on
 
 With timed SDK velocity supplied through Extrapolation, position filtering compensates observed motion and filters measurement error. This works with Extrapolation disabled or a zero horizon. With prediction enabled, changes in predicted lead apply separately from position noise. New observations retain motion assistance after earlier packets reach the horizon; a held sample at its cap adds no motion. Recorded motion integrates velocity segments rather than applying later acceleration retroactively.
 
-Without SDK velocity and timed observations, moving inputs have ordinary low-pass lag, approximately `speed * halfLife / ln(2)`. Position-derived velocity is not used to compensate this filter because that would pass position noise through. Angular velocity supplies gap prediction but does not provide rotation-filter motion assistance.
+With timed angular motion, rotation filtering also advances by the selected model's known turn before smoothing the remaining attitude error. Body and world angular rates retain their composition convention. Pose-derived angular rates are filtered before motion assistance so differentiated measurement noise does not bypass correction filtering. Supplied rates are used directly. Constant-rate turns therefore converge without requiring extra forward prediction to compensate the rotation half-life. At the prediction cap, motion assistance stops with the target. Without timed motion, moving inputs retain ordinary low-pass lag, approximately `speed * halfLife / ln(2)`. Position-derived velocity is not used to compensate this filter because that would pass position noise through.
 
-Following a Ghost's orientation also follows its angular filtering. Use zero/small, comparable rotation half-lives when reference/peer alignment matters. Other roots' position filters do not add lag to reference changes.
+Following a Ghost's orientation also follows its filtered correction error. Strong filtering still takes longer to accept corrections or unobserved changes in motion. Other roots' position filters do not add lag to reference changes.
 
 Live edits to horizons, half-lives, enabled states, buffering or strategy instances retain history and blend their presentation difference over 0.25 unscaled seconds. Repeated edits rebase the correction while normal motion continues. Raw input is unaffected. For a teleport, supply the new pose and motion, then call `Spatial.ResetPresentation()` to reset playback, estimates, filters and transitions. `Smoothing.Reset()` resets only its filter and tuning; supplied motion remains separate.
 
@@ -164,19 +178,23 @@ extrapolation.Strategy = new NoExtrapolation();
 
 ### Request actual forward prediction
 
-**Forward prediction (s)** is `Extrapolation.PredictionTime`. It requests an actual interval from each received observation, using the selected existing strategy. **Prediction limit (s)** is `MaximumExtrapolation`; increasing that limit alone does not request a longer interval.
+When following timed data, `ReferenceFrame.PredictionTime` requests a shared forward interval through the code API. Each entity uses its selected strategy to reach that target. Without a timed followed reference, **Forward prediction (s)** uses the individual `Extrapolation.PredictionTime`. **Prediction limit (s)** is `MaximumExtrapolation`; increasing that limit alone does not request a longer interval.
 
 ```csharp
 extrapolation.Strategy = new ConstantAccelerationExtrapolation();
-extrapolation.PredictionTime = 0.2f;       // Request 200 ms from each received pose.
+realm.ReferenceFrame.PredictionTime = 0.2f; // Request 200 ms from the followed observation.
 extrapolation.MaximumExtrapolation = 0.5f; // Allow up to 500 ms of total prediction.
 ```
 
 A pose sampled at SDK time 0.2 targets time 0.4 at receipt with this configuration. If its known delivery age is already 0.1 seconds, that age counts toward the 0.2-second interval; it is not added twice. When the known age exceeds the requested interval, ordinary age-based prediction still catches up. Time after receipt continues advancing the pose until the limit is reached. Position and rotation use their own observation times and rates.
 
-This works with Constant Velocity, Constant Acceleration, Singer and Coordinated Turn. No Extrapolation still holds recorded poses. The setting defaults to zero, preserving ordinary age-based prediction. Its calculation belongs to the Extrapolation trait; no SDK adapter, packet or timestamp interface changes are needed. Live edits blend over 0.25 unscaled seconds.
+This works with Constant Velocity, Constant Acceleration, Singer and Coordinated Turn. No Extrapolation still holds recorded poses. The interval defaults to zero for ordinary age-based prediction. The reference selects the timeline and each entity's motion processing applies its strategy; no SDK adapter, packet or timestamp setter changes are needed.
 
-The shared clock cannot identify constant transport latency from an unrelated SDK epoch. Forward prediction supplies the requested interval even when clock alignment hides that constant delay. For example, 100 ms of forward prediction removes the steady bank offset from a stream delayed uniformly by 100 ms at a constant known angular rate. Configure peer intervals to reach the same presentation time; independently delayed streams may need different values.
+When following timed data, configure the shared interval through `ReferenceFrame.PredictionTime`. Individual trait intervals do not add their own lead, including on the followed Ghost. Older packets automatically require more extrapolation to reach the common `Realm.ProjectedTime`. Each entity retains its own strategy and `MaximumExtrapolation`; a capped entity can stop short of the shared target. The reference clock does not depend on a Ghost's processing traits being present or enabled. Without a timed followed Ghost, forward intervals remain per entity.
+
+With Unix creation timestamps, leave `ReferenceFrame.PredictionTime` at zero for automatic compensation to calibrated UTC. A nonzero interval requests a minimum duration from the reference observation, counting measured packet age once. For example, a 200 ms interval on a reference packet already 100 ms old adds only the remaining 100 ms beyond current UTC. All peers inherit the resulting target, with no separate lead tuning. Smoothing does not require more lead during known steady turns.
+
+An arbitrary simulation epoch cannot reveal constant transport latency. In `Simulation` mode, forward prediction can still supply a calibrated interval when alignment hides that delay. That remains one reference setting for the Realm.
 
 Timed playback buffering subtracts `Realm.InterpolationDelay` before prediction. With 50 ms of buffered playback, request 150 ms to retain a net 100 ms interval at receipt. Untimed input ignores that buffer. The total prediction beyond a recorded pose always remains limited by `MaximumExtrapolation`; zero or disabled Extrapolation also disables forward prediction.
 
@@ -198,7 +216,7 @@ Supplied/estimated rates, including zero, override the optional bank fallback. O
 
 `PacketSmoothingDuration` defaults to 0.1 unscaled seconds. Position uses a cubic Hermite error spline; rotation uses a spherical cubic quaternion correction. Accepted pose/motion updates advance the prior correction to the arrival time before rebasing its pose and tangent, so correction still progresses when a packet arrives every presentation frame. Held/rejected samples do not restart it. Each root owns its state, so immutable strategies can be shared. The correction reaches the capped trajectory with zero remaining correction/tangent at the end; it can finish after the extrapolation horizon.
 
-Zero duration bypasses packet correction. Omit Smoothing to evaluate cubic correction alone. With Smoothing present, its position assistance follows the corrected trajectory. Presentation/clock resets discard packet state. Custom models can request this pipeline through `IPacketSmoothingStrategy`.
+Zero duration bypasses packet correction. Omit Smoothing to evaluate cubic correction alone. With Smoothing present, known target velocity and angular rate advance its filters; movement from the packet correction curve remains error for the half-life filters to smooth. Smoothing therefore still reduces correction steps when cubic packet correction is enabled. Presentation/clock resets discard packet state. Custom models can request this pipeline through `IPacketSmoothingStrategy`.
 
 ## Supply SDK motion
 

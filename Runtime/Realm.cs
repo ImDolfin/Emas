@@ -153,6 +153,18 @@ namespace Emas
             }
         }
 
+        /// <summary>Gets the shared simulation time selected by the last spatial projection pass.</summary>
+        /// <value>The estimated SDK timestamp, or null before timed input, after a clock reset or after disposal.</value>
+        /// <remarks>
+        /// Read on Unity's main thread. Unix creation times on a followed Ghost supply median UTC clock alignment
+        /// and automatic delivery-age compensation. ReferenceFrame selects the shared forward interval and clock
+        /// calibration through its code API. The timestamp includes InterpolationDelay. Each entity's strategy, prediction
+        /// limit and filters still determine its final pose. Without a timed followed Ghost, this is the estimated
+        /// playback baseline before individual forward intervals. Unix clocks must agree after ReferenceFrame.ClockOffset calibration;
+        /// arbitrary simulation epochs retain unknown absolute delivery delay. The value stays fixed between passes.
+        /// </remarks>
+        public Timestamp? ProjectedTime => _disposed ? (Timestamp?)null : _spatial.ProjectedTime;
+
         internal bool IsDisposed
         {
             get

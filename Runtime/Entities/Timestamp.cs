@@ -3,7 +3,9 @@ using System;
 namespace Emas
 {
     /// <summary>A sample time in a shared SDK clock, preserving whole seconds and nanoseconds separately.</summary>
-    /// <remarks>No epoch is assumed. All timestamps in one Realm must use the same clock; this is not Unity game time.</remarks>
+    /// <remarks>The value does not encode its epoch. All timestamps in one Realm must use the same clock.
+    /// Unix input uses seconds/nanoseconds since 1970-01-01 UTC; ReferenceFrame.TimestampClock
+    /// selects UTC or simulation-relative alignment. This is not Unity game time.</remarks>
     public readonly struct Timestamp : IComparable<Timestamp>, IEquatable<Timestamp>
     {
         /// <summary>Gets whole seconds in the SDK clock.</summary>
@@ -100,6 +102,22 @@ namespace Emas
             {
                 return (Seconds.GetHashCode() * 397) ^ Nanoseconds.GetHashCode();
             }
+        }
+
+        internal Timestamp OffsetBy(double seconds)
+        {
+            // Split the small relative interval before adding it to the integral epoch.
+            // Converting the absolute timestamp to double would lose nanosecond detail.
+            long whole = checked((long)Math.Floor(seconds));
+            long nanos = Nanoseconds + (long)((seconds - whole) * 1000000000d);
+            return new Timestamp(checked(Seconds + whole + nanos / 1000000000L), (uint)(nanos % 1000000000L));
+        }
+
+        internal static Timestamp UtcNow()
+        {
+            // DateTime UTC ticks retain sub-millisecond receipt precision without a double epoch conversion.
+            long ticks = DateTime.UtcNow.Ticks - 621355968000000000L;
+            return new Timestamp(ticks / TimeSpan.TicksPerSecond, (uint)((ticks % TimeSpan.TicksPerSecond) * 100L));
         }
     }
 }

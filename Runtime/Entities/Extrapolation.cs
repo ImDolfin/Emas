@@ -7,7 +7,7 @@ namespace Emas
     /// <remarks>
     /// Place beside Spatial; no reader binding is required. Motion and pose share one SDK clock and buffered
     /// playback time. Missing rates can be estimated from timed poses. Disabling this trait stops gap prediction but
-    /// retains supplied linear motion for Smoothing between observations.
+    /// retains supplied motion for Smoothing between observations.
     /// </remarks>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Spatial))]
@@ -16,7 +16,7 @@ namespace Emas
     {
         [Tooltip("Gap extrapolation model. Change at runtime to compare methods without losing observations or supplied motion.")]
         [SerializeReference] private IExtrapolationStrategy _strategy = new ConstantAccelerationExtrapolation();
-        [Tooltip("Requested forward interval in seconds from each observation at receipt, shared by every strategy. A 0.2 s interval predicts a pose at time 0.2 toward time 0.4. Known sample age counts toward this interval; the prediction limit caps the total. Zero adds no forward time.")]
+        [Tooltip("Requested forward interval in seconds from receipt, shared by every strategy. A timed followed reference uses ReferenceFrame.PredictionTime instead of individual intervals. Known sample age counts toward it, and each root retains its own prediction limit. Zero adds no forward time.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _predictionTime;
         [Tooltip("Maximum total prediction in seconds beyond a recorded pose, including forward prediction time. This is a limit, not a requested duration. Zero disables prediction.")]
@@ -50,6 +50,9 @@ namespace Emas
         private long _contextPositionVersion;
         private long _contextRotationVersion;
         private long _contextMotionVersion;
+        private bool _hasRotationMotion;
+        private Timestamp? _rotationMotionSampleTime;
+        private double _rotationMotionOffset;
 
         /// <summary>Gets or sets the linear and angular gap extrapolation model on Unity's main thread.</summary>
         /// <value>A non-null strategy; defaults to <see cref="ConstantAccelerationExtrapolation"/>.</value>
@@ -81,6 +84,8 @@ namespace Emas
         /// targets SDK time 0.4 at receipt when its known age is at most 0.2 and the limit is at least 0.2.
         /// Buffered playback consumes forward time first. Applies to every strategy;
         /// NoExtrapolation still holds recorded poses. Disabling this trait or a zero limit disables forward prediction.
+        /// ReferenceFrame.PredictionTime supplies the shared interval when following timed data; individual intervals are ignored.
+        /// Each peer retains its own strategy and prediction limit. Without a timed followed Ghost, intervals are individual.
         /// Live edits blend over 0.25 unscaled seconds. Raw input and SDK timestamps remain unchanged.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN or infinite.</exception>
         public float PredictionTime
@@ -329,6 +334,7 @@ namespace Emas
         {
             // Keep motion supplied by the application. Clear estimated motion and this root's filter state.
             _hasContext = false;
+            _hasRotationMotion = false;
             _positionVersion = -1;
             _previousTime = null;
             _hasEstimatedVelocity = false;
@@ -350,7 +356,12 @@ namespace Emas
         internal double PredictionTimestamp(SpatialClock clock, Timestamp? sampleTime, double receivedTime,
             double timestamp, float predictionTime)
         {
-            // Count known sample age toward the requested interval, then keep advancing after receipt.
+            if (clock.HasReference)
+            {
+                return clock.PredictionTimestamp(timestamp);
+            }
+
+            // Count known sample age toward an individual interval only when no timed reference owns the timeline.
             // This makes a 0.2-second request start at the observed pose without adding known latency twice.
             return predictionTime > 0
                 ? timestamp + Math.Max(0d, predictionTime - clock.Age(sampleTime, receivedTime, receivedTime)) : timestamp;
@@ -406,17 +417,69 @@ namespace Emas
         }
 
         internal PresentationPose SmoothPacket(Spatial spatial, PresentationPose pose, Double3 velocity,
-            Double3 angularVelocity, double timestamp, float duration, bool preview, out Double3 motion)
+            Double3 angularVelocity, double timestamp, float duration, bool preview, out Double3 motion, out Quaternion rotationMotion)
         {
             // Try settings on a copy so previews do not change the saved correction state.
             PacketSmoother smoother = _packetSmoother;
-            pose = smoother.Apply(spatial, pose, velocity, angularVelocity, _motionVersion, timestamp, duration, out motion);
+            pose = smoother.Apply(spatial, pose, velocity, angularVelocity, _motionVersion, timestamp, duration, out motion, out rotationMotion);
             if (!preview)
             {
                 _packetSmoother = smoother;
             }
 
             return pose;
+        }
+
+        internal Quaternion RotationMotion(Spatial spatial, double offset, float maximumExtrapolation,
+            IExtrapolationStrategy strategy, CoordinateSystem sourceAxes, bool preview, bool enabled, out bool world)
+        {
+            world = false;
+            bool timed = spatial.RotationTime.HasValue;
+            double endpoint = timed ? Math.Min(offset, maximumExtrapolation) : 0;
+            if (timed && spatial.History.OldestRotationTime.HasValue)
+            {
+                endpoint = Math.Max(endpoint, spatial.History.OldestRotationTime.Value.ElapsedSince(spatial.RotationTime.Value));
+            }
+
+            double step = 0;
+            if (_hasRotationMotion && timed == _rotationMotionSampleTime.HasValue)
+            {
+                step = timed ? Math.Max(0d, endpoint - _rotationMotionSampleTime.Value.ElapsedSince(spatial.RotationTime.Value) - _rotationMotionOffset)
+                    : Math.Min(_elapsed, Math.Max(0d, maximumExtrapolation - Math.Max(0d, offset - _elapsed)));
+                // A new packet or clock update can move the sampled timeline much farther than
+                // one frame. Treat the excess as a correction instead of bypassing its filter.
+                step = Math.Min(step, _elapsed);
+            }
+
+            if (!preview)
+            {
+                _hasRotationMotion = true;
+                _rotationMotionSampleTime = spatial.RotationTime;
+                _rotationMotionOffset = endpoint;
+            }
+
+            if (step <= 0 || !enabled)
+            {
+                return Quaternion.identity;
+            }
+
+            try
+            {
+                // Advance the filter by the model's angular motion, rather than by the noisy
+                // difference between two packets. A capped target contributes no further motion.
+                ExtrapolationContext context = CreateContext(spatial, sourceAxes, spatial.RotationTime);
+                world = context.AngularVelocityIsWorld;
+                return RotationDisplacement(spatial, context, strategy, sourceAxes, step);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return Quaternion.identity;
+            }
+        }
+
+        internal bool EstimatesAngularMotion(Spatial spatial, CoordinateSystem sourceAxes)
+        {
+            return CreateContext(spatial, sourceAxes, spatial.RotationTime).AngularVelocityIsEstimated;
         }
 
         internal void ResetPacketRotation()
@@ -444,16 +507,7 @@ namespace Emas
             {
                 // Read motion at the rotation sample time, then predict up to the time limit.
                 ExtrapolationContext context = CreateContext(spatial, sourceAxes, spatial.RotationTime);
-                Quaternion displacement = SpatialMath.NormalizeRotation(
-                    strategy.ExtrapolateRotation(context, Math.Min(offset, maximumExtrapolation)), nameof(strategy));
-                if (spatial.RotationSpace == RotationSpace.Source)
-                {
-                    displacement = sourceAxes.ToSourceRotation(displacement);
-                }
-                else if (!context.AngularVelocityIsWorld && spatial.RotationSpace == RotationSpace.EarthCentered)
-                {
-                    displacement = spatial.EarthCenteredBodyAxes.Value.ToSourceRotation(displacement);
-                }
+                Quaternion displacement = RotationDisplacement(spatial, context, strategy, sourceAxes, Math.Min(offset, maximumExtrapolation));
 
                 // Multiply body rotation changes on the right and world rotation changes on the left. Start from raw
                 // rotation each time so repeated updates and reference changes do not add prediction twice.
@@ -502,6 +556,22 @@ namespace Emas
             ClearAcceleration();
             ClearAngularVelocity();
             Reset();
+        }
+
+        private static Quaternion RotationDisplacement(Spatial spatial, in ExtrapolationContext context,
+            IExtrapolationStrategy strategy, CoordinateSystem sourceAxes, double seconds)
+        {
+            Quaternion displacement = SpatialMath.NormalizeRotation(strategy.ExtrapolateRotation(context, seconds), nameof(strategy));
+            if (spatial.RotationSpace == RotationSpace.Source)
+            {
+                displacement = sourceAxes.ToSourceRotation(displacement);
+            }
+            else if (!context.AngularVelocityIsWorld && spatial.RotationSpace == RotationSpace.EarthCentered)
+            {
+                displacement = spatial.EarthCenteredBodyAxes.Value.ToSourceRotation(displacement);
+            }
+
+            return displacement;
         }
 
         private ExtrapolationContext CreateContext(Spatial spatial, CoordinateSystem sourceAxes, Timestamp? observationTime)

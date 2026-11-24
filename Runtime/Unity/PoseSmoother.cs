@@ -13,6 +13,9 @@ namespace Emas
         private bool _hasRotation;
         private double _timestamp;
         private double _elapsed;
+        private Double3 _estimatedAngularRate;
+        private bool _hasEstimatedAngularRate;
+        private bool _estimatedAngularRateIsWorld;
 
         internal void Prepare(double timestamp)
         {
@@ -42,11 +45,31 @@ namespace Emas
             return _position;
         }
 
-        internal Quaternion Rotation(Quaternion target, float halfLife)
+        internal Quaternion Rotation(Quaternion target, float halfLife, Quaternion motion, bool world, bool estimated)
         {
-            // Exponential weighting preserves the half-life across varying update intervals; Slerp follows the shortest arc.
+            double weight = SpatialMath.IsFinite(halfLife) && halfLife > 0 ? 1d - Math.Exp(-LogTwo * _elapsed / halfLife) : 1d;
+            if (_hasRotation && estimated && halfLife > 0 && _elapsed > 0 && !motion.Equals(Quaternion.identity))
+            {
+                // Pose-derived rates contain differentiated measurement noise. Filter that rate
+                // before using it as motion assistance; a steady rate still converges without lag.
+                Double3 rate = SpatialMath.RotationRate(Quaternion.identity, motion, _elapsed);
+                _estimatedAngularRate = _hasEstimatedAngularRate && _estimatedAngularRateIsWorld == world
+                    ? _estimatedAngularRate * (1d - weight) + rate * weight : rate;
+                _hasEstimatedAngularRate = true;
+                _estimatedAngularRateIsWorld = world;
+                motion = SpatialMath.AngularDisplacement(_estimatedAngularRate, _elapsed);
+            }
+            else
+            {
+                // A held target at its cap must stop motion immediately, including an estimated rate.
+                _hasEstimatedAngularRate = false;
+            }
+
+            // Carry known turns before decaying the remaining attitude error. Body increments
+            // compose on the right; world increments compose on the left, matching extrapolation.
+            Quaternion predicted = world ? motion * _rotation : _rotation * motion;
             _rotation = _hasRotation && SpatialMath.IsFinite(halfLife) && halfLife > 0
-                ? Quaternion.Slerp(_rotation, target, (float)(1d - Math.Exp(-LogTwo * _elapsed / halfLife))) : target;
+                ? Quaternion.Slerp(predicted, target, (float)weight) : target;
             _hasRotation = true;
             return _rotation;
         }
@@ -59,6 +82,7 @@ namespace Emas
         internal void ResetRotation()
         {
             _hasRotation = false;
+            _hasEstimatedAngularRate = false;
         }
 
         internal void Reset()

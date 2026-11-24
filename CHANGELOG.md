@@ -2,6 +2,9 @@
 
 ## 0.2.0
 
+- Keep shared clock policy in the code-only ReferenceFrame.TimestampClock, ClockOffset and PredictionTime APIs. Ghosts supply timestamped data; the reference applies calibration once across the Realm and selects the shared target independently of Ghost processing traits.
+- Automatically compensate Unix creation timestamps on the followed Ghost against UTC receipt time using rolling medians. Expose the shared Realm.ProjectedTime while retaining individual models and caps. Support automatic Unix recognition, explicit UTC and arbitrary simulation epochs; reset alignment on reference changes and clock restarts.
+- Compensate angular smoothing with known model motion so sustained turns do not require extra prediction lead. Keep packet correction movement separate from motion assistance so half-life filters still reduce correction error when cubic correction is enabled.
 - Reduce steady-state update allocations by reusing population snapshots, Anchor/source tick buffers and detector callbacks. Avoid duplicate query component checks, repeated motion sampling and geographic tangent-axis calculations while retaining live component and input changes.
 - Add Unity Profiler markers for the Realm update, trait readers, Ghost behavior, projection, views and query notifications.
 - Add per-Anchor PoseProcessingDistance with live authoring controls. Distant entities project their latest raw pose without buffering, prediction, packet correction or smoothing; reference processing and visibility remain independent, and filters restart cleanly on return.

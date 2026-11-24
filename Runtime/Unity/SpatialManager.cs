@@ -15,6 +15,8 @@ namespace Emas
         private readonly List<Record> _chain = new List<Record>();
         private Record _preparedReference;
 
+        internal Timestamp? ProjectedTime => _clock.ProjectedTime;
+
         internal SpatialManager(Realm realm, IdentityMap identities)
         {
             _realm = realm;
@@ -29,7 +31,7 @@ namespace Emas
             try
             {
                 // Update the shared SDK clock before predicting any root, including the followed reference.
-                ObserveTimes(records);
+                UpdateClock(records, frame, timestamp, interpolationDelay);
                 ReferenceFrame.Projection projection = Capture(frame, timestamp, interpolationDelay);
                 for (int index = 0; index < records.Count && !_realm.IsDisposed; index++)
                 {
@@ -49,7 +51,7 @@ namespace Emas
                 double timestamp = Time.realtimeSinceStartupAsDouble;
                 float interpolationDelay = _realm.InterpolationDelay;
                 // Use timestamps from all anchors and the followed reference, even when updating only one root.
-                ObserveTimes(_identities.Snapshot());
+                UpdateClock(_identities.Snapshot(), frame, timestamp, interpolationDelay);
                 ProjectChain(record, Capture(frame, timestamp, interpolationDelay), timestamp, interpolationDelay);
             }
             finally
@@ -140,6 +142,50 @@ namespace Emas
                     spatial.PreparePresentation(_clock, timestamp, interpolationDelay, projection.Coordinates, directPose);
                 }
             }
+        }
+
+        private void UpdateClock(IReadOnlyList<Record> records, ReferenceFrame frame, double timestamp, float interpolationDelay)
+        {
+            Spatial reference = null;
+            Record record;
+            if (frame != null && frame.FollowedGhost.HasValue
+                && _identities.TryGetValue(frame.FollowedGhost.Value, out record) && CanProject(record))
+            {
+                reference = record.Ghost.GetComponent<Spatial>();
+                if (reference != null && (!reference.enabled || (!reference.PositionTime.HasValue && !reference.RotationTime.HasValue)))
+                {
+                    reference = null;
+                }
+            }
+
+            // Clock policy belongs to the reference; the followed Ghost supplies only observations.
+            _clock.SetReference(reference, frame != null ? frame.TimestampClock : TimestampClock.Automatic, frame != null ? frame.ClockOffset : 0d);
+            Timestamp? sampleTime = null;
+            double receivedTime = 0;
+            float predictionTime = 0;
+            if (reference != null)
+            {
+                // Use one observation per reference packet, preferring the newest independent channel.
+                // Equal channel timestamps use the first receipt instead of counting the packet twice.
+                bool rotationNewest = reference.RotationTime.HasValue
+                    && (!reference.PositionTime.HasValue || reference.RotationTime.Value.CompareTo(reference.PositionTime.Value) > 0);
+                sampleTime = rotationNewest ? reference.RotationTime : reference.PositionTime;
+                receivedTime = rotationNewest ? reference.RotationReceivedTime : reference.PositionReceivedTime;
+                if (reference.PositionTime.HasValue && Nullable.Equals(reference.PositionTime, reference.RotationTime))
+                {
+                    receivedTime = Math.Min(reference.PositionReceivedTime, reference.RotationReceivedTime);
+                }
+
+                double utcCapturedAt = Time.realtimeSinceStartupAsDouble;
+                _clock.ObserveReference(sampleTime.Value, receivedTime, utcCapturedAt, Timestamp.UtcNow());
+                predictionTime = frame.PredictionTime;
+            }
+            if (!_clock.HasUnixClock)
+            {
+                ObserveTimes(records);
+            }
+
+            _clock.Capture(timestamp, interpolationDelay, predictionTime, sampleTime, receivedTime);
         }
 
         private void ObserveTimes(IReadOnlyList<Record> records)

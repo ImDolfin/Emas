@@ -107,9 +107,13 @@ Root GameObjects are named by `Key.EntityId`; `Ghost.Name` is separate display m
 | `ReferenceFrame.FollowedGhost` / `FollowRotation` | Follow position and optionally cancel full reference orientation. |
 | `ReferenceFrame.UnityPosition` / `UnityRotation` / `MaxDistance` | Scene placement/alignment and optional positive presentation radius. |
 | `Realm.InterpolationDelay` | Nonnegative shared playback delay in seconds for timed channels. |
+| `Realm.ProjectedTime` | Read-only timestamp selected by the last projection pass, or null before timed input/reset/after disposal. Unix creation timestamps on the followed Ghost automatically target current UTC through median alignment. All peers share that target but retain their own model and cap. |
+| `ReferenceFrame.TimestampClock` | Code-only clock policy. `Automatic` recognizes reference timestamps within one day of calibrated host UTC as Unix seconds/nanoseconds. `Unix` forces UTC interpretation; `Simulation` retains an arbitrary epoch and relative-age alignment. |
+| `ReferenceFrame.ClockOffset` | Code-only signed seconds added to host UTC to obtain simulation UTC. Zero by default; positive means the simulation clock is ahead. Applies once to the Realm in Unix mode. Changes reset alignment on the next pass without changing raw timestamps. |
+| `ReferenceFrame.PredictionTime` | Code-only shared forward interval from the followed observation. Known age counts once. Default zero uses automatic age compensation; each entity retains its own strategy and cap. Independent of the followed Ghost's processing traits. |
 | `Realm.ResetSpatialTime()` | Reset SDK clock alignment and sample ordering before a restarted clock publishes. |
 | `Smoothing.PositionHalfLife` / `RotationHalfLife` | Independent nonnegative seconds to halve correction error; zero applies immediately. |
-| `Extrapolation.Strategy` / `PredictionTime` / `MaximumExtrapolation` | Existing motion algorithm, requested forward interval, and total prediction limit in seconds. A 0.2-second interval projects a received pose at SDK time 0.2 toward time 0.4 when the limit allows it. |
+| `Extrapolation.Strategy` / `PredictionTime` / `MaximumExtrapolation` | Motion algorithm, individual forward interval when no timed reference is followed, and total prediction limit in seconds. With a timed followed Ghost, ReferenceFrame.PredictionTime supplies the common target; individual trait intervals are ignored. |
 | Extrapolation motion setters / `ClearVelocity`, `ClearAcceleration`, `ClearAngularVelocity` | Optional independently timed motion; clear channels when unavailable. |
 
 Enabled Spatial owns the root's world pose. Optional Smoothing/Extrapolation modify presentation only. Original timestamps share one SDK clock; older/duplicate timed samples are ignored per channel. Supplied zero motion overrides estimates. Missing references/attachment parents and range suppression affect presentation, not tracking membership.

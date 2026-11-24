@@ -27,9 +27,10 @@ namespace Emas
         private bool _hasRotation;
 
         internal PresentationPose Apply(Spatial spatial, PresentationPose target, Double3 velocity,
-            Double3 angularVelocity, long motionVersion, double timestamp, float duration, out Double3 motion)
+            Double3 angularVelocity, long motionVersion, double timestamp, float duration, out Double3 motion, out Quaternion rotationMotion)
         {
             motion = default(Double3);
+            rotationMotion = Quaternion.identity;
             if (duration <= 0)
             {
                 this = default(PacketSmoother);
@@ -42,21 +43,28 @@ namespace Emas
             {
                 double elapsed = Math.Max(0d, timestamp - _timestamp);
                 bool motionChanged = motionVersion != _motionVersion;
-                // Give Smoothing the movement after packet correction so it does not add movement twice.
+                // Smoothing advances by known target motion. Correction-curve movement remains
+                // correction error; passing it through here would bypass the half-life filter.
                 if (spatial.HasPosition)
                 {
                     bool hadPosition = _hasPosition;
-                    Double3 previous = _position;
+                    Double3 previousVelocity = _targetVelocity;
                     target.Position = Position(target.Position, velocity, spatial.PositionVersion, motionChanged, elapsed, timestamp, duration);
                     if (hadPosition)
                     {
-                        motion = target.Position - previous;
+                        motion = (previousVelocity * 0.5d + velocity * 0.5d) * elapsed;
                     }
                 }
 
                 if (spatial.HasRotation)
                 {
+                    bool hadRotation = _hasRotation;
+                    Double3 previousRate = _targetAngularVelocity;
                     target.Rotation = Rotation(target.Rotation, angularVelocity, spatial.RotationVersion, motionChanged, elapsed, timestamp, duration);
+                    if (hadRotation)
+                    {
+                        rotationMotion = SpatialMath.AngularDisplacement(previousRate * 0.5d + angularVelocity * 0.5d, elapsed);
+                    }
                 }
 
                 // Save the packet versions only after position and rotation have both been handled.
@@ -71,6 +79,7 @@ namespace Emas
                 // Very large SDK values can overflow correction calculations. Fall back to the pose without correction.
                 this = default(PacketSmoother);
                 motion = default(Double3);
+                rotationMotion = Quaternion.identity;
                 return baseline;
             }
         }

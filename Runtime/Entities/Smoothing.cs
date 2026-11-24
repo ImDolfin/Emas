@@ -43,6 +43,8 @@ namespace Emas
         /// <summary>Gets or sets seconds to halve angular error; zero applies orientation immediately (the default).</summary>
         /// <value>A finite, nonnegative rotation half-life in seconds.</value>
         /// <remarks>Controls reference orientation and scene repositioning when this Ghost is followed with FollowRotation enabled.
+        /// Timed model motion advances the filter before it decays correction error, avoiding steady-turn lag.
+        /// Pose-derived angular rates are filtered before assistance so measurement steps do not bypass smoothing.
         /// Live edits retain history and blend the setting-induced rotation over 0.25 seconds of real time,
         /// independently of position. Zero applies orientation directly after this transition.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">The assigned half-life is negative, NaN or infinite.</exception>
@@ -69,7 +71,7 @@ namespace Emas
         }
 
         internal PresentationPose Prepare(Spatial spatial, PresentationPose pose, double timestamp,
-            Double3 motion, PresentationSettings settings, bool preview)
+            Double3 motion, Quaternion rotationMotion, bool worldRotationMotion, bool estimatedRotationMotion, PresentationSettings settings, bool preview)
         {
             // Use a copy to try the old settings at the same time and with the same stored state.
             // Save only the step using the new settings. Keep the settings-change blend out of this filter.
@@ -77,7 +79,7 @@ namespace Emas
             smoother.Prepare(timestamp);
             if (spatial.HasRotation)
             {
-                pose.Rotation = smoother.Rotation(pose.Rotation, settings.RotationHalfLife);
+                pose.Rotation = smoother.Rotation(pose.Rotation, settings.RotationHalfLife, rotationMotion, worldRotationMotion, estimatedRotationMotion);
             }
 
             if (spatial.HasPosition)

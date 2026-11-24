@@ -965,7 +965,6 @@ namespace Emas.Tests
             Spatial referenceSpatial = reference.gameObject.AddComponent<Spatial>();
             SetDistancePose(referenceSpatial, origin, Quaternion.Euler(10, 25, 30), time, geographic);
             Extrapolation referencePrediction = reference.gameObject.AddComponent<Extrapolation>();
-            referencePrediction.PredictionTime = 0.1f;
             referencePrediction.MaximumExtrapolation = 0.1f;
             if (geographic)
             {
@@ -981,6 +980,7 @@ namespace Emas.Tests
             {
                 Space = geographic ? ReferenceSpace.Geographic : ReferenceSpace.Cartesian,
                 FollowedGhost = reference.Key,
+                PredictionTime = 0.1f,
                 UnityPosition = new Vector3(50, 20, -30),
                 UnityRotation = Quaternion.Euler(5, 40, -10),
                 MaxDistance = 2000
@@ -1048,7 +1048,8 @@ namespace Emas.Tests
                 _realm.Update();
                 Assert.That(limitedModel.Calls, Is.GreaterThan(0));
                 Double3 actual = frame.ToSimulationPosition(distant.transform.position);
-                Assert.That(Double3.Distance(actual, boundary + new Double3(20, 0, 0)), Is.LessThan(0.01));
+                double duration = Math.Min(0.1d, Math.Max(0d, _realm.ProjectedTime.Value.ElapsedSince(time)));
+                Assert.That(Double3.Distance(actual, boundary + new Double3(200d * duration, 0, 0)), Is.LessThan(0.01));
             }
 
             // Leaving again immediately discards packet correction, smoothing and settings-transition offsets.
@@ -1068,8 +1069,9 @@ namespace Emas.Tests
             _anchor.PoseProcessingDistance = null;
             _realm.Update();
             Assert.That(limitedModel.Calls, Is.GreaterThan(0));
+            double sharedDuration = Math.Min(0.1d, Math.Max(0d, _realm.ProjectedTime.Value.ElapsedSince(new Timestamp(13, 0))));
             Assert.That(Double3.Distance(frame.ToSimulationPosition(distant.transform.position),
-                distant.Position + new Double3(20, 0, 0)), Is.LessThan(0.01));
+                distant.Position + new Double3(200d * sharedDuration, 0, 0)), Is.LessThan(0.01));
 
             if (!geographic)
             {
@@ -2710,6 +2712,244 @@ namespace Emas.Tests
             }
         }
 
+        /// <summary>Unix creation times automatically compensate reference and peer packet ages; other streams and peer leads cannot split the target, and clock modes reset safely.</summary>
+        /// <returns>An iterator that delivers independently delayed simulation observations.</returns>
+        [UnityTest]
+        public IEnumerator ProjectedTime_UsesFollowedClockAcrossDelayedPeersAndRecoversAfterReset()
+        {
+            double started = Time.realtimeSinceStartupAsDouble - 0.2d;
+            DateTime utcStarted = DateTime.UtcNow.AddSeconds(-0.2d);
+            Spatial reference = _source.Publish("clock reference").gameObject.AddComponent<Spatial>();
+            Spatial peer = _source.Publish("clock peer").gameObject.AddComponent<Spatial>();
+            Spatial witness = _source.Publish("unrelated clock").gameObject.AddComponent<Spatial>();
+            Extrapolation ownshipPrediction = reference.gameObject.AddComponent<Extrapolation>();
+            Extrapolation peerPrediction = peer.gameObject.AddComponent<Extrapolation>();
+            ownshipPrediction.MaximumExtrapolation = 0.5f;
+            peerPrediction.MaximumExtrapolation = 0.5f;
+            peerPrediction.PredictionTime = 0.4f;
+            ReferenceFrame frame = new ReferenceFrame { FollowedGhost = reference.GetComponent<Ghost>().Key };
+            _realm.ReferenceFrame = frame;
+            Assert.That(frame.TimestampClock, Is.EqualTo(TimestampClock.Automatic));
+            Assert.That(frame.PredictionTime, Is.Zero);
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.PredictionTime = -0.1f);
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.PredictionTime = float.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.PredictionTime = float.PositiveInfinity);
+            Assert.That(frame.PredictionTime, Is.Zero);
+            Assert.That(frame.ClockOffset, Is.Zero);
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.ClockOffset = double.NaN);
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.ClockOffset = double.PositiveInfinity);
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.ClockOffset = double.NegativeInfinity);
+            Assert.That(frame.ClockOffset, Is.Zero);
+            Assert.Throws<ArgumentOutOfRangeException>(() => frame.TimestampClock = (TimestampClock)999);
+            Assert.That(frame.TimestampClock, Is.EqualTo(TimestampClock.Automatic));
+
+            Assert.That(_realm.ProjectedTime, Is.Null);
+
+            for (int index = 0; index < 35; index++)
+            {
+                double elapsed = Time.realtimeSinceStartupAsDouble - started;
+                double ownshipTime = elapsed - (index % 7 == 6 ? 0.044d : 0.04d);
+                double peerTime = elapsed - 0.09d;
+                Timestamp ownshipStamp = UnixTime(utcStarted.AddSeconds(ownshipTime));
+                Timestamp peerStamp = UnixTime(utcStarted.AddSeconds(peerTime));
+                reference.SetCartesianPosition(new Double3(10d * ownshipTime, 0, 0), ownshipStamp);
+                ownshipPrediction.SetCartesianVelocity(new Double3(10, 0, 0), ownshipStamp);
+                peer.SetCartesianPosition(new Double3(100d + 10d * peerTime, 0, 0), peerStamp);
+                peerPrediction.SetCartesianVelocity(new Double3(10, 0, 0), peerStamp);
+                witness.SetCartesianPosition(default(Double3), UnixTime(utcStarted.AddSeconds(elapsed + 10)));
+                double before = Time.realtimeSinceStartupAsDouble;
+                _realm.Update();
+                double after = Time.realtimeSinceStartupAsDouble;
+                if (index > 15)
+                {
+                    double projected = _realm.ProjectedTime.Value.ElapsedSince(UnixTime(utcStarted));
+                    Assert.That(projected, Is.EqualTo((before + after) * 0.5d - started)
+                        .Within(0.002d + after - before), "The median rejects isolated receipt-offset outliers and ignores the unrelated clock.");
+                    Assert.That(peer.transform.position.x, Is.EqualTo(100).Within(0.01),
+                        "Both aircraft must reach one simulation time despite different packet ages and peer forward settings.");
+                }
+
+                yield return new WaitForSecondsRealtime(0.01f);
+            }
+
+            // Correct either sign once for every entity, even when no new packet arrives.
+            // Negative edits must not be held by the old timeline floor.
+            Timestamp originalReferenceTime = reference.PositionTime.Value;
+            foreach (double offset in new[] { 0.08d, -0.025d, 0d })
+            {
+                frame.ClockOffset = offset;
+                Timestamp before = UnixTime(DateTime.UtcNow);
+                _realm.Update();
+                Timestamp after = UnixTime(DateTime.UtcNow);
+                double adjusted = _realm.ProjectedTime.Value.ElapsedSince(before);
+                Assert.That(adjusted, Is.InRange(offset - 0.001d, offset + after.ElapsedSince(before) + 0.001d));
+                double projected = _realm.ProjectedTime.Value.ElapsedSince(UnixTime(utcStarted));
+                Assert.That(_realm.ReferenceFrame.Position.X, Is.EqualTo(10d * projected).Within(0.01d));
+                Assert.That(peer.transform.position.x, Is.EqualTo(100).Within(0.01d));
+                Assert.That(reference.PositionTime, Is.EqualTo(originalReferenceTime), "Calibration must retain raw source timestamps.");
+            }
+
+            // The reference's forward interval applies to all peers. Each entity still enforces its own cap.
+            frame.PredictionTime = 0.12f;
+            reference.ResetPresentation();
+            peer.ResetPresentation();
+            _realm.Update();
+            Assert.That(peer.transform.position.x, Is.EqualTo(100).Within(0.02));
+            peerPrediction.MaximumExtrapolation = 0.01f;
+            peer.ResetPresentation();
+            _realm.Update();
+            Double3 capped = _realm.ReferenceFrame.ToSimulationPosition(peer.transform.position);
+            Assert.That(capped.X, Is.EqualTo(peer.Position.X + 0.1d).Within(0.001));
+
+            // Changing the followed root discards its predecessor's median, including repeated cached observations.
+            frame.TimestampClock = TimestampClock.Unix;
+            _realm.ReferenceFrame.FollowedGhost = peer.GetComponent<Ghost>().Key;
+            _realm.Update();
+            Assert.That(_realm.ProjectedTime.Value.ElapsedSince(peer.PositionTime.Value), Is.InRange(0.119d, 0.3d));
+            _realm.ResetSpatialTime();
+            Assert.That(_realm.ProjectedTime, Is.Null);
+            frame.TimestampClock = TimestampClock.Simulation;
+            frame.ClockOffset = 0.25d;
+            frame.PredictionTime = 0.4f;
+            peer.SetCartesianPosition(new Double3(4, 0, 0), new Timestamp(5, 123456789));
+            _realm.Update();
+            Assert.That(_realm.ProjectedTime.Value.Seconds, Is.EqualTo(5));
+            Assert.That(_realm.ProjectedTime.Value.Nanoseconds, Is.GreaterThanOrEqualTo(523456000));
+            Assert.That(_realm.ProjectedTime.Value.ElapsedSince(new Timestamp(5, 123456789)), Is.EqualTo(0.4d).Within(0.01d),
+                "Simulation-relative alignment already absorbs clock origins and must ignore UTC calibration.");
+            UnityEngine.Object.DestroyImmediate(peerPrediction);
+            _realm.Update();
+            Assert.That(_realm.ProjectedTime.Value.ElapsedSince(new Timestamp(5, 123456789)), Is.EqualTo(0.4d).Within(0.01d),
+                "Reference timing must work without a followed Extrapolation trait.");
+            _realm.Dispose();
+            Assert.That(_realm.ProjectedTime, Is.Null);
+        }
+
+        /// <summary>Motion-assisted angular smoothing follows constant turns without extra lead, while half-life filtering still reduces packet correction steps.</summary>
+        /// <returns>An iterator that compares corrected motion with and without half-life filters.</returns>
+        [UnityTest]
+        public IEnumerator Smoothing_SharedPredictionTracksTurnsAndFiltersPacketCorrections()
+        {
+            foreach (IExtrapolationStrategy strategy in new IExtrapolationStrategy[]
+                { new ConstantVelocityExtrapolation(), new ConstantAccelerationExtrapolation(), new SingerExtrapolation(), new CoordinatedTurnExtrapolation() })
+            {
+                using (Realm realm = new Realm())
+                {
+                    TestSource source = new TestSource();
+                    realm.GetOrCreateAnchor("motion", source);
+                    Spatial reference = source.Publish("turn reference").gameObject.AddComponent<Spatial>();
+                    Extrapolation referencePrediction = reference.gameObject.AddComponent<Extrapolation>();
+                    referencePrediction.Strategy = strategy;
+                    Assert.That(referencePrediction.PredictionTime, Is.Zero);
+                    referencePrediction.MaximumExtrapolation = 0.3f;
+                    Smoothing referenceSmoothing = reference.gameObject.AddComponent<Smoothing>();
+                    referenceSmoothing.RotationHalfLife = 0.25f;
+                    Spatial[] peers = new Spatial[2];
+                    Extrapolation[] predictions = new Extrapolation[2];
+                    for (int index = 0; index < peers.Length; index++)
+                    {
+                        peers[index] = source.Publish("peer " + index).gameObject.AddComponent<Spatial>();
+                        predictions[index] = peers[index].gameObject.AddComponent<Extrapolation>();
+                        predictions[index].Strategy = strategy;
+                        predictions[index].MaximumExtrapolation = 0.3f;
+                    }
+                    peers[1].gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.25f;
+                    realm.ReferenceFrame = new ReferenceFrame { FollowedGhost = reference.GetComponent<Ghost>().Key };
+                    double started = Time.realtimeSinceStartupAsDouble - 0.2d;
+                    DateTime utcStarted = DateTime.UtcNow.AddSeconds(-0.2d);
+                    double worstAngle = 0;
+                    double[] correction = new double[2];
+                    double elapsed;
+                    do
+                    {
+                        elapsed = Time.realtimeSinceStartupAsDouble - started;
+                        double captured = elapsed - 0.06d;
+                        Timestamp stamp = UnixTime(utcStarted.AddSeconds(captured));
+                        reference.SetCartesianPosition(default(Double3), stamp);
+                        reference.SetSourceRotation(Quaternion.AngleAxis((float)(100d * captured), Vector3.forward), stamp);
+                        referencePrediction.SetBodyAngularVelocity(new Double3(0, 0, 100d * Math.PI / 180d), CoordinateSystem.Unity, stamp);
+                        for (int index = 0; index < peers.Length; index++)
+                        {
+                            double peerTime = captured - 0.04d;
+                            Timestamp peerStamp = UnixTime(utcStarted.AddSeconds(peerTime));
+                            peers[index].SetCartesianPosition(new Double3(500d + 20d * peerTime + (elapsed > 0.5d ? 10 : 0), 0, 2000), peerStamp);
+                            predictions[index].SetCartesianVelocity(new Double3(20, 0, 0), peerStamp);
+                        }
+                        realm.Update();
+                        double projected = realm.ProjectedTime.Value.ElapsedSince(UnixTime(utcStarted));
+                        if (elapsed > 0.35d)
+                        {
+                            worstAngle = Math.Max(worstAngle, Quaternion.Angle(realm.ReferenceFrame.Rotation,
+                                Quaternion.AngleAxis((float)(100d * projected), Vector3.forward)));
+                        }
+                        if (elapsed > 0.56d)
+                        {
+                            for (int index = 0; index < peers.Length; index++)
+                            {
+                                correction[index] = realm.ReferenceFrame.ToSimulationPosition(peers[index].transform.position).X - (500d + 20d * projected);
+                            }
+                            break;
+                        }
+                        yield return new WaitForSecondsRealtime(1f / 90f);
+                    }
+                    while (elapsed < 0.8d);
+
+                    TestContext.WriteLine(strategy.GetType().Name + "; Unix 60/100 ms packet ages, no manual lead, 250 ms rotation half-life: max turn error="
+                        + worstAngle + " deg; correction without/with Smoothing=" + correction[0] + "/" + correction[1] + " m");
+                    Assert.That(worstAngle, Is.LessThan(0.35d), strategy.GetType().Name + " must not require more lead to cancel smoothing lag.");
+                    Assert.That(correction[0], Is.GreaterThan(1d));
+                    Assert.That(correction[1], Is.GreaterThan(0d).And.LessThan(correction[0] * 0.7d),
+                        strategy.GetType().Name + " must filter correction error even when cubic packet correction is active.");
+                }
+            }
+        }
+
+        /// <summary>Pose-derived angular motion converges during steady turns while attitude corrections still pass through the half-life filter.</summary>
+        /// <returns>An iterator that supplies delayed Unix poses without SDK angular rates.</returns>
+        [UnityTest]
+        public IEnumerator Smoothing_EstimatedAngularMotionRetainsCorrectionFiltering()
+        {
+            Spatial reference = _source.Publish("estimated turn").gameObject.AddComponent<Spatial>();
+            Extrapolation prediction = reference.gameObject.AddComponent<Extrapolation>();
+            prediction.MaximumExtrapolation = 0.3f;
+            Smoothing smoothing = reference.gameObject.AddComponent<Smoothing>();
+            smoothing.RotationHalfLife = 0.2f;
+            _realm.ReferenceFrame = new ReferenceFrame { FollowedGhost = reference.GetComponent<Ghost>().Key };
+            double started = Time.realtimeSinceStartupAsDouble;
+            DateTime utcStarted = DateTime.UtcNow;
+            double worstSteadyError = 0;
+            double correction = 0;
+            double elapsed;
+            do
+            {
+                elapsed = Time.realtimeSinceStartupAsDouble - started;
+                double captured = elapsed - 0.06d;
+                Timestamp stamp = UnixTime(utcStarted.AddSeconds(captured));
+                reference.SetCartesianPosition(default(Double3), stamp);
+                reference.SetSourceRotation(Quaternion.AngleAxis((float)(90d * captured + (elapsed > 1.3d ? 5 : 0)), Vector3.forward), stamp);
+                _realm.Update();
+                double projected = _realm.ProjectedTime.Value.ElapsedSince(UnixTime(utcStarted));
+                double angle = Quaternion.Angle(_realm.ReferenceFrame.Rotation, Quaternion.AngleAxis((float)(90d * projected), Vector3.forward));
+                if (elapsed > 1.1d && elapsed < 1.3d)
+                {
+                    worstSteadyError = Math.Max(worstSteadyError, angle);
+                }
+                if (elapsed > 1.36d)
+                {
+                    correction = angle;
+                    break;
+                }
+                yield return new WaitForSecondsRealtime(1f / 90f);
+            }
+            while (elapsed < 1.6d);
+
+            TestContext.WriteLine("Estimated Unix turn; zero manual lead: steady error=" + worstSteadyError
+                + " deg; accepted 5-degree correction after 60 ms=" + correction + " deg");
+            Assert.That(worstSteadyError, Is.LessThan(0.35d));
+            Assert.That(correction, Is.GreaterThan(0.1d).And.LessThan(4.5d),
+                "Estimating rates from noisy poses must not bypass angular correction filtering.");
+        }
+
         /// <summary>All moving strategies apply requested forward time during a constant bank with uniform packet latency, count known age once, and respect buffering, caps and disabling.</summary>
         /// <returns>An iterator that delivers delayed geographic attitudes at approximately 60 Hz.</returns>
         [UnityTest]
@@ -2750,7 +2990,7 @@ namespace Emas.Tests
                             Assert.That(predictions[variant, channel].PredictionTime, Is.Zero);
                             predictions[variant, channel].PredictionTime = variant == 0 ? 0 : 0.1f;
                         }
-                        realms[variant].ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, FollowedGhost = reference.Key };
+                        realms[variant].ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, FollowedGhost = reference.Key, PredictionTime = variant == 0 ? 0 : 0.1f };
                     }
 
                     Assert.Throws<ArgumentOutOfRangeException>(() => predictions[1, 0].PredictionTime = -0.1f);
@@ -2812,6 +3052,7 @@ namespace Emas.Tests
                     {
                         predictions[1, channel].PredictionTime = 0.15f;
                     }
+                    realms[1].ReferenceFrame.PredictionTime = 0.15f;
                     realms[1].InterpolationDelay = 0.05f;
                     references[1].ResetPresentation();
                     targets[1].ResetPresentation();
@@ -2854,6 +3095,7 @@ namespace Emas.Tests
                         predictions[1, channel].MaximumExtrapolation = 0.5f;
                         predictions[1, channel].PredictionTime = 0.2f;
                     }
+                    realms[1].ReferenceFrame.PredictionTime = 0.2f;
                     references[1].SetGeographicRotation(0, 0, 36, packetTime);
                     predictions[1, 0].SetBodyAngularVelocity(new Double3(Math.PI, 0, 0), sampleTime: packetTime);
                     targets[1].SetEarthCenteredPosition(origin.ToEarthCentered()
@@ -3476,13 +3718,15 @@ namespace Emas.Tests
             Assert.That(spatial.Position, Is.EqualTo(new Double3(-5, 0, 0)));
             Assert.That(ghost.GetComponent<Smoothing>(), Is.Null, "The strategy supplies its own cubic packet correction.");
 
-            // Smoothing must follow motion after packet correction without adding the original prediction again.
+            // Half-life smoothing must still filter a new prediction correction after the cubic curve finishes.
             ghost.gameObject.AddComponent<Smoothing>();
             _realm.Update();
             ghost.GetComponent<Extrapolation>().SetCartesianVelocity(new Double3(70, 0, 0), new Timestamp(1002, 0));
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(-5, 0, 0), 0.02f);
             yield return AdvanceSmoothing(0.35d);
+            Assert.That(ghost.transform.position.x, Is.GreaterThan(-4f).And.LessThan(-1.51f));
+            yield return AdvanceSmoothing(0.6d);
             AssertPosition(ghost.transform.position, new Vector3(-1.5f, 0, 0), 0.02f);
             ghost.GetComponent<Extrapolation>().SetCartesianVelocity(default(Double3));
 
@@ -3497,6 +3741,12 @@ namespace Emas.Tests
             spatial.SetCartesianPosition(new Double3(5, 0, 0), new Timestamp(0, 0));
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(5, 0, 0));
+        }
+
+        private static Timestamp UnixTime(DateTime utc)
+        {
+            long ticks = utc.Ticks - 621355968000000000L;
+            return new Timestamp(ticks / TimeSpan.TicksPerSecond, (uint)((ticks % TimeSpan.TicksPerSecond) * 100L));
         }
 
         private static void AssertBufferedCartesianPose(Spatial spatial, double minimumPosition, double publishedAt)

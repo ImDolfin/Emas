@@ -156,6 +156,9 @@ namespace Emas
         private Key? _followedGhost;
         private bool _hasPosition;
         private bool _isReferenceAvailable;
+        private TimestampClock _timestampClock;
+        private double _clockOffset;
+        private float _predictionTime;
 
         /// <summary>Gets or sets Cartesian or WGS84 geographic projection; defaults to Cartesian.</summary>
         /// <value>The coordinate space used to interpret stored positions and construct the local frame.</value>
@@ -387,6 +390,73 @@ namespace Emas
 
                 _followedGhost = value;
                 _isReferenceAvailable = !value.HasValue && _hasPosition;
+            }
+        }
+
+        /// <summary>Gets or sets the creation-timestamp clock used by this reference's followed Ghost.</summary>
+        /// <value>Automatic by default; recognizes Unix timestamps within one day of calibrated host UTC.</value>
+        /// <remarks>
+        /// Configure through this API on Unity's main thread. Unix input measures packet age against calibrated
+        /// host UTC. Simulation uses an arbitrary shared epoch and cannot reveal absolute delivery delay.
+        /// Changing the mode resets shared clock alignment on the next projection pass. Ghosts supply raw
+        /// timestamped data; they do not own clock configuration. With no timed followed Ghost, relative alignment is used.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The value is not a defined timestamp clock.</exception>
+        public TimestampClock TimestampClock
+        {
+            get => _timestampClock;
+            set
+            {
+                if (value != Emas.TimestampClock.Automatic && value != Emas.TimestampClock.Simulation && value != Emas.TimestampClock.Unix)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value));
+                }
+
+                _timestampClock = value;
+            }
+        }
+
+        /// <summary>Gets or sets the signed correction from host UTC to simulation UTC for the shared Realm clock.</summary>
+        /// <value>Finite seconds added to host UTC; zero by default. Positive means the simulation clock is ahead.</value>
+        /// <remarks>
+        /// Simulation UTC equals host UTC plus this offset. Negative values correct a simulation clock that is behind.
+        /// Configure through this API on Unity's main thread. Applies once across the Realm when this reference follows
+        /// timed Unix data. Simulation-relative mode ignores it because alignment already absorbs clock origins.
+        /// Changes reset alignment on the next projection pass, allowing corrections in either direction while retaining
+        /// raw creation timestamps, source bindings, filters and strategy settings. Calibrate independently of packet latency.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The value is NaN or infinite.</exception>
+        public double ClockOffset
+        {
+            get => _clockOffset;
+            set
+            {
+                if (!SpatialMath.IsFinite(value))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value));
+                }
+
+                _clockOffset = value;
+            }
+        }
+
+        /// <summary>Gets or sets the requested forward interval from the followed observation for the shared Realm timeline.</summary>
+        /// <value>Finite nonnegative seconds; zero by default uses automatic packet-age compensation.</value>
+        /// <remarks>
+        /// Configure through this API on Unity's main thread. Known age at receipt counts toward the interval, and time
+        /// after receipt keeps advancing. All entities target the resulting Realm.ProjectedTime using their own strategy
+        /// and prediction cap. Their Extrapolation.PredictionTime values do not add individual lead while following timed data.
+        /// This reference setting does not depend on the followed Ghost's optional motion-processing traits or their enabled
+        /// states. Without a timed followed Ghost, individual forward intervals remain active. Raw input is unchanged.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN or infinite.</exception>
+        public float PredictionTime
+        {
+            get => _predictionTime;
+            set
+            {
+                Smoothing.ValidateTime(value, nameof(value));
+                _predictionTime = value;
             }
         }
 
