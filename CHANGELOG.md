@@ -2,6 +2,8 @@
 
 ## 0.3.0
 
+- Remove the redundant Extrapolation prediction-timing mode row. Rename its Inspector field to Prediction Interval and explain automatic calculation at zero in the tooltip.
+- Add drag grips and insertion markers to Ghost Inspector trait cards. Reordering moves real Unity components, preserves settings and references, supports Undo/Redo and persists filter order in prefabs.
 - Move observation processing before extrapolation. Add the extensible Filter trait with timestamped pose/motion state, ordered per-Ghost filtering and separate filtered history. Make Smoothing a Filter and move packet correction out of turn strategies into PacketCorrection. Preserve SDK input, shared timing, batch observations and attached/distant bypasses; include filter age without spending the packet-gap prediction budget.
 
 - Replace separate strategy displacement/rotation calls with one Predict(PredictionRequest) call returning a complete Prediction. Share the result and its velocities across packet correction and smoothing; use cached presentation motion for live tuning instead of evaluating strategies again. Preserve independent position/rotation times and attached/distant bypasses.

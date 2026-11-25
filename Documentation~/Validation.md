@@ -24,7 +24,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Tools~\Validate.ps1
 
 The execution-policy override applies only to this PowerShell process; it does not change the machine's saved policy. The script runs EditMode and PlayMode sequentially against `Tests/Unity~`. It discovers the standard Windows Unity Hub installation; use `-UnityPath 'D:\Unity\2022.3.62f3\Editor\Unity.exe'` or the `UNITY_PATH` environment variable for a different location. Use `-TestPlatform EditMode` or `-TestPlatform PlayMode` to run one suite.
 
-Each selected suite replaces its XML report and editor log in `TestResults/Validation~/`. The command waits for Unity to exit, attempts both selected suites even if one fails, and returns a nonzero exit code for editor errors, missing or malformed XML, unsuccessful results, or zero discovered tests. Generated reports stay out of version control. The `~` suffix excludes validation output and `Tools~` from Unity package import, so growing logs cannot trigger repeated imports.
+Each selected suite replaces its XML report and editor log in `TestResults/Validation~/`. EditMode runs with a graphics device for Inspector GUI interaction; PlayMode retains `-nographics`. Both run in batch mode. The command waits for Unity to exit, attempts both selected suites even if one fails, and returns a nonzero exit code for editor errors, missing or malformed XML, unsuccessful results, or zero discovered tests. Generated reports stay out of version control. The `~` suffix excludes validation output and `Tools~` from Unity package import, so growing logs cannot trigger repeated imports.
 
 ## GitHub Actions
 
@@ -47,6 +47,8 @@ Reopen Unity if the tests remain hidden. [Unity requires this opt-in for install
 ## What the tests cover
 
 Tests exercise public Emas APIs, supported detector extension points and Unity serialized authoring. They do not use friend assemblies or reflection into private package state. Each test's XML summary states its consumer contract.
+
+Ghost Inspector authoring coverage uses GUI drag events to verify trait/filter component order, deferred moves in both directions, visibility and setting preservation, Undo/Redo, rejection of cross-root drops and prefab persistence.
 
 Prediction-limit coverage checks the 7 ms minimum through API assignments, runtime deserialization and live Inspector edits, plus disabling and re-enabling prediction while retaining supplied motion.
 

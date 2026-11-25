@@ -19,7 +19,8 @@ namespace Emas
 
         [Tooltip("Gap extrapolation model. Change at runtime to compare methods without losing observations or supplied motion.")]
         [SerializeReference] private IExtrapolationStrategy _strategy = new ConstantAccelerationExtrapolation();
-        [Tooltip("Zero uses automatic clock timing. A positive value replaces automatic age compensation with this prediction interval plus time since receipt. On the followed Ghost it controls the whole Realm; other Ghosts inherit that target. Without a timed reference the override is individual. Prediction limit still caps each entity's prediction.")]
+        [InspectorName("Prediction Interval")]
+        [Tooltip("Prediction interval in seconds (0 being Automatic prediction interval calculation). A positive value replaces automatic age compensation with this interval plus time since receipt. On the followed Ghost it controls the whole Realm; other Ghosts inherit that target. Without a timed reference the override is individual. Prediction limit still caps each entity's prediction.")]
         [Range(0, 0.5f)]
         [SerializeField] private float _predictionTime;
         [Tooltip("Maximum total prediction beyond a recorded pose, including automatic age-based prediction and manual lead. Minimum: 0.007 seconds (7 ms, rounded up from one 144 Hz frame). This cap does not force a prediction interval. Disable this trait to stop extrapolation.")]

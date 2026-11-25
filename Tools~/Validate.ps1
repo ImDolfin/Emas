@@ -65,12 +65,19 @@ foreach ($platform in $platforms)
         # Wait for Unity to exit, then check the test report too.
         Write-Host "Running $platform tests. Log: $log"
         $arguments = @(
-            '-batchmode', '-nographics',
+            '-batchmode',
             '-projectPath', ('"' + $project + '"'),
             '-runTests', '-testPlatform', $platform,
             '-testResults', ('"' + $report + '"'),
             '-logFile', ('"' + $log + '"')
         )
+        # Inspector drag tests need a graphics device to create their editor view.
+        # Runtime tests can keep the lightweight headless configuration.
+        if ($platform -eq 'PlayMode')
+        {
+            $arguments += '-nographics'
+        }
+
         $process = Start-Process -FilePath $UnityPath -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
         if ($process.ExitCode -ne 0)
         {

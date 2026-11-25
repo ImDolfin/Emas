@@ -9,9 +9,12 @@ namespace Emas.Editor
     [CanEditMultipleObjects]
     public sealed class GhostInspector : UnityEditor.Editor
     {
+        private TraitReordering _reordering;
+
         /// <summary>Draws authored settings, runtime data and root-trait settings without section foldouts.</summary>
         public override void OnInspectorGUI()
         {
+            _reordering.BeginGUI();
             // Save the root's edits first, then edit and save each trait separately.
             serializedObject.Update();
             using (new EditorGUI.DisabledScope(true))
@@ -39,7 +42,7 @@ namespace Emas.Editor
 
                 IReadOnlyList<Trait> traits = ghost.Traits;
                 using (InspectorLayout.Section("Traits (" + traits.Count + ")",
-                    "Edit and enable root traits here. Disabled traits remain listed but skip bound reader updates."))
+                    "Drag a trait's grip to reorder it. Filters run from top to bottom. Disabled traits remain listed."))
                 {
                     if (traits.Count == 0)
                     {
@@ -53,6 +56,8 @@ namespace Emas.Editor
                         }
                     }
                 }
+
+                _reordering.DrawListEdges(ghost, traits, GUILayoutUtility.GetLastRect());
             }
 
             if (Application.isPlaying)
@@ -77,6 +82,7 @@ namespace Emas.Editor
 
         private void OnEnable()
         {
+            _reordering = new TraitReordering(this);
             // Unity is still constructing its editor list here. Changing component
             // visibility now can rebuild that list inside its own creation or GUI pass.
             TraitInspectorVisibility.QueueRefresh();
@@ -84,6 +90,7 @@ namespace Emas.Editor
 
         private void OnDisable()
         {
+            _reordering?.Cancel();
             // When the Ghost is removed, show its remaining traits in the Inspector again.
             TraitInspectorVisibility.QueueRefresh();
         }
@@ -169,16 +176,20 @@ namespace Emas.Editor
             return time.HasValue ? time.Value.Seconds + "." + time.Value.Nanoseconds.ToString("D9") : "Untimed / not received";
         }
 
-        private static void DrawTrait(Ghost ghost, Trait trait)
+        private void DrawTrait(Ghost ghost, Trait trait)
         {
             // Save each trait separately through Unity so Undo and prefab changes work.
-            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            Rect card;
+            using (EditorGUILayout.VerticalScope scope = new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
+                card = scope.rect;
                 using (SerializedObject settings = new SerializedObject(trait))
                 {
                     settings.Update();
                     using (new EditorGUILayout.HorizontalScope())
                     {
+                        Rect handle = GUILayoutUtility.GetRect(16f, EditorGUIUtility.singleLineHeight, GUILayout.Width(16f));
+                        _reordering.DrawHandle(trait, handle);
                         SerializedProperty enabled = settings.FindProperty("m_Enabled");
                         EditorGUILayout.PropertyField(enabled, GUIContent.none, GUILayout.Width(18f));
                         EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(trait.GetType().Name), EditorStyles.boldLabel);
@@ -193,6 +204,8 @@ namespace Emas.Editor
                     settings.ApplyModifiedProperties();
                 }
             }
+
+            _reordering.DrawCardTarget(ghost, trait, card);
         }
 
         private static void DrawTraitSettings(Ghost ghost, SerializedObject settings)
@@ -200,7 +213,7 @@ namespace Emas.Editor
             Extrapolation extrapolation = settings.targetObject as Extrapolation;
             if (extrapolation != null)
             {
-                DrawPredictionTiming(ghost, extrapolation);
+                DrawPredictionDiagnostics(ghost, extrapolation);
             }
             SerializedProperty property = settings.GetIterator();
             bool enterChildren = true;
@@ -221,7 +234,7 @@ namespace Emas.Editor
                 {
                     // The followed Ghost owns the shared override; peer fields remain
                     // available for use if that Ghost later becomes the reference.
-                    label = "Fallback prediction (s)";
+                    label = "Prediction Interval (s)";
                 }
                 else if (settings.targetObject is Smoothing)
                 {
@@ -239,13 +252,10 @@ namespace Emas.Editor
             }
         }
 
-        private static void DrawPredictionTiming(Ghost ghost, Extrapolation extrapolation)
+        private static void DrawPredictionDiagnostics(Ghost ghost, Extrapolation extrapolation)
         {
             if (!Application.isPlaying)
             {
-                // Keep the mode visible on prefabs; longer explanations belong in tooltips.
-                InspectorLayout.ReadOnly("Prediction timing", extrapolation.PredictionTime > 0 ? "Manual when followed" : "Automatic at zero",
-                    "Zero uses automatic timing. A positive fallback replaces automatic age compensation with a manual interval. The followed Ghost controls the whole Realm; without a timed reference the setting is individual.");
                 return;
             }
 
@@ -259,13 +269,6 @@ namespace Emas.Editor
                 && realm.TryGetGhost(frame.FollowedGhost.Value, out followed) && followed.IsAvailable
                 && followed.TryGet(out reference) && reference.enabled && !reference.AttachedTo.HasValue
                 && (reference.PositionTime.HasValue || reference.RotationTime.HasValue);
-            Extrapolation controller = shared ? reference.GetComponent<Extrapolation>() : extrapolation;
-            bool manual = controller != null && controller.enabled && controller.PredictionTime > 0;
-            InspectorLayout.ReadOnly("Prediction timing", manual
-                ? shared ? "Manual (Realm reference)" : "Manual (individual)"
-                : shared ? "Automatic (Realm reference)" : "Automatic (individual)",
-                "Zero uses automatic timing. A positive fallback replaces automatic age compensation with that interval plus elapsed time since receipt. With a timed followed Ghost, only its enabled Extrapolation trait controls the shared override. Peers inherit its target.");
-
             Spatial spatial;
             if (!ghost.TryGet(out spatial))
             {

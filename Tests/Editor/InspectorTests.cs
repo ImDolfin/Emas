@@ -617,7 +617,7 @@ namespace Emas.Editor.Tests
                 spatial.SetCartesianPosition(new Double3(10, 20, 30), new Timestamp(1000, 0));
                 UnityEngine.Object[] previousSelection = Selection.objects;
                 Emas.Editor.PoseTool tool = ScriptableObject.CreateInstance<Emas.Editor.PoseTool>();
-                HashSet<GameObject> sceneObjects = new HashSet<GameObject>(Resources.FindObjectsOfTypeAll<GameObject>());
+                HashSet<GameObject> sceneObjects = new HashSet<GameObject>(FindApplicationSceneObjects());
                 Emas.Editor.DiagnosticsWindow window = ScriptableObject.CreateInstance<Emas.Editor.DiagnosticsWindow>();
                 try
                 {
@@ -643,8 +643,9 @@ namespace Emas.Editor.Tests
                     // Let the UI repaint, then check that it did not read sources, move roots or create scene objects.
                     Assert.That(detector.Updates, Is.Zero);
                     Assert.That(realm.Anchors.Count, Is.EqualTo(1));
-                    // Unity may remove temporary selection objects between frames. The debugger must add none.
-                    Assert.That(Resources.FindObjectsOfTypeAll<GameObject>(), Is.SubsetOf(sceneObjects));
+                    // Graphics-backed Scene handles lazily create hidden editor meshes.
+                    // The debugger must not create application scene objects or advance tracking.
+                    Assert.That(FindApplicationSceneObjects(), Is.SubsetOf(sceneObjects));
                     Assert.That(spatial.Position, Is.EqualTo(new Double3(10, 20, 30)));
                     Assert.That(ghost.transform.position, Is.EqualTo(Vector3.zero));
                     Assert.That(ToolManager.activeToolType, Is.EqualTo(typeof(Emas.Editor.PoseTool)), "Pinned inspection remains active after selection changes.");
@@ -1458,6 +1459,12 @@ namespace Emas.Editor.Tests
             blueprint.Configure(TestKind, null, null, prefab);
             _objects.Add(blueprint);
             return blueprint;
+        }
+
+        private static GameObject[] FindApplicationSceneObjects()
+        {
+            return Array.FindAll(Resources.FindObjectsOfTypeAll<GameObject>(), value => value != null
+                && value.scene.IsValid() && (value.hideFlags & HideFlags.HideAndDontSave) != HideFlags.HideAndDontSave);
         }
 
         private static void SetBlueprint(UnityEngine.Object target, ManifestationBlueprint blueprint)
