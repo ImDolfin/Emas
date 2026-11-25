@@ -189,6 +189,53 @@ namespace Emas.Tests
             Assert.That(first.transform.position.x, Is.EqualTo(11).Within(0.0001f));
         }
 
+        /// <summary>Live processing observes filters and prediction components added, disabled or replaced after earlier projections.</summary>
+        [Test]
+        public void ProcessingComponents_ObserveLateAdditionDisablingAndReplacement()
+        {
+            Spatial spatial = _source.Publish("live processing").gameObject.AddComponent<Spatial>();
+            spatial.SetCartesianPosition(new Double3(1, 0, 0));
+            _realm.Update();
+
+            // Filters must also work when prediction is absent, including after a
+            // missing lookup or replacement of the component used to check presence.
+            Offset filter = spatial.gameObject.AddComponent<Offset>();
+            _realm.Update();
+            Assert.That(filter.Calls, Is.EqualTo(1));
+            filter.enabled = false;
+            _realm.Update();
+            Assert.That(filter.Calls, Is.EqualTo(1));
+            UnityEngine.Object.DestroyImmediate(filter);
+            filter = spatial.gameObject.AddComponent<Offset>();
+            _realm.Update();
+            Assert.That(filter.Calls, Is.EqualTo(1));
+
+            // A cached prediction component must retain live enabled state and
+            // release its place to a replacement without discarding the filter.
+            Extrapolation extrapolation = spatial.gameObject.AddComponent<Extrapolation>();
+            Probe first = new Probe();
+            extrapolation.Strategy = first;
+            _realm.Update();
+            Assert.That(first.Calls, Is.EqualTo(1));
+            Assert.That(first.Request.PositionContext.Position.Value.X, Is.EqualTo(101));
+            extrapolation.enabled = false;
+            _realm.Update();
+            Assert.That(first.Calls, Is.EqualTo(1));
+            extrapolation.enabled = true;
+            _realm.Update();
+            Assert.That(first.Calls, Is.EqualTo(2));
+            UnityEngine.Object.DestroyImmediate(extrapolation);
+            _realm.Update();
+            Assert.That(first.Calls, Is.EqualTo(2));
+
+            Probe replacement = new Probe();
+            spatial.gameObject.AddComponent<Extrapolation>().Strategy = replacement;
+            _realm.Update();
+            Assert.That(replacement.Calls, Is.EqualTo(1));
+            Assert.That(replacement.Request.PositionContext.Position.Value.X, Is.EqualTo(101));
+            Assert.That(spatial.Position.X, Is.EqualTo(1));
+        }
+
         /// <summary>Pose-only smoothing declares its effective age, so filtered-history prediction recovers sustained translation and bank without manual extra lead.</summary>
         /// <returns>An iterator that supplies observations across real filter updates.</returns>
         [UnityTest]

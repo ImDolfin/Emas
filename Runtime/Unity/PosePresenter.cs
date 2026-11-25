@@ -30,8 +30,8 @@ namespace Emas
 
         internal void Prepare(Spatial spatial, SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
         {
-            Extrapolation extrapolation = spatial.GetComponent<Extrapolation>();
-            MotionProcessor processor = extrapolation != null || spatial.GetComponent<Filter>() != null ? spatial.Processor : null;
+            Extrapolation extrapolation = spatial.Extrapolation;
+            MotionProcessor processor = extrapolation != null || spatial.HasFilters ? spatial.Processor : null;
             if (processor != null)
             {
                 // All observation filters finish before contexts or prediction history are read.

@@ -203,6 +203,42 @@ namespace Emas.Tests
             _assets.Clear();
         }
 
+        /// <summary>Projection observes Spatial added after activation and replacements made inside a followed reference's prediction callback.</summary>
+        [Test]
+        public void SpatialComponents_RemainLiveAcrossLateAdditionAndProjectionReplacement()
+        {
+            TestGhost ghost = _source.Publish("late spatial");
+            _realm.Update();
+
+            // A previous missing lookup must not hide a component added while disabled.
+            Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
+            spatial.enabled = false;
+            spatial.SetCartesianPosition(new Double3(2, 3, 5));
+            _realm.Update();
+            AssertPosition(ghost.transform.position, Vector3.zero);
+            spatial.enabled = true;
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(2, 3, 5));
+
+            // Clock observation reads the old component before the followed reference
+            // predicts. Replacement must still be visible during this same projection.
+            TestGhost reference = _source.PublishPosition("replacement reference", default(Double3));
+            HalfSpeedExtrapolation strategy = new HalfSpeedExtrapolation();
+            strategy.PositionObserved = context =>
+            {
+                strategy.PositionObserved = null;
+                UnityEngine.Object.DestroyImmediate(spatial);
+                spatial = ghost.gameObject.AddComponent<Spatial>();
+                spatial.SetCartesianPosition(new Double3(7, 11, 13));
+            };
+            reference.gameObject.AddComponent<Extrapolation>().Strategy = strategy;
+            _realm.ReferenceFrame = new ReferenceFrame { FollowedGhost = reference.Key };
+            _realm.Update();
+            AssertPosition(ghost.transform.position, new Vector3(7, 11, 13));
+            Assert.That(spatial.TryGetObservedUnityPose(out Pose observed), Is.True);
+            AssertPosition(observed.position, ghost.transform.position);
+        }
+
         /// <summary>Observed-pose diagnostics project accepted input through the presented reference, preserve custom attitude conventions, and leave prediction and filters untouched.</summary>
         /// <param name="representation">Zero for Cartesian NED, one for geographic attitude, or two for ECEF attitude with custom body axes.</param>
         [TestCase(0)]

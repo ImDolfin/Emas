@@ -2,6 +2,7 @@
 
 ## 0.3.0
 
+- Reuse live spatial and processing component lookups, and prepare shared signed-axis mappings for Mono updates. Preserve runtime component additions and replacements, serialized axes and handedness.
 - Add brief README examples for custom extrapolation strategies and filters, including registration, execution order and state reset guidance.
 - Remove the redundant Extrapolation prediction-timing mode row. Rename its Inspector field to Prediction Interval and explain automatic calculation at zero in the tooltip.
 - Add drag grips and insertion markers to Ghost Inspector trait cards. Reordering moves real Unity components, preserves settings and references, supports Undo/Redo and persists filter order in prefabs.

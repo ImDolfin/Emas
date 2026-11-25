@@ -29,6 +29,22 @@ namespace Emas
         internal long HandoverUpdate;
         internal long HandoverDispatchSequence;
         internal double LastPublishedAt;
+        private Spatial _spatial;
+
+        internal Spatial Spatial
+        {
+            get
+            {
+                // Keep a live component, but retry missing or destroyed components so
+                // inactive roots and runtime replacements do not need lifecycle hooks.
+                if (_spatial == null && Ghost != null)
+                {
+                    _spatial = Ghost.GetComponent<Spatial>();
+                }
+
+                return _spatial;
+            }
+        }
 
         internal Record(Ghost ghost, PresenceDetector owner, ManifestationBlueprintSnapshot blueprint)
         {

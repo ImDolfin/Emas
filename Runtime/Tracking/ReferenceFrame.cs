@@ -20,6 +20,7 @@ namespace Emas
             private readonly ReferenceSpace _space;
             private readonly GeographicBasis _geographicBasis;
             private readonly CoordinateSystem _coordinates;
+            private readonly CoordinateSystem.Mapping _mapping;
             private readonly Double3 _position;
             private readonly Vector3 _unityPosition;
             private readonly double? _maxDistance;
@@ -36,6 +37,7 @@ namespace Emas
                 _geographicBasis = space == ReferenceSpace.Geographic && hasPosition
                     ? geographicBasis ?? new GeographicBasis(GeoPosition.FromEarthCentered(position)) : default;
                 _coordinates = coordinates;
+                _mapping = coordinates.Prepared;
                 _position = position;
                 _unityPosition = unityPosition;
                 Alignment = alignment;
@@ -62,7 +64,7 @@ namespace Emas
                     // Subtract the large origin using doubles, then convert the small offset into local Unity axes.
                     Double3 displacement = position - _position;
                     Double3 local = _space == ReferenceSpace.Geographic
-                        ? _geographicBasis.ToLocal(displacement) : _coordinates.ToUnity(displacement);
+                        ? _geographicBasis.ToLocal(displacement) : _mapping.ToUnity(displacement);
                     Double3 offset = SpatialMath.Rotate(Alignment, local);
                     return SpatialMath.TryToVector3(offset + new Double3(_unityPosition.x, _unityPosition.y, _unityPosition.z), out result);
                 }
@@ -89,7 +91,7 @@ namespace Emas
                     (double)unityPosition.y - _unityPosition.y, (double)unityPosition.z - _unityPosition.z);
                 Double3 local = SpatialMath.Rotate(Quaternion.Inverse(Alignment), offset);
                 return _position + (_space == ReferenceSpace.Geographic
-                    ? _geographicBasis.ToEarthCentered(local) : _coordinates.ToSource(local));
+                    ? _geographicBasis.ToEarthCentered(local) : _mapping.ToSource(local));
             }
 
             internal Quaternion ToUnityRotation(Quaternion rotation, Double3 position)
@@ -102,13 +104,13 @@ namespace Emas
             {
                 // Convert the entity's axes, rotate from its local geographic axes to the reference axes, then apply scene rotation.
                 return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(position)
-                    * _coordinates.ToUnityRotation(rotation), nameof(rotation));
+                    * _mapping.ToUnityRotation(rotation), nameof(rotation));
             }
 
             internal Quaternion ToUnityRotation(Quaternion rotation, in GeographicBasis basis)
             {
                 return SpatialMath.NormalizeRotation(Alignment * _geographicBasis.RotationFrom(basis)
-                    * _coordinates.ToUnityRotation(rotation), nameof(rotation));
+                    * _mapping.ToUnityRotation(rotation), nameof(rotation));
             }
 
             internal Quaternion ToUnityGeographicRotation(Quaternion rotation, in GeographicBasis basis)
@@ -148,12 +150,12 @@ namespace Emas
             {
                 Quaternion local = Quaternion.Inverse(_geographicBasis.RotationFrom(position))
                     * Quaternion.Inverse(Alignment) * rotation;
-                return SpatialMath.NormalizeRotation(_coordinates.ToSourceRotation(local), nameof(rotation));
+                return SpatialMath.NormalizeRotation(_mapping.ToSourceRotation(local), nameof(rotation));
             }
 
             internal Quaternion ToUnityRotation(Quaternion rotation)
             {
-                return SpatialMath.NormalizeRotation(Alignment * _coordinates.ToUnityRotation(rotation), nameof(rotation));
+                return SpatialMath.NormalizeRotation(Alignment * _mapping.ToUnityRotation(rotation), nameof(rotation));
             }
         }
 

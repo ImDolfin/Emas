@@ -72,7 +72,7 @@ namespace Emas
                 Record record = records[recordIndex];
                 if (record.Ghost != null)
                 {
-                    Spatial spatial = record.Ghost.GetComponent<Spatial>();
+                    Spatial spatial = record.Spatial;
                     if (spatial != null)
                     {
                         spatial.ResetTime(timestamp);
@@ -96,7 +96,7 @@ namespace Emas
                 return;
             }
 
-            Spatial spatial = record.Ghost.GetComponent<Spatial>();
+            Spatial spatial = record.Spatial;
             if (spatial != null && spatial.enabled)
             {
                 // Enable and destroy callbacks can add roots after this placement pass.
@@ -113,7 +113,7 @@ namespace Emas
                 Spatial spatial = null;
                 if (_identities.TryGetValue(frame.FollowedGhost.Value, out reference) && CanProject(reference))
                 {
-                    spatial = reference.Ghost.GetComponent<Spatial>();
+                    spatial = reference.Spatial;
                 }
 
                 if (spatial != null && spatial.AttachedTo.HasValue)
@@ -140,7 +140,7 @@ namespace Emas
             // Place the reference using the exact presentation pose already saved in the captured frame.
             if (CanProject(record) && record != _preparedReference)
             {
-                Spatial spatial = record.Ghost.GetComponent<Spatial>();
+                Spatial spatial = record.Spatial;
                 if (spatial != null && !spatial.AttachedTo.HasValue)
                 {
                     double? distance = _realm.PoseProcessingDistance;
@@ -158,7 +158,7 @@ namespace Emas
             if (frame != null && frame.FollowedGhost.HasValue
                 && _identities.TryGetValue(frame.FollowedGhost.Value, out record) && CanProject(record))
             {
-                reference = record.Ghost.GetComponent<Spatial>();
+                reference = record.Spatial;
                 if (reference != null && (!reference.enabled || reference.AttachedTo.HasValue
                     || (!reference.PositionTime.HasValue && !reference.RotationTime.HasValue)))
                 {
@@ -189,7 +189,7 @@ namespace Emas
                 double utcCapturedAt = Time.realtimeSinceStartupAsDouble;
                 _clock.ObserveReference(sampleTime.Value, receivedTime, utcCapturedAt, Timestamp.UtcNow());
                 predictionTime = frame.PredictionTime;
-                Extrapolation referencePrediction = reference.GetComponent<Extrapolation>();
+                Extrapolation referencePrediction = reference.Extrapolation;
                 if (referencePrediction != null && referencePrediction.enabled)
                 {
                     manualPredictionTime = referencePrediction.PredictionTime;
@@ -211,7 +211,7 @@ namespace Emas
                 Record record = records[recordIndex];
                 if (CanProject(record))
                 {
-                    Spatial spatial = record.Ghost.GetComponent<Spatial>();
+                    Spatial spatial = record.Spatial;
                     if (spatial != null && spatial.enabled && !spatial.AttachedTo.HasValue)
                     {
                         if (spatial.PositionTime.HasValue)
@@ -245,7 +245,7 @@ namespace Emas
             while (CanProject(current) && !_projected.Contains(current) && _visiting.Add(current))
             {
                 _chain.Add(current);
-                Spatial spatial = current.Ghost.GetComponent<Spatial>();
+                Spatial spatial = current.Spatial;
                 if (spatial == null || !spatial.enabled || !spatial.AttachedTo.HasValue
                     || !_identities.TryGetValue(spatial.AttachedTo.Value, out current))
                 {
@@ -271,7 +271,7 @@ namespace Emas
                 return;
             }
 
-            Spatial spatial = record.Ghost.GetComponent<Spatial>();
+            Spatial spatial = record.Spatial;
             // If one root cannot be placed, keep it tracked so a later update can recover.
             bool visible = true;
             try

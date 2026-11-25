@@ -87,7 +87,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Serialized custom axes compose with reference cancellation and Unity placement without losing large-origin precision.
+        /// Serialized custom axes compose with reference placement and use live handedness changes without losing large-origin precision.
         /// </summary>
         [Test]
         public void SerializedCustomCoordinates_RoundTripReferenceAndUnityPlacement()
@@ -113,6 +113,20 @@ namespace Emas.Tests
             Assert.That(Quaternion.Angle(frame.ToUnityRotation(sourceRotation), expected), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToSimulationRotation(expected), sourceRotation), Is.LessThan(0.05f));
             Assert.That(Quaternion.Angle(frame.ToUnityRotation(frame.Rotation), frame.UnityRotation), Is.LessThan(0.05f));
+
+            // Replacing a deserialized convention must update its inverse and
+            // reflection sign as well as its forward position mapping.
+            coordinates = new CoordinateSystem(Axis.NegativeZ, Axis.PositiveX, Axis.PositiveY);
+            frame.Coordinates = JsonUtility.FromJson<CoordinateSystem>(JsonUtility.ToJson(coordinates));
+            frame.FollowRotation = false;
+            frame.UnityRotation = Quaternion.identity;
+            Assert.That(frame.TryToUnityPosition(source, out unity), Is.True);
+            Assert.That(Vector3.Distance(unity, new Vector3(7.75f, 26.25f, 11.5f)), Is.LessThan(0.0001f));
+            Assert.That(Double3.Distance(frame.ToSimulationPosition(unity), source), Is.LessThan(0.001d));
+            sourceRotation = Quaternion.AngleAxis(90, Vector3.right);
+            expected = Quaternion.AngleAxis(-90, Vector3.up);
+            Assert.That(Quaternion.Angle(frame.ToUnityRotation(sourceRotation), expected), Is.LessThan(0.05f));
+            Assert.That(Quaternion.Angle(frame.ToSimulationRotation(expected), sourceRotation), Is.LessThan(0.05f));
         }
 
         /// <summary>

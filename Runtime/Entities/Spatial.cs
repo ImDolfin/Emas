@@ -31,6 +31,8 @@ namespace Emas
         private MotionProcessor _processor;
         private GeographicPoint _rawGeography;
         private GeographicPoint _sampledGeography;
+        private Extrapolation _extrapolation;
+        private Filter _filter;
 
         /// <summary>Gets the latest accepted position sample time, or null for arrival-timed input.</summary>
         /// <value>The original SDK timestamp for the stored position; null before timed input or after a spatial clock reset.</value>
@@ -176,6 +178,36 @@ namespace Emas
         internal CoordinateSystem? EarthCenteredBodyAxes => _earthCenteredBodyAxes;
 
         internal bool IsPoseProcessingBypassed => _directPose;
+
+        internal Extrapolation Extrapolation
+        {
+            get
+            {
+                // Unity's null check also detects destruction. Do not cache absence,
+                // since a processing component can be added after this root is active.
+                if (_extrapolation == null)
+                {
+                    _extrapolation = GetComponent<Extrapolation>();
+                }
+
+                return _extrapolation;
+            }
+        }
+
+        internal bool HasFilters
+        {
+            get
+            {
+                // This only checks presence. PredictionInput still reads the live
+                // ordered filter list, including enabled state and settings changes.
+                if (_filter == null)
+                {
+                    _filter = GetComponent<Filter>();
+                }
+
+                return _filter != null;
+            }
+        }
 
         internal Ghost Ghost
         {
