@@ -65,7 +65,7 @@ Filters return new queries; results have no ordering guarantee. Views and spatia
 
 Add `Spatial` to a Ghost for shared-coordinate placement. Supply Cartesian `Double3`, WGS84 `GeoPosition`, or ECEF input, then configure an optional fixed or followed `ReferenceFrame`. Global positions remain doubles until projection near the Unity origin.
 
-Optional `Smoothing` filters position and rotation independently. Optional `Extrapolation` predicts gaps after observations. Its **Forward prediction** setting requests an actual interval from each received pose; **Prediction limit** caps that interval. Configure both traits inline under **Ghost > Traits**; raw input remains unchanged.
+Optional filters such as `PacketCorrection` and `Smoothing` process observations before `Extrapolation` predicts gaps. **Prediction Interval** uses automatic calculation at zero; **Prediction limit** caps the gap. Configure traits under **Ghost > Traits** and drag their **≡ grips** to order filters. Raw input remains unchanged.
 
 | Extrapolation strategy | Use |
 | --- | --- |
@@ -92,6 +92,52 @@ extrapolation.Strategy = new SingerExtrapolation
 Use original SDK timestamps on one shared clock. `Realm.InterpolationDelay` adds shared playback buffering; half-lives control filtering, `PredictionTime` requests forward prediction, and `MaximumExtrapolation` caps prediction. These are separate settings. See [Spatial input, timing and strategies](Documentation~/Spatial.md) for units, axes and examples of every strategy.
 
 **Realm Setup > Presentation** groups automatic views, view distance and processing distance for every Anchor. Enable **Limit processing distance** to use the latest raw poses outside that radius, without buffering, prediction or smoothing. These entities remain visible subject to the separate view-distance limit. Code-owned Realms use `realm.PoseProcessingDistance`; null processes every distance.
+
+## Custom extrapolation strategies
+
+Implement `IExtrapolationStrategy.Predict`. Emas calls it once per Ghost projection with the filtered state and prediction intervals. This simple example extends linear velocity and holds rotation:
+
+```csharp
+using System;
+using Emas;
+using UnityEngine;
+
+[Serializable]
+public sealed class LinearPrediction : IExtrapolationStrategy
+{
+    public Prediction Predict(PredictionRequest request)
+    {
+        Double3 velocity = request.PositionContext.Velocity.GetValueOrDefault();
+        return request.CreatePrediction(
+            velocity * request.PositionSeconds, Quaternion.identity, velocity);
+    }
+}
+```
+
+Assign it with `ghost.Trait<Extrapolation>().Strategy = new LinearPrediction();`, or select it in the Inspector. For angular prediction, use `RotationContext` and `RotationSeconds`; `CreatePrediction` handles offset composition and axis conversion.
+
+## Custom filters
+
+Derive from `Filter` and override `Process`. Modify the state copy and return it. This example adds a fixed position correction in source units:
+
+```csharp
+using Emas;
+
+public sealed class PositionOffset : Filter
+{
+    protected override FilterState Process(FilterState input, FilterContext context)
+    {
+        if (input.Position.HasValue)
+        {
+            input.Position += new Double3(0, 0.1, 0);
+        }
+
+        return input;
+    }
+}
+```
+
+Add it through the Ghost Inspector or `ghost.gameObject.AddComponent<PositionOffset>();`. Enabled filters run top to bottom before prediction. Keep timestamps consistent with the estimated state and clear any stored history in `OnReset()`. See [filter and strategy details](Documentation~/Spatial.md#filter-observations-before-prediction).
 
 ## Samples and documentation
 
