@@ -2,6 +2,7 @@
 
 ## 0.3.0
 
+- Reuse root contract lookups for sealed MonoBehaviours marked DisallowMultipleComponent. Preserve late additions, inactive and disabled providers, destruction and replacement; interfaces and other component contracts retain live ambiguity checks.
 - Reuse live spatial and processing component lookups, and prepare shared signed-axis mappings for Mono updates. Preserve runtime component additions and replacements, serialized axes and handedness.
 - Add brief README examples for custom extrapolation strategies and filters, including registration, execution order and state reset guidance.
 - Remove the redundant Extrapolation prediction-timing mode row. Rename its Inspector field to Prediction Interval and explain automatic calculation at zero in the tooltip.

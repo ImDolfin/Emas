@@ -24,6 +24,11 @@ namespace Emas.Tests
         {
         }
 
+        [DisallowMultipleComponent]
+        private sealed class UniquePart : MonoBehaviour
+        {
+        }
+
         private sealed class Probe : PresenceDetector
         {
             internal Ghost Publish(string id)
@@ -103,7 +108,7 @@ namespace Emas.Tests
         }
 
         /// <summary>
-        /// Required lookup uses one Ghost marker, directs missing composition to the Kind's blueprint and resolves disabled root providers.
+        /// Required lookup diagnoses missing composition, resolves disabled root providers and observes unique component additions and replacements while inactive.
         /// </summary>
         [Test]
         public void GetRequired_ReturnsProviderOrIdentifiesMissingContract()
@@ -133,6 +138,23 @@ namespace Emas.Tests
                 FirstPart first = concrete.gameObject.AddComponent<FirstPart>();
                 first.enabled = false;
                 Assert.That(ghost.GetRequired<IPart>(), Is.SameAs(first));
+
+                // Unique concrete contracts remain root-only and observe late
+                // additions without depending on Awake or OnEnable callbacks.
+                child.AddComponent<UniquePart>();
+                Assert.That(ghost.TryGet<UniquePart>(out UniquePart unique), Is.False);
+                concrete.gameObject.SetActive(false);
+                unique = concrete.gameObject.AddComponent<UniquePart>();
+                unique.enabled = false;
+                Assert.That(ghost.GetRequired<UniquePart>(), Is.SameAs(unique));
+                Assert.That(ghost.GetRequired<UniquePart>(), Is.SameAs(unique));
+
+                // Destroyed providers must not hide a missing contract or retain
+                // their place when the application creates a replacement.
+                UnityEngine.Object.DestroyImmediate(unique);
+                Assert.That(ghost.TryGet<UniquePart>(out unique), Is.False);
+                UniquePart replacement = concrete.gameObject.AddComponent<UniquePart>();
+                Assert.That(ghost.GetRequired<UniquePart>(), Is.SameAs(replacement));
             }
         }
 
