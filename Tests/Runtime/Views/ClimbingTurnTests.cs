@@ -173,8 +173,8 @@ namespace Emas.Tests
             Assert.That(Error(spatial, new Double3(1000, 100, 0)), Is.LessThan(0.001d));
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Gravity = 0);
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.PacketSmoothingDuration = float.NaN);
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ExtrapolateDisplacement(default(ExtrapolationContext), -1));
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ExtrapolateRotation(default(ExtrapolationContext), double.NaN));
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, -1, 0)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, 0, double.NaN)));
         }
 
         private Spatial Create(string id, IExtrapolationStrategy strategy, out Extrapolation motion)

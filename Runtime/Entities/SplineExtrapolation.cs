@@ -11,7 +11,7 @@ namespace Emas
     /// in the selected body or world frame. The caller owns prediction timing, caps and smoothing. This strategy adds
     /// no packet correction and has no mutable per-entity state. Instances may be shared.</remarks>
     [Serializable]
-    public sealed class SplineExtrapolation : IExtrapolationStrategy
+    public sealed class SplineExtrapolation : IExtrapolationStrategy, IPredictionModel
     {
         private struct Curve
         {
@@ -111,19 +111,22 @@ namespace Emas
         private const double WindowSeconds = 0.25d;
         private const double MinimumInterval = 0.0001d;
 
+        /// <summary>Predicts the complete pose and motion using this model.</summary>
+        /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
+        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        public Prediction Predict(PredictionRequest request)
+        {
+            return PredictionEvaluator.Evaluate(request, this);
+        }
+
         /// <summary>Continues a cubic position curve fitted to retained timestamped observations.</summary>
         /// <param name="context">Position history and time-aligned SDK derivatives in source axes or ECEF metres.</param>
         /// <param name="seconds">Finite, nonnegative seconds beyond the observation, already bounded by the prediction cap.</param>
         /// <returns>Source-space displacement. Sparse history uses lower-order curves or supplied motion; no velocity information holds position.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or resulting displacement is invalid.</exception>
-        public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+        Double3 IPredictionModel.Displacement(ExtrapolationContext context, double seconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
-            if (seconds == 0)
-            {
-                return default(Double3);
-            }
-
             if (context.TryPrediction(typeof(SplineExtrapolation), 0, 0, out LinearMotion prepared))
             {
                 return prepared.HasVelocity ? prepared.Curve.Evaluate(seconds) : default(Double3);
@@ -168,11 +171,11 @@ namespace Emas
         /// <param name="seconds">Finite, nonnegative seconds beyond the orientation, already bounded by the prediction cap.</param>
         /// <returns>A quaternion offset for the existing body/world composition pipeline; identity without motion or with supplied zero rate.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or resulting angular displacement is invalid.</exception>
-        public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+        Quaternion IPredictionModel.Rotation(ExtrapolationContext context, double seconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
-            if (seconds == 0 || (context.AngularVelocity.HasValue && !context.AngularVelocityIsEstimated
-                && context.AngularVelocity.Value == default(Double3)))
+            if (context.AngularVelocity.HasValue && !context.AngularVelocityIsEstimated
+                && context.AngularVelocity.Value == default(Double3))
             {
                 return Quaternion.identity;
             }
@@ -202,6 +205,53 @@ namespace Emas
             context.StorePrediction(typeof(SplineExtrapolation), 1, 0, curve);
             return supplied ? IntegrateAngular(curve, seconds, context.AngularVelocityIsWorld)
                 : SpatialMath.AngularDisplacement(curve.Evaluate(seconds), 1d);
+        }
+
+        Double3 IPredictionModel.Velocity(ExtrapolationContext context, double seconds)
+        {
+            if (!context.TryPrediction(typeof(SplineExtrapolation), 0, 0, out LinearMotion motion))
+            {
+                ((IPredictionModel)this).Displacement(context, 0);
+                context.TryPrediction(typeof(SplineExtrapolation), 0, 0, out motion);
+            }
+
+            return motion.HasVelocity ? motion.Curve.Velocity(seconds) : default(Double3);
+        }
+
+        Double3 IPredictionModel.AngularVelocity(ExtrapolationContext context, double seconds)
+        {
+            if (context.AngularVelocity.HasValue && !context.AngularVelocityIsEstimated
+                && context.AngularVelocity.Value == default(Double3))
+            {
+                return default(Double3);
+            }
+
+            if (!context.TryPrediction(typeof(SplineExtrapolation), 1, 0, out Curve curve))
+            {
+                ((IPredictionModel)this).Rotation(context, 0);
+                context.TryPrediction(typeof(SplineExtrapolation), 1, 0, out curve);
+            }
+
+            Double3 derivative = curve.Velocity(seconds);
+            if (context.AngularVelocity.HasValue && !context.AngularVelocityIsEstimated)
+            {
+                return derivative;
+            }
+
+            // The derivative of a quaternion-log curve needs the exponential's Jacobian.
+            // Body composition uses the right Jacobian; world composition uses the left.
+            Double3 arc = curve.Evaluate(seconds);
+            double angle = Math.Sqrt(arc.X * arc.X + arc.Y * arc.Y + arc.Z * arc.Z);
+            double squared = angle * angle;
+            double first = angle < 0.01d ? 0.5d - squared / 24d : (1d - Math.Cos(angle)) / squared;
+            double second = angle < 0.01d ? 1d / 6d - squared / 120d : (angle - Math.Sin(angle)) / (squared * angle);
+            Double3 cross = Cross(arc, derivative);
+            return derivative + cross * (context.AngularVelocityIsWorld ? first : -first) + Cross(arc, cross) * second;
+        }
+
+        private static Double3 Cross(Double3 a, Double3 b)
+        {
+            return new Double3(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X);
         }
 
         private static bool TryCurve(in ExtrapolationContext context, bool angular, out Curve curve)

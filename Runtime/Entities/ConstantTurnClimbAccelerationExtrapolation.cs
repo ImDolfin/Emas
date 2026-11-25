@@ -10,7 +10,7 @@ namespace Emas
     /// histories; acceleration alone cannot invent velocity. Geographic motion uses local east/up/north at the observation.
     /// Timing, caps and optional Smoothing remain caller-owned. Immutable instances may be shared.</remarks>
     [Serializable]
-    public sealed class ConstantTurnClimbAccelerationExtrapolation : IExtrapolationStrategy, IPacketSmoothingStrategy
+    public sealed class ConstantTurnClimbAccelerationExtrapolation : IExtrapolationStrategy, IPredictionModel, IPacketSmoothingStrategy
     {
         private struct Motion
         {
@@ -77,12 +77,20 @@ namespace Emas
             }
         }
 
+        /// <summary>Predicts the complete pose and motion using this model.</summary>
+        /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
+        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        public Prediction Predict(PredictionRequest request)
+        {
+            return PredictionEvaluator.Evaluate(request, this);
+        }
+
         /// <summary>Integrates horizontal turning and tangential acceleration while extending vertical velocity linearly.</summary>
         /// <param name="context">Time-aligned pose, SDK motion and timestamped history. Vertical speed supplies climb rate.</param>
         /// <param name="seconds">Finite, nonnegative seconds beyond the position observation, already bounded by the prediction cap.</param>
         /// <returns>Displacement in Cartesian source units or ECEF metres; zero without velocity information.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or resulting displacement is invalid.</exception>
-        public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+        Double3 IPredictionModel.Displacement(ExtrapolationContext context, double seconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
             if (seconds == 0 || !TryMotion(context, out Motion motion))
@@ -104,7 +112,7 @@ namespace Emas
         /// <param name="seconds">Finite, nonnegative seconds beyond the rotation observation, already bounded by the prediction cap.</param>
         /// <returns>A quaternion offset for the existing body/world pipeline; identity without angular or course motion.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or resulting angular displacement is invalid.</exception>
-        public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+        Quaternion IPredictionModel.Rotation(ExtrapolationContext context, double seconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
             if (seconds == 0)
@@ -126,6 +134,31 @@ namespace Emas
             // world yaw there so the observed bank and pitch are preserved.
             Double3 bodyRate = SpatialMath.Rotate(Quaternion.Inverse(motion.Attitude), new Double3(0, motion.TurnRate, 0));
             return SpatialMath.AngularDisplacement(bodyRate, seconds);
+        }
+
+        Double3 IPredictionModel.Velocity(ExtrapolationContext context, double seconds)
+        {
+            if (!TryMotion(context, out Motion motion))
+            {
+                return default(Double3);
+            }
+
+            Double3 horizontal = new Double3(motion.Velocity.X, 0, motion.Velocity.Z);
+            Double3 velocity = SpatialMath.Rotate(SpatialMath.AngularDisplacement(new Double3(0, motion.TurnRate, 0), seconds),
+                horizontal + motion.Acceleration * seconds) + new Double3(0, motion.Velocity.Y, 0);
+            return context.Space == ReferenceSpace.Geographic ? motion.Basis.ToEarthCentered(velocity)
+                : context.SourceCoordinates.ToSource(velocity);
+        }
+
+        Double3 IPredictionModel.AngularVelocity(ExtrapolationContext context, double seconds)
+        {
+            if (context.AngularVelocity.HasValue)
+            {
+                return context.AngularVelocity.Value;
+            }
+
+            return TryMotion(context, out Motion motion) && motion.HasAttitude
+                ? SpatialMath.Rotate(Quaternion.Inverse(motion.Attitude), new Double3(0, motion.TurnRate, 0)) : default(Double3);
         }
 
         private bool TryMotion(in ExtrapolationContext context, out Motion motion)

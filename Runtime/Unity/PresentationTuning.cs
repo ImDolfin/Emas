@@ -69,8 +69,8 @@ namespace Emas
             _positionActive = remaining > 0;
             if (changed)
             {
-                // Try the old settings at the current time. Using the last frame instead would make repeated
-                // slider edits hold a fast-moving entity still.
+                // The caller advances its cached pre-tuning pose using known motion so
+                // repeated edits do not hold a fast-moving entity still.
                 offset += previous - current;
                 _positionOffset = offset;
                 _positionStarted = timestamp;

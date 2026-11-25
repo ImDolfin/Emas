@@ -103,6 +103,30 @@ namespace Emas
                 return true;
             }
 
+            internal Double3 Derivative(double offsetFromNewest)
+            {
+                if (_count < 2 || offsetFromNewest >= 0)
+                {
+                    return default(Double3);
+                }
+
+                VectorSample newest = At(_count - 1);
+                VectorSample after = newest;
+                for (int index = _count - 2; index >= 0; index--)
+                {
+                    VectorSample before = At(index);
+                    if (offsetFromNewest >= before.Time.ElapsedSince(newest.Time))
+                    {
+                        // The slope of the same segment used for historical interpolation.
+                        return (after.Value - before.Value) * (1d / after.Time.ElapsedSince(before.Time));
+                    }
+
+                    after = before;
+                }
+
+                return default(Double3);
+            }
+
             internal void Clear()
             {
                 // Reset the sample count to empty the buffer. The old array values can stay in place.
@@ -378,6 +402,34 @@ namespace Emas
         internal bool SamplePosition(double offsetFromNewest, out Double3 position)
         {
             return _positions.Sample(offsetFromNewest, out position);
+        }
+
+        internal Double3 PositionDerivative(double offsetFromNewest)
+        {
+            return _positions.Derivative(offsetFromNewest);
+        }
+
+        internal Double3 RotationDerivative(double offsetFromNewest)
+        {
+            if (_rotationCount < 2 || offsetFromNewest >= 0)
+            {
+                return default(Double3);
+            }
+
+            RotationSample newest = RotationAt(_rotationCount - 1);
+            RotationSample after = newest;
+            for (int index = _rotationCount - 2; index >= 0; index--)
+            {
+                RotationSample before = RotationAt(index);
+                if (offsetFromNewest >= before.Time.ElapsedSince(newest.Time))
+                {
+                    return SpatialMath.RotationRate(before.Value, after.Value, after.Time.ElapsedSince(before.Time));
+                }
+
+                after = before;
+            }
+
+            return default(Double3);
         }
 
         internal bool SampleVelocity(double offsetFromNewest, out Double3 velocity)

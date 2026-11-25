@@ -313,8 +313,8 @@ namespace Emas.Tests
 
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Gravity = float.NaN);
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.PacketSmoothingDuration = -0.1f);
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ExtrapolateDisplacement(default(ExtrapolationContext), -1));
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ExtrapolateRotation(default(ExtrapolationContext), double.PositiveInfinity));
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, -1, 0)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, 0, double.PositiveInfinity)));
         }
 
         /// <summary>CTA without attitude uses world acceleration fits and does not invent velocity from acceleration alone.</summary>

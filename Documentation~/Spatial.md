@@ -326,13 +326,30 @@ Separate physical-value traits all use Spatial setters. Each root shares geograp
 
 Bound trait readers continue running each update. Unbound and presentation-only traits skip the reader pass. Ownership and source-generation checks remain immediately before each application reader and Ghost callback, including removal, restart and replacement during callbacks.
 
-Built-in strategies reuse prepared motion on their owning Extrapolation component. Preparation depends on observations, eligible history, source axes and model settings; each requested duration still evaluates its own future pose. Position and orientation keep independent sampling times. New observations, history resets and live model-setting changes invalidate the relevant preparation. Shared strategy instances retain no mutable entity state, and custom strategy callbacks keep their existing evaluation behavior.
+Built-in strategies reuse prepared motion on their owning Spatial component. Preparation depends on observations, eligible history, source axes and model settings. Position and orientation keep independent sampling times. New observations, history resets and live model-setting changes invalidate the relevant preparation. Shared strategy instances retain no mutable entity state.
 
 ## Implement a custom strategy
 
-Implement `IExtrapolationStrategy` with deterministic, non-mutating methods. Both receive `ExtrapolationContext` and bounded seconds; preview/tangent evaluation may call them repeatedly. Return zero displacement or identity rotation at zero seconds. Return finite source-space displacement and a finite nonzero quaternion offset.
+Implement `IExtrapolationStrategy.Predict(PredictionRequest)` with a deterministic, non-mutating method. Emas invokes it once per eligible Ghost per Realm projection. The result supplies both pose channels and their velocities to packet correction and smoothing. Live settings edits reuse the previous presentation and its motion instead of evaluating the old strategy again. Separate explicit Realm projections can run within the same Unity frame and each receives its own prediction.
 
-The context contains raw accepted poses with their own timestamps, time-aligned observation pose/motion, supplied/estimated provenance, world/body angular convention and coordinate metadata. TryGetPositionSample, TryGetVelocitySample, TryGetRotationSample and TryGetAngularVelocitySample expose retained raw observations at or before ObservationTime for strategy-specific estimation. Read these bounded live views only during the strategy call; they allocate no memory and do not mutate or interpolate observations. SDK world angular samples remain ECEF even when the prepared AngularVelocity was converted to tangent axes. Newest motion timestamps may be later than effective sampled motion. Emas owns interpolation, composition, coordinate conversion and per-root histories.
+The request supplies an interpolated base `Position` and `Rotation`, independent `PositionSeconds` and `RotationSeconds`, and a time-aligned `ExtrapolationContext` for each channel. Intervals are nonnegative and already capped. Return an absolute `Prediction` in the same position coordinates and rotation representation. Its velocity uses source units per second; its angular velocity uses the world axes of the returned quaternion, in radians per second with Quaternion.AngleAxis signs. At zero duration, retain that channel's base pose. Retain missing channels as well.
+
+`request.CreatePrediction(displacement, rotationOffset, velocity, angularVelocity)` converts model angular axes and composes offsets for you. Its angular inputs use the rotation context's model body/world convention. For example:
+
+```csharp
+[Serializable]
+public sealed class CustomVelocity : IExtrapolationStrategy
+{
+    public Prediction Predict(PredictionRequest request)
+    {
+        Double3 velocity = request.PositionContext.Velocity.GetValueOrDefault();
+        return request.CreatePrediction(velocity * request.PositionSeconds,
+            Quaternion.identity, velocity);
+    }
+}
+```
+
+Each context contains raw accepted poses with their own timestamps, time-aligned observation pose/motion, supplied/estimated provenance, world/body angular convention and coordinate metadata. Both contexts are captured before the call. TryGetPositionSample, TryGetVelocitySample, TryGetRotationSample and TryGetAngularVelocitySample expose retained raw observations at or before ObservationTime for strategy-specific estimation. Read these bounded live views only during the strategy call; they allocate no memory and do not mutate or interpolate observations. SDK world angular samples remain ECEF even when the prepared AngularVelocity was converted to tangent axes. Newest motion timestamps may be later than effective sampled motion. Emas owns interpolation, timing limits and per-root histories.
 
 A `[Serializable]` concrete class with a public parameterless constructor appears in the selector with its serialized settings. Runtime-only implementations need no serialization attribute. Null assignment is rejected; missing serialized references use the default strategy. Replace instances for a blended live transition; in-place setting edits are immediate. Finite-result overflows reported as `ArgumentOutOfRangeException` fall back to observed pose; other application exceptions propagate.
 

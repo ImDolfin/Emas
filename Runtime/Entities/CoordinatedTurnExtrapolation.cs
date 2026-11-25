@@ -12,8 +12,13 @@ namespace Emas
     /// selected rotating-body model; supplied SDK velocity, including zero, takes precedence.
     /// </remarks>
     [Serializable]
-    public sealed class CoordinatedTurnExtrapolation : IExtrapolationStrategy, IPacketSmoothingStrategy
+    public sealed class CoordinatedTurnExtrapolation : IExtrapolationStrategy, IPredictionModel, IPacketSmoothingStrategy
     {
+        private struct AngularMotion
+        {
+            internal Double3 Rate;
+        }
+
         private struct Motion
         {
             internal bool HasVelocity;
@@ -81,14 +86,32 @@ namespace Emas
             }
         }
 
+        /// <summary>Predicts the complete pose and motion using this model.</summary>
+        /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
+        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        public Prediction Predict(PredictionRequest request)
+        {
+            return PredictionEvaluator.Evaluate(request, this);
+        }
+
         /// <summary>Integrates rotating body velocity and its constant first derivative to obtain a second-order displacement.</summary>
         /// <param name="context">Time-aligned pose and inertial motion. Missing velocity uses timed position history, or holds position if unavailable.</param>
         /// <param name="seconds">Finite, nonnegative seconds already bounded by the extrapolation horizon.</param>
         /// <returns>Displacement in Cartesian source axes or ECEF metres, without modifying the observed pose.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or the resulting displacement is invalid.</exception>
-        public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+        Double3 IPredictionModel.Displacement(ExtrapolationContext context, double seconds)
         {
             return PredictDisplacement(context, seconds, _useBankAngleWhenRatesUnavailable, _gravity, false);
+        }
+
+        Double3 IPredictionModel.Velocity(ExtrapolationContext context, double seconds)
+        {
+            return PredictVelocity(context, seconds, _useBankAngleWhenRatesUnavailable, _gravity, false);
+        }
+
+        Double3 IPredictionModel.AngularVelocity(ExtrapolationContext context, double seconds)
+        {
+            return PredictAngularVelocity(context, _useBankAngleWhenRatesUnavailable, _gravity, false);
         }
 
         /// <summary>Integrates a constant angular vector with the existing body or world composition.</summary>
@@ -96,7 +119,7 @@ namespace Emas
         /// <param name="seconds">Finite, nonnegative seconds already bounded by the extrapolation horizon.</param>
         /// <returns>The quaternion offset expected by the body's rotation representation.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or angular displacement is invalid.</exception>
-        public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+        Quaternion IPredictionModel.Rotation(ExtrapolationContext context, double seconds)
         {
             return PredictRotation(context, seconds, _useBankAngleWhenRatesUnavailable, _gravity, false);
         }
@@ -110,12 +133,7 @@ namespace Emas
                 return default(Double3);
             }
 
-            int options = (useBank ? 1 : 0) | (estimateAcceleration ? 2 : 0);
-            if (!context.TryPrediction(typeof(CoordinatedTurnExtrapolation), options, gravity, out Motion motion))
-            {
-                motion = PrepareMotion(context, useBank, gravity, estimateAcceleration);
-                context.StorePrediction(typeof(CoordinatedTurnExtrapolation), options, gravity, motion);
-            }
+            Motion motion = MotionAt(context, useBank, gravity, estimateAcceleration);
 
             if (!motion.HasVelocity)
             {
@@ -124,7 +142,7 @@ namespace Emas
 
             if (!motion.HasAttitude)
             {
-                return estimateAcceleration ? _linearFallback.ExtrapolateDisplacement(context, seconds) : motion.Velocity * seconds
+                return estimateAcceleration ? ((IPredictionModel)_linearFallback).Displacement(context, seconds) : motion.Velocity * seconds
                     + motion.Acceleration * (0.5d * seconds * seconds);
             }
 
@@ -144,32 +162,47 @@ namespace Emas
             bool useBank, float gravity, bool estimateAcceleration)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
+            return SpatialMath.AngularDisplacement(PredictAngularVelocity(context, useBank, gravity, estimateAcceleration), seconds);
+        }
+
+        internal static Double3 PredictAngularVelocity(ExtrapolationContext context,
+            bool useBank, float gravity, bool estimateAcceleration)
+        {
             if (context.AngularVelocity.HasValue)
             {
-                return SpatialMath.AngularDisplacement(context.AngularVelocity.Value, seconds);
+                return context.AngularVelocity.Value;
             }
 
-            GeographicBasis basis = Basis(context);
-            Double3? velocity = context.Velocity;
-            if (!velocity.HasValue && TryChord(context, out Double3 chord))
+            int options = (useBank ? 1 : 0) | (estimateAcceleration ? 2 : 0);
+            if (!context.TryPrediction(typeof(CoordinatedTurnExtrapolation), options, gravity, out AngularMotion motion))
             {
-                velocity = chord;
+                // Pose, filter motion and the endpoint tangent share the same inferred rate.
+                motion.Rate = CalculateAngularVelocity(context, useBank, gravity, estimateAcceleration);
+                context.StorePrediction(typeof(CoordinatedTurnExtrapolation), options, gravity, motion);
             }
 
-            if (!TryAttitude(context, basis, out Quaternion attitude) || !velocity.HasValue)
+            return motion.Rate;
+        }
+
+        internal static Double3 PredictVelocity(ExtrapolationContext context, double seconds,
+            bool useBank, float gravity, bool estimateAcceleration)
+        {
+            Motion motion = MotionAt(context, useBank, gravity, estimateAcceleration);
+            if (!motion.HasVelocity)
             {
-                return Quaternion.identity;
+                return default(Double3);
             }
 
-            Double3 localVelocity = ToLocal(context, basis, velocity.Value);
-            Double3 rate = BodyRate(context, basis, attitude, localVelocity, useBank, gravity);
-            if (estimateAcceleration)
+            if (!motion.HasAttitude)
             {
-                Double3 bodyVelocity = SpatialMath.Rotate(Quaternion.Inverse(attitude), localVelocity);
-                EstimateMotion(context, basis, attitude, useBank, gravity, ref rate, ref bodyVelocity, out _);
+                return estimateAcceleration ? ((IPredictionModel)_linearFallback).Velocity(context, seconds)
+                    : motion.Velocity + motion.Acceleration * seconds;
             }
 
-            return SpatialMath.AngularDisplacement(rate, seconds);
+            Double3 velocity = SpatialMath.Rotate(motion.Attitude * SpatialMath.AngularDisplacement(motion.Rate, seconds),
+                motion.Velocity + motion.Acceleration * seconds);
+            return context.Space == ReferenceSpace.Geographic ? motion.Basis.ToEarthCentered(velocity)
+                : context.SourceCoordinates.ToSource(velocity);
         }
 
         internal static Double3 ToLocal(in ExtrapolationContext context, in GeographicBasis basis, Double3 vector)
@@ -219,6 +252,49 @@ namespace Emas
         internal static Double3 IntegrateMotion(Double3 velocity, Double3 acceleration, Double3 rate, double seconds)
         {
             return Integrate(velocity, acceleration, rate, seconds);
+        }
+
+        private static Double3 CalculateAngularVelocity(ExtrapolationContext context,
+            bool useBank, float gravity, bool estimateAcceleration)
+        {
+            if (context.AngularVelocity.HasValue)
+            {
+                return context.AngularVelocity.Value;
+            }
+
+            GeographicBasis basis = Basis(context);
+            Double3? velocity = context.Velocity;
+            if (!velocity.HasValue && TryChord(context, out Double3 chord))
+            {
+                velocity = chord;
+            }
+
+            if (!TryAttitude(context, basis, out Quaternion attitude) || !velocity.HasValue)
+            {
+                return default(Double3);
+            }
+
+            Double3 localVelocity = ToLocal(context, basis, velocity.Value);
+            Double3 rate = BodyRate(context, basis, attitude, localVelocity, useBank, gravity);
+            if (estimateAcceleration)
+            {
+                Double3 bodyVelocity = SpatialMath.Rotate(Quaternion.Inverse(attitude), localVelocity);
+                EstimateMotion(context, basis, attitude, useBank, gravity, ref rate, ref bodyVelocity, out _);
+            }
+
+            return rate;
+        }
+
+        private static Motion MotionAt(ExtrapolationContext context, bool useBank, float gravity, bool estimateAcceleration)
+        {
+            int options = (useBank ? 1 : 0) | (estimateAcceleration ? 2 : 0);
+            if (!context.TryPrediction(typeof(CoordinatedTurnExtrapolation), options, gravity, out Motion motion))
+            {
+                motion = PrepareMotion(context, useBank, gravity, estimateAcceleration);
+                context.StorePrediction(typeof(CoordinatedTurnExtrapolation), options, gravity, motion);
+            }
+
+            return motion;
         }
 
         private static Motion PrepareMotion(in ExtrapolationContext context, bool useBank, float gravity, bool estimateAcceleration)

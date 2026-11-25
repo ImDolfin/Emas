@@ -20,23 +20,13 @@ namespace Emas.Tests
             internal readonly ConstantAccelerationExtrapolation Model = new ConstantAccelerationExtrapolation();
             internal Action<ExtrapolationContext> Observed;
 
-            /// <summary>Reads the public history view during the strategy call before delegating prediction.</summary>
-            /// <param name="context">The source-aligned observations.</param>
-            /// <param name="seconds">The capped prediction duration.</param>
-            /// <returns>The built-in acceleration model's displacement.</returns>
-            public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+            /// <summary>Reads history during a complete prediction before delegating to the built-in model.</summary>
+            /// <param name="request">The complete independently timed prediction request.</param>
+            /// <returns>The acceleration model's full prediction.</returns>
+            public Prediction Predict(PredictionRequest request)
             {
-                Observed?.Invoke(context);
-                return Model.ExtrapolateDisplacement(context, seconds);
-            }
-
-            /// <summary>Delegates angular prediction to the same immutable model.</summary>
-            /// <param name="context">The source-aligned observations.</param>
-            /// <param name="seconds">The capped prediction duration.</param>
-            /// <returns>The built-in acceleration model's angular offset.</returns>
-            public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
-            {
-                return Model.ExtrapolateRotation(context, seconds);
+                Observed?.Invoke(request.PositionContext);
+                return Model.Predict(request);
             }
         }
 
@@ -198,9 +188,9 @@ namespace Emas.Tests
                     return;
                 }
 
-                Double3 before = probe.Model.ExtrapolateDisplacement(context, 0.1d);
+                Double3 before = probe.Model.Predict(new PredictionRequest(context, default(ExtrapolationContext), default(Double3), Quaternion.identity, 0.1d, 0)).Position;
                 motion.Reset();
-                Double3 after = probe.Model.ExtrapolateDisplacement(context, 0.1d);
+                Double3 after = probe.Model.Predict(new PredictionRequest(context, default(ExtrapolationContext), default(Double3), Quaternion.identity, 0.1d, 0)).Position;
                 Assert.That(before.X, Is.EqualTo(0.05d).Within(0.00001d));
                 Assert.That(after, Is.EqualTo(default(Double3)));
                 checkedHistory = true;

@@ -52,6 +52,8 @@ Prediction-limit coverage checks the 7 ms minimum through API assignments, runti
 
 Spatial input coverage checks independent coordinate origins and timestamps, data supplied before prediction is added, retention after removing prediction, motion-assisted smoothing without Extrapolation, and attachment processing/clock bypass with clean recovery on Detach.
 
+Custom strategy coverage checks one full-pose Predict call per eligible Ghost per Realm projection, independent channel sampling times, shared pose/velocity results for both filters, coherent context capture and live edits without old-strategy reevaluation. Attached, distant and disabled roots retain their prediction bypass contracts.
+
 Shared-clock coverage checks calibrated median packet-age diagnostics, cached reads, clock-mode/reset/disposal boundaries, and live fallback edits. Manual-mode coverage switches the whole Realm through lower and higher receipt-based intervals, restores automatic timing at zero or disable, samples newer peers from history and retains independent prediction caps.
 
 | Area | Contracts |

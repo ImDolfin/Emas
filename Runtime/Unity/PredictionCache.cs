@@ -1,7 +1,7 @@
 namespace Emas
 {
-    // Prepared trajectories belong to an Extrapolation component, not a shared strategy.
-    // Two keys per value type cover position/rotation times and live model transitions.
+    // Prepared trajectories belong to Spatial, not a shared strategy.
+    // Two keys per value type cover independent position and rotation times.
     internal sealed class PredictionCache
     {
         private readonly struct Key

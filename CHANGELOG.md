@@ -2,6 +2,7 @@
 
 ## 0.3.0
 
+- Replace separate strategy displacement/rotation calls with one Predict(PredictionRequest) call returning a complete Prediction. Share the result and its velocities across packet correction and smoothing; use cached presentation motion for live tuning instead of evaluating strategies again. Preserve independent position/rotation times and attached/distant bypasses.
 - Make Spatial the sole SDK input API for pose, velocity, acceleration and angular velocity. Move raw motion/history ownership off Extrapolation, retain inputs across prediction removal, and let Smoothing use supplied motion without Extrapolation. Update sample data traits and public contract coverage to the consolidated API.
 - Bypass prediction, packet-correction previews and smoothing for attached Ghosts. Reset processing only at attachment transitions, ignore unused attached timestamps when choosing the Realm clock, and resume from current Spatial inputs on Detach.
 - Group automatic views, view distance and processing distance under Realm Setup > Presentation. Apply them across all Anchors with live editing; use one automatic-view subscription per Realm. Move the processing-radius API to Realm.PoseProcessingDistance and simplify Anchor Setup to identity and detector connections. Update the authored/imported samples to the new scope.

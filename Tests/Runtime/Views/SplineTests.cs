@@ -87,10 +87,10 @@ namespace Emas.Tests
                 - Path(origin, velocity, acceleration, jerk, 0.3d);
             AssertSource(rates, origin + aligned, 0.001d);
 
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ExtrapolateDisplacement(default(ExtrapolationContext), -0.1d));
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.ExtrapolateRotation(default(ExtrapolationContext), double.NaN));
-            Assert.That(strategy.ExtrapolateDisplacement(default(ExtrapolationContext), 0), Is.EqualTo(default(Double3)));
-            Assert.That(strategy.ExtrapolateRotation(default(ExtrapolationContext), 0), Is.EqualTo(Quaternion.identity));
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, -0.1d, 0)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, 0, double.NaN)));
+            Assert.That(strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, 0, 0)).Position, Is.EqualTo(default(Double3)));
+            Assert.That(strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, 0, 0)).Rotation, Is.EqualTo(Quaternion.identity));
         }
 
         /// <summary>Sparse streams upgrade from held to linear and quadratic motion; teleports and untimed input discard old curve estimates.</summary>

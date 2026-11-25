@@ -124,6 +124,11 @@ namespace Emas
             return ToUnity(value) * Determinant;
         }
 
+        internal Double3 ToSourceAngularVelocity(Double3 value)
+        {
+            return ToSource(value) * Determinant;
+        }
+
         internal Quaternion ToUnityRotation(Quaternion value)
         {
             Double3 vector = ToUnity(new Double3(value.x, value.y, value.z));

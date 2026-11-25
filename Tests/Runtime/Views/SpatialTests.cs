@@ -22,24 +22,17 @@ namespace Emas.Tests
             internal Action<ExtrapolationContext> PositionObserved;
             internal Action<ExtrapolationContext> RotationObserved;
 
-            /// <summary>Demonstrates an application strategy that halves predicted travel.</summary>
-            /// <param name="context">Pose and motion available to the application's model.</param>
-            /// <param name="seconds">Bounded extrapolation duration in seconds.</param>
-            /// <returns>Half the constant-velocity displacement.</returns>
-            public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+            /// <summary>Demonstrates a complete prediction that halves linear and angular travel.</summary>
+            /// <param name="request">Both independently timed channels.</param>
+            /// <returns>A full pose and its motion, composed using the source convention.</returns>
+            public Prediction Predict(PredictionRequest request)
             {
-                PositionObserved?.Invoke(context);
-                return context.Velocity.GetValueOrDefault() * (seconds * 0.5d);
-            }
-
-            /// <summary>Demonstrates an application strategy that halves yaw extrapolation.</summary>
-            /// <param name="context">Pose and motion available to the application's model.</param>
-            /// <param name="seconds">Bounded extrapolation duration in seconds.</param>
-            /// <returns>Half the supplied yaw displacement.</returns>
-            public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
-            {
-                RotationObserved?.Invoke(context);
-                return Quaternion.AngleAxis((float)(context.AngularVelocity.GetValueOrDefault().Y * seconds * 90d / Math.PI), Vector3.up);
+                PositionObserved?.Invoke(request.PositionContext);
+                RotationObserved?.Invoke(request.RotationContext);
+                Double3 velocity = request.PositionContext.Velocity.GetValueOrDefault() * 0.5d;
+                Double3 angular = new Double3(0, request.RotationContext.AngularVelocity.GetValueOrDefault().Y * 0.5d, 0);
+                Quaternion offset = Quaternion.AngleAxis((float)(angular.Y * request.RotationSeconds * 180d / Math.PI), Vector3.up);
+                return request.CreatePrediction(velocity * request.PositionSeconds, offset, velocity, angular);
             }
         }
 
@@ -47,59 +40,44 @@ namespace Emas.Tests
         {
             private readonly ConstantAccelerationExtrapolation _linear = new ConstantAccelerationExtrapolation();
 
-            /// <summary>Uses the built-in linear model alongside application-specific orientation logic.</summary>
-            /// <param name="context">Pose and independently timed motion.</param>
-            /// <param name="seconds">Bounded extrapolation duration.</param>
-            /// <returns>The constant-acceleration displacement.</returns>
-            public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+            /// <summary>Combines built-in linear prediction with an application-specific heading.</summary>
+            /// <param name="request">Both pose channels and their independent prediction durations.</param>
+            /// <returns>A complete pose oriented along velocity when available.</returns>
+            public Prediction Predict(PredictionRequest request)
             {
-                return _linear.ExtrapolateDisplacement(context, seconds);
-            }
-
-            /// <summary>Demonstrates deriving orientation from linear motion when angular rates are absent.</summary>
-            /// <param name="context">Pose and independently timed motion.</param>
-            /// <param name="seconds">Bounded extrapolation duration.</param>
-            /// <returns>A body offset from the observed orientation toward the velocity heading.</returns>
-            public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
-            {
-                if (seconds <= 0 || !context.Velocity.HasValue || !context.Rotation.HasValue)
+                Prediction linear = _linear.Predict(request);
+                ExtrapolationContext context = request.RotationContext;
+                if (request.RotationSeconds <= 0 || !context.Velocity.HasValue || !context.Rotation.HasValue)
                 {
-                    return Quaternion.identity;
+                    return linear;
                 }
 
                 Double3 velocity = context.Velocity.Value;
                 Quaternion heading = Quaternion.LookRotation(new Vector3((float)velocity.X, (float)velocity.Y, (float)velocity.Z));
-                return Quaternion.Inverse(context.Rotation.Value) * heading;
+                return new Prediction(linear.Position, heading, linear.Velocity);
             }
         }
 
         private sealed class DistanceExtrapolation : IExtrapolationStrategy, IPacketSmoothingStrategy
         {
             internal int Calls;
+            internal PredictionRequest Request;
+            internal Prediction Result;
             private readonly ConstantAccelerationExtrapolation _motion = new ConstantAccelerationExtrapolation();
 
-            /// <summary>Enables packet correction so the distance scenario covers all motion processing stages.</summary>
+            /// <summary>Enables packet correction alongside prediction and smoothing.</summary>
             /// <value>A quarter-second correction duration.</value>
             public float PacketSmoothingDuration => 0.25f;
 
-            /// <summary>Records consumer model execution while retaining ordinary constant-acceleration motion.</summary>
-            /// <param name="context">The accepted motion and source-space metadata.</param>
-            /// <param name="seconds">The bounded prediction duration.</param>
-            /// <returns>The source-space displacement.</returns>
-            public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+            /// <summary>Records complete model evaluations through the consumer API.</summary>
+            /// <param name="request">The complete independently timed prediction request.</param>
+            /// <returns>The built-in acceleration model's full result.</returns>
+            public Prediction Predict(PredictionRequest request)
             {
                 Calls++;
-                return _motion.ExtrapolateDisplacement(context, seconds);
-            }
-
-            /// <summary>Records consumer model execution while retaining ordinary angular prediction.</summary>
-            /// <param name="context">The accepted angular rate and source-space metadata.</param>
-            /// <param name="seconds">The bounded prediction duration.</param>
-            /// <returns>The angular displacement in the supplied vector's axes.</returns>
-            public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
-            {
-                Calls++;
-                return _motion.ExtrapolateRotation(context, seconds);
+                Request = request;
+                Result = _motion.Predict(request);
+                return Result;
             }
         }
 
@@ -2198,9 +2176,72 @@ namespace Emas.Tests
             AssertRotation(ghost.transform.rotation, Quaternion.Euler(0, 135, 0));
         }
 
-        /// <summary>A custom strategy's input changes are visible to later channels within the same presentation pass.</summary>
+        /// <summary>One full-pose strategy call supplies prediction, packet correction, smoothing and live tuning for each eligible Ghost.</summary>
         [Test]
-        public void ExtrapolationStrategies_ObserveInputChangesBetweenChannels()
+        public void ExtrapolationStrategies_RunOncePerGhostPerProjection()
+        {
+            Spatial spatial = _source.Publish("single prediction").gameObject.AddComponent<Spatial>();
+            Extrapolation extrapolation = spatial.gameObject.AddComponent<Extrapolation>();
+            Smoothing smoothing = spatial.gameObject.AddComponent<Smoothing>();
+            smoothing.PositionHalfLife = 0.2f;
+            smoothing.RotationHalfLife = 0.2f;
+            DistanceExtrapolation model = new DistanceExtrapolation();
+            extrapolation.Strategy = model;
+            extrapolation.PredictionTime = 0.2f;
+            extrapolation.MaximumExtrapolation = 1;
+            Timestamp positionTime = new Timestamp(1000, 0);
+            Timestamp rotationTime = new Timestamp(1000, 100000000);
+            spatial.SetCartesianPosition(new Double3(10, 0, 0), positionTime);
+            spatial.SetSourceRotation(Quaternion.identity, rotationTime);
+            spatial.SetCartesianVelocity(new Double3(5, 0, 0), positionTime);
+            spatial.SetBodyAngularVelocity(new Double3(0, 1, 0), CoordinateSystem.Unity, positionTime);
+
+            for (int pass = 0; pass < 3; pass++)
+            {
+                model.Calls = 0;
+                _realm.Update();
+                Assert.That(model.Calls, Is.EqualTo(1), "Both pose channels and both filters must share one strategy result.");
+                Assert.That(model.Request.PositionContext.ObservationTime, Is.EqualTo(positionTime));
+                Assert.That(model.Request.RotationContext.ObservationTime, Is.EqualTo(rotationTime));
+                Assert.That(model.Request.PositionSeconds, Is.InRange(0.2d, (double)extrapolation.MaximumExtrapolation));
+                Assert.That(model.Request.RotationSeconds, Is.InRange(0.2d, (double)extrapolation.MaximumExtrapolation));
+                Assert.That(model.Result.Position.X, Is.EqualTo(10 + 5 * model.Request.PositionSeconds).Within(0.0001d));
+                Assert.That(model.Result.Velocity, Is.EqualTo(new Double3(5, 0, 0)));
+                Assert.That(model.Result.AngularVelocity.Y, Is.EqualTo(1).Within(0.0001d));
+                // Editing these settings used to invoke old-settings and tangent previews as well.
+                extrapolation.MaximumExtrapolation = 0.8f - pass * 0.1f;
+                smoothing.PositionHalfLife += 0.1f;
+            }
+
+            DistanceExtrapolation replacement = new DistanceExtrapolation();
+            extrapolation.Strategy = replacement;
+            model.Calls = 0;
+            _realm.Update();
+            Assert.That(model.Calls, Is.Zero, "Live tuning must not call the old strategy again.");
+            Assert.That(replacement.Calls, Is.EqualTo(1));
+
+            // Following must reuse the reference prediction when placing that same root.
+            _realm.ReferenceFrame = new ReferenceFrame { FollowedGhost = spatial.GetComponent<TestGhost>().Key };
+            Spatial peer = _source.Publish("single prediction peer").gameObject.AddComponent<Spatial>();
+            peer.SetCartesianPosition(new Double3(40, 0, 0), positionTime);
+            DistanceExtrapolation peerModel = new DistanceExtrapolation();
+            peer.gameObject.AddComponent<Extrapolation>().Strategy = peerModel;
+            replacement.Calls = 0;
+            _realm.Update();
+            Assert.That(replacement.Calls, Is.EqualTo(1), "Reference capture and root placement must reuse one result.");
+            Assert.That(peerModel.Calls, Is.EqualTo(1), "Peers get their own single result on the shared timeline.");
+            Assert.That(replacement.Request.PositionSeconds - replacement.Request.RotationSeconds,
+                Is.EqualTo(0.1d).Within(0.00001d), "Independent sample times must reach the same reference target.");
+
+            replacement.Calls = 0;
+            extrapolation.enabled = false;
+            _realm.Update();
+            Assert.That(replacement.Calls, Is.Zero);
+        }
+
+        /// <summary>Both channel contexts are captured before the single strategy call; new input is observed on the next projection.</summary>
+        [Test]
+        public void ExtrapolationStrategies_CaptureBothChannelsBeforeCallingTheModel()
         {
             TestGhost ghost = _source.Publish("changing-strategy");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
@@ -2230,7 +2271,7 @@ namespace Emas.Tests
 
             _realm.Update();
             Assert.That(changed, Is.True);
-            Assert.That(angular.AngularVelocity, Is.EqualTo(new Double3(0, 0.5, 0)));
+            Assert.That(angular.AngularVelocity, Is.EqualTo(new Double3(0, 1, 0)));
             _realm.Update();
             Assert.That(angular.AngularVelocity, Is.EqualTo(new Double3(0, 0.5, 0)));
         }

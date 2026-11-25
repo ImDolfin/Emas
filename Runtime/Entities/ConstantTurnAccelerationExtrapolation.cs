@@ -10,7 +10,7 @@ namespace Emas
     /// Missing history falls back to Coordinated Turn; missing attitude uses world constant-acceleration prediction.
     /// Instances may be shared when their settings are immutable. Timing, prediction caps and optional Smoothing remain caller-owned.</remarks>
     [Serializable]
-    public sealed class ConstantTurnAccelerationExtrapolation : IExtrapolationStrategy, IPacketSmoothingStrategy
+    public sealed class ConstantTurnAccelerationExtrapolation : IExtrapolationStrategy, IPredictionModel, IPacketSmoothingStrategy
     {
         [Tooltip("Cubic packet correction duration in unscaled seconds. Zero applies corrections immediately. Independent of the prediction limit.")]
         [Min(0)]
@@ -62,12 +62,20 @@ namespace Emas
             }
         }
 
+        /// <summary>Predicts the complete pose and motion using this model.</summary>
+        /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
+        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        public Prediction Predict(PredictionRequest request)
+        {
+            return PredictionEvaluator.Evaluate(request, this);
+        }
+
         /// <summary>Integrates rotating body velocity and its constant derivative over the prediction interval.</summary>
         /// <param name="context">Time-aligned pose, SDK motion and retained timestamped histories. SDK acceleration overrides estimation.</param>
         /// <param name="seconds">Finite, nonnegative seconds beyond the observed position, already bounded by the prediction cap.</param>
         /// <returns>Displacement in Cartesian source units or ECEF metres. Missing velocity information holds position.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or resulting displacement is invalid.</exception>
-        public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+        Double3 IPredictionModel.Displacement(ExtrapolationContext context, double seconds)
         {
             return CoordinatedTurnExtrapolation.PredictDisplacement(context, seconds, _useBankAngleWhenRatesUnavailable, _gravity, true);
         }
@@ -77,9 +85,19 @@ namespace Emas
         /// <param name="seconds">Finite, nonnegative seconds beyond the observed rotation, already bounded by the prediction cap.</param>
         /// <returns>A quaternion offset for the existing rotation-composition pipeline; identity without angular motion.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or resulting angular displacement is invalid.</exception>
-        public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+        Quaternion IPredictionModel.Rotation(ExtrapolationContext context, double seconds)
         {
             return CoordinatedTurnExtrapolation.PredictRotation(context, seconds, _useBankAngleWhenRatesUnavailable, _gravity, true);
         }
+        Double3 IPredictionModel.Velocity(ExtrapolationContext context, double seconds)
+        {
+            return CoordinatedTurnExtrapolation.PredictVelocity(context, seconds, _useBankAngleWhenRatesUnavailable, _gravity, true);
+        }
+
+        Double3 IPredictionModel.AngularVelocity(ExtrapolationContext context, double seconds)
+        {
+            return CoordinatedTurnExtrapolation.PredictAngularVelocity(context, _useBankAngleWhenRatesUnavailable, _gravity, true);
+        }
+
     }
 }

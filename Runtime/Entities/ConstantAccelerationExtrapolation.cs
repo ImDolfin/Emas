@@ -9,7 +9,7 @@ namespace Emas
     /// angular velocity holds attitude. Fits use at most eight rates or nine orientations from a short window,
     /// retaining the minimum samples needed at low source rates. Instances have no mutable entity state and may be shared.</remarks>
     [Serializable]
-    public sealed class ConstantAccelerationExtrapolation : IExtrapolationStrategy
+    public sealed class ConstantAccelerationExtrapolation : IExtrapolationStrategy, IPredictionModel
     {
         private enum Samples
         {
@@ -101,12 +101,20 @@ namespace Emas
         private const double WindowSeconds = 0.25d;
         private const double MinimumSpan = 0.0001d;
 
+        /// <summary>Predicts the complete pose and motion using this model.</summary>
+        /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
+        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        public Prediction Predict(PredictionRequest request)
+        {
+            return PredictionEvaluator.Evaluate(request, this);
+        }
+
         /// <summary>Extends linear velocity with one half acceleration times squared duration.</summary>
         /// <param name="context">Time-aligned SDK motion and retained timestamped observations. SDK acceleration overrides estimation.</param>
         /// <param name="seconds">Finite, nonnegative extrapolation duration in seconds.</param>
         /// <returns>Source-space displacement from constant linear acceleration.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or resulting displacement is invalid.</exception>
-        public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+        Double3 IPredictionModel.Displacement(ExtrapolationContext context, double seconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
             if (seconds == 0)
@@ -114,6 +122,46 @@ namespace Emas
                 return default(Double3);
             }
 
+            LinearMotion motion = LinearAt(context);
+
+            // Acceleration alone does not tell us the starting velocity.
+            return motion.Velocity.HasValue ? motion.Velocity.Value * seconds
+                + motion.Acceleration.GetValueOrDefault() * (0.5d * seconds * seconds) : default(Double3);
+        }
+
+        /// <summary>Integrates angular velocity and history-derived angular acceleration in the supplied body or world frame.</summary>
+        /// <param name="context">Time-aligned angular motion and retained SDK rate or orientation observations.</param>
+        /// <param name="seconds">Finite, nonnegative extrapolation duration in seconds.</param>
+        /// <returns>A quaternion angular offset in the supplied vector's basis.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Duration or resulting angular displacement is invalid.</exception>
+        Quaternion IPredictionModel.Rotation(ExtrapolationContext context, double seconds)
+        {
+            ConstantVelocityExtrapolation.ValidateSeconds(seconds);
+            if (seconds == 0 || (context.AngularVelocity.HasValue && !context.AngularVelocityIsEstimated
+                && context.AngularVelocity.Value == default(Double3)))
+            {
+                return Quaternion.identity;
+            }
+
+            AngularMotion motion = AngularAt(context);
+
+            return IntegrateAngular(motion.Velocity, motion.Acceleration, seconds, context.AngularVelocityIsWorld);
+        }
+
+        Double3 IPredictionModel.Velocity(ExtrapolationContext context, double seconds)
+        {
+            LinearMotion motion = LinearAt(context);
+            return motion.Velocity.HasValue ? motion.Velocity.Value + motion.Acceleration.GetValueOrDefault() * seconds : default(Double3);
+        }
+
+        Double3 IPredictionModel.AngularVelocity(ExtrapolationContext context, double seconds)
+        {
+            AngularMotion motion = AngularAt(context);
+            return motion.Velocity + motion.Acceleration * seconds;
+        }
+
+        private static LinearMotion LinearAt(ExtrapolationContext context)
+        {
             if (!context.TryPrediction(typeof(ConstantAccelerationExtrapolation), 0, 0, out LinearMotion motion))
             {
                 motion = new LinearMotion { Velocity = context.Velocity, Acceleration = context.Acceleration };
@@ -134,23 +182,15 @@ namespace Emas
                 context.StorePrediction(typeof(ConstantAccelerationExtrapolation), 0, 0, motion);
             }
 
-            // Acceleration alone does not tell us the starting velocity.
-            return motion.Velocity.HasValue ? motion.Velocity.Value * seconds
-                + motion.Acceleration.GetValueOrDefault() * (0.5d * seconds * seconds) : default(Double3);
+            return motion;
         }
 
-        /// <summary>Integrates angular velocity and history-derived angular acceleration in the supplied body or world frame.</summary>
-        /// <param name="context">Time-aligned angular motion and retained SDK rate or orientation observations.</param>
-        /// <param name="seconds">Finite, nonnegative extrapolation duration in seconds.</param>
-        /// <returns>A quaternion angular offset in the supplied vector's basis.</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Duration or resulting angular displacement is invalid.</exception>
-        public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+        private static AngularMotion AngularAt(ExtrapolationContext context)
         {
-            ConstantVelocityExtrapolation.ValidateSeconds(seconds);
-            if (seconds == 0 || (context.AngularVelocity.HasValue && !context.AngularVelocityIsEstimated
-                && context.AngularVelocity.Value == default(Double3)))
+            if (context.AngularVelocity.HasValue && !context.AngularVelocityIsEstimated
+                && context.AngularVelocity.Value == default(Double3))
             {
-                return Quaternion.identity;
+                return default(AngularMotion);
             }
 
             if (!context.TryPrediction(typeof(ConstantAccelerationExtrapolation), 1, 0, out AngularMotion motion))
@@ -172,7 +212,7 @@ namespace Emas
                 context.StorePrediction(typeof(ConstantAccelerationExtrapolation), 1, 0, motion);
             }
 
-            return IntegrateAngular(motion.Velocity, motion.Acceleration, seconds, context.AngularVelocityIsWorld);
+            return motion;
         }
 
         private static void EstimateLinear(in ExtrapolationContext context, ref Double3? velocity, ref Double3? acceleration)

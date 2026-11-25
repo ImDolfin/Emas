@@ -10,7 +10,7 @@ namespace Emas
     /// This deterministic strategy adds no process noise, estimator state, coordinated-turn assumption or
     /// packet smoothing. Use the optional Smoothing trait independently. Immutable instances may be shared.</remarks>
     [Serializable]
-    public sealed class SingerExtrapolation : IExtrapolationStrategy
+    public sealed class SingerExtrapolation : IExtrapolationStrategy, IPredictionModel
     {
         [Tooltip("Positive acceleration decay time in seconds; 37% remains after this duration. Smaller approaches constant velocity; larger approaches constant acceleration.")]
         [Min(float.Epsilon)]
@@ -31,12 +31,20 @@ namespace Emas
             }
         }
 
+        /// <summary>Predicts the complete pose and motion using this model.</summary>
+        /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
+        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        public Prediction Predict(PredictionRequest request)
+        {
+            return PredictionEvaluator.Evaluate(request, this);
+        }
+
         /// <summary>Integrates the observed velocity and exponentially decaying acceleration over a bounded gap.</summary>
         /// <param name="context">Time-aligned source-space velocity and optional gravity-free inertial acceleration. Missing velocity holds position.</param>
         /// <param name="seconds">Finite, nonnegative seconds beyond the position observation, already limited by the extrapolation horizon.</param>
         /// <returns>Source-space displacement. Missing acceleration produces constant velocity; zero duration produces zero displacement.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration, serialized time constant or resulting displacement is invalid.</exception>
-        public Double3 ExtrapolateDisplacement(ExtrapolationContext context, double seconds)
+        Double3 IPredictionModel.Displacement(ExtrapolationContext context, double seconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
             ValidateTimeConstant(_maneuverTimeConstant);
@@ -78,10 +86,30 @@ namespace Emas
         /// <param name="seconds">Finite, nonnegative seconds beyond the orientation observation, already limited by the extrapolation horizon.</param>
         /// <returns>A quaternion offset using the existing body/world composition conventions; identity when no rate is available.</returns>
         /// <exception cref="ArgumentOutOfRangeException">Duration or resulting angular displacement is invalid.</exception>
-        public Quaternion ExtrapolateRotation(ExtrapolationContext context, double seconds)
+        Quaternion IPredictionModel.Rotation(ExtrapolationContext context, double seconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(seconds);
             return SpatialMath.AngularDisplacement(context.AngularVelocity.GetValueOrDefault(), seconds);
+        }
+
+        Double3 IPredictionModel.Velocity(ExtrapolationContext context, double seconds)
+        {
+            ValidateTimeConstant(_maneuverTimeConstant);
+            if (!context.Velocity.HasValue)
+            {
+                return default(Double3);
+            }
+
+            double ratio = seconds / _maneuverTimeConstant;
+            // Avoid cancellation for short intervals relative to the maneuver time constant.
+            double weight = ratio < 0.01d ? seconds * (1d + ratio * (-0.5d + ratio * (1d / 6d - ratio / 24d)))
+                : _maneuverTimeConstant * (1d - Math.Exp(-ratio));
+            return context.Velocity.Value + context.Acceleration.GetValueOrDefault() * weight;
+        }
+
+        Double3 IPredictionModel.AngularVelocity(ExtrapolationContext context, double seconds)
+        {
+            return context.AngularVelocity.GetValueOrDefault();
         }
 
         private static void ValidateTimeConstant(float value)
