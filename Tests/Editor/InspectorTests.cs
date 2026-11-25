@@ -123,13 +123,13 @@ namespace Emas.Editor.Tests
                     spatial.SetGeographicPosition(position, ObservedTime);
                     spatial.SetGeographicRotation(30 * _sampleSeconds + headingCorrection, 0, 0, ObservedTime);
                     Extrapolation extrapolation = ghost.GetComponent<Extrapolation>();
-                    extrapolation.SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
+                    extrapolation.GetComponent<Spatial>().SetGeographicVelocity(new Double3(100, 0, 0), position, ObservedTime);
                     // Apply measurement error without changing the angular rate so the test checks tuning alone.
-                    extrapolation.SetBodyAngularVelocity(AngularVelocity, CoordinateSystem.Unity, ObservedTime);
+                    extrapolation.GetComponent<Spatial>().SetBodyAngularVelocity(AngularVelocity, CoordinateSystem.Unity, ObservedTime);
                 }
 
                 ObservedRotation = Edited.GetComponent<Spatial>().Rotation;
-                ObservedVelocity = Edited.GetComponent<Extrapolation>().Velocity;
+                ObservedVelocity = Edited.GetComponent<Spatial>().Velocity;
             }
 
             internal Quaternion PredictedRotation(float horizon)
@@ -293,7 +293,7 @@ namespace Emas.Editor.Tests
         }
 
         /// <summary>
-        /// Authored anchors keep independent view and pose-processing settings through live edits, Undo/Redo and restart.
+        /// Realm presentation policy applies across Anchors through live automatic view requests, distance edits, Undo/Redo and restart.
         /// </summary>
         /// <returns>An iterator that advances the scenario through Unity frames.</returns>
         [UnityTest]
@@ -304,71 +304,104 @@ namespace Emas.Editor.Tests
             SetBlueprint(setup, CreateBlueprint("realm view"));
             CreateAnchor(setup, "first");
             CreateAnchor(setup, "second");
-            AnchorSetup manual = CreateAnchor(setup, "manual");
-            SerializedObject serialized = new SerializedObject(manual);
+            CreateAnchor(setup, "third");
+            SerializedObject serialized = new SerializedObject(setup);
             serialized.FindProperty("_automaticViews").boolValue = false;
             serialized.FindProperty("_limitPoseProcessing").boolValue = true;
             serialized.FindProperty("_poseProcessingDistance").doubleValue = 250;
+            serialized.FindProperty("_useReferenceFrame").boolValue = true;
+            serialized.FindProperty("_limitDistance").boolValue = true;
+            serialized.FindProperty("_maxDistance").doubleValue = 2000;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             setup.gameObject.SetActive(true);
             setup.StartRealm();
             setup.Realm.Update();
 
-            foreach (string id in new[] { "first", "second" })
+            foreach (string id in new[] { "first", "second", "third" })
             {
                 Ghost ghost = (Ghost)setup.Realm.Query().InAnchor(id).Single();
-                Assert.That(ghost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("realm view"));
-                Assert.That(ghost.Anchor.PoseProcessingDistance, Is.Null);
+                Assert.That(ghost.GetComponentInChildren<View>(true), Is.Null);
+                Assert.That(ghost.Anchor.Realm.PoseProcessingDistance, Is.EqualTo(250));
             }
 
-            Ghost manualGhost = (Ghost)setup.Realm.Query().InAnchor("manual").Single();
-            // Check that each Anchor controls its automatic views while manual requests use the Realm's blueprint.
+            Ghost manualGhost = (Ghost)setup.Realm.Query().InAnchor("first").Single();
+            // Explicit view requests remain available while the Realm's automatic policy is off.
             Assert.That(manualGhost.IsAvailable, Is.True);
             Assert.That(manualGhost.GetComponentInChildren<View>(true), Is.Null);
             Assert.That(setup.Realm.Manifest(manualGhost).gameObject.name, Is.EqualTo("realm view"));
+            View manualView = manualGhost.GetComponentInChildren<View>();
+            serialized.Update();
+            serialized.FindProperty("_automaticViews").boolValue = true;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            yield return null;
+            foreach (Ghost ghost in setup.Realm.Query())
+            {
+                Assert.That(ghost.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("realm view"));
+            }
+            Assert.That(manualGhost.GetComponentInChildren<View>(), Is.SameAs(manualView));
+
+            // Disable future requests, then attach another source while earlier views stay in place.
+            serialized.Update();
+            serialized.FindProperty("_automaticViews").boolValue = false;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            yield return null;
+            CreateAnchor(setup, "later");
+            yield return null;
+            Ghost later = (Ghost)setup.Realm.Query().InAnchor("later").Single();
+            Assert.That(later.GetComponentInChildren<View>(true), Is.Null);
+            Assert.That(manualGhost.GetComponentInChildren<View>(), Is.SameAs(manualView));
+            serialized.Update();
+            serialized.FindProperty("_automaticViews").boolValue = true;
+            serialized.FindProperty("_maxDistance").doubleValue = 500;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            yield return null;
+            Assert.That(later.GetComponentInChildren<View>().gameObject.name, Is.EqualTo("realm view"));
+            Assert.That(setup.Realm.ReferenceFrame.MaxDistance, Is.EqualTo(500));
 
             // Live distance authoring is independent of view requests and survives Undo, Redo and restart.
-            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(250));
+            Assert.That(setup.Realm.PoseProcessingDistance, Is.EqualTo(250));
             Undo.IncrementCurrentGroup();
             serialized.Update();
             serialized.FindProperty("_poseProcessingDistance").doubleValue = 125;
             serialized.ApplyModifiedProperties();
             Undo.FlushUndoRecordObjects();
             yield return null;
-            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(125));
-            manual.Anchor.PoseProcessingDistance = 90;
+            Assert.That(setup.Realm.PoseProcessingDistance, Is.EqualTo(125));
+            setup.Realm.PoseProcessingDistance = 90;
+            setup.Realm.ReferenceFrame.MaxDistance = 400;
             yield return null;
-            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(90), "Repaint and Update must preserve direct runtime Anchor edits.");
+            Assert.That(setup.Realm.PoseProcessingDistance, Is.EqualTo(90), "Unchanged authoring settings must preserve direct runtime Realm edits.");
+            Assert.That(setup.Realm.ReferenceFrame.MaxDistance, Is.EqualTo(400));
             Undo.PerformUndo();
             yield return null;
-            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(250));
+            Assert.That(setup.Realm.PoseProcessingDistance, Is.EqualTo(250));
             Undo.PerformRedo();
             yield return null;
-            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(125));
+            Assert.That(setup.Realm.PoseProcessingDistance, Is.EqualTo(125));
             serialized.Update();
             serialized.FindProperty("_limitPoseProcessing").boolValue = false;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             yield return null;
-            Assert.That(manual.Anchor.PoseProcessingDistance, Is.Null);
+            Assert.That(setup.Realm.PoseProcessingDistance, Is.Null);
             serialized.Update();
             serialized.FindProperty("_limitPoseProcessing").boolValue = true;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             yield return null;
-            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(125));
+            Assert.That(setup.Realm.PoseProcessingDistance, Is.EqualTo(125));
             setup.StopRealm();
             setup.StartRealm();
-            Assert.That(manual.Anchor.PoseProcessingDistance, Is.EqualTo(125));
-            Undo.ClearUndo(manual);
+            Assert.That(setup.Realm.PoseProcessingDistance, Is.EqualTo(125));
+            Undo.ClearUndo(setup);
         }
 
-        /// <summary>Invalid Anchor processing radii prevent startup before a Realm or its source population is created.</summary>
+        /// <summary>Invalid Realm processing radii prevent startup before any source population is created.</summary>
         [Test]
-        public void SerializedAnchorProcessingDistance_ValidatesBeforeStartingSources()
+        public void SerializedRealmProcessingDistance_ValidatesBeforeStartingSources()
         {
             RealmSetup setup = CreateRealm();
-            AnchorSetup anchor = CreateAnchor(setup, "limited processing");
+            CreateAnchor(setup, "limited processing");
             setup.gameObject.SetActive(true);
-            using (SerializedObject settings = new SerializedObject(anchor))
+            using (SerializedObject settings = new SerializedObject(setup))
             {
                 settings.FindProperty("_limitPoseProcessing").boolValue = true;
                 foreach (double invalid in new[] { 0d, double.NaN, double.PositiveInfinity })
@@ -710,9 +743,29 @@ namespace Emas.Editor.Tests
                 }
 
                 // Hold a corrected sample past the prediction limit so motion cannot hide a jump caused by an edit.
+                double heldReceiptBefore = Time.realtimeSinceStartupAsDouble;
                 source.Publish(Time.realtimeSinceStartupAsDouble - started, 8, 45);
+                double heldReceiptAfter = Time.realtimeSinceStartupAsDouble;
                 AssertLiveTuningUpdate(realm, source, "Corrected observation");
                 yield return HoldLiveTuningSample(realm, source, 0.18);
+                // Use the held pose for tuning checks, so ordinary motion before the
+                // prediction cap cannot be mistaken for movement caused by an edit.
+                Timestamp automaticTime = realm.ProjectedTime.Value;
+                double automaticCapturedAt = source.LastProjectionStarted;
+                AssertContinuousLiveTuning(realm, source, () => EditLiveTuning(source, "_predictionTime", 0.1f),
+                    "Editing the fallback during Play Mode with a timed reference");
+                Assert.That(source.Edited.GetComponent<Extrapolation>().PredictionTime, Is.EqualTo(0.1f));
+                Assert.That(realm.ReferenceFrame.PredictionTime, Is.Zero);
+                Timestamp manualTime = realm.ProjectedTime.Value;
+                double manualCapturedAt = source.LastProjectionStarted;
+                double manualInterval = manualTime.ElapsedSince(source.ObservedTime) - (manualCapturedAt - heldReceiptBefore);
+                Assert.That(manualInterval, Is.InRange(0.1d - (heldReceiptAfter - heldReceiptBefore) - 0.002d, 0.102d),
+                    "The followed Ghost's live fallback edit must select manual timing for the Realm.");
+                EditLiveTuning(source, "_predictionTime", 0);
+                AssertLiveTuningUpdate(realm, source, "Returning the fallback to automatic clock timing");
+                Assert.That(realm.ProjectedTime.Value.ElapsedSince(automaticTime) - (source.LastProjectionStarted - automaticCapturedAt),
+                    Is.EqualTo(0d).Within(0.005d), "Zero must restore the original automatic clock baseline.");
+
                 AssertContinuousLiveTuning(realm, source, () =>
                 {
                     EditLiveTuning(source, "_positionHalfLife", 0.1f);
@@ -1138,7 +1191,7 @@ namespace Emas.Editor.Tests
         private static void EditLiveTuning(LiveTuningDetector source, string property, float value)
         {
             // Apply the same edit through Unity on one object and its public property on the other.
-            bool extrapolation = property == "_maximumExtrapolation";
+            bool extrapolation = property == "_maximumExtrapolation" || property == "_predictionTime";
             Trait edited = extrapolation ? (Trait)source.Edited.GetComponent<Extrapolation>() : source.Edited.GetComponent<Smoothing>();
             using (SerializedObject settings = new SerializedObject(edited))
             {
@@ -1146,9 +1199,13 @@ namespace Emas.Editor.Tests
                 settings.ApplyModifiedProperties();
             }
 
-            if (extrapolation)
+            if (property == "_maximumExtrapolation")
             {
                 source.Control.GetComponent<Extrapolation>().MaximumExtrapolation = value;
+            }
+            else if (property == "_predictionTime")
+            {
+                source.Control.GetComponent<Extrapolation>().PredictionTime = value;
             }
             else if (property == "_positionHalfLife")
             {
@@ -1194,10 +1251,10 @@ namespace Emas.Editor.Tests
                 Assert.That(spatial.Rotation, Is.EqualTo(source.ObservedRotation), context);
                 Assert.That(spatial.PositionTime, Is.EqualTo(source.ObservedTime), context);
                 Assert.That(spatial.RotationTime, Is.EqualTo(source.ObservedTime), context);
-                Assert.That(extrapolation.Velocity, Is.EqualTo(source.ObservedVelocity), context);
-                Assert.That(extrapolation.HasVelocity, Is.True, context);
-                Assert.That(extrapolation.AngularVelocity, Is.EqualTo(LiveTuningDetector.AngularVelocity), context);
-                Assert.That(extrapolation.HasAngularVelocity, Is.True, context);
+                Assert.That(extrapolation.GetComponent<Spatial>().Velocity, Is.EqualTo(source.ObservedVelocity), context);
+                Assert.That(extrapolation.GetComponent<Spatial>().HasVelocity, Is.True, context);
+                Assert.That(extrapolation.GetComponent<Spatial>().AngularVelocity, Is.EqualTo(LiveTuningDetector.AngularVelocity), context);
+                Assert.That(extrapolation.GetComponent<Spatial>().HasAngularVelocity, Is.True, context);
             }
 
             ReferenceFrame frame = realm.ReferenceFrame;
@@ -1374,6 +1431,9 @@ namespace Emas.Editor.Tests
         private static AnchorSetup CreateAnchor(RealmSetup realm, string id)
         {
             GameObject owner = new GameObject(id);
+            // Finish identity and provider configuration before OnEnable can attach
+            // this source to an already running Realm.
+            owner.SetActive(false);
             owner.transform.SetParent(realm.transform, false);
             InspectorProvider provider = owner.AddComponent<InspectorProvider>();
             provider.Factory = () => new PublishingDetector();
@@ -1381,6 +1441,7 @@ namespace Emas.Editor.Tests
             SerializedObject serialized = new SerializedObject(anchor);
             serialized.FindProperty("_anchorId").stringValue = id;
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            owner.SetActive(true);
             return anchor;
         }
 

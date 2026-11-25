@@ -10,6 +10,8 @@ namespace Emas
         internal readonly IExtrapolationStrategy Strategy;
         internal readonly float PacketSmoothingDuration;
         internal readonly float PredictionTime;
+        internal readonly bool EstimateAngularMotion;
+        private static readonly IExtrapolationStrategy _motionAssistance = new ConstantVelocityExtrapolation();
 
         internal PresentationSettings(Extrapolation extrapolation, Smoothing smoothing, float interpolationDelay)
         {
@@ -17,7 +19,10 @@ namespace Emas
             PositionHalfLife = smoothing != null && smoothing.enabled ? ValidTime(smoothing.PositionHalfLife) : 0;
             RotationHalfLife = smoothing != null && smoothing.enabled ? ValidTime(smoothing.RotationHalfLife) : 0;
             InterpolationDelay = ValidTime(interpolationDelay);
-            Strategy = extrapolation != null ? extrapolation.Strategy : null;
+            // Smoothing can follow measured motion without a prediction component.
+            // The zero horizon still prevents any extrapolation of the observed pose.
+            Strategy = extrapolation != null ? extrapolation.Strategy : _motionAssistance;
+            EstimateAngularMotion = extrapolation != null;
             // Apply packet correction only when prediction is enabled. Having an Extrapolation trait alone is not enough.
             IPacketSmoothingStrategy packetSmoothing = Strategy as IPacketSmoothingStrategy;
             PacketSmoothingDuration = extrapolation != null && extrapolation.enabled && MaximumExtrapolation > 0 && packetSmoothing != null
@@ -34,7 +39,8 @@ namespace Emas
 
         internal bool SameRotation(PresentationSettings other)
         {
-            return RotationHalfLife.Equals(other.RotationHalfLife) && MaximumExtrapolation.Equals(other.MaximumExtrapolation)
+            return EstimateAngularMotion == other.EstimateAngularMotion
+                && RotationHalfLife.Equals(other.RotationHalfLife) && MaximumExtrapolation.Equals(other.MaximumExtrapolation)
                 && InterpolationDelay.Equals(other.InterpolationDelay) && ReferenceEquals(Strategy, other.Strategy)
                 && PacketSmoothingDuration.Equals(other.PacketSmoothingDuration) && PredictionTime.Equals(other.PredictionTime);
         }

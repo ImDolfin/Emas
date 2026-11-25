@@ -40,7 +40,7 @@ Use the Unity CPU Profiler with Deep Profile off. Emas provides these samples in
 
 Measure a development player as well as the Editor. Compare the same entity count, source rate, strategy, view prefabs and subscriptions. Inspect rendering and physics separately from `Emas.Update`. Per-frame pose changes, query filters and hierarchy size all affect cost.
 
-For distant entities, set `Anchor.PoseProcessingDistance` to bypass motion processing while retaining reference-relative placement. `ReferenceFrame.MaxDistance` controls visibility separately. Views outside that visibility limit retain their roots; range suppression checks their renderers and colliders for changes. Query membership remains independent of range.
+For distant entities, set `Realm.PoseProcessingDistance` to bypass motion processing across all Anchors while retaining reference-relative placement. `ReferenceFrame.MaxDistance` controls visibility separately. Realm Setup groups these distances with automatic view requests under **Presentation**. Views outside the visibility limit retain their roots; range suppression checks their renderers and colliders for changes. Query membership remains independent of range.
 
 Use subscriptions to maintain consumer collections instead of repeatedly enumerating query snapshots. Subscribe once and dispose when the consumer stops. Each active subscription still checks live membership during updates; component filters inspect root components so runtime additions and removals remain visible.
 

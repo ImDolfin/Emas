@@ -100,12 +100,12 @@ namespace Emas.Tests
             // velocity remains an endpoint estimate until an explicit SDK velocity is supplied.
             Double3 endpoint = Trajectory(origin, velocity, acceleration, 0.2d);
             Double3 endpointVelocity = velocity + acceleration * 0.2d;
-            firstMotion.SetCartesianAcceleration(default(Double3), Stamp(0.2d));
+            firstMotion.GetComponent<Spatial>().SetCartesianAcceleration(default(Double3), Stamp(0.2d));
             _realm.Update();
             AssertSource(first, endpoint + endpointVelocity * 0.2d, 0.001d);
-            firstMotion.ClearAcceleration();
-            firstMotion.SetCartesianAcceleration(new Double3(8, 0, 0), Stamp(0.2d));
-            firstMotion.SetCartesianVelocity(new Double3(17, 0, 0), Stamp(0.2d));
+            firstMotion.GetComponent<Spatial>().ClearAcceleration();
+            firstMotion.GetComponent<Spatial>().SetCartesianAcceleration(new Double3(8, 0, 0), Stamp(0.2d));
+            firstMotion.GetComponent<Spatial>().SetCartesianVelocity(new Double3(17, 0, 0), Stamp(0.2d));
             _realm.Update();
             Double3 supplied = endpoint + new Double3(17d * 0.2d + 4d * 0.2d * 0.2d, 0, 0);
             AssertSource(first, supplied, 0.001d);
@@ -115,8 +115,8 @@ namespace Emas.Tests
 
             // Clock restart discards the old fitting window without changing the shared strategy instance.
             _realm.ResetSpatialTime();
-            firstMotion.ClearVelocity();
-            firstMotion.ClearAcceleration();
+            firstMotion.GetComponent<Spatial>().ClearVelocity();
+            firstMotion.GetComponent<Spatial>().ClearAcceleration();
             first.SetCartesianPosition(origin + new Double3(5, 0, 0), new Timestamp(1, 0));
             _source.Publish("restart clock").gameObject.AddComponent<Spatial>()
                 .SetCartesianPosition(origin, new Timestamp(2, 0));
@@ -133,7 +133,7 @@ namespace Emas.Tests
             spatial.SetCartesianPosition(default(Double3), Stamp(0.2d));
             foreach (double time in new[] { 0d, 0.03d, 0.07d, 0.11d, 0.16d })
             {
-                motion.SetCartesianVelocity(new Double3(2d + 6d * time, 0, 0), Stamp(time));
+                motion.GetComponent<Spatial>().SetCartesianVelocity(new Double3(2d + 6d * time, 0, 0), Stamp(time));
             }
             AdvanceClock(1.2d);
             _realm.Update();
@@ -158,21 +158,21 @@ namespace Emas.Tests
             };
             // Future SDK values may participate in the caller's interpolation, but they must
             // not leak into the strategy's acceleration fit at an older position time.
-            motion.SetCartesianVelocity(new Double3(1000, 0, 0), Stamp(0.5d));
+            motion.GetComponent<Spatial>().SetCartesianVelocity(new Double3(1000, 0, 0), Stamp(0.5d));
             _realm.Update();
             Assert.That(observations, Is.GreaterThan(0));
             Assert.That(spatial.transform.position.x, Is.EqualTo(currentVelocity.X * 0.1d + 0.03d).Within(0.0001d));
-            motion.SetCartesianAcceleration(new Double3(1000, 0, 0), Stamp(0.5d));
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(new Double3(1000, 0, 0), Stamp(0.5d));
             _realm.Update();
             Assert.That(spatial.transform.position.x, Is.EqualTo(currentVelocity.X * 0.1d + 0.03d).Within(0.0001d),
                 "Future-only acceleration must not override a fit at the older position time.");
-            motion.ClearAcceleration();
-            motion.SetCartesianAcceleration(default(Double3), Stamp(0.1d));
+            motion.GetComponent<Spatial>().ClearAcceleration();
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(default(Double3), Stamp(0.1d));
             _realm.Update();
             Assert.That(spatial.transform.position.x, Is.EqualTo(currentVelocity.X * 0.1d).Within(0.0001d));
-            Assert.That(motion.Acceleration, Is.EqualTo(default(Double3)));
+            Assert.That(motion.GetComponent<Spatial>().Acceleration, Is.EqualTo(default(Double3)));
             probe.Observed = null;
-            motion.ClearAcceleration();
+            motion.GetComponent<Spatial>().ClearAcceleration();
             spatial.ResetPresentation();
             _realm.Update();
             Assert.That(spatial.transform.position.x, Is.EqualTo(currentVelocity.X * 0.1d).Within(0.0001d),
@@ -238,8 +238,8 @@ namespace Emas.Tests
                 SetAttitude(observed, frame, origin, space, angle, stamp);
                 SetAttitude(supplied, frame, origin, space, bodyAngle, stamp);
                 SetAttitude(world, frame, origin, space, angle, stamp);
-                body.SetBodyAngularVelocity(new Double3(0, 0, (50d - 70d * time) * Math.PI / 180d), CoordinateSystem.Unity, stamp);
-                earth.SetGeographicAngularVelocity(new Double3(0, -(40d + 120d * time) * Math.PI / 180d, 0), origin, stamp);
+                body.GetComponent<Spatial>().SetBodyAngularVelocity(new Double3(0, 0, (50d - 70d * time) * Math.PI / 180d), CoordinateSystem.Unity, stamp);
+                earth.GetComponent<Spatial>().SetGeographicAngularVelocity(new Double3(0, -(40d + 120d * time) * Math.PI / 180d, 0), origin, stamp);
             }
 
             AdvanceClock(1.2d);
@@ -252,8 +252,8 @@ namespace Emas.Tests
             Assert.That(Quaternion.Angle(supplied.transform.rotation, suppliedExpected), Is.LessThan(0.1f));
 
             // A supplied zero is authoritative even though earlier orientations show a changing turn.
-            body.ClearAngularVelocity();
-            body.SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, Stamp(0.2d));
+            body.GetComponent<Spatial>().ClearAngularVelocity();
+            body.GetComponent<Spatial>().SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, Stamp(0.2d));
             observed.ResetPresentation();
             world.ResetPresentation();
             _realm.Update();
@@ -286,11 +286,11 @@ namespace Emas.Tests
                 Double3 rate = endpointRate + acceleration * (time - 0.2d);
                 if (world)
                 {
-                    motion.SetEarthCenteredAngularVelocity(rate, Stamp(time));
+                    motion.GetComponent<Spatial>().SetEarthCenteredAngularVelocity(rate, Stamp(time));
                 }
                 else
                 {
-                    motion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                    motion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
                 }
             }
             AdvanceClock(1.2d);

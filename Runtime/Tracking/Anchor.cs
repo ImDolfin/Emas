@@ -49,7 +49,6 @@ namespace Emas
         private readonly HashSet<PresenceDetector> _restarting = new HashSet<PresenceDetector>();
         private readonly GameObject _gameObject;
         private bool _disposed;
-        private double? _poseProcessingDistance;
 
         private GhostInitializer _ghostInitializer;
 
@@ -87,31 +86,6 @@ namespace Emas
             get
             {
                 return new List<PresenceDetector>(_sources).AsReadOnly();
-            }
-        }
-
-        /// <summary>Gets or sets the radius within which this Anchor's absolute poses use motion processing.</summary>
-        /// <value>A positive finite radius in shared source units, or metres in Geographic space; null, the default, processes all distances.</value>
-        /// <remarks>Measured from the captured Realm reference using the latest raw position. The boundary is included.
-        /// Outside the radius, latest raw position and rotation are projected directly without buffering, extrapolation,
-        /// packet correction or smoothing. Entities remain visible subject to the separate reference visibility limit.
-        /// The followed reference always keeps its normal processing. Attachments inherit their parent's pose.
-        /// Changes apply on the next projection. Crossing the boundary clears old filter and estimated-motion state;
-        /// supplied motion, raw input and component settings are retained. Without a reference, distance is from source zero.</remarks>
-        /// <exception cref="ArgumentOutOfRangeException">The assigned radius is zero, negative, NaN or infinite.</exception>
-        /// <exception cref="ObjectDisposedException">This Anchor or its Realm was disposed.</exception>
-        public double? PoseProcessingDistance
-        {
-            get => _poseProcessingDistance;
-            set
-            {
-                ThrowIfDisposed();
-                if (!IsValidPoseProcessingDistance(value))
-                {
-                    throw new ArgumentOutOfRangeException(nameof(value), "The pose processing distance must be positive and finite.");
-                }
-
-                _poseProcessingDistance = value;
             }
         }
 
@@ -386,11 +360,6 @@ namespace Emas
             {
                 Realm.DestroySceneObject(_gameObject);
             }
-        }
-
-        internal static bool IsValidPoseProcessingDistance(double? distance)
-        {
-            return !distance.HasValue || (SpatialMath.IsFinite(distance.Value) && distance.Value > 0);
         }
 
         internal void SetGhostInitializer(GhostInitializer initializer)

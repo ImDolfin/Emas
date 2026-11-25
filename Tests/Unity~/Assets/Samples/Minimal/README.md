@@ -6,8 +6,8 @@ Open `QuickStart.unity` and press Play. One teal cube moves along the position g
 
 The scene contains an instance of `Tracking.prefab` plus an authored camera, light and environment. Open the prefab to see its configuration:
 
-- **Realm Setup** assigns `MarkerBlueprint.asset` as the realm blueprint for the marker Kind.
-- **Anchor Setup** uses the `quick-start` anchor ID with automatic views enabled.
+- **Realm Setup** assigns `MarkerBlueprint.asset` as the realm blueprint for the marker Kind and enables automatic views under **Presentation**.
+- **Anchor Setup** uses the `quick-start` anchor ID.
 - **Marker Source** is the detector component; **Marker Initializer** binds the position trait.
 
 The assets form a small, complete presentation setup:

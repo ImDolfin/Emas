@@ -459,9 +459,10 @@ namespace Emas
         /// <remarks>
         /// Configure through this API on Unity's main thread. Known age at receipt counts toward the interval, and time
         /// after receipt keeps advancing. All entities target the resulting Realm.ProjectedTime using their own strategy
-        /// and prediction cap. Their Extrapolation.PredictionTime values do not add individual lead while following timed data.
-        /// This reference setting does not depend on the followed Ghost's optional motion-processing traits or their enabled
-        /// states. Without a timed followed Ghost, individual forward intervals remain active. Raw input is unchanged.
+        /// and prediction cap. A positive PredictionTime on the followed Ghost's enabled Extrapolation trait overrides
+        /// automatic timing and this interval with a manual receipt-based target for the whole Realm. Returning that
+        /// override to zero or disabling/removing the trait restores this reference policy. Peer intervals do not add lead.
+        /// Without a timed followed Ghost, individual manual intervals remain active. Raw input is unchanged.
         /// </remarks>
         /// <exception cref="ArgumentOutOfRangeException">The value is negative, NaN or infinite.</exception>
         public float PredictionTime

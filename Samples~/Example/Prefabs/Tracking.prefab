@@ -47,7 +47,6 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   _anchorId: cars
-  _automaticViews: 1
 --- !u!114 &3509082610114948003
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -107,6 +106,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0dc0ad5657534e5fbe65dcabc9d84ea9, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+  _automaticViews: 1
+  _limitPoseProcessing: 0
+  _poseProcessingDistance: 1000
   _blueprints:
   - {fileID: 11400000, guid: 2afbde1064f4df148a5e173ad4cda5b0, type: 2}
   _useReferenceFrame: 0

@@ -47,6 +47,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0dc0ad5657534e5fbe65dcabc9d84ea9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  _automaticViews: 1
+  _limitPoseProcessing: 0
+  _poseProcessingDistance: 1000
   _blueprints:
   - {fileID: 11400000, guid: 3a3611b10f295b649bd1c0bcf5d034c0, type: 2}
   _interpolationDelay: 0.15
@@ -88,7 +91,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _anchorId: aircraft-formation
-  _automaticViews: 1
 --- !u!114 &6813496592005760172
 MonoBehaviour:
   m_ObjectHideFlags: 0

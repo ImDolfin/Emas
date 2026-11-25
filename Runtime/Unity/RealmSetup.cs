@@ -20,6 +20,17 @@ namespace Emas
         [SerializeField]
         private ManifestationBlueprint[] _blueprints = new ManifestationBlueprint[0];
 
+        [Tooltip("Automatically request configured views for available Ghosts in every Anchor. Turning this off stops automatic requests; existing views remain until explicitly released.")]
+        [SerializeField]
+        private bool _automaticViews = true;
+        [Tooltip("Use buffering, extrapolation and smoothing only within this Realm's processing radius. Farther Ghosts project their latest raw pose and remain subject to the separate view distance.")]
+        [SerializeField]
+        private bool _limitPoseProcessing;
+        [Tooltip("Positive processing radius in shared source units, or metres in Geographic space. Applies to every Anchor. The followed reference retains its normal pose processing.")]
+        [Min(0)]
+        [SerializeField]
+        private double _poseProcessingDistance = 1000;
+
         [Tooltip("Shared playback delay in seconds for all timed poses and the followed reference. Zero plays immediately; start at 0.1 s to absorb packet jitter. Adds latency.")]
         [Min(0)]
         [SerializeField]
@@ -71,11 +82,14 @@ namespace Emas
         [SerializeField]
         private double _maxDistance = 5000.0;
 
-        private readonly Dictionary<AnchorSetup, IDisposable> _subscriptions =
-            new Dictionary<AnchorSetup, IDisposable>();
+        private readonly HashSet<AnchorSetup> _attachedAnchors = new HashSet<AnchorSetup>();
         private readonly HashSet<Kind> _realmViewKinds = new HashSet<Kind>();
         private readonly HashSet<MonoBehaviour> _configuredComponents = new HashSet<MonoBehaviour>();
         private Realm _realm;
+        private IDisposable _automaticViewSubscription;
+        private bool _appliedAutomaticViews;
+        private double? _appliedPoseProcessingDistance;
+        private double? _appliedViewDistance;
         private bool _starting;
         private bool _autoStartPending;
         private int _lifetime;
@@ -97,6 +111,10 @@ namespace Emas
                 return _blueprints ?? new ManifestationBlueprint[0];
             }
         }
+
+        private double? PoseProcessingDistance => _limitPoseProcessing ? _poseProcessingDistance : (double?)null;
+
+        private double? ViewDistance => _useReferenceFrame && _limitDistance ? _maxDistance : (double?)null;
 
         /// <summary>Starts an isolated realm from the active child anchor and reference-frame settings.</summary>
         /// <remarks>
@@ -130,6 +148,9 @@ namespace Emas
             {
                 realm.ReferenceFrame = frame;
                 realm.InterpolationDelay = _interpolationDelay;
+                realm.PoseProcessingDistance = PoseProcessingDistance;
+                _appliedPoseProcessingDistance = PoseProcessingDistance;
+                _appliedViewDistance = ViewDistance;
                 _realmViewKinds.Clear();
                 foreach (ManifestationBlueprint blueprint in Blueprints)
                 {
@@ -140,7 +161,10 @@ namespace Emas
                     }
                 }
 
-                // Prepare initializers and automatic view requests before detectors publish their first roots.
+                // One Realm-wide subscription covers every Anchor and starts before sources
+                // can publish. Reusing one policy avoids a query subscription per Anchor.
+                ApplyAutomaticViews();
+                // Prepare initializers before detectors publish their first roots.
                 AttachActiveAnchors(realm, lifetime, false);
 
                 if (_lifetime != lifetime || !isActiveAndEnabled || !ReferenceEquals(_realm, realm))
@@ -180,36 +204,37 @@ namespace Emas
             // Clear the current Realm link before cleanup callbacks can stop or restart this setup.
             Realm realm = _realm;
             _realm = null;
-            KeyValuePair<AnchorSetup, IDisposable>[] subscriptions =
-                new KeyValuePair<AnchorSetup, IDisposable>[_subscriptions.Count];
-            int index = 0;
-            foreach (KeyValuePair<AnchorSetup, IDisposable> item in _subscriptions)
-            {
-                subscriptions[index++] = item;
-            }
-
-            _subscriptions.Clear();
+            AnchorSetup[] attachments = new AnchorSetup[_attachedAnchors.Count];
+            _attachedAnchors.CopyTo(attachments);
+            _attachedAnchors.Clear();
+            IDisposable automaticViews = _automaticViewSubscription;
+            _automaticViewSubscription = null;
+            _appliedAutomaticViews = false;
+            _appliedPoseProcessingDistance = null;
+            _appliedViewDistance = null;
             _realmViewKinds.Clear();
             _configuredComponents.Clear();
-            foreach (KeyValuePair<AnchorSetup, IDisposable> item in subscriptions)
+            foreach (AnchorSetup setup in attachments)
             {
-                if (item.Key != null)
+                if (setup != null)
                 {
-                    item.Key.Bind(null, null);
+                    setup.Bind(null, null);
                 }
             }
 
             // Clear all setup links before cleanup callbacks can inspect or reattach other scene objects.
-            foreach (KeyValuePair<AnchorSetup, IDisposable> item in subscriptions)
-            {
-                item.Value?.Dispose();
-            }
-
+            automaticViews?.Dispose();
             realm?.Dispose();
         }
 
         internal string GetConfigurationError()
         {
+            string presentationError = GetPresentationError();
+            if (presentationError != null)
+            {
+                return presentationError;
+            }
+
             if (!SpatialMath.IsFinite(_interpolationDelay) || _interpolationDelay < 0)
             {
                 return "RealmSetup interpolation delay must be finite and nonnegative.";
@@ -271,12 +296,27 @@ namespace Emas
             return null;
         }
 
+        internal string GetPresentationError()
+        {
+            if (!Emas.Realm.IsValidPoseProcessingDistance(PoseProcessingDistance))
+            {
+                return "The Realm pose processing distance must be positive and finite.";
+            }
+
+            if (ViewDistance.HasValue && (!SpatialMath.IsFinite(ViewDistance.Value) || ViewDistance.Value <= 0))
+            {
+                return "The Realm view distance must be positive and finite.";
+            }
+
+            return null;
+        }
+
         internal void StartAnchor(AnchorSetup setup)
         {
             // Ignore old enable callbacks while starting, changing owners or attaching another source.
             Realm realm = _realm;
             if (realm == null || _starting || !isActiveAndEnabled || !setup.isActiveAndEnabled
-                || !setup.WantsAttachment || setup.Owner() != this || setup.AttachmentOwner != null || _subscriptions.ContainsKey(setup))
+                || !setup.WantsAttachment || setup.Owner() != this || setup.AttachmentOwner != null || _attachedAnchors.Contains(setup))
             {
                 return;
             }
@@ -306,17 +346,82 @@ namespace Emas
 
         internal void StopAnchor(AnchorSetup setup)
         {
-            IDisposable subscription;
-            if (!_subscriptions.TryGetValue(setup, out subscription))
+            if (!_attachedAnchors.Remove(setup))
             {
                 return;
             }
 
-            _subscriptions.Remove(setup);
             Anchor anchor = setup.Anchor;
             setup.Bind(null, null);
-            subscription?.Dispose();
             anchor?.Dispose();
+        }
+
+        private void ApplyPresentationSettings()
+        {
+            Realm realm = _realm;
+            if (realm == null || realm.IsDisposed)
+            {
+                return;
+            }
+
+            // Apply only authored changes. Repaints and unrelated edits must preserve
+            // direct changes made through the live Realm and ReferenceFrame APIs.
+            double? processing = PoseProcessingDistance;
+            if (_appliedPoseProcessingDistance != processing && Emas.Realm.IsValidPoseProcessingDistance(processing))
+            {
+                realm.PoseProcessingDistance = processing;
+                _appliedPoseProcessingDistance = processing;
+            }
+
+            double? view = ViewDistance;
+            if (realm.ReferenceFrame != null && _appliedViewDistance != view
+                && (!view.HasValue || (SpatialMath.IsFinite(view.Value) && view.Value > 0)))
+            {
+                realm.ReferenceFrame.MaxDistance = view;
+                _appliedViewDistance = view;
+            }
+
+            ApplyAutomaticViews();
+        }
+
+        private void ApplyAutomaticViews()
+        {
+            if (_appliedAutomaticViews == _automaticViews)
+            {
+                return;
+            }
+
+            _appliedAutomaticViews = _automaticViews;
+            IDisposable previous = _automaticViewSubscription;
+            _automaticViewSubscription = null;
+            previous?.Dispose();
+            if (!_automaticViews)
+            {
+                return;
+            }
+
+            Realm realm = _realm;
+            int lifetime = _lifetime;
+            // Replay available roots when enabled, then observe future arrivals once
+            // for the whole Realm. Turning off does not cancel existing view requests.
+            IDisposable subscription = realm.Query().OnAvailable(ghost =>
+            {
+                if (_automaticViews && _lifetime == lifetime && ReferenceEquals(_realm, realm)
+                    && _realmViewKinds.Contains(ghost.Key.Kind))
+                {
+                    realm.Manifest(ghost);
+                }
+            });
+
+            // A view's application callback can stop or replace this setup during replay.
+            if (_lifetime == lifetime && ReferenceEquals(_realm, realm) && _automaticViews)
+            {
+                _automaticViewSubscription = subscription;
+            }
+            else
+            {
+                subscription.Dispose();
+            }
         }
 
         private void AttachActiveAnchors(Realm realm, int lifetime, bool validate)
@@ -330,7 +435,7 @@ namespace Emas
                 foreach (AnchorSetup candidate in ActiveAnchors())
                 {
                     if (candidate != null && candidate.isActiveAndEnabled && candidate.WantsAttachment && candidate.Owner() == this
-                        && candidate.AttachmentOwner == null && !_subscriptions.ContainsKey(candidate))
+                        && candidate.AttachmentOwner == null && !_attachedAnchors.Contains(candidate))
                     {
                         AttachAnchor(candidate, realm, lifetime, validate);
                         attached = true;
@@ -387,9 +492,8 @@ namespace Emas
 
         private void AttachAnchor(AnchorSetup setup, Realm realm, int lifetime, bool validate)
         {
-            // If any attachment step fails, undo provider creation, subscriptions and detector startup together.
+            // If any attachment step fails, undo provider creation and detector startup together.
             Anchor anchor = null;
-            IDisposable subscription = null;
             try
             {
                 if (validate)
@@ -408,27 +512,14 @@ namespace Emas
 
                 // Set the scene owner and initializers before a detector can report its first entity.
                 anchor = realm.GetOrCreateAnchor(setup.Id, setup.transform);
-                anchor.PoseProcessingDistance = setup.PoseProcessingDistance;
                 setup.Bind(anchor, this);
                 GhostInitializer initializer = setup.GetComponent<GhostInitializer>();
                 if (initializer != null && initializer.enabled)
                 {
                     anchor.SetGhostInitializer(initializer);
                 }
-                if (setup.AutomaticViews)
-                {
-                    subscription = realm.Query().InAnchor(setup.Id).OnAvailable(ghost =>
-                    {
-                        if (_lifetime == lifetime && ReferenceEquals(_realm, realm)
-                            && _realmViewKinds.Contains(ghost.Key.Kind))
-                        {
-                            realm.Manifest(ghost);
-                        }
-                    });
-                }
-
                 // Save the owner before OnStart can disable or move the setup and trigger cleanup.
-                _subscriptions.Add(setup, subscription);
+                _attachedAnchors.Add(setup);
                 PresenceDetector source = setup.CreateDetectorProvider().CreateDetector();
                 if (source == null)
                 {
@@ -444,13 +535,12 @@ namespace Emas
             }
             catch
             {
-                if (ReferenceEquals(setup.Anchor, anchor) && _subscriptions.ContainsKey(setup))
+                if (ReferenceEquals(setup.Anchor, anchor) && _attachedAnchors.Contains(setup))
                 {
                     StopAnchor(setup);
                 }
                 else
                 {
-                    subscription?.Dispose();
                     if (ReferenceEquals(setup.Anchor, anchor))
                     {
                         setup.Bind(null, null);
@@ -544,7 +634,11 @@ namespace Emas
             Realm realm = _realm;
             if (realm != null)
             {
-                realm.Update();
+                ApplyPresentationSettings();
+                if (ReferenceEquals(_realm, realm) && !realm.IsDisposed)
+                {
+                    realm.Update();
+                }
             }
         }
 

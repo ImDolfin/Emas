@@ -59,13 +59,13 @@ namespace Emas.Tests
                 SetPose(estimated, position, attitude, time);
                 SetPose(supplied, position, attitude, time);
                 SetPose(straight, position, attitude, time);
-                suppliedMotion.SetCartesianVelocity(ToSourceVector(Rotate(attitude, bodyVelocity)), Stamp(time));
-                straightMotion.SetCartesianVelocity(default(Double3), Stamp(time));
+                suppliedMotion.GetComponent<Spatial>().SetCartesianVelocity(ToSourceVector(Rotate(attitude, bodyVelocity)), Stamp(time));
+                straightMotion.GetComponent<Spatial>().SetCartesianVelocity(default(Double3), Stamp(time));
                 if (suppliedRate)
                 {
-                    estimatedMotion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
-                    suppliedMotion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
-                    straightMotion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                    estimatedMotion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                    suppliedMotion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                    straightMotion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
                 }
 
                 if (time == 0)
@@ -109,9 +109,9 @@ namespace Emas.Tests
             {
                 Quaternion attitude = Attitude(initial, rate, time);
                 SetPose(spatial, Path(initial, rate, velocity, acceleration, time), attitude, time);
-                motion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                motion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
                 Double3 currentVelocity = velocity + acceleration * time;
-                motion.SetCartesianAcceleration(ToSourceVector(Rotate(attitude, acceleration + Cross(rate, currentVelocity))), Stamp(time));
+                motion.GetComponent<Spatial>().SetCartesianAcceleration(ToSourceVector(Rotate(attitude, acceleration + Cross(rate, currentVelocity))), Stamp(time));
             }
 
             AdvanceClock();
@@ -120,13 +120,13 @@ namespace Emas.Tests
 
             // A teleport cannot fit against motion on the other side of the discontinuity.
             SetPose(spatial, new Double3(1000, 0, 0), Quaternion.identity, 0.3d);
-            motion.ClearAcceleration();
-            motion.ClearAngularVelocity();
+            motion.GetComponent<Spatial>().ClearAcceleration();
+            motion.GetComponent<Spatial>().ClearAngularVelocity();
             spatial.ResetPresentation();
             _realm.Update();
             Assert.That(Error(spatial, new Double3(1000, 0, 0)), Is.LessThan(0.001d));
             SetPose(spatial, new Double3(1001, 0, 0), Quaternion.identity, 0.4d);
-            motion.SetCartesianAcceleration(default(Double3), Stamp(0.4d));
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(default(Double3), Stamp(0.4d));
             _realm.Update();
             Assert.That(Error(spatial, new Double3(1005, 0, 0)), Is.LessThan(0.001d));
         }
@@ -163,10 +163,10 @@ namespace Emas.Tests
                 SetPose(direct, position, attitude, time);
                 SetPose(filtered, position, attitude, time);
                 Double3 velocity = ToSourceVector(Rotate(attitude, bodyVelocity));
-                directMotion.SetCartesianVelocity(velocity, Stamp(time));
-                filteredMotion.SetCartesianVelocity(velocity, Stamp(time));
-                directMotion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
-                filteredMotion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                directMotion.GetComponent<Spatial>().SetCartesianVelocity(velocity, Stamp(time));
+                filteredMotion.GetComponent<Spatial>().SetCartesianVelocity(velocity, Stamp(time));
+                directMotion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                filteredMotion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
                 _realm.Update();
 
                 // Compare at the actual shared target, so scheduling jitter does not become
@@ -224,22 +224,22 @@ namespace Emas.Tests
                 SetPose(currentOnly, position, attitude, time);
                 SetPose(control, position, attitude, time);
                 Double3 sourceVelocity = ToSourceVector(Rotate(attitude, velocity + acceleration * time));
-                suppliedMotion.SetCartesianVelocity(sourceVelocity, Stamp(time));
-                controlMotion.SetCartesianVelocity(sourceVelocity, Stamp(time));
+                suppliedMotion.GetComponent<Spatial>().SetCartesianVelocity(sourceVelocity, Stamp(time));
+                controlMotion.GetComponent<Spatial>().SetCartesianVelocity(sourceVelocity, Stamp(time));
                 if (geographic)
                 {
                     Double3 world = Rotate(attitude, rate);
                     Double3 enu = new Double3(-world.X, -world.Z, -world.Y);
-                    poseMotion.SetGeographicAngularVelocity(enu, origin, Stamp(time));
-                    suppliedMotion.SetGeographicAngularVelocity(enu, origin, Stamp(time));
-                    currentMotion.SetGeographicAngularVelocity(enu, origin, Stamp(time));
-                    controlMotion.SetGeographicAngularVelocity(enu, origin, Stamp(time));
+                    poseMotion.GetComponent<Spatial>().SetGeographicAngularVelocity(enu, origin, Stamp(time));
+                    suppliedMotion.GetComponent<Spatial>().SetGeographicAngularVelocity(enu, origin, Stamp(time));
+                    currentMotion.GetComponent<Spatial>().SetGeographicAngularVelocity(enu, origin, Stamp(time));
+                    controlMotion.GetComponent<Spatial>().SetGeographicAngularVelocity(enu, origin, Stamp(time));
                 }
             }
 
             // A feed may expose only one current SDK velocity. Retained positions can
             // still determine acceleration while keeping that velocity authoritative.
-            currentMotion.SetCartesianVelocity(ToSourceVector(Rotate(Attitude(initial, rate, 0.24d),
+            currentMotion.GetComponent<Spatial>().SetCartesianVelocity(ToSourceVector(Rotate(Attitude(initial, rate, 0.24d),
                 velocity + acceleration * 0.24d)), Stamp(0.24d));
             AdvanceClock();
             _realm.Update();
@@ -278,8 +278,8 @@ namespace Emas.Tests
             {
                 Quaternion attitude = Attitude(initial, rate, time);
                 SetPose(spatial, Path(initial, rate, velocity, acceleration, time), attitude, time);
-                motion.SetCartesianVelocity(ToSourceVector(Rotate(attitude, velocity + acceleration * time)), Stamp(time));
-                motion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                motion.GetComponent<Spatial>().SetCartesianVelocity(ToSourceVector(Rotate(attitude, velocity + acceleration * time)), Stamp(time));
+                motion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
             }
 
             AdvanceClock();
@@ -287,19 +287,19 @@ namespace Emas.Tests
             Double3 position = Path(initial, rate, velocity, acceleration, 0.24d);
             Quaternion observed = Attitude(initial, rate, 0.24d);
             Double3 currentVelocity = velocity + acceleration * 0.24d;
-            motion.SetCartesianAcceleration(default(Double3), Stamp(0.24d));
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(default(Double3), Stamp(0.24d));
             _realm.Update();
             Double3 expected = position + Path(observed, rate, currentVelocity, Cross(rate, currentVelocity) * -1d, 0.4d);
             Assert.That(Error(spatial, expected), Is.LessThan(0.008d));
 
-            motion.ClearVelocity();
-            motion.SetCartesianVelocity(default(Double3), Stamp(0.24d));
+            motion.GetComponent<Spatial>().ClearVelocity();
+            motion.GetComponent<Spatial>().SetCartesianVelocity(default(Double3), Stamp(0.24d));
             _realm.Update();
             Assert.That(Error(spatial, position), Is.LessThan(0.002d));
 
-            motion.ClearVelocity();
-            motion.ClearAcceleration();
-            motion.ClearAngularVelocity();
+            motion.GetComponent<Spatial>().ClearVelocity();
+            motion.GetComponent<Spatial>().ClearAcceleration();
+            motion.GetComponent<Spatial>().ClearAngularVelocity();
             SetPose(spatial, new Double3(1000, 0, 0), Quaternion.identity, 0.3d);
             spatial.ResetPresentation();
             _realm.Update();
@@ -324,15 +324,15 @@ namespace Emas.Tests
             Spatial spatial = Create("CTA no attitude", new ConstantTurnAccelerationExtrapolation { PacketSmoothingDuration = 0 }, out Extrapolation motion);
             Double3 origin = _realm.ReferenceFrame.Position;
             spatial.SetCartesianPosition(origin, Stamp(0.2d));
-            motion.SetCartesianVelocity(new Double3(5, 0, 0), Stamp(0));
-            motion.SetCartesianVelocity(new Double3(7, 0, 0), Stamp(0.1d));
+            motion.GetComponent<Spatial>().SetCartesianVelocity(new Double3(5, 0, 0), Stamp(0));
+            motion.GetComponent<Spatial>().SetCartesianVelocity(new Double3(7, 0, 0), Stamp(0.1d));
             AdvanceClock();
             _realm.Update();
             Assert.That(Double3.Distance(_realm.ReferenceFrame.ToSimulationPosition(spatial.transform.position),
                 origin + new Double3(5.2d, 0, 0)), Is.LessThan(0.001d));
 
-            motion.ClearVelocity();
-            motion.SetCartesianAcceleration(new Double3(20, 0, 0), Stamp(0.2d));
+            motion.GetComponent<Spatial>().ClearVelocity();
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(new Double3(20, 0, 0), Stamp(0.2d));
             spatial.ResetPresentation();
             _realm.Update();
             Assert.That(Double3.Distance(_realm.ReferenceFrame.ToSimulationPosition(spatial.transform.position), origin), Is.LessThan(0.001d));

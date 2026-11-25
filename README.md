@@ -91,7 +91,7 @@ extrapolation.Strategy = new SingerExtrapolation
 
 Use original SDK timestamps on one shared clock. `Realm.InterpolationDelay` adds shared playback buffering; half-lives control filtering, `PredictionTime` requests forward prediction, and `MaximumExtrapolation` caps prediction. These are separate settings. See [Spatial input, timing and strategies](Documentation~/Spatial.md) for units, axes and examples of every strategy.
 
-For distant entities, enable **Anchor Setup > Pose processing > Limit processing distance**. Outside that radius, entities use their latest raw pose through the reference frame, without buffering, prediction or smoothing. They remain visible subject to the separate visibility limit. Code-owned Anchors use `anchor.PoseProcessingDistance`; null processes every distance.
+**Realm Setup > Presentation** groups automatic views, view distance and processing distance for every Anchor. Enable **Limit processing distance** to use the latest raw poses outside that radius, without buffering, prediction or smoothing. These entities remain visible subject to the separate view-distance limit. Code-owned Realms use `realm.PoseProcessingDistance`; null processes every distance.
 
 ## Samples and documentation
 

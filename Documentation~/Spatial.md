@@ -2,6 +2,8 @@
 
 Add `Spatial` to each Ghost that uses shared coordinates. Its raw position/orientation remain separate from the Unity transform. An optional `Realm.ReferenceFrame` projects every participating root around a fixed or followed reference; without one, Cartesian poses map directly to Unity world space.
 
+`Spatial` is the single input API for position, orientation, velocity, acceleration and angular velocity. Data traits only write to Spatial in the SDK's coordinate space. Extrapolation and Smoothing read those cached observations; they do not own SDK inputs. Inputs can arrive before either processing component exists, and remain available when prediction is disabled or removed.
+
 Examples assume `using Emas;` and `using UnityEngine;`. `realm`, `ghost` and SDK readings belong to the calling integration. All calls require Unity's main thread.
 
 ## Choose the input contract
@@ -143,7 +145,7 @@ A half-life is seconds to halve remaining correction error: 50% remains after on
 | `0.05-0.15 s` | Moderate filtering. |
 | `0.15-0.5 s` | Stronger filtering with more response lag. |
 
-With timed SDK velocity supplied through Extrapolation, position filtering compensates observed motion and filters measurement error. This also works with Extrapolation disabled. With prediction enabled, changes in predicted lead apply separately from position noise. New observations retain motion assistance after earlier packets reach the horizon; a held sample at its cap adds no motion. Recorded motion integrates velocity segments rather than applying later acceleration retroactively.
+With timed SDK velocity supplied through Spatial, position filtering compensates observed motion and filters measurement error. This works with Extrapolation disabled or absent. With prediction enabled, changes in predicted lead apply separately from position noise. New observations retain motion assistance after earlier packets reach the horizon; a held sample at its cap adds no motion. Recorded motion integrates velocity segments rather than applying later acceleration retroactively.
 
 With timed angular motion, rotation filtering also advances by the selected model's known turn before smoothing the remaining attitude error. Body and world angular rates retain their composition convention. Pose-derived angular rates are filtered before motion assistance so differentiated measurement noise does not bypass correction filtering. Supplied rates are used directly. Constant-rate turns therefore converge without requiring extra forward prediction to compensate the rotation half-life. At the prediction cap, motion assistance stops with the target. Without timed motion, moving inputs retain ordinary low-pass lag, approximately `speed * halfLife / ln(2)`. Position-derived velocity is not used to compensate this filter because that would pass position noise through.
 
@@ -191,27 +193,29 @@ The strategy reads only history eligible at its observation time, including pack
 
 ### Request actual forward prediction
 
-The Ghost Inspector's Extrapolation section shows a compact **Prediction timing** row, including on prefabs. Hover its label for the clock explanation. With a live timed reference, it shows **Automatic (Realm reference)**, followed by the cached **Projected time** and independent position/rotation sample-to-target intervals. Negative intervals show **(buffered)**; intervals beyond the entity's prediction limit show **(over limit)** beside the value. These intervals describe the requested target, not the final smoothed pose or measured display latency. Disabled, attached and distant direct-pose entities report their processing status. Inspection never advances the Realm or reads the SDK.
+The Ghost Inspector's Extrapolation section shows a compact **Prediction timing** row, including on prefabs. Hover its label for the clock explanation. With a live timed reference, it shows **Automatic (Realm reference)**, followed by the cached **Projected time**, **Packet age (ms)** and independent position/rotation sample-to-target intervals. Packet age is the shared clock's calibrated median creation-to-receipt offset, exposed in seconds by `Realm.EstimatedPacketAge`. It excludes playback delay, manual lead, caps and smoothing, and stays fixed between projection passes. It is unavailable without Unix clock alignment; a negative age means reference observations are ahead of calibrated host UTC. Negative sample-to-target intervals show **(buffered)**; intervals beyond the entity's prediction limit show **(over limit)** beside the value. These intervals describe the requested target, not the final smoothed pose or measured display latency. Disabled, attached and distant direct-pose entities report their processing status. Inspection never advances the Realm or reads the SDK.
 
-When following timed data, `ReferenceFrame.PredictionTime` requests a shared forward interval through the code API. Each entity uses its selected strategy to reach that target. The individual forward field is hidden while shared timing applies. Without a timed followed reference, **Fallback prediction (s)** uses the individual `Extrapolation.PredictionTime`. Its saved value is retained when following a reference. **Prediction limit (s)** is `MaximumExtrapolation`; increasing that limit alone does not request a longer interval. Clock calibration and shared lead remain code-only on `ReferenceFrame`.
+**Fallback prediction (s)** stays visible and editable in Edit and Play Mode. Zero selects automatic clock timing. A positive value on the followed Ghost's enabled Extrapolation trait selects manual timing for the whole Realm: reference creation time plus the manual interval plus elapsed time since receipt. It replaces automatic packet-age compensation and any code-only `ReferenceFrame.PredictionTime` request. Lowering the interval can move the shared target earlier. Returning it to zero, disabling or removing that trait restores automatic reference timing. Peer fallback values do not split the shared timeline. Without a timed followed Ghost, the override is individual. **Prediction limit (s)** remains the cap, independent of the requested interval.
 
-Zero **Fallback prediction** preserves automatic age-based prediction with no manual lead. **Prediction limit** has a minimum of **0.007 s (7 ms)**, rounded up from one 144 Hz frame. Smaller nonnegative API assignments, including zero, clamp to that minimum. Saved smaller values also use the minimum. Negative or nonfinite API assignments are rejected. Disable the Extrapolation trait to stop prediction while retaining its supplied motion for smoothing. The minimum bounds the cap; it does not force a prediction interval. With a timed followed reference, the fallback value is ignored entirely, including when nonzero.
+The timing row changes to **Manual (Realm reference)** while the followed fallback is positive. Inspecting any peer shows that same shared mode. Packet-age measurements remain visible for comparison while manual timing is active.
+
+Zero **Fallback prediction** restores automatic age-based prediction. **Prediction limit** has a minimum of **0.007 s (7 ms)**, rounded up from one 144 Hz frame. Smaller nonnegative API assignments, including zero, clamp to that minimum. Saved smaller values also use the minimum. Negative or nonfinite API assignments are rejected. Disable the Extrapolation trait to stop prediction while retaining its supplied motion for smoothing. The minimum bounds the cap; it does not force a prediction interval.
 
 ```csharp
 extrapolation.Strategy = new ConstantAccelerationExtrapolation();
-realm.ReferenceFrame.PredictionTime = 0.2f; // Request 200 ms from the followed observation.
+extrapolation.PredictionTime = 0.2f; // On the followed Ghost: manual 200 ms for the whole Realm.
 extrapolation.MaximumExtrapolation = 0.5f; // Allow up to 500 ms of total prediction.
 ```
 
-A pose sampled at SDK time 0.2 targets time 0.4 at receipt with this configuration. If its known delivery age is already 0.1 seconds, that age counts toward the 0.2-second interval; it is not added twice. When the known age exceeds the requested interval, ordinary age-based prediction still catches up. Time after receipt continues advancing the pose until the limit is reached. Position and rotation use their own observation times and rates.
+A pose sampled at SDK time 0.2 targets time 0.4 at receipt with this manual configuration, whether delivery age is 0.1 or 0.3 seconds. Measured packet age is not added or used as a minimum. Time after receipt continues advancing the target until each entity reaches its own prediction limit. Position and rotation retain independent sample times and rates. A peer with a newer observation samples available history to reach the earlier shared target.
 
 This works with Constant Velocity, Constant Acceleration, Singer and Coordinated Turn. No Extrapolation still holds recorded poses. The interval defaults to zero for ordinary age-based prediction. The reference selects the timeline and each entity's motion processing applies its strategy; no SDK adapter, packet or timestamp setter changes are needed.
 
-When following timed data, configure the shared interval through `ReferenceFrame.PredictionTime`. Individual trait intervals do not add their own lead, including on the followed Ghost. Older packets automatically require more extrapolation to reach the common `Realm.ProjectedTime`. Each entity retains its own strategy and `MaximumExtrapolation`; a capped entity can stop short of the shared target. The reference clock does not depend on a Ghost's processing traits being present or enabled. Without a timed followed Ghost, forward intervals remain per entity.
+Every entity retains its selected strategy and `MaximumExtrapolation`; a capped entity can stop short of the common `Realm.ProjectedTime`. Manual selection belongs to the followed Ghost alone. Automatic reference timing remains available without a followed Extrapolation trait. Clock calibration stays code-only on `ReferenceFrame`.
 
-With Unix creation timestamps, leave `ReferenceFrame.PredictionTime` at zero for automatic compensation to calibrated UTC. A nonzero interval requests a minimum duration from the reference observation, counting measured packet age once. For example, a 200 ms interval on a reference packet already 100 ms old adds only the remaining 100 ms beyond current UTC. All peers inherit the resulting target, with no separate lead tuning. Smoothing does not require more lead during known steady turns.
+With Unix creation timestamps, leave the followed Ghost's fallback and `ReferenceFrame.PredictionTime` at zero for automatic compensation to calibrated UTC. In automatic mode, the code-only reference interval can still request a minimum duration from the reference observation, counting measured age once. A positive followed fallback takes precedence and switches to manual timing instead. The packet-age diagnostic continues measuring the automatic estimate in either mode. Smoothing does not require more lead during known steady turns.
 
-An arbitrary simulation epoch cannot reveal constant transport latency. In `Simulation` mode, forward prediction can still supply a calibrated interval when alignment hides that delay. That remains one reference setting for the Realm.
+An arbitrary simulation epoch cannot reveal constant transport latency. A positive followed fallback can supply a manual interval when relative alignment hides that delay. It remains one shared setting for the Realm.
 
 Timed playback buffering subtracts `Realm.InterpolationDelay` before prediction. With 50 ms of buffered playback, request 150 ms to retain a net 100 ms interval at receipt. Untimed input ignores that buffer. The total prediction beyond a recorded pose always remains limited by `MaximumExtrapolation`; disabling Extrapolation also disables forward prediction.
 
@@ -292,8 +296,8 @@ Packet correction defaults to 0.1 unscaled seconds and uses the existing per-roo
 Linear vectors use source units/second and units/second squared. Cartesian setters use configured shared axes; ECEF setters use XYZ metres; geographic setters accept ENU (X east, Y north, Z up) at an explicit SDK tangent origin:
 
 ```csharp
-extrapolation.SetGeographicVelocity(enuVelocity, sdkTangentOrigin, velocityTime);
-extrapolation.SetGeographicAcceleration(enuAcceleration, sdkTangentOrigin, accelerationTime);
+spatial.SetGeographicVelocity(enuVelocity, sdkTangentOrigin, velocityTime);
+spatial.SetGeographicAcceleration(enuAcceleration, sdkTangentOrigin, accelerationTime);
 ```
 
 The origin is the entity location for local ENU or the SDK's fixed origin for shared ENU; it is independent of the presentation reference. Acceleration must have gravity removed. Convert body-frame linear vectors using raw SDK attitude at the motion timestamp, never the projected Ghost transform.
@@ -308,7 +312,7 @@ Angular vectors always use **radians/second**:
 
 ```csharp
 // Default body axes: X forward, Y right, Z down.
-extrapolation.SetBodyAngularVelocity(new Double3(rollRate, pitchRate, yawRate),
+spatial.SetBodyAngularVelocity(new Double3(rollRate, pitchRate, yawRate),
     CoordinateSystem.NorthEastDown, angularTime);
 ```
 
@@ -318,7 +322,7 @@ Motion is sampled at each pose channel's own observation time; future-only sampl
 
 ## Input and prediction work
 
-Separate physical-value traits can keep using the existing Spatial and Extrapolation setters. Each root shares geographic tangent calculations across position, velocity, acceleration and angular input. Unchanged geographic input reuses its conversion. Height-only changes preserve vector axes. Explicit SDK tangent origins stay independent for each motion channel, and stale packets still validate their input.
+Separate physical-value traits all use Spatial setters. Each root shares geographic tangent calculations across position, velocity, acceleration and angular input. Unchanged geographic input reuses its conversion. Height-only changes preserve vector axes. Explicit SDK tangent origins stay independent for each motion channel, and stale packets still validate their input. Motion setter names, units, timestamp ordering and zero overrides retain their meaning; replace the former Extrapolation receiver with Spatial. Prediction strategy, interval and limit remain Extrapolation settings.
 
 Bound trait readers continue running each update. Unbound and presentation-only traits skip the reader pass. Ownership and source-generation checks remain immediately before each application reader and Ghost callback, including removal, restart and replacement during callbacks.
 
@@ -344,6 +348,8 @@ part.Detach();
 
 Parents use complete same-Realm Keys and may arrive later or belong to another Anchor. Offsets use Unity local axes/units, independently of source presets and parent scale. An SDK forward/right/down offset becomes `(Y, -Z, X)`. Keep Spatial enabled. Parent-first projection resolves chains without reparenting roots or sharing their lifetimes.
 
+While attached, a Ghost does not evaluate prediction, packet-correction previews or smoothing. It inherits its parent's presented pose directly. Attach and Detach reset processing once; attached updates do not repeatedly reset filters or histories. Spatial still accepts absolute pose and motion inputs for later Detach. Those unused absolute timestamps do not drive the Realm clock, and an attached root is not used as a followed reference.
+
 Missing/unavailable/out-of-range parents and cycles suppress dependent presentation while keeping entities tracked/queryable. Breaking the condition resumes projection. Application-positioned parents without enabled Spatial also work. Attached parts still cache absolute input; Detach resumes it on the next projection. Missing absolute position stays hidden; stale input can jump. Follow the vehicle's absolute input rather than an attached part as the reference.
 
 ## Preserve precision before Unity
@@ -352,20 +358,24 @@ Subtract reference positions in doubles before casting to Unity floats. Converti
 
 Geographic distance/range is straight-line ECEF distance in metres, not surface distance. At exact poles, longitude zero defines the tangent axes. Keep the desired Unity reference near the scene origin. Network scenery should share projection; a local cockpit may remain fixed.
 
-## Limit motion processing by Anchor
+## Realm presentation policy
 
-Enable **Anchor Setup > Pose processing > Limit processing distance** and set **Processing distance**. This can be edited during Play Mode. Code-owned Anchors use the same runtime setting:
+**Realm Setup > Presentation** groups **Automatic views**, **View distance** and **Processing distance**. These controls apply to every Anchor and can be edited during Play Mode. Automatic views requests configured views for available entities, including existing entities when enabled. Turning it off stops automatic requests and retains existing views. Manual view requests remain available.
+
+Enable **Limit processing distance** and set **Processing distance** to bound motion processing without hiding distant entities. Code-owned Realms use the same setting:
 
 ```csharp
-anchor.PoseProcessingDistance = 2000.0; // Source units; metres in Geographic space.
-// anchor.PoseProcessingDistance = null; // Restore processing at every distance.
+realm.PoseProcessingDistance = 2000.0; // Source units; metres in Geographic space.
+// realm.PoseProcessingDistance = null; // Restore processing at every distance.
 ```
 
-Inside and exactly on the radius, poses use their configured buffering, extrapolation, packet correction and smoothing. Outside it, the latest accepted position and rotation are applied directly through the captured reference. No prediction strategy or presentation filter runs there. Source reads, tracking and view requests continue normally, and trait settings remain intact. The Ghost Inspector reports **Pose processing: Direct (Anchor distance)** while bypassed. The default is unlimited processing.
+Inside and exactly on the radius, poses use their configured buffering, extrapolation, packet correction and smoothing. Outside it, the latest accepted position and rotation are applied directly through the captured reference. No prediction strategy or presentation filter runs there. Source reads, tracking and view requests continue normally, and trait settings remain intact. The Ghost Inspector reports **Pose processing: Direct (Realm distance)** while bypassed. The default is unlimited processing.
 
 Distance uses the raw source position and the captured reference position in doubles, independently of the Anchor scene transform or Unity scene alignment. Geographic space measures the ECEF chord in metres. With no reference, source zero is the distance origin. The radius must be positive and finite.
 
-The followed reference always keeps its normal pose processing, including when it belongs to a limited Anchor. Attached roots continue inheriting their parent's processed or direct pose. Crossing the processing boundary clears old filters, packet corrections and estimated-motion state; returning starts from current input rather than an old nearby pose. Raw inputs and supplied motion are retained.
+The followed reference always keeps its normal pose processing. Attached roots continue inheriting their parent's processed or direct pose. Crossing the processing boundary clears old filters, packet corrections and estimated-motion state; returning starts from current input rather than an old nearby pose. Raw inputs and supplied motion are retained. The separate view-distance limit uses `ReferenceFrame.MaxDistance` and requires an enabled reference frame.
+
+Presentation settings previously stored on Anchor Setup now belong to Realm Setup. Re-enter any custom processing radius or automatic-view choice there, and replace code calls to `Anchor.PoseProcessingDistance` with `Realm.PoseProcessingDistance`.
 
 This setting controls processing cost and pose detail, independently for each Anchor. It does not hide entities. `ReferenceFrame.MaxDistance` remains the separate visibility limit described below.
 

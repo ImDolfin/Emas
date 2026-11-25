@@ -74,8 +74,8 @@ namespace Emas.Tests.Samples
                     Assert.That(wingman.transform.position.z, Is.GreaterThan(200));
                     Assert.That(spatial.PositionTime, Is.EqualTo(reference.PositionTime));
                     Extrapolation extrapolation = wingman.GetRequired<Extrapolation>();
-                    Assert.That(Double3.Distance(default(Double3), extrapolation.Velocity), Is.EqualTo(343).Within(0.00001));
-                    Assert.That(extrapolation.HasAngularVelocity, Is.True);
+                    Assert.That(Double3.Distance(default(Double3), extrapolation.GetComponent<Spatial>().Velocity), Is.EqualTo(343).Within(0.00001));
+                    Assert.That(extrapolation.GetComponent<Spatial>().HasAngularVelocity, Is.True);
                 }
             }
             Assert.That(maximumTurn, Is.GreaterThan(35), "The scenario must actually exercise combined angular motion.");

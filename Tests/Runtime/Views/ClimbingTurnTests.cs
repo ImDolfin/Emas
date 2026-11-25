@@ -66,10 +66,10 @@ namespace Emas.Tests
                 SetRotation(poses, attitude, time);
                 SetRotation(sdk, attitude, time);
                 Double3 velocity = SourceVector(Velocity(time));
-                sdkMotion.SetCartesianVelocity(velocity, Stamp(time));
-                velocityMotion.SetCartesianVelocity(velocity, Stamp(time));
+                sdkMotion.GetComponent<Spatial>().SetCartesianVelocity(velocity, Stamp(time));
+                velocityMotion.GetComponent<Spatial>().SetCartesianVelocity(velocity, Stamp(time));
                 Vector3 rate = Quaternion.Inverse(attitude) * Vector3.up * 0.6f;
-                sdkMotion.SetBodyAngularVelocity(new Double3(rate.x, rate.y, rate.z), CoordinateSystem.Unity, Stamp(time));
+                sdkMotion.GetComponent<Spatial>().SetBodyAngularVelocity(new Double3(rate.x, rate.y, rate.z), CoordinateSystem.Unity, Stamp(time));
             }
 
             SetRotation(courseAttitude, Attitude(0.24d), 0.24d);
@@ -91,12 +91,12 @@ namespace Emas.Tests
 
             // Inertial acceleration includes the normal turn component. Its vertical
             // component must not accelerate climb, either in prediction or time alignment.
-            sdkMotion.SetCartesianAcceleration(SourceVector(Acceleration(0.24d)), Stamp(0.24d));
+            sdkMotion.GetComponent<Spatial>().SetCartesianAcceleration(SourceVector(Acceleration(0.24d)), Stamp(0.24d));
             _realm.Update();
             Assert.That(Error(sdk, expected), Is.LessThan(0.01d));
             SetPosition(sdk, Path(0.3d), 0.3d);
             SetRotation(sdk, Attitude(0.3d), 0.3d);
-            sdkMotion.SetCartesianAcceleration(SourceVector(Acceleration(0.3d)), Stamp(0.3d));
+            sdkMotion.GetComponent<Spatial>().SetCartesianAcceleration(SourceVector(Acceleration(0.3d)), Stamp(0.3d));
             _realm.Update();
             Assert.That(Error(sdk, Path(0.7d)), Is.LessThan(0.01d));
         }
@@ -114,9 +114,9 @@ namespace Emas.Tests
             SetPosition(spatial, default(Double3), 0.24d);
             SetRotation(spatial, attitude, 0.24d);
             Double3 velocity = new Double3(30, 20, 100);
-            motion.SetCartesianVelocity(SourceVector(velocity), Stamp(0.24d));
+            motion.GetComponent<Spatial>().SetCartesianVelocity(SourceVector(velocity), Stamp(0.24d));
             Vector3 angular = roll ? attitude * Vector3.forward * 3f : Quaternion.Euler(0, 20, 0) * Vector3.right * 2f;
-            motion.SetGeographicAngularVelocity(new Double3(-angular.x, -angular.z, -angular.y), origin, Stamp(0.24d));
+            motion.GetComponent<Spatial>().SetGeographicAngularVelocity(new Double3(-angular.x, -angular.z, -angular.y), origin, Stamp(0.24d));
             AdvanceClock();
             _realm.Update();
             Assert.That(Error(spatial, velocity * 0.4d), Is.LessThan(0.001d));
@@ -131,11 +131,11 @@ namespace Emas.Tests
             ConstantTurnClimbAccelerationExtrapolation strategy = new ConstantTurnClimbAccelerationExtrapolation { PacketSmoothingDuration = 0 };
             Spatial spatial = Create("sparse", strategy, out Extrapolation motion);
             SetPosition(spatial, default(Double3), 0);
-            motion.SetCartesianAcceleration(SourceVector(new Double3(100, 200, 0)), Stamp(0));
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(SourceVector(new Double3(100, 200, 0)), Stamp(0));
             AdvanceClock();
             _realm.Update();
             Assert.That(Error(spatial, default(Double3)), Is.LessThan(0.001d));
-            motion.ClearAcceleration();
+            motion.GetComponent<Spatial>().ClearAcceleration();
             SetPosition(spatial, new Double3(1, 2, 0), 0.1d);
             _realm.Update();
             Assert.That(Error(spatial, new Double3(5, 10, 0)), Is.LessThan(0.001d));
@@ -147,11 +147,11 @@ namespace Emas.Tests
             spatial.ResetPresentation();
             _realm.Update();
             Assert.That(Error(spatial, new Double3(1000, 100, 0)), Is.LessThan(0.001d));
-            motion.SetCartesianVelocity(SourceVector(new Double3(0, 5, 0)), Stamp(0.3d));
-            motion.SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, Stamp(0.3d));
+            motion.GetComponent<Spatial>().SetCartesianVelocity(SourceVector(new Double3(0, 5, 0)), Stamp(0.3d));
+            motion.GetComponent<Spatial>().SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, Stamp(0.3d));
             _realm.Update();
             Assert.That(Error(spatial, new Double3(1000, 102, 0)), Is.LessThan(0.001d));
-            motion.SetCartesianAcceleration(SourceVector(new Double3(100, 200, 0)), Stamp(0.3d));
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(SourceVector(new Double3(100, 200, 0)), Stamp(0.3d));
             _realm.Update();
             Assert.That(Error(spatial, new Double3(1008, 102, 0)), Is.LessThan(0.001d));
 
@@ -159,9 +159,9 @@ namespace Emas.Tests
             // pose/acceleration at t=0.4 must align that velocity through a turning start.
             SetPosition(spatial, new Double3(1000, 100, 0), 0.4d);
             SetRotation(spatial, Quaternion.AngleAxis(0.06f * Mathf.Rad2Deg, Vector3.up), 0.4d);
-            motion.ClearAngularVelocity();
-            motion.SetBodyAngularVelocity(new Double3(0, 0.6d, 0), CoordinateSystem.Unity, Stamp(0.4d));
-            motion.SetCartesianAcceleration(SourceVector(new Double3(8d * Math.Sin(0.06d) + 0.48d * Math.Cos(0.06d), 200,
+            motion.GetComponent<Spatial>().ClearAngularVelocity();
+            motion.GetComponent<Spatial>().SetBodyAngularVelocity(new Double3(0, 0.6d, 0), CoordinateSystem.Unity, Stamp(0.4d));
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(SourceVector(new Double3(8d * Math.Sin(0.06d) + 0.48d * Math.Cos(0.06d), 200,
                 8d * Math.Cos(0.06d) - 0.48d * Math.Sin(0.06d))), Stamp(0.4d));
             _realm.Update();
             // Independent midpoint integral, 80,000 steps over t=0.1..0.5 with

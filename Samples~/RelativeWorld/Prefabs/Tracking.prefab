@@ -46,6 +46,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0dc0ad5657534e5fbe65dcabc9d84ea9, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+  _automaticViews: 1
+  _limitPoseProcessing: 0
+  _poseProcessingDistance: 1000
   _blueprints:
   - {fileID: 11400000, guid: 83648be90a5608b4f87ea6563d3e5cc8, type: 2}
   - {fileID: 11400000, guid: 1a9ba993957a03b45841edd0f919856c, type: 2}
@@ -153,7 +156,6 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   _anchorId: relative-world
-  _automaticViews: 1
 --- !u!114 &800000000000003585
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Configures one prefab anchor with a detector component and automatic view requests.</summary>
+    /// <summary>Connects one prefab Anchor identity to its detector and optional Ghost initializer.</summary>
     /// <remarks>
     /// Place on the anchor GameObject under a RealmSetup. Add exactly one enabled MonoBehaviour
     /// deriving from PresenceDetectorComponent (or implementing IDetectorProvider) to the same GameObject.
@@ -16,19 +16,8 @@ namespace Emas
         [Tooltip("Unique among anchors in the owning realm. Ghost keys use this ID.")]
         [SerializeField]
         private string _anchorId = "default";
-        [Tooltip("Automatically manifest available Ghosts with configured view prefabs. Disable to request views through code.")]
-        [SerializeField]
-        private bool _automaticViews = true;
-        [Tooltip("Use full pose processing only within the configured distance from the Realm reference. Farther entities keep their latest raw pose and reference projection.")]
-        [SerializeField]
-        private bool _limitPoseProcessing;
-        [Tooltip("Positive processing radius in shared source units, or metres in Geographic space. This does not hide distant entities. The followed reference keeps its normal processing.")]
-        [Min(0)]
-        [SerializeField]
-        private double _poseProcessingDistance = 1000;
         private Anchor _anchor;
         private RealmSetup _attachmentOwner;
-        private double? _appliedPoseProcessingDistance;
 
         /// <summary>Gets the configured anchor ID.</summary>
         /// <value>The serialized identifier, which must be unique within the owning realm.</value>
@@ -50,22 +39,12 @@ namespace Emas
             }
         }
 
-        internal double? PoseProcessingDistance => _limitPoseProcessing ? _poseProcessingDistance : (double?)null;
-
         internal bool WantsAttachment
         {
             get
             {
                 PresenceDetectorComponent detector = GetComponent<PresenceDetectorComponent>();
                 return detector == null || detector.isActiveAndEnabled;
-            }
-        }
-
-        internal bool AutomaticViews
-        {
-            get
-            {
-                return _automaticViews;
             }
         }
 
@@ -108,12 +87,6 @@ namespace Emas
                 return "AnchorSetup requires a non-empty anchor ID.";
             }
 
-            string processingError = GetPoseProcessingError();
-            if (processingError != null)
-            {
-                return processingError;
-            }
-
             // Check that the provider is enabled and belongs here before callbacks can publish entities.
             MonoBehaviour[] behaviours = GetComponents<MonoBehaviour>();
             int sourceCount = 0;
@@ -142,29 +115,10 @@ namespace Emas
             return null;
         }
 
-        internal string GetPoseProcessingError()
-        {
-            return Emas.Anchor.IsValidPoseProcessingDistance(PoseProcessingDistance)
-                ? null : "The Anchor pose processing distance must be positive and finite.";
-        }
-
-        internal void ApplyPoseProcessingSettings()
-        {
-            // Only propagate authoring changes. A direct runtime Anchor edit remains intact on repaint.
-            double? distance = PoseProcessingDistance;
-            if (_anchor != null && _anchor.Transform != null && !_anchor.Realm.IsDisposed
-                && _appliedPoseProcessingDistance != distance && GetPoseProcessingError() == null)
-            {
-                _anchor.PoseProcessingDistance = distance;
-                _appliedPoseProcessingDistance = distance;
-            }
-        }
-
         internal void Bind(Anchor anchor, RealmSetup owner)
         {
             _anchor = anchor;
             _attachmentOwner = owner;
-            _appliedPoseProcessingDistance = PoseProcessingDistance;
         }
 
         internal RealmSetup Owner()
@@ -183,12 +137,6 @@ namespace Emas
             }
 
             return null;
-        }
-
-        private void Update()
-        {
-            // Apply live serialized edits and Undo on Unity's main thread, even if the Inspector is closed.
-            ApplyPoseProcessingSettings();
         }
 
         private void OnEnable()

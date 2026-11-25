@@ -42,6 +42,7 @@ namespace Emas
         private readonly SpatialManager _spatial;
         private ReferenceFrame _referenceFrame;
         private float _interpolationDelay;
+        private double? _poseProcessingDistance;
         private readonly SceneChangeQueue _sceneChanges = new SceneChangeQueue();
         private readonly CommandQueue<DispatchCommand> _dispatch;
         private readonly Func<long, bool> _hasPendingThrough;
@@ -153,17 +154,54 @@ namespace Emas
             }
         }
 
+        /// <summary>Gets or sets the radius within which absolute poses in every Anchor use motion processing.</summary>
+        /// <value>A positive finite radius in shared source units, or metres in Geographic space;
+        /// null, the default, processes every distance.</value>
+        /// <remarks>Measured from the captured reference using each entity's latest raw position. The boundary is included.
+        /// Farther entities project their latest raw pose without buffering, extrapolation, packet correction or smoothing.
+        /// This does not hide views; ReferenceFrame.MaxDistance controls visibility separately. The followed reference
+        /// always retains its processing, and attachments inherit their parent's pose. Without a reference the origin
+        /// is source zero. Changes apply on the next projection. Crossing the boundary clears old filter and estimated
+        /// motion state while retaining raw input, supplied motion and component settings.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The radius is zero, negative, NaN or infinite.</exception>
+        /// <exception cref="ObjectDisposedException">This Realm has been disposed.</exception>
+        public double? PoseProcessingDistance
+        {
+            get => _poseProcessingDistance;
+            set
+            {
+                ThrowIfDisposed();
+                if (!IsValidPoseProcessingDistance(value))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "The pose processing distance must be positive and finite.");
+                }
+
+                _poseProcessingDistance = value;
+            }
+        }
+
         /// <summary>Gets the shared simulation time selected by the last spatial projection pass.</summary>
         /// <value>The estimated SDK timestamp, or null before timed input, after a clock reset or after disposal.</value>
         /// <remarks>
         /// Read on Unity's main thread. Unix creation times on a followed Ghost supply median UTC clock alignment
         /// and automatic delivery-age compensation. ReferenceFrame selects the shared forward interval and clock
-        /// calibration through its code API. The timestamp includes InterpolationDelay. Each entity's strategy, prediction
+        /// calibration through its code API. The followed Ghost's positive Extrapolation.PredictionTime can override
+        /// automatic timing with a shared manual target. The timestamp includes InterpolationDelay. Each entity's strategy, prediction
         /// limit and filters still determine its final pose. Without a timed followed Ghost, this is the estimated
         /// playback baseline before individual forward intervals. Unix clocks must agree after ReferenceFrame.ClockOffset calibration;
         /// arbitrary simulation epochs retain unknown absolute delivery delay. The value stays fixed between passes.
         /// </remarks>
         public Timestamp? ProjectedTime => _disposed ? (Timestamp?)null : _spatial.ProjectedTime;
+
+        /// <summary>Gets the shared clock's calibrated median packet age at receipt for the followed Unix-timed Ghost.</summary>
+        /// <value>Signed seconds from creation to receipt after ReferenceFrame.ClockOffset calibration;
+        /// null before a Unix reference observation, in simulation-relative mode, after reset or after disposal.</value>
+        /// <remarks>Read on Unity's main thread. This is the cached age estimate used by automatic prediction,
+        /// retained for diagnostics while a manual override is active,
+        /// not the age of the currently held packet or the final display latency. It excludes playback delay,
+        /// manual lead, prediction caps and smoothing. Negative values mean observations are ahead of calibrated host UTC.
+        /// The value stays fixed between projection passes. Reading it does not sample sources or advance tracking.</remarks>
+        public double? EstimatedPacketAge => _disposed ? (double?)null : _spatial.EstimatedPacketAge;
 
         internal bool IsDisposed
         {
@@ -885,6 +923,11 @@ namespace Emas
         internal void RollbackSource(PresenceDetector owner, HashSet<Record> previous)
         {
             _population.RollbackSource(owner, previous);
+        }
+
+        internal static bool IsValidPoseProcessingDistance(double? distance)
+        {
+            return !distance.HasValue || (SpatialMath.IsFinite(distance.Value) && distance.Value > 0);
         }
 
         private void RebindManifestationBlueprintRegistration(List<Kind> staleKinds, Kind kind)

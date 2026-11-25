@@ -24,13 +24,19 @@ namespace Emas
         private bool _usingUnixTime;
         private double _forwardTime;
         private double _requestedForwardTime;
+        private float _manualPredictionTime;
         private double? _previousProjection;
 
         internal bool HasReference => !ReferenceEquals(_reference, null);
 
         internal bool HasUnixClock => HasReference && _usingUnixTime;
 
+        internal bool HasManualPrediction => HasReference && _manualPredictionTime > 0;
+
         internal Timestamp? ProjectedTime { get; private set; }
+
+        internal double? EstimatedPacketAge => HasUnixClock && _offsetCount > 0
+            ? _medianAge + _clockOffset : (double?)null;
 
         private double AlignmentOffset => _medianOffset - (_usingUnixTime ? _medianAge + _clockOffset : 0d);
 
@@ -65,31 +71,41 @@ namespace Emas
         }
 
         internal void Capture(double localTime, float interpolationDelay, float predictionTime,
-            Timestamp? referenceTime, double referenceReceivedTime)
+            Timestamp? referenceTime, double referenceReceivedTime, float manualPredictionTime)
         {
             if (!_hasAnchor)
             {
                 _previousProjection = null;
                 _forwardTime = 0;
+                _manualPredictionTime = 0;
                 ProjectedTime = null;
                 return;
             }
 
-            // One target time serves every channel and entity. The reference's requested
-            // interval includes age already known at receipt, exactly as an individual interval did.
-            double forward = HasReference && referenceTime.HasValue
-                ? Math.Max(0d, predictionTime - Age(referenceTime, referenceReceivedTime, referenceReceivedTime)) : 0d;
-            double projected = (localTime - _localAnchor) - AlignmentOffset + forward;
-            if (_requestedForwardTime != predictionTime)
+            manualPredictionTime = HasReference && referenceTime.HasValue
+                && SpatialMath.IsFinite(manualPredictionTime) && manualPredictionTime > 0 ? manualPredictionTime : 0;
+            double automatic = (localTime - _localAnchor) - AlignmentOffset;
+            // A manual interval replaces automatic packet-age compensation. Anchor it
+            // to the reference observation and advance only by time since its receipt.
+            // Keep measuring Unix ages in either mode so zero can restore automatic timing.
+            double forward = manualPredictionTime > 0
+                ? referenceTime.Value.ElapsedSince(_sourceAnchor) + localTime - referenceReceivedTime + manualPredictionTime - automatic
+                : HasReference && referenceTime.HasValue
+                    ? Math.Max(0d, predictionTime - Age(referenceTime, referenceReceivedTime, referenceReceivedTime)) : 0d;
+            double projected = automatic + forward;
+            if (_requestedForwardTime != predictionTime || _manualPredictionTime != manualPredictionTime)
             {
-                // Explicit tuning can move the requested timeline. Packet jitter cannot move it backward.
+                // Explicit tuning can move the requested timeline in either direction.
+                // Automatic Unix timing resumes its monotonic floor from this new target.
                 _previousProjection = null;
             }
 
-            double continuous = HasUnixClock && _previousProjection.HasValue ? Math.Max(projected, _previousProjection.Value) : projected;
+            double continuous = HasUnixClock && manualPredictionTime <= 0 && _previousProjection.HasValue
+                ? Math.Max(projected, _previousProjection.Value) : projected;
             _forwardTime = forward + continuous - projected;
             _previousProjection = continuous;
             _requestedForwardTime = predictionTime;
+            _manualPredictionTime = manualPredictionTime;
             ProjectedTime = null;
             if (_hasAnchor)
             {
@@ -139,6 +155,7 @@ namespace Emas
             _clockOffset = 0;
             _forwardTime = 0;
             _requestedForwardTime = 0;
+            _manualPredictionTime = 0;
             _previousProjection = null;
             ProjectedTime = null;
         }

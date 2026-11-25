@@ -2,6 +2,11 @@
 
 ## 0.3.0
 
+- Make Spatial the sole SDK input API for pose, velocity, acceleration and angular velocity. Move raw motion/history ownership off Extrapolation, retain inputs across prediction removal, and let Smoothing use supplied motion without Extrapolation. Update sample data traits and public contract coverage to the consolidated API.
+- Bypass prediction, packet-correction previews and smoothing for attached Ghosts. Reset processing only at attachment transitions, ignore unused attached timestamps when choosing the Realm clock, and resume from current Spatial inputs on Detach.
+- Group automatic views, view distance and processing distance under Realm Setup > Presentation. Apply them across all Anchors with live editing; use one automatic-view subscription per Realm. Move the processing-radius API to Realm.PoseProcessingDistance and simplify Anchor Setup to identity and detector connections. Update the authored/imported samples to the new scope.
+- Make the followed Ghost's fallback control Realm timing: zero restores automatic clock compensation; a positive value replaces it with a shared manual receipt-based interval. Allow smaller manual targets, sample newer peers from history, retain packet-age diagnostics and keep per-entity prediction caps.
+- Show the shared automatic packet-age estimate in milliseconds beside the projected time in the Ghost Inspector. Expose the cached calibrated receipt age through Realm.EstimatedPacketAge. Keep fallback prediction editable during Play Mode, including when the reference timeline overrides it.
 - Update the package and runtime metadata version to 0.3.0.
 
 ## 0.2.0

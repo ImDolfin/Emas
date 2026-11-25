@@ -124,7 +124,7 @@ namespace Emas.Editor
                 InspectorLayout.ReadOnly("Attached to", spatial.AttachedTo.HasValue ? spatial.AttachedTo.Value.ToString() : "None");
                 InspectorLayout.ReadOnly("Pose processing", !spatial.enabled ? "Application controlled"
                     : spatial.AttachedTo.HasValue ? "Inherited from parent"
-                    : spatial.IsPoseProcessingBypassed ? "Direct (Anchor distance)" : "Configured traits");
+                    : spatial.IsPoseProcessingBypassed ? "Direct (Realm distance)" : "Configured traits");
                 InspectorLayout.ReadOnly("Absolute position", spatial.HasPosition ? spatial.Position.ToString() : "Not received");
                 InspectorLayout.ReadOnly("Absolute rotation", spatial.HasRotation ? spatial.Rotation.ToString("F4") : "Not received");
                 InspectorLayout.ReadOnly("Position sample time", SampleTime(spatial.PositionTime));
@@ -198,7 +198,10 @@ namespace Emas.Editor
         private static void DrawTraitSettings(Ghost ghost, SerializedObject settings)
         {
             Extrapolation extrapolation = settings.targetObject as Extrapolation;
-            bool sharedTiming = extrapolation != null && DrawPredictionTiming(ghost, extrapolation);
+            if (extrapolation != null)
+            {
+                DrawPredictionTiming(ghost, extrapolation);
+            }
             SerializedProperty property = settings.GetIterator();
             bool enterChildren = true;
             while (property.NextVisible(enterChildren))
@@ -216,12 +219,8 @@ namespace Emas.Editor
                 }
                 else if (settings.targetObject is Extrapolation && property.name == "_predictionTime")
                 {
-                    // Keep the saved fallback, but do not offer a control that the active
-                    // reference timeline ignores. Clock policy stays on ReferenceFrame.
-                    if (sharedTiming)
-                    {
-                        continue;
-                    }
+                    // The followed Ghost owns the shared override; peer fields remain
+                    // available for use if that Ghost later becomes the reference.
                     label = "Fallback prediction (s)";
                 }
                 else if (settings.targetObject is Smoothing)
@@ -240,14 +239,14 @@ namespace Emas.Editor
             }
         }
 
-        private static bool DrawPredictionTiming(Ghost ghost, Extrapolation extrapolation)
+        private static void DrawPredictionTiming(Ghost ghost, Extrapolation extrapolation)
         {
             if (!Application.isPlaying)
             {
                 // Keep the mode visible on prefabs; longer explanations belong in tooltips.
-                InspectorLayout.ReadOnly("Prediction timing", "Automatic with reference",
-                    "A timed followed reference selects the shared target for the Realm. Unix clocks compensate sample age automatically. Without a timed reference, the individual fallback interval applies. ReferenceFrame exposes clock calibration and shared lead in code.");
-                return false;
+                InspectorLayout.ReadOnly("Prediction timing", extrapolation.PredictionTime > 0 ? "Manual when followed" : "Automatic at zero",
+                    "Zero uses automatic timing. A positive fallback replaces automatic age compensation with a manual interval. The followed Ghost controls the whole Realm; without a timed reference the setting is individual.");
+                return;
             }
 
             // Read cached observations only. Inspecting a Ghost must never advance the
@@ -255,27 +254,29 @@ namespace Emas.Editor
             Realm realm = ghost.Anchor != null ? ghost.Anchor.Realm : null;
             ReferenceFrame frame = realm != null ? realm.ReferenceFrame : null;
             IGhost followed;
-            Spatial reference;
+            Spatial reference = null;
             bool shared = frame != null && frame.FollowedGhost.HasValue
                 && realm.TryGetGhost(frame.FollowedGhost.Value, out followed) && followed.IsAvailable
-                && followed.TryGet(out reference) && reference.enabled
+                && followed.TryGet(out reference) && reference.enabled && !reference.AttachedTo.HasValue
                 && (reference.PositionTime.HasValue || reference.RotationTime.HasValue);
-            InspectorLayout.ReadOnly("Prediction timing", shared ? "Automatic (Realm reference)" : "Individual (no timed reference)",
-                shared
-                    ? "All entities target the shared projected time using their selected strategy and prediction limit. Unix clocks compensate sample age automatically. ReferenceFrame exposes clock calibration and shared lead in code."
-                    : "No available timed reference is followed. This entity uses its own fallback prediction interval.");
+            Extrapolation controller = shared ? reference.GetComponent<Extrapolation>() : extrapolation;
+            bool manual = controller != null && controller.enabled && controller.PredictionTime > 0;
+            InspectorLayout.ReadOnly("Prediction timing", manual
+                ? shared ? "Manual (Realm reference)" : "Manual (individual)"
+                : shared ? "Automatic (Realm reference)" : "Automatic (individual)",
+                "Zero uses automatic timing. A positive fallback replaces automatic age compensation with that interval plus elapsed time since receipt. With a timed followed Ghost, only its enabled Extrapolation trait controls the shared override. Peers inherit its target.");
 
             Spatial spatial;
             if (!ghost.TryGet(out spatial))
             {
-                return shared;
+                return;
             }
 
             string inactive = !extrapolation.enabled ? "Extrapolation disabled"
                 : !spatial.enabled ? "Spatial disabled"
                 : !ghost.IsAvailable ? "Ghost unavailable"
                 : spatial.AttachedTo.HasValue ? "Inherited from parent"
-                : spatial.IsPoseProcessingBypassed ? "Direct pose (Anchor distance)"
+                : spatial.IsPoseProcessingBypassed ? "Direct pose (Realm distance)"
                 : extrapolation.Strategy is NoExtrapolation ? "Hold recorded poses" : null;
             if (inactive != null)
             {
@@ -287,6 +288,9 @@ namespace Emas.Editor
             {
                 InspectorLayout.ReadOnly("Projected time", target.HasValue ? SampleTime(target) : "Awaiting projection pass",
                     "The shared target captured by the last Realm projection pass, including playback delay and shared lead.");
+                double? packetAge = realm.EstimatedPacketAge;
+                InspectorLayout.ReadOnly("Packet age (ms)", packetAge.HasValue ? (packetAge.Value * 1000d).ToString("F1") : "Unavailable",
+                    "The reference clock's median creation-to-receipt age after clock calibration. Automatic timing uses this estimate; manual timing retains it for diagnostics without applying it. It excludes playback delay, manual lead and smoothing. Unavailable without Unix clock alignment.");
             }
             if (target.HasValue)
             {
@@ -297,8 +301,6 @@ namespace Emas.Editor
                 DrawPredictionOffset("Rotation to target (s)", spatial.RotationTime, target.Value,
                     extrapolation.MaximumExtrapolation);
             }
-
-            return shared;
         }
 
         private static void DrawPredictionOffset(string label, Timestamp? sample, Timestamp target, float limit)

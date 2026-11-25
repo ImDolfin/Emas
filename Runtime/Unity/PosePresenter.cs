@@ -23,23 +23,25 @@ namespace Emas
         internal void Prepare(Spatial spatial, SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
         {
             // Read the settings and input once before trying any settings changes.
-            Extrapolation extrapolation = spatial.GetComponent<Extrapolation>();
+            Extrapolation prediction = spatial.GetComponent<Extrapolation>();
             Smoothing smoothing = spatial.GetComponent<Smoothing>();
-            PresentationSettings settings = new PresentationSettings(extrapolation, smoothing, interpolationDelay);
-            if (extrapolation != null)
+            PresentationSettings settings = new PresentationSettings(prediction, smoothing, interpolationDelay);
+            MotionProcessor processor = prediction != null || (smoothing != null && smoothing.enabled && spatial.HasMotionData)
+                ? spatial.Processor : null;
+            if (processor != null)
             {
-                extrapolation.Prepare(spatial, timestamp);
+                processor.Prepare(spatial, timestamp);
             }
 
             PresentationPose previous = default(PresentationPose);
             // Try the old settings at the same time so the blend covers only the settings change.
             if (_tuning.Changed(settings))
             {
-                previous = PreparePose(spatial, clock, timestamp, extrapolation, smoothing, sourceAxes, _tuning.Settings, true, out _);
+                previous = PreparePose(spatial, clock, timestamp, processor, smoothing, sourceAxes, _tuning.Settings, true, out _);
             }
 
             // Save the new filter state once. Keep the final settings-change offset out of that state.
-            PresentationPose current = PreparePose(spatial, clock, timestamp, extrapolation, smoothing, sourceAxes, settings, false, out _observation);
+            PresentationPose current = PreparePose(spatial, clock, timestamp, processor, smoothing, sourceAxes, settings, false, out _observation);
             current = _tuning.Apply(previous, current, settings, timestamp);
             _position = current.Position;
             _rotation = current.Rotation;
@@ -71,30 +73,31 @@ namespace Emas
             _tuning.ResetRotation();
         }
 
-        private PresentationPose PreparePose(Spatial spatial, SpatialClock clock, double timestamp, Extrapolation extrapolation,
+        private PresentationPose PreparePose(Spatial spatial, SpatialClock clock, double timestamp, MotionProcessor processor,
             Smoothing smoothing, CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 observation)
         {
             // Calculate the source pose within its prediction limit before applying packet correction or Smoothing.
-            PresentationPose pose = SamplePose(spatial, clock, timestamp, extrapolation, sourceAxes, settings, preview, out Double3 motion, out observation);
+            PresentationPose pose = SamplePose(spatial, clock, timestamp, processor, sourceAxes, settings, preview, out Double3 motion, out observation);
             Quaternion rotationMotion = Quaternion.identity;
             bool worldRotationMotion = false;
             bool estimatedRotationMotion = false;
-            if (extrapolation != null)
+            if (processor != null)
             {
                 if (spatial.HasRotation)
                 {
-                    double rotationTime = extrapolation.PredictionTimestamp(clock, spatial.RotationTime, spatial.RotationReceivedTime, timestamp, settings.PredictionTime);
+                    double rotationTime = processor.PredictionTimestamp(clock, spatial.RotationTime, spatial.RotationReceivedTime, timestamp, settings.PredictionTime);
                     double offset = settings.InterpolationDelay > 0 && spatial.RotationTime.HasValue
                         ? clock.OffsetFrom(spatial.RotationTime.Value, rotationTime, settings.InterpolationDelay)
                         : clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, rotationTime);
                     // Track the endpoint even while the filter is off so live edits cannot
                     // apply a large accumulated turn when angular smoothing resumes.
-                    rotationMotion = extrapolation.RotationMotion(spatial, offset, settings.MaximumExtrapolation,
+                    bool assistAngular = settings.EstimateAngularMotion || spatial.HasAngularVelocity;
+                    rotationMotion = processor.RotationMotion(spatial, offset, settings.MaximumExtrapolation,
                         settings.Strategy, sourceAxes, preview, smoothing != null && settings.RotationHalfLife > 0
-                            && settings.PacketSmoothingDuration <= 0, out worldRotationMotion);
-                    if (smoothing != null && settings.RotationHalfLife > 0)
+                            && settings.PacketSmoothingDuration <= 0 && assistAngular, out worldRotationMotion);
+                    if (smoothing != null && settings.RotationHalfLife > 0 && assistAngular)
                     {
-                        estimatedRotationMotion = extrapolation.EstimatesAngularMotion(spatial, sourceAxes);
+                        estimatedRotationMotion = processor.EstimatesAngularMotion(spatial, sourceAxes);
                     }
                 }
 
@@ -107,7 +110,7 @@ namespace Emas
                     // At the prediction limit, both poses are held still, so this correctly gives zero velocity.
                     // Preview calls leave stored motion unchanged.
                     const double step = 0.001d;
-                    PresentationPose after = SamplePose(spatial, clock, timestamp + step, extrapolation, sourceAxes, settings, true, out _, out _);
+                    PresentationPose after = SamplePose(spatial, clock, timestamp + step, processor, sourceAxes, settings, true, out _, out _);
                     try
                     {
                         velocity = (after.Position - pose.Position) * (1d / step);
@@ -120,7 +123,7 @@ namespace Emas
                 }
 
                 // Apply packet correction using its own stored arrivals, then apply the optional Smoothing trait.
-                pose = extrapolation.SmoothPacket(spatial, pose, velocity, angularVelocity, timestamp, settings.PacketSmoothingDuration, preview,
+                pose = processor.SmoothPacket(spatial, pose, velocity, angularVelocity, timestamp, settings.PacketSmoothingDuration, preview,
                     out Double3 packetMotion, out Quaternion packetRotationMotion);
                 if (settings.PacketSmoothingDuration > 0)
                 {
@@ -137,27 +140,28 @@ namespace Emas
                 worldRotationMotion, estimatedRotationMotion, settings, preview) : pose;
         }
 
-        private PresentationPose SamplePose(Spatial spatial, SpatialClock clock, double timestamp, Extrapolation extrapolation,
+        private PresentationPose SamplePose(Spatial spatial, SpatialClock clock, double timestamp, MotionProcessor processor,
             CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
         {
             motion = default(Double3);
             observation = spatial.Position;
             // Each channel starts its requested forward interval at receipt, counting known sample age once.
-            // Filters and tuning still use real presentation time, and extrapolation still applies its own cap.
-            double positionTime = extrapolation != null
-                ? extrapolation.PredictionTimestamp(clock, spatial.PositionTime, spatial.PositionReceivedTime, timestamp, settings.PredictionTime) : clock.PredictionTimestamp(timestamp);
-            double rotationTime = extrapolation != null
-                ? extrapolation.PredictionTimestamp(clock, spatial.RotationTime, spatial.RotationReceivedTime, timestamp, settings.PredictionTime) : clock.PredictionTimestamp(timestamp);
+            // Filters and tuning use real presentation time; prediction retains its configured cap.
+            double positionTime = processor != null
+                ? processor.PredictionTimestamp(clock, spatial.PositionTime, spatial.PositionReceivedTime, timestamp, settings.PredictionTime) : clock.PredictionTimestamp(timestamp);
+            double rotationTime = processor != null
+                ? processor.PredictionTimestamp(clock, spatial.RotationTime, spatial.RotationReceivedTime, timestamp, settings.PredictionTime) : clock.PredictionTimestamp(timestamp);
             PresentationPose pose;
-            // With a playback delay, read stored samples. Otherwise, start at the latest position and rotation.
-            if (settings.InterpolationDelay > 0)
+            // Manual targets can precede a peer's newest packet. Sample its history,
+            // as buffered playback does, so every entity can use the same target time.
+            if (settings.InterpolationDelay > 0 || clock.HasManualPrediction)
             {
-                pose = BufferedPose(spatial, clock, positionTime, rotationTime, extrapolation, sourceAxes, settings, preview, out motion, out observation);
+                pose = BufferedPose(spatial, clock, positionTime, rotationTime, processor, sourceAxes, settings, preview, out motion, out observation);
             }
             else
             {
-                Double3 position = extrapolation != null
-                    ? extrapolation.Project(spatial, clock, positionTime, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion) : spatial.Position;
+                Double3 position = processor != null
+                    ? processor.Project(spatial, clock, positionTime, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion) : spatial.Position;
                 Quaternion rotation = spatial.Rotation;
                 if (spatial.History.NewestRotationTime.HasValue)
                 {
@@ -165,10 +169,10 @@ namespace Emas
                     spatial.History.SampleRotation(age, out rotation);
                 }
 
-                if (extrapolation != null && spatial.HasRotation)
+                if (processor != null && spatial.HasRotation)
                 {
                     double age = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, rotationTime);
-                    rotation = extrapolation.ProjectRotation(spatial, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
+                    rotation = processor.ProjectRotation(spatial, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
                 }
 
                 pose = new PresentationPose(position, rotation);
@@ -177,7 +181,7 @@ namespace Emas
             return pose;
         }
 
-        private PresentationPose BufferedPose(Spatial spatial, SpatialClock clock, double positionTime, double rotationTime, Extrapolation extrapolation,
+        private PresentationPose BufferedPose(Spatial spatial, SpatialClock clock, double positionTime, double rotationTime, MotionProcessor processor,
             CoordinateSystem sourceAxes, PresentationSettings settings, bool preview, out Double3 motion, out Double3 observation)
         {
             Double3 position = spatial.Position;
@@ -190,30 +194,30 @@ namespace Emas
                 double offset = clock.OffsetFrom(spatial.History.NewestPositionTime.Value, positionTime, settings.InterpolationDelay);
                 spatial.History.SamplePosition(offset, out position);
                 observation = position;
-                if (extrapolation != null)
+                if (processor != null)
                 {
-                    position = extrapolation.ProjectTimestamped(spatial, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, position, offset, preview, out motion);
+                    position = processor.ProjectTimestamped(spatial, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, position, offset, preview, out motion);
                 }
             }
-            else if (extrapolation != null)
+            else if (processor != null)
             {
                 // With no timestamp, use time since arrival because there are no SDK times to interpolate.
-                position = extrapolation.Project(spatial, clock, positionTime, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion);
+                position = processor.Project(spatial, clock, positionTime, settings.MaximumExtrapolation, settings.Strategy, sourceAxes, preview, out motion);
             }
 
             if (spatial.History.NewestRotationTime.HasValue)
             {
                 double offset = clock.OffsetFrom(spatial.History.NewestRotationTime.Value, rotationTime, settings.InterpolationDelay);
                 spatial.History.SampleRotation(offset, out rotation);
-                if (extrapolation != null)
+                if (processor != null)
                 {
-                    rotation = extrapolation.ProjectRotation(spatial, rotation, offset, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
+                    rotation = processor.ProjectRotation(spatial, rotation, offset, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
                 }
             }
-            else if (extrapolation != null && spatial.HasRotation)
+            else if (processor != null && spatial.HasRotation)
             {
                 double age = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, rotationTime);
-                rotation = extrapolation.ProjectRotation(spatial, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
+                rotation = processor.ProjectRotation(spatial, rotation, age, settings.MaximumExtrapolation, settings.Strategy, sourceAxes);
             }
 
             return new PresentationPose(position, rotation);

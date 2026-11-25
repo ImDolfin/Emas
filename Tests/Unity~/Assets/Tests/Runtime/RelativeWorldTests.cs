@@ -226,13 +226,13 @@ namespace Emas.Tests.Samples
             source.Advance(0.25);
             realm.Update();
             Assert.That(Double3.Distance(beforeSpeedChange, originSpatial.Position), Is.EqualTo(25).Within(0.001));
-            Assert.That(Double3.Distance(origin.GetRequired<Extrapolation>().Velocity, default(Double3)), Is.EqualTo(100).Within(0.001));
+            Assert.That(Double3.Distance(origin.GetRequired<Spatial>().Velocity, default(Double3)), Is.EqualTo(100).Within(0.001));
             Double3 stoppedPosition = originSpatial.Position;
             source.SpeedKilometersPerHour = 0;
             source.Advance(0.25);
             realm.Update();
             Assert.That(originSpatial.Position, Is.EqualTo(stoppedPosition));
-            Assert.That(origin.GetRequired<Extrapolation>().Velocity, Is.EqualTo(default(Double3)));
+            Assert.That(origin.GetRequired<Spatial>().Velocity, Is.EqualTo(default(Double3)));
             source.SpeedKilometersPerHour = 28.8f;
 
             setup.gameObject.SetActive(false);
@@ -403,15 +403,15 @@ namespace Emas.Tests.Samples
                 Assert.That(spatial.PositionTime.HasValue, Is.True);
                 Timestamp sample = spatial.PositionTime.Value;
                 sawDelayedObservation |= elapsed - sample.ElapsedSince(new Timestamp(0, 0)) > 0.025;
-                Assert.That(origin.GetRequired<Extrapolation>().HasVelocity, Is.True);
-                Assert.That(Double3.Distance(origin.GetRequired<Extrapolation>().Velocity, default(Double3)), Is.EqualTo(100).Within(0.001));
+                Assert.That(origin.GetRequired<Spatial>().HasVelocity, Is.True);
+                Assert.That(Double3.Distance(origin.GetRequired<Spatial>().Velocity, default(Double3)), Is.EqualTo(100).Within(0.001));
                 Assert.That(origin.GetRequired<Smoothing>().enabled, Is.True);
                 Assert.That(origin.GetRequired<Smoothing>().RotationHalfLife, Is.GreaterThan(0));
-                Assert.That(bird.GetRequired<Extrapolation>().HasVelocity, Is.True);
-                Assert.That(origin.GetRequired<Extrapolation>().HasAngularVelocity, Is.True);
-                Assert.That(origin.GetRequired<Extrapolation>().AngularVelocity, Is.EqualTo(default(Double3)));
-                Assert.That(bird.GetRequired<Extrapolation>().HasAngularVelocity, Is.True);
-                Assert.That(Double3.Distance(bird.GetRequired<Extrapolation>().AngularVelocity, default(Double3)),
+                Assert.That(bird.GetRequired<Spatial>().HasVelocity, Is.True);
+                Assert.That(origin.GetRequired<Spatial>().HasAngularVelocity, Is.True);
+                Assert.That(origin.GetRequired<Spatial>().AngularVelocity, Is.EqualTo(default(Double3)));
+                Assert.That(bird.GetRequired<Spatial>().HasAngularVelocity, Is.True);
+                Assert.That(Double3.Distance(bird.GetRequired<Spatial>().AngularVelocity, default(Double3)),
                     Is.EqualTo(System.Math.PI / 4).Within(0.000001), "The fake SDK supplies the bird's analytical body turn rate.");
                 AssertOriginPose(origin);
                 AssertFeetAttached(bird, Foot(realm, "bird-left-foot"), Foot(realm, "bird-right-foot"));
@@ -462,8 +462,8 @@ namespace Emas.Tests.Samples
             realm.Update();
             Assert.That(left.GetRequired<Spatial>().AttachedTo, Is.Null);
             Assert.That(left.GetRequired<Spatial>().PositionTime.Value.CompareTo(beforeDetach), Is.GreaterThan(0));
-            Assert.That(left.GetRequired<Extrapolation>().HasVelocity, Is.True);
-            Assert.That(left.GetRequired<Extrapolation>().Velocity, Is.EqualTo(default(Double3)),
+            Assert.That(left.GetRequired<Spatial>().HasVelocity, Is.True);
+            Assert.That(left.GetRequired<Spatial>().Velocity, Is.EqualTo(default(Double3)),
                 "A paused manual detach must replace the attached bird velocity immediately.");
             source.SetBirdFeetAttached(true);
             realm.Update();
@@ -684,43 +684,43 @@ namespace Emas.Tests.Samples
                     GeoPosition position = new GeoPosition(52, 13, 40);
                     spatial.SetGeographicPosition(position);
                     ghost.gameObject.AddComponent<Smoothing>().PositionHalfLife = 0.1f;
-                    Extrapolation extrapolation = ghost.GetRequired<Extrapolation>();
+                    Assert.That(ghost.GetComponent<Extrapolation>(), Is.Null, "Input traits require only Spatial, not a prediction component.");
                     realm.ReferenceFrame = new ReferenceFrame
                     {
                         Space = ReferenceSpace.Geographic,
                         FollowedGhost = ghost.Key
                     };
                     realm.Update();
-                    Assert.That(extrapolation.HasVelocity, Is.False);
+                    Assert.That(spatial.HasVelocity, Is.False);
                     // Check that missing motion stays missing instead of being supplied as zero.
-                    Assert.That(extrapolation.HasAcceleration, Is.False);
-                    Assert.That(extrapolation.HasAngularVelocity, Is.False);
+                    Assert.That(spatial.HasAcceleration, Is.False);
+                    Assert.That(spatial.HasAngularVelocity, Is.False);
                     reading = new Emas.RelativeWorld.GeoPoseReading("optional", "Optional motion", CarKind,
                         default, 0, 90, 40, 0, 0, 0, eastNorthUpVelocity: new Double3(1, 2, 3),
                         eastNorthUpAcceleration: new Double3(4, 5, 6), bodyAngularVelocity: new Double3(1, 2, 3));
                     realm.Update();
-                    Assert.That(extrapolation.HasVelocity, Is.True);
-                    Assert.That(Double3.Distance(extrapolation.Velocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12));
-                    Assert.That(extrapolation.HasAcceleration, Is.True);
-                    Assert.That(Double3.Distance(extrapolation.Acceleration, new Double3(-4, 6, 5)), Is.LessThan(1e-12));
-                    Assert.That(extrapolation.HasAngularVelocity, Is.True);
-                    Assert.That(extrapolation.AngularVelocity, Is.EqualTo(new Double3(-2, 3, -1)));
+                    Assert.That(spatial.HasVelocity, Is.True);
+                    Assert.That(Double3.Distance(spatial.Velocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12));
+                    Assert.That(spatial.HasAcceleration, Is.True);
+                    Assert.That(Double3.Distance(spatial.Acceleration, new Double3(-4, 6, 5)), Is.LessThan(1e-12));
+                    Assert.That(spatial.HasAngularVelocity, Is.True);
+                    Assert.That(spatial.AngularVelocity, Is.EqualTo(new Double3(-2, 3, -1)));
                     Assert.That(spatial.Position, Is.EqualTo(position.ToEarthCentered()), "Motion traits do not overwrite pose or use its location implicitly.");
                     // Supply both rate formats to check that world rates win and conversion uses the packet's origin.
                     reading = new Emas.RelativeWorld.GeoPoseReading("optional", "World angular motion", CarKind,
                         default, 0, 90, 40, 0, 0, 0, bodyAngularVelocity: new Double3(100, 0, 0),
                         eastNorthUpAngularVelocity: new Double3(1, 2, 3));
                     realm.Update();
-                    Assert.That(Double3.Distance(extrapolation.AngularVelocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12),
+                    Assert.That(Double3.Distance(spatial.AngularVelocity, new Double3(-1, 3, 2)), Is.LessThan(1e-12),
                         "World ENU input uses the reading's origin and takes precedence over optional body input.");
-                    extrapolation.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
-                    Assert.That(extrapolation.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
+                    spatial.SetEarthCenteredAcceleration(new Double3(7, 8, 9));
+                    Assert.That(spatial.Acceleration, Is.EqualTo(new Double3(7, 8, 9)));
                     reading = null;
                     // Remove optional motion data and check that the supplied rate is cleared while the Ghost remains.
                     realm.Update();
-                    Assert.That(extrapolation.HasVelocity, Is.False);
-                    Assert.That(extrapolation.HasAcceleration, Is.False);
-                    Assert.That(extrapolation.HasAngularVelocity, Is.False);
+                    Assert.That(spatial.HasVelocity, Is.False);
+                    Assert.That(spatial.HasAcceleration, Is.False);
+                    Assert.That(spatial.HasAngularVelocity, Is.False);
                     Assert.That(spatial.IsInRange, Is.True);
                     AssertOriginPose(ghost);
                 }
@@ -805,7 +805,7 @@ namespace Emas.Tests.Samples
                     AssertOriginPose(origin);
                 }
                 while (Time.realtimeSinceStartupAsDouble < deadline);
-                Assert.That(Double3.Distance(origin.GetRequired<Extrapolation>().Velocity, default(Double3)),
+                Assert.That(Double3.Distance(origin.GetRequired<Spatial>().Velocity, default(Double3)),
                     Is.EqualTo(speed / 3.6).Within(0.001));
             }
         }
@@ -836,7 +836,7 @@ namespace Emas.Tests.Samples
                 Assert.That(realm.TryGetGhost(bird.Key, out IGhost entity), Is.True);
                 Assert.That(entity, Is.SameAs(bird));
                 retainedView &= object.ReferenceEquals(bird.GetComponentInChildren<View>(), view);
-                Assert.That(bird.GetRequired<Extrapolation>().HasVelocity, Is.True);
+                Assert.That(bird.GetRequired<Spatial>().HasVelocity, Is.True);
                 Timestamp sample = spatial.PositionTime.Value;
                 Assert.That(originSpatial.PositionTime, Is.EqualTo(sample));
                 double sourceElapsed = now - sdkStarted;
@@ -844,7 +844,7 @@ namespace Emas.Tests.Samples
                 minimumArrivalAge = System.Math.Min(minimumArrivalAge, arrivalAge);
                 double sharedAge = System.Math.Max(0, arrivalAge - minimumArrivalAge);
                 // Measure delay against the fastest arrival seen so far, as required by the public clock API.
-                Double3 target = originSpatial.Position + originExtrapolation.Velocity * System.Math.Min(sharedAge, 0.05);
+                Double3 target = originSpatial.Position + originExtrapolation.GetComponent<Spatial>().Velocity * System.Math.Min(sharedAge, 0.05);
                 Vector3 current = bird.transform.position - origin.transform.position;
                 SampleMotionMetrics window = elapsed >= 2 && elapsed < 6 ? early : elapsed >= 16 ? late : null;
                 // Add each frame to the full-run totals and to the matching comparison period.
@@ -904,7 +904,7 @@ namespace Emas.Tests.Samples
                 Assert.That(origin.GetRequired<Spatial>().IsInRange, Is.True);
                 Assert.That(bird.GetComponentInChildren<View>(), Is.SameAs(view));
                 Assert.That(extrapolation.enabled, Is.False);
-                Assert.That(extrapolation.HasVelocity, Is.True, "Observation smoothing retains the supplied SDK velocity.");
+                Assert.That(extrapolation.GetComponent<Spatial>().HasVelocity, Is.True, "Observation smoothing retains the supplied SDK velocity.");
                 Assert.That(origin.GetRequired<Extrapolation>().enabled, Is.True);
                 maximumDistance = Mathf.Max(maximumDistance, Vector3.Distance(bird.transform.position, origin.transform.position));
                 Assert.That(maximumDistance, Is.LessThan(25),

@@ -57,10 +57,10 @@ namespace Emas.Tests
                 // SDK velocity is authoritative even when the observed pose follows a
                 // different path. Its own quadratic history defines the future curvature.
                 rates.SetCartesianPosition(origin, Stamp(time));
-                rateMotion.SetCartesianVelocity(velocity + acceleration * time + jerk * (0.5d * time * time), Stamp(time));
+                rateMotion.GetComponent<Spatial>().SetCartesianVelocity(velocity + acceleration * time + jerk * (0.5d * time * time), Stamp(time));
             }
 
-            futureMotion.SetCartesianVelocity(new Double3(10000, 0, 0), Stamp(0.8d));
+            futureMotion.GetComponent<Spatial>().SetCartesianVelocity(new Double3(10000, 0, 0), Stamp(0.8d));
             AdvanceClock();
             _realm.Update();
             AssertSource(poses, Path(origin, velocity, acceleration, jerk, 0.45d), 0.001d);
@@ -71,7 +71,7 @@ namespace Emas.Tests
 
             // Explicit acceleration constrains the current curvature without discarding
             // the measured rate change. Re-evaluation must leave raw observations intact.
-            poseMotion.SetCartesianAcceleration(default(Double3), Stamp(0.25d));
+            poseMotion.GetComponent<Spatial>().SetCartesianAcceleration(default(Double3), Stamp(0.25d));
             _realm.Update();
             Double3 endpointVelocity = velocity + acceleration * 0.25d + jerk * (0.5d * 0.25d * 0.25d);
             Double3 constrained = current + endpointVelocity * 0.2d + jerk * (0.2d * 0.2d * 0.2d / 6d);
@@ -100,11 +100,11 @@ namespace Emas.Tests
             Spatial spatial = Create("sparse", new SplineExtrapolation(), out Extrapolation motion);
             Double3 origin = _realm.ReferenceFrame.Position;
             spatial.SetCartesianPosition(origin, Stamp(0));
-            motion.SetCartesianAcceleration(new Double3(100, 0, 0), Stamp(0));
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(new Double3(100, 0, 0), Stamp(0));
             AdvanceClock();
             _realm.Update();
             AssertSource(spatial, origin, 0.001d);
-            motion.ClearAcceleration();
+            motion.GetComponent<Spatial>().ClearAcceleration();
 
             spatial.SetCartesianPosition(origin + new Double3(1, 0, 0), Stamp(0.1d));
             _realm.Update();
@@ -123,8 +123,8 @@ namespace Emas.Tests
 
             spatial.SetCartesianPosition(origin);
             motion.PredictionTime = 0.2f;
-            motion.SetCartesianVelocity(new Double3(2, 0, 0));
-            motion.SetCartesianAcceleration(new Double3(3, 0, 0));
+            motion.GetComponent<Spatial>().SetCartesianVelocity(new Double3(2, 0, 0));
+            motion.GetComponent<Spatial>().SetCartesianAcceleration(new Double3(3, 0, 0));
             spatial.ResetPresentation();
             _realm.Update();
             AssertSource(spatial, origin + new Double3(0.46d, 0, 0), 0.001d);
@@ -169,15 +169,15 @@ namespace Emas.Tests
             Assert.That(Quaternion.Angle(spatial.transform.rotation,
                 Quaternion.AngleAxis((float)(Bank(0.45d) * Mathf.Rad2Deg), Vector3.forward)), Is.LessThan(0.08f));
 
-            motion.SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, Stamp(0.25d));
+            motion.GetComponent<Spatial>().SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, Stamp(0.25d));
             _realm.Update();
             Assert.That(Quaternion.Angle(spatial.transform.rotation,
                 Quaternion.AngleAxis((float)(Bank(0.25d) * Mathf.Rad2Deg), Vector3.forward)), Is.LessThan(0.05f));
 
-            motion.ClearAngularVelocity();
+            motion.GetComponent<Spatial>().ClearAngularVelocity();
             foreach (double time in new[] { 0d, 0.05d, 0.1d, 0.15d, 0.2d, 0.25d })
             {
-                motion.SetBodyAngularVelocity(new Double3(0, 0, 1.2d + 4d * time + 9d * time * time),
+                motion.GetComponent<Spatial>().SetBodyAngularVelocity(new Double3(0, 0, 1.2d + 4d * time + 9d * time * time),
                     CoordinateSystem.Unity, Stamp(time));
             }
 
@@ -236,11 +236,11 @@ namespace Emas.Tests
                 Double3 rate = new Double3(2, 1, 1.5) + new Double3(8, -4, 6) * (time - 0.2d);
                 if (world)
                 {
-                    motion.SetEarthCenteredAngularVelocity(rate, Stamp(time));
+                    motion.GetComponent<Spatial>().SetEarthCenteredAngularVelocity(rate, Stamp(time));
                 }
                 else
                 {
-                    motion.SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
+                    motion.GetComponent<Spatial>().SetBodyAngularVelocity(rate, CoordinateSystem.Unity, Stamp(time));
                 }
             }
 

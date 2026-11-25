@@ -11,7 +11,8 @@ namespace Emas.Editor
         /// <summary>Draws grouped configuration, units, dependent controls and runtime diagnostics.</summary>
         public override void OnInspectorGUI()
         {
-            // Save edits through Unity. A running Realm keeps the settings it started with.
+            // Source/reference setup is captured at startup. Presentation policy can
+            // change live through Unity serialization, including Undo and prefab edits.
             serializedObject.Update();
             bool running = false;
             foreach (Object value in targets)
@@ -33,6 +34,7 @@ namespace Emas.Editor
 
                 DrawReference();
             }
+            DrawPresentation();
             serializedObject.ApplyModifiedProperties();
             // Check settings before startup. Once running, show the settings actually used by the Realm.
             foreach (Object value in targets)
@@ -48,6 +50,11 @@ namespace Emas.Editor
                 }
                 else
                 {
+                    string error = setup.GetPresentationError();
+                    if (error != null)
+                    {
+                        EditorGUILayout.HelpBox(error, MessageType.Error);
+                    }
                     DrawRuntime(setup);
                 }
             }
@@ -125,15 +132,29 @@ namespace Emas.Editor
                     InspectorLayout.Field(serializedObject, "_unityPosition", "Position (Unity units)");
                     InspectorLayout.Rotation(serializedObject.FindProperty("_unityRotation"), "Scene alignment");
                 }
-                using (InspectorLayout.Section("Visibility", "Suppresses distant views, renderers and colliders; entities stay tracked and their logic keeps running."))
+            }
+        }
+
+        private void DrawPresentation()
+        {
+            SerializedProperty space = serializedObject.FindProperty("_referenceSpace");
+            bool geographic = !space.hasMultipleDifferentValues && space.intValue == (int)ReferenceSpace.Geographic;
+            string units = geographic ? " (metres)" : " (shared units)";
+            using (InspectorLayout.Section("Presentation", "Shared by every Anchor. View distance hides presentation; processing distance bypasses motion processing while keeping raw poses visible."))
+            {
+                InspectorLayout.Field(serializedObject, "_automaticViews", "Automatic views");
+                using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(serializedObject.FindProperty("_useReferenceFrame"))))
                 {
-                    SerializedProperty limit = serializedObject.FindProperty("_limitDistance");
-                    InspectorLayout.Field(serializedObject, "_limitDistance", "Limit distance");
-                    using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(limit)))
+                    InspectorLayout.Field(serializedObject, "_limitDistance", "Limit view distance");
+                    using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(serializedObject.FindProperty("_limitDistance"))))
                     {
-                        InspectorLayout.Field(serializedObject, "_maxDistance", !space.hasMultipleDifferentValues
-                            && space.intValue == (int)ReferenceSpace.Geographic ? "Radius (metres)" : "Radius (shared units)");
+                        InspectorLayout.Field(serializedObject, "_maxDistance", "View distance" + units);
                     }
+                }
+                InspectorLayout.Field(serializedObject, "_limitPoseProcessing", "Limit processing distance");
+                using (new EditorGUI.DisabledScope(!InspectorLayout.IsOn(serializedObject.FindProperty("_limitPoseProcessing"))))
+                {
+                    InspectorLayout.Field(serializedObject, "_poseProcessingDistance", "Processing distance" + units);
                 }
             }
         }
@@ -141,11 +162,13 @@ namespace Emas.Editor
         private static void DrawRuntime(RealmSetup setup)
         {
             Realm realm = setup.Realm;
-            using (InspectorLayout.Section("Live realm: " + setup.name, "Read-only. Configuration above is captured when this Realm starts."))
+            using (InspectorLayout.Section("Live realm: " + setup.name, "Read-only. Presentation controls apply on the next update; source and reference setup is captured at startup."))
             {
                 InspectorLayout.ReadOnly("Anchors", realm.Anchors.Count.ToString());
                 InspectorLayout.ReadOnly("Available entities", realm.Query().Count.ToString());
                 InspectorLayout.ReadOnly("Interpolation delay (s)", realm.InterpolationDelay.ToString("G"));
+                InspectorLayout.ReadOnly("Processing distance (live)", realm.PoseProcessingDistance.HasValue
+                    ? realm.PoseProcessingDistance.Value.ToString("G6") : "Unlimited");
                 ReferenceFrame frame = realm.ReferenceFrame;
                 InspectorLayout.ReadOnly("Reference", frame == null ? "Identity / world coordinates" : frame.IsReferenceAvailable ? "Available" : frame.HasPosition ? "Last known pose" : frame.FollowedGhost.HasValue ? "Waiting for position" : "Waiting for reference");
                 if (frame != null)

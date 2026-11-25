@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Stores independent source poses and applies reference-relative placement, attachments and range suppression.</summary>
+    /// <summary>Stores source pose and motion observations, then applies reference-relative placement, attachments and range suppression.</summary>
     /// <remarks>
     /// Place on the Ghost root. While enabled, realm projection owns its world pose; disable to release placement
     /// and range suppression. Setters retain raw double-precision input for the next projection. Timed channels
@@ -27,6 +27,8 @@ namespace Emas
         private Quaternion _attachmentRotation = Quaternion.identity;
         private Ghost _ghost;
         private readonly GeographicInput _geographic = new GeographicInput();
+        private MotionData _motion;
+        private MotionProcessor _processor;
         private GeographicPoint _rawGeography;
         private GeographicPoint _sampledGeography;
 
@@ -101,9 +103,63 @@ namespace Emas
         /// <value>The same-realm parent identity, or null when absolute pose projection is selected.</value>
         public Key? AttachedTo => _attachedTo;
 
+        /// <summary>Gets the last supplied Cartesian velocity or ECEF metres per second, also available to Smoothing with extrapolation disabled.</summary>
+        /// <value>The accepted SDK velocity, meaningful while <see cref="HasVelocity"/> is true; estimated velocity is not exposed here.</value>
+        public Double3 Velocity => _motion != null ? _motion.Velocity : default(Double3);
+
+        /// <summary>Gets whether SDK velocity is available; otherwise timestamped positions may estimate it.</summary>
+        /// <value>True after a velocity setter accepts a sample, until supplied velocity is cleared.</value>
+        public bool HasVelocity => _motion != null && _motion.HasVelocity;
+
+        /// <summary>Gets the last supplied Cartesian acceleration or ECEF metres per second squared.</summary>
+        /// <value>The accepted SDK linear acceleration, meaningful while <see cref="HasAcceleration"/> is true.</value>
+        public Double3 Acceleration => _motion != null ? _motion.Acceleration : default(Double3);
+
+        /// <summary>Gets whether optional SDK linear acceleration is available.</summary>
+        /// <value>True after an acceleration setter accepts a sample, until acceleration is cleared.</value>
+        public bool HasAcceleration => _motion != null && _motion.HasAcceleration;
+
+        /// <summary>Gets the accepted angular velocity in radians per second.</summary>
+        /// <value>Converted Unity-body quaternion rates or right-handed ECEF XYZ rates; meaningful while HasAngularVelocity is true.</value>
+        /// <remarks>Body input uses X right, Y up and Z forward with Quaternion.AngleAxis signs; default aircraft input becomes
+        /// (-pitch rate, yaw rate, -roll rate). Geographic ENU input is converted to ECEF. These are angular vectors, not Euler-angle derivatives.</remarks>
+        public Double3 AngularVelocity => _motion != null ? _motion.AngularVelocity : default(Double3);
+
+        /// <summary>Gets whether optional SDK angular velocity is available for orientation extrapolation.</summary>
+        /// <value>True after an angular velocity setter accepts a sample, until the channel is cleared.</value>
+        public bool HasAngularVelocity => _motion != null && _motion.HasAngularVelocity;
+
         internal double PositionReceivedTime => _data.PositionReceivedTime;
 
         internal double RotationReceivedTime => _data.RotationReceivedTime;
+
+        internal bool HasMotionData => _motion != null;
+
+        internal MotionData Motion
+        {
+            get
+            {
+                if (_motion == null)
+                {
+                    _motion = new MotionData(_history);
+                }
+
+                return _motion;
+            }
+        }
+
+        internal MotionProcessor Processor
+        {
+            get
+            {
+                if (_processor == null)
+                {
+                    _processor = new MotionProcessor(this);
+                }
+
+                return _processor;
+            }
+        }
 
         internal PoseHistory History => _history;
 
@@ -194,11 +250,7 @@ namespace Emas
                 smoothing.Reset();
             }
 
-            Extrapolation extrapolation = GetComponent<Extrapolation>();
-            if (extrapolation != null)
-            {
-                extrapolation.Reset();
-            }
+            ResetPrediction();
         }
 
         /// <summary>Attaches to a same-realm entity at a Unity-local position offset with no relative rotation.</summary>
@@ -218,6 +270,7 @@ namespace Emas
         /// <param name="localRotation">Finite nonzero relative quaternion in Unity local axes; normalized before storage.</param>
         /// <remarks>
         /// Applies on the next realm projection while Spatial is enabled. Attach again to change the parent or offsets.
+        /// Processing resets only when entering attachment; repeated attached updates only store the local binding.
         /// Missing, unavailable, hidden or cyclic parents suppress presentation without removing this entity or its attachment.
         /// Parent arrival or recovery resolves the attachment automatically. Absolute setters continue caching data for Detach.
         /// </remarks>
@@ -230,7 +283,7 @@ namespace Emas
                 throw new ArgumentException("An attachment parent requires an Anchor, Kind and entity ID.", nameof(parent));
             }
 
-            Ghost ghost = GetComponent<Ghost>();
+            Ghost ghost = Ghost;
             if (ghost != null && ghost.Key == parent)
             {
                 throw new ArgumentException("An entity cannot attach to itself.", nameof(parent));
@@ -241,12 +294,17 @@ namespace Emas
                 throw new ArgumentOutOfRangeException(nameof(localPosition), "The attachment position must be finite.");
             }
 
-            // Check every input before saving the attachment, then clear the old world-pose filter state.
+            // Validate every input before storing it. A bound root never prepares its
+            // own pose, so local binding updates need no repeated history/filter reset.
             Quaternion rotation = SpatialMath.NormalizeRotation(localRotation, nameof(localRotation));
+            bool enteringAttachment = !_attachedTo.HasValue;
             _attachedTo = parent;
             _attachmentPosition = localPosition;
             _attachmentRotation = rotation;
-            ResetPresentation();
+            if (enteringAttachment)
+            {
+                ResetPresentation();
+            }
         }
 
         /// <summary>Clears the attachment so the next realm projection uses the latest cached absolute position and rotation.</summary>
@@ -380,6 +438,153 @@ namespace Emas
             StoreRotationHistory(sampleTime);
         }
 
+        /// <summary>Supplies velocity in shared Cartesian source units per second; older or duplicate timed observations are ignored.</summary>
+        /// <param name="velocity">Finite velocity in the same source axes and distance units as the Cartesian position.</param>
+        /// <param name="sampleTime">The original SDK observation time, or null for untimed input.</param>
+        /// <exception cref="ArgumentOutOfRangeException">A velocity coordinate is not finite.</exception>
+        public void SetCartesianVelocity(Double3 velocity, Timestamp? sampleTime = null)
+        {
+            Motion.StoreVelocity(velocity, sampleTime);
+        }
+
+        /// <summary>Supplies ECEF XYZ velocity in metres per second; older or duplicate timed observations are ignored.</summary>
+        /// <param name="velocity">Finite Earth-centered, Earth-fixed XYZ velocity in metres per second.</param>
+        /// <param name="sampleTime">The original SDK observation time, or null for untimed input.</param>
+        /// <exception cref="ArgumentOutOfRangeException">A velocity coordinate is not finite.</exception>
+        public void SetEarthCenteredVelocity(Double3 velocity, Timestamp? sampleTime = null)
+        {
+            Motion.StoreVelocity(velocity, sampleTime);
+        }
+
+        /// <summary>Converts ENU metres per second (X east, Y north, Z up) at the SDK tangent origin into ECEF velocity.</summary>
+        /// <param name="velocity">The finite local east/north/up velocity in metres per second.</param>
+        /// <param name="origin">The SDK tangent origin defining the velocity axes; its height does not affect the conversion.</param>
+        /// <param name="sampleTime">The original SDK observation time; older or duplicate timed velocity samples are ignored.</param>
+        /// <remarks>ENU axes are geographic tangent directions, independent of aircraft pitch or roll. Convert body-frame
+        /// velocity into those directions using the raw SDK attitude at the motion observation's time before calling this.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The origin or velocity is invalid, or conversion produces a nonfinite coordinate.</exception>
+        public void SetGeographicVelocity(Double3 velocity, GeoPosition origin, Timestamp? sampleTime = null)
+        {
+            Motion.StoreVelocity(_geographic.Velocity(origin, velocity), sampleTime);
+        }
+
+        /// <summary>Clears supplied velocity; timestamp-based estimation remains available.</summary>
+        /// <remarks>Also clears the velocity timestamp so the next supplied sample starts a new timed channel.</remarks>
+        public void ClearVelocity()
+        {
+            Motion.ClearVelocity();
+        }
+
+        /// <summary>Supplies linear acceleration in Cartesian source units per second squared.</summary>
+        /// <param name="acceleration">Finite linear acceleration in the position's source axes, with gravity removed.</param>
+        /// <param name="sampleTime">The original SDK observation time; older or duplicate timed acceleration samples are ignored.</param>
+        /// <exception cref="ArgumentOutOfRangeException">An acceleration coordinate is not finite.</exception>
+        public void SetCartesianAcceleration(Double3 acceleration, Timestamp? sampleTime = null)
+        {
+            Motion.StoreAcceleration(acceleration, sampleTime);
+        }
+
+        /// <summary>Supplies ECEF linear acceleration in metres per second squared, with gravity removed.</summary>
+        /// <param name="acceleration">Finite Earth-centered, Earth-fixed XYZ linear acceleration in metres per second squared.</param>
+        /// <param name="sampleTime">The original SDK observation time; older or duplicate timed acceleration samples are ignored.</param>
+        /// <exception cref="ArgumentOutOfRangeException">An acceleration coordinate is not finite.</exception>
+        public void SetEarthCenteredAcceleration(Double3 acceleration, Timestamp? sampleTime = null)
+        {
+            Motion.StoreAcceleration(acceleration, sampleTime);
+        }
+
+        /// <summary>Converts ENU linear acceleration (X east, Y north, Z up) at the SDK origin; gravity must already be removed.</summary>
+        /// <param name="acceleration">Finite east/north/up linear acceleration in metres per second squared.</param>
+        /// <param name="origin">The SDK tangent origin defining the acceleration axes; its height does not affect the conversion.</param>
+        /// <param name="sampleTime">The original SDK observation time; older or duplicate timed acceleration samples are ignored.</param>
+        /// <remarks>ENU axes are geographic tangent directions, independent of aircraft pitch or roll. Convert body-frame
+        /// linear acceleration using the raw SDK attitude at the motion observation's time; remove gravity before supplying it.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The origin or acceleration is invalid, or conversion produces a nonfinite coordinate.</exception>
+        public void SetGeographicAcceleration(Double3 acceleration, GeoPosition origin, Timestamp? sampleTime = null)
+        {
+            Motion.StoreAcceleration(_geographic.Acceleration(origin, acceleration), sampleTime);
+        }
+
+        /// <summary>Clears acceleration while retaining supplied or estimated velocity.</summary>
+        /// <remarks>Also clears the acceleration timestamp; acceleration alone never starts position extrapolation.</remarks>
+        public void ClearAcceleration()
+        {
+            Motion.ClearAcceleration();
+        }
+
+        /// <summary>Supplies optional body angular velocity in radians per second for bounded orientation extrapolation.</summary>
+        /// <param name="angularVelocity">Finite true body angular rates in the specified SDK axes; these are not yaw/pitch/roll Euler-angle derivatives.</param>
+        /// <param name="bodyAxes">Signed SDK body axes mapped to model right/up/forward. Null uses X forward, Y right, Z down: roll, pitch and yaw rates.</param>
+        /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
+        /// <remarks>
+        /// Samples body rates at the attitude timestamp, independently of reader order. Supplied zero overrides
+        /// estimation; ClearAngularVelocity restores it. World ENU rates use SetGeographicAngularVelocity.
+        /// Stored rates leave the raw pose unchanged and remain available to prediction and smoothing,
+        /// including when no Extrapolation component is present.
+        /// </remarks>
+        /// <exception cref="ArgumentException">The body-axis mapping is invalid.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">An angular velocity coordinate or its converted value is not finite.</exception>
+        public void SetBodyAngularVelocity(Double3 angularVelocity, CoordinateSystem? bodyAxes = null, Timestamp? sampleTime = null)
+        {
+            // Check the SDK rate and convert its body axes once, so all predictions use model axes.
+            ReferenceFrame.ValidatePosition(angularVelocity, nameof(angularVelocity));
+            CoordinateSystem axes = bodyAxes ?? CoordinateSystem.NorthEastDown;
+            string error = axes.GetConfigurationError();
+            if (error != null)
+            {
+                throw new ArgumentException(error, nameof(bodyAxes));
+            }
+
+            Motion.StoreAngularVelocity(axes.ToUnityAngularVelocity(angularVelocity), world: false, sampleTime: sampleTime);
+        }
+
+        /// <summary>Supplies world angular velocity in right-handed ECEF XYZ axes, in radians per second.</summary>
+        /// <param name="angularVelocity">Finite Earth-centered, Earth-fixed angular vector; positive rotation follows the right-hand rule.</param>
+        /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
+        /// <remarks>Use a Geographic reference with geographic/ECEF positions. World rates act before the raw attitude;
+        /// they are not body rates or Euler-angle derivatives. Shares ordering, availability and clearing with SetBodyAngularVelocity.
+        /// Accepted frame changes discard angular history so world and body samples are never interpolated together.
+        /// Samples at the attitude's observation time and uses the existing extrapolation horizon without changing linear motion.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">An angular velocity coordinate is not finite.</exception>
+        public void SetEarthCenteredAngularVelocity(Double3 angularVelocity, Timestamp? sampleTime = null)
+        {
+            ReferenceFrame.ValidatePosition(angularVelocity, nameof(angularVelocity));
+            Motion.StoreAngularVelocity(angularVelocity, world: true, sampleTime: sampleTime);
+        }
+
+        /// <summary>Supplies world ENU angular velocity in radians per second at an explicit SDK tangent origin.</summary>
+        /// <param name="angularVelocity">Finite angular vector with X east, Y north and Z up; positive rotation follows the right-hand rule.</param>
+        /// <param name="origin">The SDK tangent origin defining the ENU axes; height does not affect the conversion.</param>
+        /// <param name="sampleTime">Original SDK observation time, or null for untimed input; older or duplicate timed angular samples are ignored.</param>
+        /// <remarks>Converts to ECEF without using aircraft attitude, independently of trait-reader order. Use a Geographic reference
+        /// with geographic/ECEF positions. These are world angular rates, not aircraft body rates or Euler-angle derivatives.
+        /// Shares ordering and clearing with the other angular setters. AngularVelocity exposes the converted ECEF vector.</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The origin or angular vector is invalid, or conversion produces a nonfinite coordinate.</exception>
+        /// <example><code>spatial.SetGeographicAngularVelocity(enuAngularVelocity, sdkTangentOrigin, sampleTime);</code></example>
+        public void SetGeographicAngularVelocity(Double3 angularVelocity, GeoPosition origin, Timestamp? sampleTime = null)
+        {
+            SetEarthCenteredAngularVelocity(_geographic.AngularVelocity(origin, angularVelocity), sampleTime);
+        }
+
+        /// <summary>Clears supplied angular velocity, restoring extrapolation from consecutive timed rotations when available.</summary>
+        /// <remarks>Also clears angular timestamp ordering and playback history; linear velocity, acceleration and pose remain unchanged.</remarks>
+        public void ClearAngularVelocity()
+        {
+            Motion.ClearAngularVelocity();
+        }
+
+        internal void ResetPrediction()
+        {
+            if (_processor != null)
+            {
+                _processor.Reset();
+            }
+            else
+            {
+                _history.RestartEstimation();
+            }
+        }
+
         internal void ResetTuning()
         {
             _presenter.ResetTuning();
@@ -389,10 +594,10 @@ namespace Emas
         internal void PreparePresentation(SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes,
             bool directPose = false)
         {
-            // Attached roots get their displayed pose from the parent. Clear their separate prediction state.
+            // Attach/Detach reset once at the state transition. Attached roots only
+            // inherit their parent; do not update or repeatedly reset their filters.
             if (!enabled || AttachedTo.HasValue)
             {
-                ResetPresentation();
                 return;
             }
 
@@ -422,12 +627,8 @@ namespace Emas
         {
             _data.ResetTime(timestamp);
             _history.Clear();
+            _motion?.ResetTime();
             ResetPresentation();
-            Extrapolation extrapolation = GetComponent<Extrapolation>();
-            if (extrapolation != null)
-            {
-                extrapolation.ResetTime();
-            }
         }
 
         // Called by the realm after every trait has updated and the shared reference is captured.
@@ -536,11 +737,7 @@ namespace Emas
             // Clear corrections that were calculated using the old rotation axes.
             _presenter.ResetRotation();
             _history.ClearRotation();
-            Extrapolation extrapolation = GetComponent<Extrapolation>();
-            if (extrapolation != null)
-            {
-                extrapolation.ResetPacketRotation();
-            }
+            _processor?.ResetPacketRotation();
 
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)

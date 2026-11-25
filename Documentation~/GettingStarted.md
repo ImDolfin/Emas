@@ -52,7 +52,7 @@ The imported sample already contains this setup. To create it in another scene:
 1. Create an empty GameObject with **Emas > Ghost** and `MarkerPositionTrait` components and save it as `MarkerRoot.prefab`. Keep its transform at the identity; this is the invisible Ghost root that receives position data.
 2. Create a cube and save it as `MarkerView.prefab`. Keep its local position and rotation at zero and scale at one. Assign a material to its renderer, then remove both temporary objects from the scene.
 3. Create **Assets > Create > Emas > Manifestation Blueprint**, named `MarkerBlueprint`. Set **Kind Id** to `minimal.marker` and assign `MarkerRoot.prefab` as **Ghost Prefab**. In the **Variants** table, press **+**, set **Name** to `marker`, and assign `MarkerView.prefab` in **View Prefab**. Leave **Fallback View Prefab** empty.
-4. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and the `MarkerSource` and `MarkerInitializer` components. On Realm Setup, assign `MarkerBlueprint` as the realm mapping for `minimal.marker`. On Anchor Setup, set **Anchor Id** to `quick-start` and leave **Automatic Views** enabled. Save the object as `Tracking.prefab` and keep its instance in the scene. Add a camera and light if the scene has none.
+4. Create a scene object named Tracking. Add **Emas > Realm Setup**, **Emas > Anchor Setup** and the `MarkerSource` and `MarkerInitializer` components. On Realm Setup, assign `MarkerBlueprint` as the realm mapping for `minimal.marker` and leave **Presentation > Automatic views** enabled. On Anchor Setup, set **Anchor Id** to `quick-start`. Save the object as `Tracking.prefab` and keep its instance in the scene. Add a camera and light if the scene has none.
 5. Press Play. Realm Setup creates its realm and attaches the detector, invoking `MarkerInitializer` for each detected Ghost. Emas creates a `Presence` and instantiates the authored plain `Ghost` root beneath the anchor, reads the mapped position through `MarkerPositionTrait` and attaches the cube view selected by the `marker` variant. Move Tracking to move its anchor frame.
 
 For several appearances of one Kind, add named rows to the blueprint's **Variants** table. Each row selects one view prefab. Use names such as `small_car` and `small_car_low` for alternative LODs, and report the desired name as a `Variant` from the detector. A Kind with no blueprint still gets its Ghost root and remains visually silent until a view is configured.
@@ -70,7 +70,7 @@ For integrations that already construct detectors, `IDetectorProvider.CreateDete
 Section descriptions live in tooltips. Configuration errors remain visible.
 
 - **Realm Setup** groups Kind mappings, playback, reference, placement and visibility. Labels show units; rotations display Euler degrees. Startup settings become read-only while running. Stop the Realm to edit them.
-- **Anchor Setup** shows identity, automatic views and the connected Realm, detector and optional initializer. Disable an attached Anchor Setup to edit its startup settings. Ghost construction and appearance belong in the Realm's blueprint list.
+- **Anchor Setup** shows identity and the connected Realm, detector and optional initializer. Disable an attached Anchor Setup to edit its identity. **Realm Setup > Presentation** controls automatic views and the shared visibility/processing distances, including during Play Mode. Ghost construction and appearance belong in the Realm's blueprint list.
 - **Ghost** shows read-only identity, raw and projected pose, and editable traits. Trait settings support Undo and prefab overrides; the row menu removes a trait. Motion settings show seconds, and the strategy selector exposes each model's settings inline. Disabling the Ghost skips its `OnUpdate` hook; traits and Spatial have their own switches.
 - **Window > Emas** opens the pose debugger: activate its Scene tool to compare raw observations with presented poses, pin a target or choose the followed Ghost. Its **Tracking** tab groups live data by Realm, Anchor and detector. The optional Scene view **Emas** overlay shares pose controls and a health summary. Inspection never creates a Realm or starts a detector.
 
@@ -99,7 +99,7 @@ System.IDisposable subscription = markers.OnAvailable(ghost => Debug.Log(ghost.N
 
 Dispose the subscription when its consumer stops. Use `realmSetup.Realm.Query(markers)` to apply the same filters to one setup.
 
-When you know the identity, use the stable `Presence` handle. This example requests a view explicitly; turn off **Automatic Views** on the anchor when you want to control manifestation yourself.
+When you know the identity, use the stable `Presence` handle. This example requests a view explicitly; turn off **Automatic views** on Realm Setup when you want to control manifestation yourself.
 
 ```csharp
 Realm realm = GetComponent<RealmSetup>().Realm;

@@ -17,6 +17,8 @@ namespace Emas
 
         internal Timestamp? ProjectedTime => _clock.ProjectedTime;
 
+        internal double? EstimatedPacketAge => _clock.EstimatedPacketAge;
+
         internal SpatialManager(Realm realm, IdentityMap identities)
         {
             _realm = realm;
@@ -114,6 +116,11 @@ namespace Emas
                     spatial = reference.Ghost.GetComponent<Spatial>();
                 }
 
+                if (spatial != null && spatial.AttachedTo.HasValue)
+                {
+                    spatial = null;
+                }
+
                 if (spatial != null)
                 {
                     spatial.PreparePresentation(_clock, timestamp, interpolationDelay, frame.Coordinates);
@@ -134,9 +141,9 @@ namespace Emas
             if (CanProject(record) && record != _preparedReference)
             {
                 Spatial spatial = record.Ghost.GetComponent<Spatial>();
-                if (spatial != null)
+                if (spatial != null && !spatial.AttachedTo.HasValue)
                 {
-                    double? distance = record.Ghost.Anchor.PoseProcessingDistance;
+                    double? distance = _realm.PoseProcessingDistance;
                     bool directPose = distance.HasValue && spatial.HasPosition
                         && !projection.IsWithinDistance(spatial.Position, distance.Value);
                     spatial.PreparePresentation(_clock, timestamp, interpolationDelay, projection.Coordinates, directPose);
@@ -152,17 +159,20 @@ namespace Emas
                 && _identities.TryGetValue(frame.FollowedGhost.Value, out record) && CanProject(record))
             {
                 reference = record.Ghost.GetComponent<Spatial>();
-                if (reference != null && (!reference.enabled || (!reference.PositionTime.HasValue && !reference.RotationTime.HasValue)))
+                if (reference != null && (!reference.enabled || reference.AttachedTo.HasValue
+                    || (!reference.PositionTime.HasValue && !reference.RotationTime.HasValue)))
                 {
                     reference = null;
                 }
             }
 
-            // Clock policy belongs to the reference; the followed Ghost supplies only observations.
+            // The reference API supplies automatic clock policy. Its followed Ghost
+            // can select one manual interval shared by every entity below.
             _clock.SetReference(reference, frame != null ? frame.TimestampClock : TimestampClock.Automatic, frame != null ? frame.ClockOffset : 0d);
             Timestamp? sampleTime = null;
             double receivedTime = 0;
             float predictionTime = 0;
+            float manualPredictionTime = 0;
             if (reference != null)
             {
                 // Use one observation per reference packet, preferring the newest independent channel.
@@ -179,13 +189,18 @@ namespace Emas
                 double utcCapturedAt = Time.realtimeSinceStartupAsDouble;
                 _clock.ObserveReference(sampleTime.Value, receivedTime, utcCapturedAt, Timestamp.UtcNow());
                 predictionTime = frame.PredictionTime;
+                Extrapolation referencePrediction = reference.GetComponent<Extrapolation>();
+                if (referencePrediction != null && referencePrediction.enabled)
+                {
+                    manualPredictionTime = referencePrediction.PredictionTime;
+                }
             }
             if (!_clock.HasUnixClock)
             {
                 ObserveTimes(records);
             }
 
-            _clock.Capture(timestamp, interpolationDelay, predictionTime, sampleTime, receivedTime);
+            _clock.Capture(timestamp, interpolationDelay, predictionTime, sampleTime, receivedTime, manualPredictionTime);
         }
 
         private void ObserveTimes(IReadOnlyList<Record> records)
@@ -197,7 +212,7 @@ namespace Emas
                 if (CanProject(record))
                 {
                     Spatial spatial = record.Ghost.GetComponent<Spatial>();
-                    if (spatial != null && spatial.enabled)
+                    if (spatial != null && spatial.enabled && !spatial.AttachedTo.HasValue)
                     {
                         if (spatial.PositionTime.HasValue)
                         {
