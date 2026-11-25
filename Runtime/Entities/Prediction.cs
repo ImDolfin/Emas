@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>A complete predicted source pose and its instantaneous motion, before smoothing.</summary>
+    /// <summary>A complete predicted source pose and its instantaneous motion, after observation filtering.</summary>
     public readonly struct Prediction
     {
         /// <summary>Gets the predicted absolute position.</summary>
@@ -21,11 +21,6 @@ namespace Emas
         /// <value>Radians per second in the world axes of Rotation, with Quaternion.AngleAxis signs.</value>
         public Double3 AngularVelocity { get; }
 
-        internal Double3 PositionMotion { get; }
-        internal Quaternion RotationMotion { get; }
-        internal bool HasMotion { get; }
-        internal bool WorldRotationMotion { get; }
-
         /// <summary>Creates a full prediction. Missing pose channels must retain the request's base values.</summary>
         /// <param name="position">Finite absolute position in source coordinates.</param>
         /// <param name="rotation">Finite, nonzero absolute orientation in RotationSpace.</param>
@@ -33,12 +28,6 @@ namespace Emas
         /// <param name="angularVelocity">Finite world-axis orientation derivative in radians per second.</param>
         /// <exception cref="System.ArgumentOutOfRangeException">The pose or motion is invalid.</exception>
         public Prediction(Double3 position, Quaternion rotation, Double3 velocity = default(Double3), Double3 angularVelocity = default(Double3))
-            : this(position, rotation, velocity, angularVelocity, default(Double3), Quaternion.identity, false, true)
-        {
-        }
-
-        internal Prediction(Double3 position, Quaternion rotation, Double3 velocity, Double3 angularVelocity,
-            Double3 positionMotion, Quaternion rotationMotion, bool hasMotion, bool worldRotationMotion)
         {
             if (!SpatialMath.IsFinite(position) || !SpatialMath.IsFinite(velocity) || !SpatialMath.IsFinite(angularVelocity))
             {
@@ -49,10 +38,6 @@ namespace Emas
             Rotation = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             Velocity = velocity;
             AngularVelocity = angularVelocity;
-            PositionMotion = positionMotion;
-            RotationMotion = rotationMotion;
-            HasMotion = hasMotion;
-            WorldRotationMotion = worldRotationMotion;
         }
     }
 }

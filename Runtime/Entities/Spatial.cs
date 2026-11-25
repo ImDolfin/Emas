@@ -737,7 +737,7 @@ namespace Emas
             // Clear corrections that were calculated using the old rotation axes.
             _presenter.ResetRotation();
             _history.ClearRotation();
-            _processor?.ResetPacketRotation();
+            _processor?.ResetRotationFilters();
 
             Smoothing smoothing = GetComponent<Smoothing>();
             if (smoothing != null)

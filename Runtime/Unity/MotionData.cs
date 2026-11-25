@@ -43,6 +43,73 @@ namespace Emas
             _history = history;
         }
 
+        internal void ApplyFilter(FilterState state)
+        {
+            bool velocityChanged = _hasVelocity != state.Velocity.HasValue || _velocity != state.Velocity.GetValueOrDefault()
+                || !System.Nullable.Equals(_velocityTime, state.VelocityTime);
+            if (velocityChanged)
+            {
+                _motionVersion++;
+            }
+
+            _hasVelocity = state.Velocity.HasValue;
+            _velocity = state.Velocity.GetValueOrDefault();
+            _velocityTime = state.VelocityTime;
+            if (velocityChanged && _hasVelocity && state.VelocityTime.HasValue)
+            {
+                _history.UpdateVelocity(_velocity, state.VelocityTime.Value);
+            }
+            else if (velocityChanged)
+            {
+                _history.ClearVelocity();
+            }
+
+            bool accelerationChanged = _hasAcceleration != state.Acceleration.HasValue || _acceleration != state.Acceleration.GetValueOrDefault()
+                || !System.Nullable.Equals(_accelerationTime, state.AccelerationTime);
+            if (accelerationChanged)
+            {
+                _motionVersion++;
+            }
+
+            _hasAcceleration = state.Acceleration.HasValue;
+            _acceleration = state.Acceleration.GetValueOrDefault();
+            _accelerationTime = state.AccelerationTime;
+            if (accelerationChanged && _hasAcceleration && state.AccelerationTime.HasValue)
+            {
+                _history.UpdateAcceleration(_acceleration, state.AccelerationTime.Value);
+            }
+            else if (accelerationChanged)
+            {
+                _history.ClearAcceleration();
+            }
+
+            bool angularVelocityChanged = _hasAngularVelocity != state.AngularVelocity.HasValue || _angularVelocity != state.AngularVelocity.GetValueOrDefault()
+                || !System.Nullable.Equals(_angularVelocityTime, state.AngularVelocityTime) || _angularVelocityIsWorld != state.AngularVelocityIsWorld;
+            if (angularVelocityChanged)
+            {
+                if (_angularVelocityIsWorld != state.AngularVelocityIsWorld)
+                {
+                    _history.ClearAngularVelocity();
+                }
+
+                _motionVersion++;
+            }
+
+            _hasAngularVelocity = state.AngularVelocity.HasValue;
+            _angularVelocity = state.AngularVelocity.GetValueOrDefault();
+            _angularVelocityTime = state.AngularVelocityTime;
+            if (angularVelocityChanged && _hasAngularVelocity && state.AngularVelocityTime.HasValue)
+            {
+                _history.UpdateAngularVelocity(_angularVelocity, state.AngularVelocityTime.Value);
+            }
+            else if (angularVelocityChanged)
+            {
+                _history.ClearAngularVelocity();
+            }
+
+            _angularVelocityIsWorld = state.AngularVelocityIsWorld;
+        }
+
         internal void ClearVelocity()
         {
             if (_hasVelocity)

@@ -58,16 +58,12 @@ namespace Emas.Tests
             }
         }
 
-        private sealed class DistanceExtrapolation : IExtrapolationStrategy, IPacketSmoothingStrategy
+        private sealed class DistanceExtrapolation : IExtrapolationStrategy
         {
             internal int Calls;
             internal PredictionRequest Request;
             internal Prediction Result;
             private readonly ConstantAccelerationExtrapolation _motion = new ConstantAccelerationExtrapolation();
-
-            /// <summary>Enables packet correction alongside prediction and smoothing.</summary>
-            /// <value>A quarter-second correction duration.</value>
-            public float PacketSmoothingDuration => 0.25f;
 
             /// <summary>Records complete model evaluations through the consumer API.</summary>
             /// <param name="request">The complete independently timed prediction request.</param>
@@ -308,7 +304,7 @@ namespace Emas.Tests
                 AssertPosition(observed.position, expectedPosition, 0.002f);
                 AssertRotation(observed.rotation, expectedRotation);
                 Assert.That(Vector3.Distance(observed.position, presentedPosition), Is.GreaterThan(30));
-                Assert.That(Quaternion.Angle(observed.rotation, presentedRotation), Is.GreaterThan(40));
+                Assert.That(Quaternion.Angle(observed.rotation, presentedRotation), Is.GreaterThan(10));
                 Assert.That(ghost.transform.position, Is.EqualTo(presentedPosition));
                 Assert.That(ghost.transform.rotation, Is.EqualTo(presentedRotation));
                 Assert.That(spatial.Position, Is.EqualTo(input));
@@ -1054,6 +1050,7 @@ namespace Emas.Tests
                 SetDistancePose(poses[index], frame.Position + new Double3(500, 0, 0), Quaternion.identity, time, geographic);
                 Extrapolation prediction = poses[index].gameObject.AddComponent<Extrapolation>();
                 prediction.Strategy = index == 0 ? limitedModel : controlModel;
+                poses[index].gameObject.AddComponent<PacketCorrection>().Duration = 0.25f;
                 prediction.PredictionTime = 0.1f;
                 prediction.MaximumExtrapolation = 0.1f;
                 if (geographic)
@@ -1852,7 +1849,7 @@ namespace Emas.Tests
             TestGhost ghost = _source.Publish("body second order");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
-            extrapolation.Strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0 };
+            extrapolation.Strategy = new CoordinatedTurnExtrapolation { };
             extrapolation.MaximumExtrapolation = 0.4f;
             Quaternion attitude = Quaternion.Euler(15, 20, -30);
             Vector3 rate = new Vector3(0.1f, 0.6f, 0.2f);
@@ -1908,7 +1905,7 @@ namespace Emas.Tests
             TestGhost ghost = _source.Publish("bank turn");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
-            CoordinatedTurnExtrapolation strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0, Gravity = 19.6133f };
+            CoordinatedTurnExtrapolation strategy = new CoordinatedTurnExtrapolation { Gravity = 19.6133f };
             extrapolation.Strategy = strategy;
             extrapolation.MaximumExtrapolation = 0.4f;
             Timestamp time = new Timestamp(1000, 0);
@@ -1950,7 +1947,6 @@ namespace Emas.Tests
             _realm.Update();
             AssertPosition(ghost.transform.position, straight, 0.001f);
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Gravity = 0);
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.PacketSmoothingDuration = float.NaN);
             Assert.That(strategy.Gravity, Is.EqualTo(19.6133f));
         }
 
@@ -1963,7 +1959,7 @@ namespace Emas.Tests
             TestGhost ghost = _source.Publish("independent aircraft channels");
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Extrapolation extrapolation = ghost.gameObject.AddComponent<Extrapolation>();
-            extrapolation.Strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0 };
+            extrapolation.Strategy = new CoordinatedTurnExtrapolation { };
             extrapolation.MaximumExtrapolation = 0.1f;
             spatial.SetGeographicPosition(origin, new Timestamp(1000, 0));
             spatial.SetGeographicRotation(0, 0, 45, new Timestamp(1001, 0));
@@ -2186,6 +2182,7 @@ namespace Emas.Tests
             smoothing.PositionHalfLife = 0.2f;
             smoothing.RotationHalfLife = 0.2f;
             DistanceExtrapolation model = new DistanceExtrapolation();
+            spatial.gameObject.AddComponent<PacketCorrection>().Duration = 0.25f;
             extrapolation.Strategy = model;
             extrapolation.PredictionTime = 0.2f;
             extrapolation.MaximumExtrapolation = 1;
@@ -3959,12 +3956,13 @@ namespace Emas.Tests
             TestGhost peer = _source.Publish("independent aircraft " + mode);
             Spatial spatial = ghost.gameObject.AddComponent<Spatial>();
             Spatial peerSpatial = peer.gameObject.AddComponent<Spatial>();
-            CoordinatedTurnExtrapolation strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0.2f };
+            CoordinatedTurnExtrapolation strategy = new CoordinatedTurnExtrapolation();
             Timestamp? time = mode == 2 ? (Timestamp?)null : new Timestamp(1000, 0);
             foreach (TestGhost root in new[] { ghost, peer })
             {
                 Extrapolation extrapolation = root.gameObject.AddComponent<Extrapolation>();
                 extrapolation.Strategy = strategy;
+                root.gameObject.AddComponent<PacketCorrection>().Duration = 0.2f;
                 extrapolation.MaximumExtrapolation = 0.05f;
                 extrapolation.GetComponent<Spatial>().SetCartesianVelocity(default(Double3), time);
                 extrapolation.GetComponent<Spatial>().SetBodyAngularVelocity(default(Double3), CoordinateSystem.Unity, time);
@@ -3984,7 +3982,7 @@ namespace Emas.Tests
             AssertPosition(ghost.transform.position, Vector3.zero, 0.01f);
             AssertRotation(ghost.transform.rotation, Quaternion.identity);
             yield return AdvanceSmoothing(0.07d);
-            double u = Math.Min(1d, (Time.realtimeSinceStartupAsDouble - started) / strategy.PacketSmoothingDuration);
+            double u = Math.Min(1d, (Time.realtimeSinceStartupAsDouble - started) / ghost.GetComponent<PacketCorrection>().Duration);
             double weight = u * u * (3d - 2d * u);
             Assert.That(ghost.transform.position.x, Is.EqualTo(10d * weight).Within(0.15d));
             Assert.That(Quaternion.Angle(ghost.transform.rotation, Quaternion.Euler(0, (float)(60d * weight), 0)), Is.LessThan(1f));
@@ -4010,16 +4008,16 @@ namespace Emas.Tests
             AssertRotation(ghost.transform.rotation, Quaternion.Euler(0, -30, 0));
             AssertPosition(peer.transform.position, new Vector3(50, 0, 0));
             Assert.That(spatial.Position, Is.EqualTo(new Double3(-5, 0, 0)));
-            Assert.That(ghost.GetComponent<Smoothing>(), Is.Null, "The strategy supplies its own cubic packet correction.");
+            Assert.That(ghost.GetComponent<Smoothing>(), Is.Null, "Packet correction is a separate pre-prediction filter.");
 
-            // Half-life smoothing must still filter a new prediction correction after the cubic curve finishes.
+            // New measured velocity changes the future lead immediately; observation filters do not smooth predicted motion.
             ghost.gameObject.AddComponent<Smoothing>();
             _realm.Update();
             ghost.GetComponent<Spatial>().SetCartesianVelocity(new Double3(70, 0, 0), new Timestamp(1002, 0));
             _realm.Update();
-            AssertPosition(ghost.transform.position, new Vector3(-5, 0, 0), 0.02f);
+            AssertPosition(ghost.transform.position, new Vector3(-1.5f, 0, 0), 0.02f);
             yield return AdvanceSmoothing(0.35d);
-            Assert.That(ghost.transform.position.x, Is.GreaterThan(-4f).And.LessThan(-1.51f));
+            AssertPosition(ghost.transform.position, new Vector3(-1.5f, 0, 0), 0.02f);
             yield return AdvanceSmoothing(0.6d);
             AssertPosition(ghost.transform.position, new Vector3(-1.5f, 0, 0), 0.02f);
             ghost.GetComponent<Spatial>().SetCartesianVelocity(default(Double3));
@@ -4027,7 +4025,7 @@ namespace Emas.Tests
             // Check that filter reset and SDK clock reset each clear the corrections they own.
             spatial.SetCartesianPosition(new Double3(20, 0, 0), mode == 2 ? (Timestamp?)null : new Timestamp(1003, 0));
             _realm.Update();
-            Assert.That(ghost.transform.position.x, Is.LessThan(19));
+            Assert.That(Math.Abs(ghost.transform.position.x - 20), Is.GreaterThan(0.1d), "A new packet retains correction error until reset.");
             spatial.ResetPresentation();
             _realm.Update();
             AssertPosition(ghost.transform.position, new Vector3(20, 0, 0));

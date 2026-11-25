@@ -113,7 +113,7 @@ namespace Emas
 
         /// <summary>Predicts the complete pose and motion using this model.</summary>
         /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
-        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        /// <returns>The absolute source pose and its linear and angular velocity after observation filtering.</returns>
         public Prediction Predict(PredictionRequest request)
         {
             return PredictionEvaluator.Evaluate(request, this);

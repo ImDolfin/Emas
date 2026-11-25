@@ -60,6 +60,17 @@ namespace Emas
                 }
             }
 
+            internal void Update(Double3 value, Timestamp time)
+            {
+                if (_count > 0 && time.CompareTo(At(_count - 1).Time) == 0)
+                {
+                    _samples[(_start + _count - 1) % Capacity] = new VectorSample(value, time);
+                    return;
+                }
+
+                Add(value, time);
+            }
+
             internal bool Sample(double offsetFromNewest, out Double3 value)
             {
                 value = default(Double3);
@@ -101,30 +112,6 @@ namespace Emas
 
                 value = oldest.Value;
                 return true;
-            }
-
-            internal Double3 Derivative(double offsetFromNewest)
-            {
-                if (_count < 2 || offsetFromNewest >= 0)
-                {
-                    return default(Double3);
-                }
-
-                VectorSample newest = At(_count - 1);
-                VectorSample after = newest;
-                for (int index = _count - 2; index >= 0; index--)
-                {
-                    VectorSample before = At(index);
-                    if (offsetFromNewest >= before.Time.ElapsedSince(newest.Time))
-                    {
-                        // The slope of the same segment used for historical interpolation.
-                        return (after.Value - before.Value) * (1d / after.Time.ElapsedSince(before.Time));
-                    }
-
-                    after = before;
-                }
-
-                return default(Double3);
             }
 
             internal void Clear()
@@ -305,6 +292,42 @@ namespace Emas
 
         internal Timestamp? OldestAngularVelocityTime => _angularVelocities.OldestTime;
 
+        internal void UpdatePosition(Double3 value, Timestamp time)
+        {
+            Version++;
+            _positions.Update(value, time);
+        }
+
+        internal void UpdateVelocity(Double3 value, Timestamp time)
+        {
+            Version++;
+            _velocities.Update(value, time);
+        }
+
+        internal void UpdateAcceleration(Double3 value, Timestamp time)
+        {
+            Version++;
+            _accelerations.Update(value, time);
+        }
+
+        internal void UpdateAngularVelocity(Double3 value, Timestamp time)
+        {
+            Version++;
+            _angularVelocities.Update(value, time);
+        }
+
+        internal void UpdateRotation(Quaternion value, Timestamp time)
+        {
+            if (_rotationCount > 0 && time.CompareTo(RotationAt(_rotationCount - 1).Time) == 0)
+            {
+                Version++;
+                _rotations[(_rotationStart + _rotationCount - 1) % Capacity] = new RotationSample(value, time);
+                return;
+            }
+
+            AddRotation(value, time);
+        }
+
         internal void AddPosition(Double3 position, Timestamp time)
         {
             Version++;
@@ -352,6 +375,11 @@ namespace Emas
         internal bool ReadPosition(int lookback, Timestamp? through, out Timestamp time, out Double3 value)
         {
             return _positions.Read(lookback, through, out time, out value, _positionEstimateStart);
+        }
+
+        internal bool ReadAcceleration(int lookback, Timestamp? through, out Timestamp time, out Double3 acceleration)
+        {
+            return _accelerations.Read(lookback, through, out time, out acceleration);
         }
 
         internal bool ReadVelocity(int lookback, Timestamp? through, out Timestamp time, out Double3 value)
@@ -402,34 +430,6 @@ namespace Emas
         internal bool SamplePosition(double offsetFromNewest, out Double3 position)
         {
             return _positions.Sample(offsetFromNewest, out position);
-        }
-
-        internal Double3 PositionDerivative(double offsetFromNewest)
-        {
-            return _positions.Derivative(offsetFromNewest);
-        }
-
-        internal Double3 RotationDerivative(double offsetFromNewest)
-        {
-            if (_rotationCount < 2 || offsetFromNewest >= 0)
-            {
-                return default(Double3);
-            }
-
-            RotationSample newest = RotationAt(_rotationCount - 1);
-            RotationSample after = newest;
-            for (int index = _rotationCount - 2; index >= 0; index--)
-            {
-                RotationSample before = RotationAt(index);
-                if (offsetFromNewest >= before.Time.ElapsedSince(newest.Time))
-                {
-                    return SpatialMath.RotationRate(before.Value, after.Value, after.Time.ElapsedSince(before.Time));
-                }
-
-                after = before;
-            }
-
-            return default(Double3);
         }
 
         internal bool SampleVelocity(double offsetFromNewest, out Double3 velocity)

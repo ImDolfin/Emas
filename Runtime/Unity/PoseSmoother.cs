@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Emas
 {
-    // Filters presentation error independently of input storage and optional motion extrapolation.
+    // Filters source observation error before optional motion extrapolation.
     internal struct PoseSmoother
     {
         private const double LogTwo = 0.6931471805599453;
@@ -13,9 +13,6 @@ namespace Emas
         private bool _hasRotation;
         private double _timestamp;
         private double _elapsed;
-        private Double3 _estimatedAngularRate;
-        private bool _hasEstimatedAngularRate;
-        private bool _estimatedAngularRateIsWorld;
 
         internal void Prepare(double timestamp)
         {
@@ -45,29 +42,11 @@ namespace Emas
             return _position;
         }
 
-        internal Quaternion Rotation(Quaternion target, float halfLife, Quaternion motion, bool world, bool estimated)
+        internal Quaternion Rotation(Quaternion target, float halfLife, Quaternion motion)
         {
             double weight = SpatialMath.IsFinite(halfLife) && halfLife > 0 ? 1d - Math.Exp(-LogTwo * _elapsed / halfLife) : 1d;
-            if (_hasRotation && estimated && halfLife > 0 && _elapsed > 0 && !motion.Equals(Quaternion.identity))
-            {
-                // Pose-derived rates contain differentiated measurement noise. Filter that rate
-                // before using it as motion assistance; a steady rate still converges without lag.
-                Double3 rate = SpatialMath.RotationRate(Quaternion.identity, motion, _elapsed);
-                _estimatedAngularRate = _hasEstimatedAngularRate && _estimatedAngularRateIsWorld == world
-                    ? _estimatedAngularRate * (1d - weight) + rate * weight : rate;
-                _hasEstimatedAngularRate = true;
-                _estimatedAngularRateIsWorld = world;
-                motion = SpatialMath.AngularDisplacement(_estimatedAngularRate, _elapsed);
-            }
-            else
-            {
-                // A held target at its cap must stop motion immediately, including an estimated rate.
-                _hasEstimatedAngularRate = false;
-            }
-
-            // Carry known turns before decaying the remaining attitude error. Body increments
-            // compose on the right; world increments compose on the left, matching extrapolation.
-            Quaternion predicted = world ? motion * _rotation : _rotation * motion;
+            // Motion was converted to the stored quaternion's world axes by the observation filter.
+            Quaternion predicted = motion * _rotation;
             _rotation = _hasRotation && SpatialMath.IsFinite(halfLife) && halfLife > 0
                 ? Quaternion.Slerp(predicted, target, (float)weight) : target;
             _hasRotation = true;
@@ -82,7 +61,6 @@ namespace Emas
         internal void ResetRotation()
         {
             _hasRotation = false;
-            _hasEstimatedAngularRate = false;
         }
 
         internal void Reset()

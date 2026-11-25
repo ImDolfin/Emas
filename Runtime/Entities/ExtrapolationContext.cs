@@ -6,9 +6,9 @@ namespace Emas
     /// <summary>Provides pose, motion, timing and coordinate information for one channel's extrapolation.</summary>
     /// <remarks>Created by Emas on the main thread. Motion is sampled at ObservationTime independently
     /// for position and rotation extrapolation; future-only motion is unavailable. Pose properties retain
-    /// the latest accepted observations and their own timestamps, which may differ from ObservationTime.
+    /// the latest filtered observations and their own timestamps, which may differ from ObservationTime.
     /// Null motion means unavailable; a supplied zero remains available and overrides estimation.
-    /// Raw readers expose the current estimation window, valid during the strategy call. Presentation/estimator
+    /// History readers expose the current estimation window, valid during the strategy call. Presentation/estimator
     /// resets restart that window while older SDK motion may remain available for playback and interpolation.</remarks>
     public readonly struct ExtrapolationContext
     {
@@ -50,9 +50,9 @@ namespace Emas
         /// <value>Source distance units per second, or ECEF metres per second; null when unavailable.</value>
         public Double3? Velocity { get; }
 
-        /// <summary>Gets supplied SDK acceleration sampled at ObservationTime.</summary>
+        /// <summary>Gets SDK or filter-provided acceleration sampled at ObservationTime.</summary>
         /// <value>Source distance units per second squared, or ECEF metres per second squared; null when no eligible SDK value exists.</value>
-        /// <remarks>Strategies can estimate missing acceleration using the raw history readers without changing this value.</remarks>
+        /// <remarks>Strategies can estimate missing acceleration using the filtered history readers without changing this value.</remarks>
         public Double3? Acceleration { get; }
 
         /// <summary>Gets angular velocity sampled at ObservationTime, or an observed rotation-arc estimate.</summary>
@@ -61,11 +61,11 @@ namespace Emas
         /// rotation, otherwise local east/up/north axes. Emas converts the returned offset into RotationSpace.</remarks>
         public Double3? AngularVelocity { get; }
 
-        /// <summary>Gets whether Velocity was estimated from timed positions rather than supplied by the SDK.</summary>
+        /// <summary>Gets whether Velocity was estimated from timed positions rather than supplied by the SDK or a filter.</summary>
         /// <value>True only when a position-derived velocity is available.</value>
         public bool VelocityIsEstimated { get; }
 
-        /// <summary>Gets whether AngularVelocity was estimated from timed rotations rather than supplied by the SDK.</summary>
+        /// <summary>Gets whether AngularVelocity was estimated from timed rotations rather than supplied by the SDK or a filter.</summary>
         /// <value>True only when an observed-arc rate is available.</value>
         public bool AngularVelocityIsEstimated { get; }
 
@@ -73,16 +73,16 @@ namespace Emas
         /// <value>True for world rates composed before attitude; false for body rates composed after attitude.</value>
         public bool AngularVelocityIsWorld { get; }
 
-        /// <summary>Gets the newest accepted SDK velocity timestamp, independently of the sampling time.</summary>
+        /// <summary>Gets the newest filtered velocity timestamp, independently of the sampling time.</summary>
         /// <value>The supplied channel's latest timestamp; null when no timed SDK velocity is retained.
         /// May be later than ObservationTime; Velocity still excludes future-only observations.</value>
         public Timestamp? LatestVelocityTime { get; }
 
-        /// <summary>Gets the newest accepted SDK acceleration timestamp, independently of the sampling time.</summary>
+        /// <summary>Gets the newest filtered acceleration timestamp, independently of the sampling time.</summary>
         /// <value>The supplied channel's latest timestamp, or null for untimed or cleared acceleration.</value>
         public Timestamp? LatestAccelerationTime { get; }
 
-        /// <summary>Gets the newest accepted SDK angular-velocity timestamp, independently of the sampling time.</summary>
+        /// <summary>Gets the newest filtered angular-velocity timestamp, independently of the sampling time.</summary>
         /// <value>The supplied channel's latest timestamp, or null when no timed SDK angular velocity is retained.</value>
         public Timestamp? LatestAngularVelocityTime { get; }
 
@@ -104,13 +104,13 @@ namespace Emas
 
         internal GeographicBasis GeographicBasis => _spatial.BasisAt(ObservationPosition.Value);
 
-        internal ExtrapolationContext(Spatial spatial, CoordinateSystem sourceCoordinates, Timestamp? observationTime,
+        internal ExtrapolationContext(PredictionInput spatial, CoordinateSystem sourceCoordinates, Timestamp? observationTime,
             Double3? velocity, Double3? acceleration, Double3? angularVelocity, bool velocityIsEstimated,
             bool angularVelocityIsEstimated, bool angularVelocityIsWorld, Timestamp? latestVelocityTime,
             Timestamp? latestAccelerationTime, Timestamp? latestAngularVelocityTime, PredictionCache predictions, long predictionContext)
         {
             _history = spatial.History;
-            _spatial = spatial;
+            _spatial = spatial.Spatial;
             _predictions = predictions;
             _predictionContext = predictionContext;
             // Keep the latest raw values separate from the pose at the time being predicted.
@@ -142,7 +142,7 @@ namespace Emas
         /// <param name="lookback">Zero for the newest eligible sample, one for its predecessor, and so on.</param>
         /// <param name="time">The sample's original SDK timestamp, or default when unavailable.</param>
         /// <param name="position">Cartesian source coordinates or ECEF metres, or default when unavailable.</param>
-        /// <returns>True when the raw sample is in the current estimation window at or before ObservationTime.</returns>
+        /// <returns>True when the filtered sample is in the current estimation window at or before ObservationTime.</returns>
         /// <remarks>Use on the main thread during the strategy call. This reads the entity's live bounded history;
         /// do not retain it as a snapshot. Untimed contexts have no cutoff. No interpolation, allocation or mutation occurs.</remarks>
         /// <exception cref="ArgumentOutOfRangeException">Lookback is negative.</exception>
@@ -154,7 +154,7 @@ namespace Emas
             return _history != null && _history.ReadPosition(lookback, ObservationTime, out time, out position);
         }
 
-        /// <summary>Reads a retained timestamped SDK velocity for strategy-specific acceleration estimation.</summary>
+        /// <summary>Reads a retained timestamped filtered velocity for strategy-specific acceleration estimation.</summary>
         /// <param name="lookback">Zero for the newest eligible sample; positive values read earlier samples.</param>
         /// <param name="time">The original SDK timestamp, or default when unavailable.</param>
         /// <param name="velocity">Source units per second or ECEF metres per second; default when unavailable.</param>
@@ -186,7 +186,7 @@ namespace Emas
             return _history != null && _history.ReadRotation(lookback, ObservationTime, out time, out rotation);
         }
 
-        /// <summary>Reads a retained timestamped SDK angular rate for strategy-specific angular-acceleration estimation.</summary>
+        /// <summary>Reads a retained timestamped filtered angular rate for strategy-specific angular-acceleration estimation.</summary>
         /// <param name="lookback">Zero for the newest eligible rate; positive values read earlier rates.</param>
         /// <param name="time">The original SDK timestamp, or default when unavailable.</param>
         /// <param name="angularVelocity">Body rates in model right/up/forward axes, or world rates in right-handed ECEF XYZ;
@@ -223,7 +223,7 @@ namespace Emas
             }
         }
 
-        internal static Double3? SamplePosition(Spatial spatial, Timestamp? time)
+        internal static Double3? SamplePosition(PredictionInput spatial, Timestamp? time)
         {
             // Treat input without a timestamp as current. Otherwise, require a sample at or before the requested time.
             if (!spatial.HasPosition)
@@ -253,7 +253,7 @@ namespace Emas
             }
         }
 
-        private static Quaternion? SampleRotation(Spatial spatial, Timestamp? time)
+        private static Quaternion? SampleRotation(PredictionInput spatial, Timestamp? time)
         {
             // A rotation from a later time must not change how we predict an older position.
             if (!spatial.HasRotation)

@@ -22,7 +22,6 @@ namespace Emas
         private double _rotationReceivedTime;
         private double _positionOffset;
         private double _rotationOffset;
-        private bool _estimatedRotationMotion;
 
         internal Double3 Position => _position;
         internal Double3 Observation => _observation;
@@ -32,26 +31,22 @@ namespace Emas
         internal void Prepare(Spatial spatial, SpatialClock clock, double timestamp, float interpolationDelay, CoordinateSystem sourceAxes)
         {
             Extrapolation extrapolation = spatial.GetComponent<Extrapolation>();
-            Smoothing smoothing = spatial.GetComponent<Smoothing>();
-            PresentationSettings settings = new PresentationSettings(extrapolation, smoothing, interpolationDelay);
-            MotionProcessor processor = extrapolation != null || (smoothing != null && smoothing.enabled && spatial.HasMotionData)
-                ? spatial.Processor : null;
-            Double3 motion = default(Double3);
-            Quaternion rotationMotion = Quaternion.identity;
-            bool worldRotationMotion = true;
-            bool estimatedRotationMotion = false;
-            bool assistAngular = smoothing != null && settings.RotationHalfLife > 0
-                && settings.PacketSmoothingDuration <= 0 && (settings.EstimateAngularMotion || spatial.HasAngularVelocity);
+            MotionProcessor processor = extrapolation != null || spatial.GetComponent<Filter>() != null ? spatial.Processor : null;
+            if (processor != null)
+            {
+                // All observation filters finish before contexts or prediction history are read.
+                processor.Prepare(spatial, timestamp, sourceAxes);
+            }
+
+            PresentationSettings settings = new PresentationSettings(extrapolation,
+                processor != null ? processor.Input.Signature : 0, interpolationDelay);
             Prediction prediction;
             if (processor != null)
             {
-                processor.Prepare(spatial, timestamp);
-                prediction = processor.Predict(spatial, clock, timestamp, sourceAxes, settings, assistAngular,
-                    out motion, out rotationMotion, out worldRotationMotion, out estimatedRotationMotion, out _observation);
+                prediction = processor.Predict(clock, timestamp, sourceAxes, settings, out _observation);
             }
             else
             {
-                // Buffered playback also works without any motion-processing components.
                 Double3 position = spatial.Position;
                 Quaternion rotation = spatial.Rotation;
                 double target = clock.PredictionTimestamp(timestamp);
@@ -72,41 +67,23 @@ namespace Emas
                 prediction = new Prediction(position, rotation);
             }
 
-            PresentationPose pose = new PresentationPose(prediction.Position, prediction.Rotation);
-            if (processor != null)
-            {
-                // Packet correction and half-life smoothing consume the same full prediction.
-                pose = processor.SmoothPacket(spatial, pose, prediction.Velocity, prediction.AngularVelocity,
-                    timestamp, settings.PacketSmoothingDuration, false, out Double3 packetMotion, out Quaternion packetRotationMotion);
-                if (settings.PacketSmoothingDuration > 0)
-                {
-                    motion = packetMotion;
-                    rotationMotion = packetRotationMotion;
-                    worldRotationMotion = true;
-                }
-            }
-
+            PresentationPose current = new PresentationPose(prediction.Position, prediction.Rotation);
             PresentationPose previous = _filtered;
             double elapsed = _timestamp.HasValue ? Math.Max(0d, timestamp - _timestamp.Value) : 0;
             if (_tuning.Changed(settings))
             {
-                // Advance the cached target along its previous timeline. New packets advance
-                // a capped timeline too, while a held packet at its limit contributes no motion.
                 try
                 {
-                    double positionStep = TargetStep(spatial.PositionTime, _positionTime, spatial.PositionReceivedTime,
-                        _positionReceivedTime, _positionOffset, elapsed, _tuning.Settings.MaximumExtrapolation);
-                    double rotationStep = TargetStep(spatial.RotationTime, _rotationTime, spatial.RotationReceivedTime,
-                        _rotationReceivedTime, _rotationOffset, elapsed, _tuning.Settings.MaximumExtrapolation);
-                    Double3 previousMotion = _velocity * positionStep;
-                    Quaternion previousRotationMotion = SpatialMath.AngularDisplacement(_angularVelocity, rotationStep);
-                    previous = new PresentationPose(_target.Position + previousMotion, previousRotationMotion * _target.Rotation);
-                    // Preview only the old filter on a copy. No model, history or packet-correction evaluation is repeated.
-                    if (smoothing != null)
-                    {
-                        previous = smoothing.Prepare(spatial, previous, timestamp, previousMotion, previousRotationMotion,
-                            true, _estimatedRotationMotion, _tuning.Settings, true);
-                    }
+                    double positionStep = TargetStep(spatial.PositionTime,
+                        _positionTime, spatial.PositionReceivedTime, _positionReceivedTime,
+                        _positionOffset, elapsed, _tuning.Settings.MaximumExtrapolation);
+                    double rotationStep = TargetStep(spatial.RotationTime,
+                        _rotationTime, spatial.RotationReceivedTime, _rotationReceivedTime,
+                        _rotationOffset, elapsed, _tuning.Settings.MaximumExtrapolation);
+                    // Live configuration edits blend from a cached trajectory. They never run
+                    // filters or either strategy again and never feed this offset into observations.
+                    previous = new PresentationPose(_target.Position + _velocity * positionStep,
+                        SpatialMath.AngularDisplacement(_angularVelocity, rotationStep) * _target.Rotation);
                 }
                 catch (ArgumentOutOfRangeException)
                 {
@@ -114,9 +91,7 @@ namespace Emas
                 }
             }
 
-            PresentationPose current = smoothing != null ? smoothing.Prepare(spatial, pose, timestamp, motion, rotationMotion,
-                worldRotationMotion, estimatedRotationMotion, settings, false) : pose;
-            _target = pose;
+            _target = current;
             _filtered = current;
             _velocity = processor != null ? processor.Trajectory.Velocity : prediction.Velocity;
             _angularVelocity = processor != null ? processor.Trajectory.AngularVelocity : prediction.AngularVelocity;
@@ -126,7 +101,6 @@ namespace Emas
             _rotationTime = spatial.RotationTime;
             _positionReceivedTime = spatial.PositionReceivedTime;
             _rotationReceivedTime = spatial.RotationReceivedTime;
-            _estimatedRotationMotion = estimatedRotationMotion;
             _timestamp = timestamp;
             current = _tuning.Apply(previous, current, settings, timestamp);
             _position = current.Position;

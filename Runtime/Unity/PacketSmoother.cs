@@ -7,7 +7,6 @@ namespace Emas
     // Use a Hermite curve for position error and a spherical Bezier curve for rotation error.
     internal struct PacketSmoother
     {
-        private Double3 _position;
         private Double3 _targetPosition;
         private Double3 _targetVelocity;
         private Quaternion _targetRotation;
@@ -19,82 +18,79 @@ namespace Emas
         private Double3 _rotationTangent;
         private double _positionStarted;
         private double _rotationStarted;
-        private double _timestamp;
         private long _positionVersion;
         private long _rotationVersion;
-        private long _motionVersion;
         private bool _hasPosition;
         private bool _hasRotation;
+        private FilterState _input;
+        private double _positionChangedAt;
+        private double _rotationChangedAt;
 
-        internal PresentationPose Apply(Spatial spatial, PresentationPose target, Double3 velocity,
-            Double3 angularVelocity, long motionVersion, double timestamp, float duration, out Double3 motion, out Quaternion rotationMotion)
+        internal FilterState Apply(FilterState input, FilterContext context, float duration)
         {
-            motion = default(Double3);
-            rotationMotion = Quaternion.identity;
             if (duration <= 0)
             {
                 this = default(PacketSmoother);
-                return target;
+                return input;
             }
 
-            // Keep the valid pose in case the correction calculation overflows.
-            PresentationPose baseline = target;
+            FilterState output = input;
             try
             {
-                double elapsed = Math.Max(0d, timestamp - _timestamp);
-                bool motionChanged = motionVersion != _motionVersion;
-                // Smoothing advances by known target motion. Correction-curve movement remains
-                // correction error; passing it through here would bypass the half-life filter.
-                if (spatial.HasPosition)
+                bool positionChanged = !Nullable.Equals(input.Position, _input.Position) || !Nullable.Equals(input.PositionTime, _input.PositionTime);
+                bool rotationChanged = !Nullable.Equals(input.Rotation, _input.Rotation) || !Nullable.Equals(input.RotationTime, _input.RotationTime);
+                if (input.Position.HasValue)
                 {
-                    bool hadPosition = _hasPosition;
-                    Double3 previousVelocity = _targetVelocity;
-                    target.Position = Position(target.Position, velocity, spatial.PositionVersion, motionChanged, elapsed, timestamp, duration);
-                    if (hadPosition)
-                    {
-                        motion = (previousVelocity * 0.5d + velocity * 0.5d) * elapsed;
-                    }
+                    double step = input.PositionTime.HasValue && _input.PositionTime.HasValue
+                        ? input.PositionTime.Value.ElapsedSince(_input.PositionTime.Value) : positionChanged ? context.Time - _positionChangedAt : 0;
+                    Double3 velocity = Eligible(input.VelocityTime, input.PositionTime) ? input.Velocity.GetValueOrDefault() : default(Double3);
+                    output.Position = Position(input.Position.Value, velocity, _positionVersion + (positionChanged ? 1 : 0),
+                        Math.Max(0d, step), context.Time, duration);
                 }
 
-                if (spatial.HasRotation)
+                if (input.Rotation.HasValue)
                 {
-                    bool hadRotation = _hasRotation;
-                    Double3 previousRate = _targetAngularVelocity;
-                    target.Rotation = Rotation(target.Rotation, angularVelocity, spatial.RotationVersion, motionChanged, elapsed, timestamp, duration);
-                    if (hadRotation)
-                    {
-                        rotationMotion = SpatialMath.AngularDisplacement(previousRate * 0.5d + angularVelocity * 0.5d, elapsed);
-                    }
+                    double step = input.RotationTime.HasValue && _input.RotationTime.HasValue
+                        ? input.RotationTime.Value.ElapsedSince(_input.RotationTime.Value) : rotationChanged ? context.Time - _rotationChangedAt : 0;
+                    Double3 rate = Eligible(input.AngularVelocityTime, input.RotationTime) ? context.WorldAngularVelocity(input) : default(Double3);
+                    output.Rotation = Rotation(input.Rotation.Value, rate, _rotationVersion + (rotationChanged ? 1 : 0),
+                        Math.Max(0d, step), context.Time, duration);
                 }
 
-                // Save the packet versions only after position and rotation have both been handled.
-                _timestamp = timestamp;
-                _positionVersion = spatial.PositionVersion;
-                _rotationVersion = spatial.RotationVersion;
-                _motionVersion = motionVersion;
-                return target;
+                // Advance by observation time only on a new sample. Render-time motion is
+                // added later by prediction, so holding a packet cannot count it twice.
+                if (positionChanged)
+                {
+                    _positionVersion++;
+                    _positionChangedAt = context.Time;
+                }
+
+                if (rotationChanged)
+                {
+                    _rotationVersion++;
+                    _rotationChangedAt = context.Time;
+                }
+
+                _input = input;
+                return output;
             }
             catch (ArgumentOutOfRangeException)
             {
-                // Very large SDK values can overflow correction calculations. Fall back to the pose without correction.
                 this = default(PacketSmoother);
-                motion = default(Double3);
-                rotationMotion = Quaternion.identity;
-                return baseline;
+                return input;
             }
         }
 
-        internal void ResetRotation()
+        private static bool Eligible(Timestamp? motionTime, Timestamp? poseTime)
         {
-            _hasRotation = false;
+            return !motionTime.HasValue || !poseTime.HasValue || motionTime.Value.CompareTo(poseTime.Value) <= 0;
         }
 
-        private Double3 Position(Double3 target, Double3 velocity, long version, bool motionChanged,
+        private Double3 Position(Double3 target, Double3 velocity, long version,
             double elapsed, double timestamp, double duration)
         {
             if (!_hasPosition)
             {
-                _position = target;
                 _targetPosition = target;
                 _targetVelocity = velocity;
                 _positionOffset = default(Double3);
@@ -105,7 +101,7 @@ namespace Emas
             }
 
             Double3 offset = PositionCorrection(timestamp, duration, out Double3 tangent);
-            if (version != _positionVersion || motionChanged)
+            if (version != _positionVersion)
             {
                 // Update the old correction curve to the current time before starting the new correction.
                 // Otherwise, frequent packets could keep restarting the curve and preserve movement that should have stopped.
@@ -117,8 +113,7 @@ namespace Emas
 
             _targetPosition = target;
             _targetVelocity = velocity;
-            _position = target + offset;
-            return _position;
+            return target + offset;
         }
 
         private Double3 PositionCorrection(double timestamp, double duration, out Double3 tangent)
@@ -133,7 +128,7 @@ namespace Emas
             return _positionOffset * h00 + _positionTangent * (duration * h10);
         }
 
-        private Quaternion Rotation(Quaternion target, Double3 angularVelocity, long version, bool motionChanged,
+        private Quaternion Rotation(Quaternion target, Double3 angularVelocity, long version,
             double elapsed, double timestamp, double duration)
         {
             if (!_hasRotation)
@@ -150,7 +145,7 @@ namespace Emas
 
             double u = Math.Min(1d, Math.Max(0d, (timestamp - _rotationStarted) / duration));
             Quaternion correction = Curve(u);
-            if (version != _rotationVersion || motionChanged)
+            if (version != _rotationVersion)
             {
                 Quaternion continuedTarget = SpatialMath.AngularDisplacement(_targetAngularVelocity, elapsed) * _targetRotation;
                 Quaternion continued = correction * continuedTarget;

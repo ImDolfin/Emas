@@ -3,16 +3,15 @@ using UnityEngine;
 
 namespace Emas
 {
-    /// <summary>Combines quaternion body-frame second-order dead reckoning, coordinated turns and cubic packet correction.</summary>
+    /// <summary>Predicts quaternion body-frame second-order motion and coordinated turns.</summary>
     /// <remarks>
     /// Assumes velocity turns with the body without changing sideslip. Acceleration must be gravity-free inertial
     /// acceleration; Gravity must use the same distance unit. Supplied rates, including zero, override bank-derived
-    /// rates. Missing attitude falls back to world second-order motion. Instances may be shared when immutable; omit
-    /// Smoothing to evaluate cubic correction alone. Timed position history estimates endpoint velocity in the
+    /// rates. Missing attitude falls back to world second-order motion. Instances may be shared when immutable; filters run before prediction. Timed position history estimates endpoint velocity in the
     /// selected rotating-body model; supplied SDK velocity, including zero, takes precedence.
     /// </remarks>
     [Serializable]
-    public sealed class CoordinatedTurnExtrapolation : IExtrapolationStrategy, IPredictionModel, IPacketSmoothingStrategy
+    public sealed class CoordinatedTurnExtrapolation : IExtrapolationStrategy, IPredictionModel
     {
         private struct AngularMotion
         {
@@ -30,9 +29,6 @@ namespace Emas
             internal Double3 Rate;
         }
 
-        [Tooltip("Cubic position and quaternion correction duration on accepted packet arrivals, in unscaled seconds. Zero: immediate correction. Independent of the extrapolation horizon.")]
-        [Min(0)]
-        [SerializeField] private float _packetSmoothingDuration = 0.1f;
         [Tooltip("Use steady coordinated level-turn rate g*tan(bank)/horizontal speed only when neither supplied nor estimated angular velocity is available. Supplied zero rates override this fallback.")]
         [SerializeField] private bool _useBankAngleWhenRatesUnavailable = true;
         [Tooltip("Gravity magnitude in Cartesian source distance units per second squared; use 9.80665 for metres and geographic input. Used only for the bank-derived turn-rate fallback.")]
@@ -43,21 +39,6 @@ namespace Emas
         private const double PositionWindowSeconds = 0.25d;
         private const double MinimumSpan = 0.0001d;
         private static readonly ConstantAccelerationExtrapolation _linearFallback = new ConstantAccelerationExtrapolation();
-
-        /// <summary>Gets or sets cubic packet correction duration in unscaled seconds.</summary>
-        /// <value>A finite, nonnegative duration, defaulting to 0.1 seconds. Zero bypasses packet correction.</value>
-        /// <remarks>The correction can outlast the extrapolation horizon but converges to the capped pose.
-        /// Assign a new strategy instance for a continuous transition when changing other model settings.</remarks>
-        /// <exception cref="ArgumentOutOfRangeException">The duration is negative or nonfinite.</exception>
-        public float PacketSmoothingDuration
-        {
-            get => _packetSmoothingDuration;
-            set
-            {
-                Smoothing.ValidateTime(value, nameof(value));
-                _packetSmoothingDuration = value;
-            }
-        }
 
         /// <summary>Gets or sets whether missing angular rates may be inferred from bank and horizontal speed.</summary>
         /// <value>True by default. Does not override a supplied or estimated angular rate, including zero.</value>
@@ -88,7 +69,7 @@ namespace Emas
 
         /// <summary>Predicts the complete pose and motion using this model.</summary>
         /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
-        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        /// <returns>The absolute source pose and its linear and angular velocity after observation filtering.</returns>
         public Prediction Predict(PredictionRequest request)
         {
             return PredictionEvaluator.Evaluate(request, this);

@@ -12,12 +12,6 @@ namespace Emas
         private Timestamp? _previousTime;
         private Double3 _estimatedVelocity;
         private bool _hasEstimatedVelocity;
-        private double? _projectionTime;
-        private double _elapsed;
-        private Timestamp? _motionSampleTime;
-        private double _motionOffset;
-        private Double3 _motionExtrapolation;
-        private PacketSmoother _packetSmoother;
         private ExtrapolationContext _context;
         private bool _hasContext;
         private ExtrapolationContext _alternateContext;
@@ -25,9 +19,6 @@ namespace Emas
         private long _contextPositionVersion;
         private long _contextRotationVersion;
         private long _contextMotionVersion;
-        private bool _hasRotationMotion;
-        private Timestamp? _rotationMotionSampleTime;
-        private double _rotationMotionOffset;
         private readonly PredictionCache _predictions = new PredictionCache();
         private long _predictionContext;
 
@@ -39,29 +30,27 @@ namespace Emas
 
         internal double RotationOffset { get; private set; }
 
-        private MotionData Motion => _spatial.Motion;
+        internal PredictionInput Input { get; }
+
+        private MotionData Motion => Input.Motion;
 
         private Spatial Spatial => _spatial;
 
         internal MotionProcessor(Spatial spatial)
         {
             _spatial = spatial;
+            Input = new PredictionInput(spatial);
         }
 
         internal void Reset()
         {
-            // Keep motion supplied by the application. Clear estimated motion and this root's filter state.
+            // Keep accepted inputs. Restart the filtered estimation window and per-instance filter state.
+            Input.Reset();
             _hasContext = false;
             _hasAlternateContext = false;
-            _hasRotationMotion = false;
             _positionVersion = -1;
             _previousTime = null;
             _hasEstimatedVelocity = false;
-            _projectionTime = null;
-            _motionSampleTime = null;
-            _motionOffset = 0;
-            _motionExtrapolation = default(Double3);
-            _packetSmoother = default(PacketSmoother);
             Spatial spatial = Spatial;
             if (spatial != null)
             {
@@ -69,13 +58,20 @@ namespace Emas
             }
         }
 
-        internal void Prepare(Spatial spatial, double timestamp)
+        internal void Prepare(Spatial spatial, double timestamp, CoordinateSystem sourceAxes)
         {
             // Context values depend on accepted inputs, not the render clock. Keep an
             // unchanged context across frames; CreateContext checks every input version.
-            ObservePosition(spatial);
-            _elapsed = _projectionTime.HasValue ? Math.Max(0d, timestamp - _projectionTime.Value) : 0d;
-            _projectionTime = timestamp;
+            if (Input.Refresh(sourceAxes, timestamp))
+            {
+                _hasContext = false;
+                _hasAlternateContext = false;
+                _positionVersion = -1;
+                _previousTime = null;
+                _hasEstimatedVelocity = false;
+            }
+
+            ObservePosition(Input);
         }
 
         internal double PredictionTimestamp(SpatialClock clock, Timestamp? sampleTime, double receivedTime,
@@ -97,19 +93,19 @@ namespace Emas
             return timestamp + predictionTime + Math.Max(0d, timestamp - receivedTime) - automatic;
         }
 
-        internal Prediction Predict(Spatial spatial, SpatialClock clock, double timestamp,
-            CoordinateSystem sourceAxes, PresentationSettings settings, bool assistAngular,
-            out Double3 motion, out Quaternion rotationMotion, out bool worldRotationMotion,
-            out bool estimatedRotationMotion, out Double3 observation)
+        internal Prediction Predict(SpatialClock clock, double timestamp, CoordinateSystem sourceAxes,
+            PresentationSettings settings, out Double3 observation)
         {
-            double positionTime = PredictionTimestamp(clock, spatial.PositionTime, spatial.PositionReceivedTime, timestamp, settings.PredictionTime);
-            double rotationTime = PredictionTimestamp(clock, spatial.RotationTime, spatial.RotationReceivedTime, timestamp, settings.PredictionTime);
+            PredictionInput spatial = Input;
+            // Manual timing is anchored to the original SDK creation time. Filter age is
+            // added through the effective input time, rather than shifting the Realm target.
+            double positionTime = PredictionTimestamp(clock, _spatial.PositionTime, spatial.PositionReceivedTime, timestamp, settings.PredictionTime);
+            double rotationTime = PredictionTimestamp(clock, _spatial.RotationTime, spatial.RotationReceivedTime, timestamp, settings.PredictionTime);
             double positionOffset = clock.Age(spatial.PositionTime, spatial.PositionReceivedTime, positionTime);
             double rotationOffset = clock.Age(spatial.RotationTime, spatial.RotationReceivedTime, rotationTime);
             Double3 position = spatial.Position;
             Quaternion rotation = spatial.Rotation;
             bool buffered = settings.InterpolationDelay > 0 || clock.HasManualPrediction;
-            // Sample both channels before invoking application code, retaining their independent clocks.
             if (spatial.History.NewestPositionTime.HasValue && buffered)
             {
                 positionOffset = clock.OffsetFrom(spatial.History.NewestPositionTime.Value, positionTime, settings.InterpolationDelay);
@@ -126,26 +122,32 @@ namespace Emas
                 spatial.History.SampleRotation(rotationOffset, out rotation);
             }
 
-            observation = position;
+            // Visibility follows the accepted observation, independently of filtering and prediction.
+            observation = _spatial.Position;
+            if (buffered && _spatial.PositionTime.HasValue)
+            {
+                _spatial.History.SamplePosition(clock.OffsetFrom(_spatial.PositionTime.Value, positionTime, settings.InterpolationDelay), out observation);
+            }
+
             double limit = settings.MaximumExtrapolation;
-            double positionSeconds = spatial.HasPosition ? Math.Max(0d, Math.Min(positionOffset, limit)) : 0;
-            double rotationSeconds = spatial.HasRotation ? Math.Max(0d, Math.Min(rotationOffset, limit)) : 0;
-            double positionStep = Math.Min(_elapsed, Math.Max(0d, limit - Math.Max(0d, positionOffset - _elapsed)));
-            double rotationStep = RotationStep(spatial, rotationOffset, limit);
+            double positionFilterAge = spatial.PositionTime.HasValue && _spatial.PositionTime.HasValue
+                ? Math.Max(0d, _spatial.PositionTime.Value.ElapsedSince(spatial.PositionTime.Value)) : 0;
+            double rotationFilterAge = spatial.RotationTime.HasValue && _spatial.RotationTime.HasValue
+                ? Math.Max(0d, _spatial.RotationTime.Value.ElapsedSince(spatial.RotationTime.Value)) : 0;
+            // The configured cap limits unsupported motion after the latest accepted packet.
+            // Returning from a filter's older estimate to that observation time must not spend the gap budget.
+            double positionSeconds = spatial.HasPosition ? Math.Max(0d, Math.Min(positionOffset, limit + positionFilterAge)) : 0;
+            double rotationSeconds = spatial.HasRotation ? Math.Max(0d, Math.Min(rotationOffset, limit + rotationFilterAge)) : 0;
             ExtrapolationContext positionContext = CreateContext(spatial, sourceAxes, spatial.PositionTime);
             ExtrapolationContext rotationContext = CreateContext(spatial, sourceAxes, spatial.RotationTime);
-            PredictionRequest request = new PredictionRequest(positionContext, rotationContext, position, rotation,
-                positionSeconds, rotationSeconds,
-                spatial.PositionTime.HasValue || settings.PositionHalfLife <= 0 || settings.PacketSmoothingDuration > 0
-                    ? positionSeconds : Math.Max(0d, positionSeconds - positionStep), assistAngular ? rotationStep : 0);
+            PredictionRequest request = new PredictionRequest(positionContext, rotationContext, position, rotation, positionSeconds, rotationSeconds);
             Prediction prediction = new Prediction(position, rotation);
             if (limit > 0 && (spatial.HasPosition || spatial.HasRotation))
             {
                 try
                 {
-                    // This is the only application strategy call in a Ghost's projection.
+                    // Filters have finished. This is the only strategy invocation for this Ghost.
                     prediction = settings.Strategy.Predict(request);
-                    // Validate even a default result from application code before it reaches transforms.
                     SpatialMath.NormalizeRotation(prediction.Rotation, nameof(prediction));
                 }
                 catch (ArgumentOutOfRangeException)
@@ -154,102 +156,23 @@ namespace Emas
                 }
             }
 
-            // Retain the model tangent for advancing the cached presentation during live edits.
-            // Packet correction below receives zero velocity once the target is held at its cap.
             Trajectory = prediction;
-            PositionOffset = positionOffset;
-            RotationOffset = rotationOffset;
-            motion = prediction.HasMotion ? prediction.PositionMotion : prediction.Velocity * positionStep;
-            rotationMotion = prediction.HasMotion ? prediction.RotationMotion
-                : SpatialMath.AngularDisplacement(prediction.AngularVelocity, assistAngular ? rotationStep : 0);
-            worldRotationMotion = !prediction.HasMotion || prediction.WorldRotationMotion;
-            estimatedRotationMotion = rotationContext.AngularVelocityIsEstimated;
-            if (spatial.PositionTime.HasValue)
-            {
-                double oldest = spatial.History.OldestPositionTime.Value.ElapsedSince(spatial.PositionTime.Value);
-                double endpoint = Math.Max(oldest, Math.Min(positionOffset, limit));
-                motion = TimedMotion(spatial, endpoint, prediction.Position - position, false);
-            }
-            else
-            {
-                _motionSampleTime = null;
-                _motionExtrapolation = default(Double3);
-            }
-
-            if (limit <= 0 && assistAngular)
-            {
-                // Smoothing alone can follow measured SDK rates without evaluating a strategy.
-                rotationMotion = request.ConvertRotation(SpatialMath.AngularDisplacement(rotationContext.AngularVelocity.GetValueOrDefault(), rotationStep));
-                worldRotationMotion = rotationContext.AngularVelocityIsWorld;
-            }
-
-            Double3 velocity = positionOffset >= limit ? default(Double3) : prediction.Velocity;
-            Double3 angularVelocity = rotationOffset >= limit ? default(Double3) : prediction.AngularVelocity;
-            try
-            {
-                // A historical target follows the interpolation segment, rather than the future model's tangent.
-                if (positionOffset < 0 && buffered && spatial.PositionTime.HasValue)
-                {
-                    velocity = spatial.History.PositionDerivative(positionOffset);
-                }
-
-                if (rotationOffset < 0 && spatial.RotationTime.HasValue)
-                {
-                    angularVelocity = spatial.History.RotationDerivative(rotationOffset);
-                }
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                // Keep a valid pose if an extreme pair cannot form a representable derivative.
-                velocity = default(Double3);
-                angularVelocity = default(Double3);
-            }
-
-            return new Prediction(prediction.Position, prediction.Rotation, velocity, angularVelocity);
+            // Live tuning follows accepted packet times, independently of an older filter estimate.
+            PositionOffset = clock.Age(_spatial.PositionTime, spatial.PositionReceivedTime, positionTime)
+                - (buffered && _spatial.PositionTime.HasValue ? settings.InterpolationDelay : 0);
+            RotationOffset = clock.Age(_spatial.RotationTime, spatial.RotationReceivedTime, rotationTime)
+                - (buffered && _spatial.RotationTime.HasValue ? settings.InterpolationDelay : 0);
+            return prediction;
         }
 
-        internal PresentationPose SmoothPacket(Spatial spatial, PresentationPose pose, Double3 velocity,
-            Double3 angularVelocity, double timestamp, float duration, bool preview, out Double3 motion, out Quaternion rotationMotion)
+        internal void ResetRotationFilters()
         {
-            PacketSmoother smoother = _packetSmoother;
-            pose = smoother.Apply(spatial, pose, velocity, angularVelocity, Motion.Version, timestamp, duration, out motion, out rotationMotion);
-            if (!preview)
-            {
-                _packetSmoother = smoother;
-            }
-
-            return pose;
+            Input.Reset();
+            _hasContext = false;
+            _hasAlternateContext = false;
         }
 
-        internal void ResetPacketRotation()
-        {
-            _packetSmoother.ResetRotation();
-        }
-
-        private double RotationStep(Spatial spatial, double offset, double limit)
-        {
-            bool timed = spatial.RotationTime.HasValue;
-            double endpoint = timed ? Math.Min(offset, limit) : 0;
-            if (timed && spatial.History.OldestRotationTime.HasValue)
-            {
-                endpoint = Math.Max(endpoint, spatial.History.OldestRotationTime.Value.ElapsedSince(spatial.RotationTime.Value));
-            }
-
-            double step = 0;
-            if (_hasRotationMotion && timed == _rotationMotionSampleTime.HasValue)
-            {
-                step = timed ? Math.Max(0d, endpoint - _rotationMotionSampleTime.Value.ElapsedSince(spatial.RotationTime.Value) - _rotationMotionOffset)
-                    : Math.Min(_elapsed, Math.Max(0d, limit - Math.Max(0d, offset - _elapsed)));
-                step = Math.Min(step, _elapsed);
-            }
-
-            _hasRotationMotion = true;
-            _rotationMotionSampleTime = spatial.RotationTime;
-            _rotationMotionOffset = endpoint;
-            return step;
-        }
-
-        private ExtrapolationContext CreateContext(Spatial spatial, CoordinateSystem sourceAxes, Timestamp? observationTime)
+        private ExtrapolationContext CreateContext(PredictionInput spatial, CoordinateSystem sourceAxes, Timestamp? observationTime)
         {
             // The two pose channels often sample the same SDK time.
             // Reuse motion sampling across projections until an input, history or reference setting changes.
@@ -331,7 +254,7 @@ namespace Emas
             return _context;
         }
 
-        private Double3? AngularMotion(Spatial spatial, CoordinateSystem sourceAxes, Timestamp? observationTime,
+        private Double3? AngularMotion(PredictionInput spatial, CoordinateSystem sourceAxes, Timestamp? observationTime,
             out bool estimated, out bool world)
         {
             estimated = false;
@@ -398,78 +321,10 @@ namespace Emas
             }
         }
 
-        private Double3 TimedMotion(Spatial spatial, double endpoint, Double3 extrapolation, bool preview)
-        {
-            Timestamp sampleTime = spatial.PositionTime.Value;
-            bool hasPrevious = _motionSampleTime.HasValue;
-            double end = Math.Min(endpoint, 0d);
-            double start = hasPrevious ? _motionSampleTime.Value.ElapsedSince(sampleTime) + _motionOffset : end;
-            Double3 previousExtrapolation = _motionExtrapolation;
-            if (!preview)
-            {
-                _motionSampleTime = sampleTime;
-                _motionOffset = end;
-                _motionExtrapolation = extrapolation;
-            }
-
-            if (!Motion.HasVelocity || !hasPrevious)
-            {
-                return default(Double3);
-            }
-
-            if (spatial.History.OldestVelocityTime.HasValue)
-            {
-                // Before the first supplied velocity, the filter has no SDK motion to use.
-                double oldest = spatial.History.OldestVelocityTime.Value.ElapsedSince(sampleTime);
-                start = Math.Max(start, oldest);
-                end = Math.Max(end, oldest);
-            }
-
-            if (end == start && extrapolation == previousExtrapolation)
-            {
-                // Add no movement after the prediction limit or when evaluating the same playback time again.
-                return default(Double3);
-            }
-
-            try
-            {
-                // Sum SDK motion between playback poses, then replace the old predicted movement.
-                // Treating a changed motion prediction as position noise would delay known turns and acceleration.
-                // Using raw position differences instead would pass measurement noise straight through.
-                return IntegrateVelocity(spatial.History, sampleTime, start, end) + extrapolation - previousExtrapolation;
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return default(Double3);
-            }
-        }
-
         private bool HasVelocityAt(PoseHistory history, Timestamp time)
         {
             return Motion.HasVelocity && (!history.OldestVelocityTime.HasValue
                 || time.CompareTo(history.OldestVelocityTime.Value) >= 0);
-        }
-
-        private Double3 IntegrateVelocity(PoseHistory history, Timestamp observationTime, double start, double end)
-        {
-            if (!history.NewestVelocityTime.HasValue)
-            {
-                return Motion.Velocity * (end - start);
-            }
-
-            // Compare SDK timestamp parts directly. Reconstructing the observation through the local
-            // clock can place an exact match just before the first stored sample and lose its motion.
-            double offset = observationTime.ElapsedSince(history.NewestVelocityTime.Value);
-            Double3 motion;
-            if (!history.IntegrateVelocity(offset + start, offset + end, out motion))
-            {
-                return default(Double3);
-            }
-
-            // Recorded motion follows supplied velocity and holds the first or last value outside stored times.
-            // Use acceleration only when predicting past the stored pose. Applying later acceleration to
-            // an older velocity could add metres of movement while the recorded position stays still.
-            return motion;
         }
 
         private Double3 VelocityAt(PoseHistory history, Timestamp observationTime)
@@ -509,7 +364,7 @@ namespace Emas
             return acceleration;
         }
 
-        private void ObservePosition(Spatial spatial)
+        private void ObservePosition(PredictionInput spatial)
         {
             // Estimate once per new pose. Repeated updates must not create samples with no time between them.
             if (!spatial.HasPosition || _positionVersion == spatial.PositionVersion)

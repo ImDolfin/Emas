@@ -10,9 +10,7 @@ namespace Emas
             Double3 displacement = default(Double3);
             Double3 position = request.Position;
             Double3 velocity = default(Double3);
-            Double3 motion = default(Double3);
             Quaternion rotation = request.Rotation;
-            Quaternion rotationMotion = Quaternion.identity;
             Double3 angularVelocity = default(Double3);
             // Each channel can fail independently without discarding a valid other channel.
             try
@@ -21,11 +19,6 @@ namespace Emas
                 {
                     displacement = model.Displacement(request.PositionContext, request.PositionSeconds);
                     position += displacement;
-                    if (request.PreviousPositionSeconds != request.PositionSeconds)
-                    {
-                        motion = displacement - model.Displacement(request.PositionContext, request.PreviousPositionSeconds);
-                    }
-
                     velocity = model.Velocity(request.PositionContext, request.PositionSeconds);
                 }
             }
@@ -39,11 +32,6 @@ namespace Emas
                 if (request.RotationContext.Rotation.HasValue)
                 {
                     rotation = request.ComposeRotation(model.Rotation(request.RotationContext, request.RotationSeconds));
-                    if (request.RotationMotionSeconds > 0)
-                    {
-                        rotationMotion = request.ConvertRotation(model.Rotation(request.RotationContext, request.RotationMotionSeconds));
-                    }
-
                     angularVelocity = request.ConvertAngularVelocity(model.AngularVelocity(request.RotationContext, request.RotationSeconds), rotation);
                 }
             }
@@ -52,8 +40,7 @@ namespace Emas
                 angularVelocity = default(Double3);
             }
 
-            return new Prediction(position, rotation, velocity, angularVelocity,
-                motion, rotationMotion, true, request.RotationContext.AngularVelocityIsWorld);
+            return new Prediction(position, rotation, velocity, angularVelocity);
         }
     }
 }

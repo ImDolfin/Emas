@@ -45,7 +45,7 @@ namespace Emas.Tests
         [TestCase(true)]
         public void SteadyTurn_PositionHistoryRecoversEndpointVelocity(bool suppliedRate)
         {
-            CoordinatedTurnExtrapolation model = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0 };
+            CoordinatedTurnExtrapolation model = new CoordinatedTurnExtrapolation { };
             Spatial estimated = Create("pose-derived", model, out Extrapolation estimatedMotion);
             Spatial supplied = Create("SDK velocity", model, out Extrapolation suppliedMotion);
             Spatial straight = Create("SDK zero", model, out Extrapolation straightMotion);
@@ -99,7 +99,7 @@ namespace Emas.Tests
             {
                 Space = ReferenceSpace.Geographic, GeographicPosition = new GeoPosition(48, 11, 1200)
             };
-            CoordinatedTurnExtrapolation model = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0 };
+            CoordinatedTurnExtrapolation model = new CoordinatedTurnExtrapolation { };
             Spatial spatial = Create("accelerating turn", model, out Extrapolation motion);
             Quaternion initial = Quaternion.Euler(10, 30, 20);
             Double3 rate = new Double3(0.3d, 0.8d, 0.1d);
@@ -206,11 +206,11 @@ namespace Emas.Tests
                 _realm.ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = origin };
             }
 
-            ConstantTurnAccelerationExtrapolation strategy = new ConstantTurnAccelerationExtrapolation { PacketSmoothingDuration = 0 };
+            ConstantTurnAccelerationExtrapolation strategy = new ConstantTurnAccelerationExtrapolation { };
             Spatial poses = Create("CTA poses", strategy, out Extrapolation poseMotion);
             Spatial supplied = Create("CTA velocities", strategy, out Extrapolation suppliedMotion);
             Spatial currentOnly = Create("CTA current velocity", strategy, out Extrapolation currentMotion);
-            Spatial control = Create("constant body speed", new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0 }, out Extrapolation controlMotion);
+            Spatial control = Create("constant body speed", new CoordinatedTurnExtrapolation { }, out Extrapolation controlMotion);
             Quaternion initial = Quaternion.Euler(15, 20, -30);
             Double3 rate = new Double3(0.2d, 1.2d, -0.3d);
             Double3 velocity = new Double3(4, 2, 150);
@@ -268,7 +268,7 @@ namespace Emas.Tests
         [Test]
         public void ConstantTurnAcceleration_PreservesSdkOverridesAndResetRecovery()
         {
-            ConstantTurnAccelerationExtrapolation strategy = new ConstantTurnAccelerationExtrapolation { PacketSmoothingDuration = 0 };
+            ConstantTurnAccelerationExtrapolation strategy = new ConstantTurnAccelerationExtrapolation { };
             Spatial spatial = Create("CTA overrides", strategy, out Extrapolation motion);
             Quaternion initial = Quaternion.Euler(15, 20, -30);
             Double3 rate = new Double3(0.2d, 1.2d, -0.3d);
@@ -312,7 +312,6 @@ namespace Emas.Tests
             Assert.That(Error(spatial, new Double3(1036, 0, 0)), Is.LessThan(0.001d));
 
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Gravity = float.NaN);
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.PacketSmoothingDuration = -0.1f);
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, -1, 0)));
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, 0, double.PositiveInfinity)));
         }
@@ -321,7 +320,7 @@ namespace Emas.Tests
         [Test]
         public void ConstantTurnAcceleration_MissingAttitudeUsesWorldMotion()
         {
-            Spatial spatial = Create("CTA no attitude", new ConstantTurnAccelerationExtrapolation { PacketSmoothingDuration = 0 }, out Extrapolation motion);
+            Spatial spatial = Create("CTA no attitude", new ConstantTurnAccelerationExtrapolation { }, out Extrapolation motion);
             Double3 origin = _realm.ReferenceFrame.Position;
             spatial.SetCartesianPosition(origin, Stamp(0.2d));
             motion.GetComponent<Spatial>().SetCartesianVelocity(new Double3(5, 0, 0), Stamp(0));

@@ -48,7 +48,7 @@ namespace Emas.Tests
                 _realm.ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = new GeoPosition(48, 11, 1200) };
             }
 
-            ConstantTurnClimbAccelerationExtrapolation strategy = new ConstantTurnClimbAccelerationExtrapolation { PacketSmoothingDuration = 0 };
+            ConstantTurnClimbAccelerationExtrapolation strategy = new ConstantTurnClimbAccelerationExtrapolation { };
             Spatial poses = Create("poses", strategy, out _);
             Spatial sdk = Create("SDK", strategy, out Extrapolation sdkMotion);
             Spatial positionsOnly = Create("positions only", strategy, out _);
@@ -109,7 +109,7 @@ namespace Emas.Tests
         {
             GeoPosition origin = new GeoPosition(48, 11, 1200);
             _realm.ReferenceFrame = new ReferenceFrame { Space = ReferenceSpace.Geographic, GeographicPosition = origin };
-            Spatial spatial = Create("bank and pitch", new ConstantTurnClimbAccelerationExtrapolation { PacketSmoothingDuration = 0 }, out Extrapolation motion);
+            Spatial spatial = Create("bank and pitch", new ConstantTurnClimbAccelerationExtrapolation { }, out Extrapolation motion);
             Quaternion attitude = Quaternion.Euler(25, 20, -30);
             SetPosition(spatial, default(Double3), 0.24d);
             SetRotation(spatial, attitude, 0.24d);
@@ -128,7 +128,7 @@ namespace Emas.Tests
         [Test]
         public void SparseHistory_ResetsAndHonorsVerticalRateAndPredictionCaps()
         {
-            ConstantTurnClimbAccelerationExtrapolation strategy = new ConstantTurnClimbAccelerationExtrapolation { PacketSmoothingDuration = 0 };
+            ConstantTurnClimbAccelerationExtrapolation strategy = new ConstantTurnClimbAccelerationExtrapolation { };
             Spatial spatial = Create("sparse", strategy, out Extrapolation motion);
             SetPosition(spatial, default(Double3), 0);
             motion.GetComponent<Spatial>().SetCartesianAcceleration(SourceVector(new Double3(100, 200, 0)), Stamp(0));
@@ -172,7 +172,6 @@ namespace Emas.Tests
             _realm.Update();
             Assert.That(Error(spatial, new Double3(1000, 100, 0)), Is.LessThan(0.001d));
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Gravity = 0);
-            Assert.Throws<ArgumentOutOfRangeException>(() => strategy.PacketSmoothingDuration = float.NaN);
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, -1, 0)));
             Assert.Throws<ArgumentOutOfRangeException>(() => strategy.Predict(new PredictionRequest(default(ExtrapolationContext), default(ExtrapolationContext), default(Double3), Quaternion.identity, 0, double.NaN)));
         }

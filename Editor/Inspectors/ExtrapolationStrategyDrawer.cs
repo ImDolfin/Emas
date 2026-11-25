@@ -158,9 +158,6 @@ namespace Emas.Editor
             {
                 switch (property.name)
                 {
-                    case "_packetSmoothingDuration":
-                        label = "Packet correction (s)";
-                        break;
                     case "_useBankAngleWhenRatesUnavailable":
                         label = "Infer turn from bank";
                         break;

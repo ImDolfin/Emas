@@ -25,15 +25,12 @@ namespace Emas
         public Quaternion Rotation { get; }
 
         /// <summary>Gets the forward interval for position.</summary>
-        /// <value>Finite, nonnegative seconds, already capped by the configured prediction limit.</value>
+        /// <value>Finite, nonnegative seconds, including filter-age compensation and the capped SDK packet gap.</value>
         public double PositionSeconds { get; }
 
         /// <summary>Gets the forward interval for orientation.</summary>
         /// <value>Finite, nonnegative seconds, already capped independently of position.</value>
         public double RotationSeconds { get; }
-
-        internal double PreviousPositionSeconds { get; }
-        internal double RotationMotionSeconds { get; }
 
         /// <summary>Creates a request from independently timed channels and an interpolated base pose.</summary>
         /// <param name="positionContext">Observations aligned to position creation.</param>
@@ -45,13 +42,6 @@ namespace Emas
         /// <exception cref="System.ArgumentOutOfRangeException">Pose or duration is invalid.</exception>
         public PredictionRequest(ExtrapolationContext positionContext, ExtrapolationContext rotationContext,
             Double3 position, Quaternion rotation, double positionSeconds, double rotationSeconds)
-            : this(positionContext, rotationContext, position, rotation, positionSeconds, rotationSeconds, positionSeconds, 0)
-        {
-        }
-
-        internal PredictionRequest(ExtrapolationContext positionContext, ExtrapolationContext rotationContext,
-            Double3 position, Quaternion rotation, double positionSeconds, double rotationSeconds,
-            double previousPositionSeconds, double rotationMotionSeconds)
         {
             ConstantVelocityExtrapolation.ValidateSeconds(positionSeconds);
             ConstantVelocityExtrapolation.ValidateSeconds(rotationSeconds);
@@ -66,8 +56,6 @@ namespace Emas
             Rotation = SpatialMath.NormalizeRotation(rotation, nameof(rotation));
             PositionSeconds = positionSeconds;
             RotationSeconds = rotationSeconds;
-            PreviousPositionSeconds = previousPositionSeconds;
-            RotationMotionSeconds = rotationMotionSeconds;
         }
 
         /// <summary>Composes model offsets into a full prediction using the request's coordinate conventions.</summary>

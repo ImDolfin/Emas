@@ -72,10 +72,11 @@ namespace Emas
             }
         }
 
-        /// <summary>Gets or sets the maximum prediction duration beyond a recorded pose, including PredictionTime; defaults to 0.15 seconds.</summary>
+        /// <summary>Gets or sets the maximum prediction gap after the latest accepted SDK observation; defaults to 0.15 seconds.</summary>
         /// <value>A finite horizon of at least 0.007 seconds (7 ms, rounded up from one 144 Hz frame).
         /// Nonnegative assignments below this minimum, including zero, clamp to 0.007 seconds.</value>
-        /// <remarks>Disable this trait to stop extrapolation while retaining SDK motion assistance for smoothing.
+        /// <remarks>Observation filters remain independent when prediction is disabled. Returning an older filtered
+        /// estimate to the accepted observation time is included in the strategy interval without spending this gap budget.
         /// Saved values below the minimum also use 0.007 seconds. The minimum is a cap floor, not a forced forward interval.
         /// Live edits blend the setting-induced displacement over 0.25 seconds of real time, including enabled
         /// changes, with or without Smoothing. Filter history, raw input, timestamps and motion remain intact.
@@ -95,8 +96,8 @@ namespace Emas
 
         internal override bool NeedsRefresh => false;
 
-        /// <summary>Restarts motion-estimation windows and packet correction after a teleport while retaining supplied SDK motion and settings.</summary>
-        /// <remarks>Use <see cref="Spatial.ResetPresentation"/> when smoothing history must be reset at the same time.</remarks>
+        /// <summary>Restarts filtered observation history and motion estimation while retaining SDK data and settings.</summary>
+        /// <remarks>Use <see cref="Spatial.ResetPresentation"/> after a teleport to restart playback and presentation as well.</remarks>
         public void Reset()
         {
             Spatial spatial = GetComponent<Spatial>();

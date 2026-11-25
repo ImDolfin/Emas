@@ -959,6 +959,8 @@ namespace Emas.Editor.Tests
             Ghost ghost = root.AddComponent<Ghost>();
             Smoothing smoothing = root.AddComponent<Smoothing>();
             Extrapolation extrapolation = root.AddComponent<Extrapolation>();
+            PacketCorrection packet = root.AddComponent<PacketCorrection>();
+            packet.Duration = 0.12f;
             string path = AssetDatabase.GenerateUniqueAssetPath("Assets/EmasTraitAuthoring.prefab");
             GameObject contents = null;
             UnityEditor.Editor inspector = null;
@@ -978,14 +980,14 @@ namespace Emas.Editor.Tests
                 Extrapolation restoredExtrapolation = contents.GetComponent<Extrapolation>();
                 inspector = UnityEditor.Editor.CreateEditor(restored);
                 yield return WaitForTraitVisibility(contents, true);
-                Assert.That(restored.Traits, Is.EquivalentTo(new Trait[] { restoredSmoothing, restoredExtrapolation }));
+                Assert.That(restored.Traits, Is.EquivalentTo(new Trait[] { restoredSmoothing, restoredExtrapolation, contents.GetComponent<PacketCorrection>() }));
                 Assert.That(restoredSmoothing.PositionHalfLife, Is.EqualTo(0.15f));
                 Assert.That(restoredSmoothing.RotationHalfLife, Is.EqualTo(0.03f));
                 Assert.That(restoredExtrapolation.MaximumExtrapolation, Is.EqualTo(0.2f));
                 Assert.That(restoredExtrapolation.PredictionTime, Is.EqualTo(0.1f));
                 Assert.That(restoredExtrapolation.Strategy, Is.TypeOf<CoordinatedTurnExtrapolation>());
                 CoordinatedTurnExtrapolation restoredStrategy = (CoordinatedTurnExtrapolation)restoredExtrapolation.Strategy;
-                Assert.That(restoredStrategy.PacketSmoothingDuration, Is.EqualTo(0.12f));
+                Assert.That(contents.GetComponent<PacketCorrection>().Duration, Is.EqualTo(0.12f));
                 Assert.That(restoredStrategy.Gravity, Is.EqualTo(10f));
                 Assert.That(restoredStrategy.UseBankAngleWhenRatesUnavailable, Is.False);
                 Assert.That(restoredSmoothing.enabled, Is.False);
@@ -1034,21 +1036,20 @@ namespace Emas.Editor.Tests
                 {
                     settings.FindProperty("_strategy").managedReferenceValue = new ConstantTurnAccelerationExtrapolation
                     {
-                        PacketSmoothingDuration = 0.18f, UseBankAngleWhenRatesUnavailable = false, Gravity = 12f
+                        UseBankAngleWhenRatesUnavailable = false, Gravity = 12f
                     };
                     settings.ApplyModifiedProperties();
-                    // CTA shows the selector, correction duration and bank fallback.
+                    // CTA shows the selector and bank fallback.
                     // Gravity stays serialized without adding an Inspector row.
                     ExtrapolationStrategyDrawer drawer = new ExtrapolationStrategyDrawer();
                     Assert.That(drawer.GetPropertyHeight(settings.FindProperty("_strategy"), GUIContent.none),
-                        Is.EqualTo(3f * EditorGUIUtility.singleLineHeight + 2f * EditorGUIUtility.standardVerticalSpacing));
+                        Is.EqualTo(2f * EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing));
                 }
 
                 Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
                 contents = PrefabUtility.LoadPrefabContents(path);
                 ConstantTurnAccelerationExtrapolation restoredCta = contents.GetComponent<Extrapolation>().Strategy as ConstantTurnAccelerationExtrapolation;
                 Assert.That(restoredCta, Is.Not.Null);
-                Assert.That(restoredCta.PacketSmoothingDuration, Is.EqualTo(0.18f));
                 Assert.That(restoredCta.UseBankAngleWhenRatesUnavailable, Is.False);
                 Assert.That(restoredCta.Gravity, Is.EqualTo(12f));
 
@@ -1058,19 +1059,18 @@ namespace Emas.Editor.Tests
                 {
                     settings.FindProperty("_strategy").managedReferenceValue = new ConstantTurnClimbAccelerationExtrapolation
                     {
-                        PacketSmoothingDuration = 0.14f, UseBankAngleWhenRatesUnavailable = false, Gravity = 11f
+                        UseBankAngleWhenRatesUnavailable = false, Gravity = 11f
                     };
                     settings.ApplyModifiedProperties();
                     ExtrapolationStrategyDrawer drawer = new ExtrapolationStrategyDrawer();
                     Assert.That(drawer.GetPropertyHeight(settings.FindProperty("_strategy"), GUIContent.none),
-                        Is.EqualTo(3f * EditorGUIUtility.singleLineHeight + 2f * EditorGUIUtility.standardVerticalSpacing));
+                        Is.EqualTo(2f * EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing));
                 }
 
                 Assert.That(PrefabUtility.SaveAsPrefabAsset(root, path), Is.Not.Null);
                 contents = PrefabUtility.LoadPrefabContents(path);
                 ConstantTurnClimbAccelerationExtrapolation restoredCtca = contents.GetComponent<Extrapolation>().Strategy as ConstantTurnClimbAccelerationExtrapolation;
                 Assert.That(restoredCtca, Is.Not.Null);
-                Assert.That(restoredCtca.PacketSmoothingDuration, Is.EqualTo(0.14f));
                 Assert.That(restoredCtca.UseBankAngleWhenRatesUnavailable, Is.False);
                 Assert.That(restoredCtca.Gravity, Is.EqualTo(11f));
             }
@@ -1358,7 +1358,7 @@ namespace Emas.Editor.Tests
                 settings.FindProperty("_predictionTime").floatValue = 0.1f;
                 settings.FindProperty("_strategy").managedReferenceValue = new CoordinatedTurnExtrapolation
                 {
-                    PacketSmoothingDuration = 0.12f,
+
                     Gravity = 10f,
                     UseBankAngleWhenRatesUnavailable = false
                 };
@@ -1406,7 +1406,6 @@ namespace Emas.Editor.Tests
                 Assert.That(extrapolation.MaximumExtrapolation, Is.EqualTo(0.2f));
                 Assert.That(extrapolation.PredictionTime, Is.EqualTo(0.1f));
                 Assert.That(extrapolation.Strategy, Is.TypeOf<CoordinatedTurnExtrapolation>());
-                Assert.That(((CoordinatedTurnExtrapolation)extrapolation.Strategy).PacketSmoothingDuration, Is.EqualTo(0.12f));
                 Assert.That(custom.Value, Is.EqualTo(23));
                 Assert.That(smoothing.enabled, Is.True);
                 Assert.That(extrapolation.enabled, Is.True);

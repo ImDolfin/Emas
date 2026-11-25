@@ -6,7 +6,7 @@ namespace Emas
     /// <remarks>
     /// Author traits on the Ghost root and bind inputs in its initializer. Enabled readers finish before
     /// Ghost.OnUpdate; their relative order is unspecified. Reads can precede initial activation, so binding must
-    /// not depend on OnEnable. Smoothing and Extrapolation need no reader binding.
+    /// not depend on OnEnable. Filters and Extrapolation need no reader binding.
     /// </remarks>
     public abstract class Trait : MonoBehaviour
     {

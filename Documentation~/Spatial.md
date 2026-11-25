@@ -2,7 +2,7 @@
 
 Add `Spatial` to each Ghost that uses shared coordinates. Its raw position/orientation remain separate from the Unity transform. An optional `Realm.ReferenceFrame` projects every participating root around a fixed or followed reference; without one, Cartesian poses map directly to Unity world space.
 
-`Spatial` is the single input API for position, orientation, velocity, acceleration and angular velocity. Data traits only write to Spatial in the SDK's coordinate space. Extrapolation and Smoothing read those cached observations; they do not own SDK inputs. Inputs can arrive before either processing component exists, and remain available when prediction is disabled or removed.
+`Spatial` is the single input API for position, orientation, velocity, acceleration and angular velocity. Data traits only write to Spatial in the SDK's coordinate space. Filters and Extrapolation read those cached observations; they do not own SDK inputs. Inputs can arrive before either processing component exists, and remain available when prediction is disabled or removed.
 
 Examples assume `using Emas;` and `using UnityEngine;`. `realm`, `ghost` and SDK readings belong to the calling integration. All calls require Unity's main thread.
 
@@ -39,9 +39,9 @@ Author components on the same Ghost root:
 | `Spatial` | Direct placement, attachments and range suppression. |
 | `Spatial` + `Smoothing` | Independently filter position and rotation correction error. |
 | `Spatial` + `Extrapolation` | Predict motion during bounded gaps after observations. |
-| All three | Predict motion and filter remaining correction error. |
+| Spatial + filters + Extrapolation | Filter observations, then predict the resulting state to the shared time. |
 
-Smoothing and Extrapolation are behavior Traits with no reader binding. The Realm evaluates them after data traits and Ghost hooks. Attached parts inherit their parent's processed pose and bypass their own filters. Disabling Spatial releases transform control and restores presentation components it suppressed; the last world pose remains for application control.
+Smoothing, PacketCorrection and Extrapolation are behavior Traits with no reader binding. The Realm evaluates them after data traits and Ghost hooks. Attached parts inherit their parent's processed pose and bypass their own filters. Disabling Spatial releases transform control and restores presentation components it suppressed; the last world pose remains for application control.
 
 Use one transform writer per root. Keep articulation on children; integrate dynamic physics explicitly. Root parenting stays under its Anchor, but projection compensates for that parent's placement rather than applying its offset twice.
 
@@ -134,24 +134,34 @@ Each channel retains at most 128 observations. Playback before retained history 
 
 Start with a short gap horizon such as 0.05 seconds and compare buffered/immediate playback using the samples. Buffers reduce packet stepping; smoothing separately reduces measurement noise. Neither guarantees exact alignment during missing data or unobserved maneuvers.
 
-## Tune smoothing in half-lives
+## Filter observations before prediction
 
-A half-life is seconds to halve remaining correction error: 50% remains after one, 25% after two. Position defaults to 0.08 seconds; rotation defaults to zero.
+The processing order is:
 
-| Half-life | Effect |
-| --- | --- |
-| `0` | Immediate response after any live-edit transition. |
-| `0.02-0.05 s` | Light filtering and responsive correction. |
-| `0.05-0.15 s` | Moderate filtering. |
-| `0.15-0.5 s` | Stronger filtering with more response lag. |
+`Spatial input → enabled Filter traits → filtered history/playback → one prediction → reference projection`
 
-With timed SDK velocity supplied through Spatial, position filtering compensates observed motion and filters measurement error. This works with Extrapolation disabled or absent. With prediction enabled, changes in predicted lead apply separately from position noise. New observations retain motion assistance after earlier packets reach the horizon; a held sample at its cap adds no motion. Recorded motion integrates velocity segments rather than applying later acceleration retroactively.
+`Smoothing` and `PacketCorrection` derive from `Filter`. They run independently of the prediction strategy, in their component order on the Ghost. Add PacketCorrection before Smoothing to also smooth its correction error. No SDK reader binding is needed. Attached and distant direct-pose entities bypass the whole chain. Raw Spatial values, creation timestamps and Realm clock measurements remain unchanged.
 
-With timed angular motion, rotation filtering also advances by the selected model's known turn before smoothing the remaining attitude error. Body and world angular rates retain their composition convention. Pose-derived angular rates are filtered before motion assistance so differentiated measurement noise does not bypass correction filtering. Supplied rates are used directly. Constant-rate turns therefore converge without requiring extra forward prediction to compensate the rotation half-life. At the prediction cap, motion assistance stops with the target. Without timed motion, moving inputs retain ordinary low-pass lag, approximately `speed * halfLife / ln(2)`. Position-derived velocity is not used to compensate this filter because that would pass position noise through.
+`Smoothing.PositionHalfLife` and `RotationHalfLife` control how many unscaled seconds halve pose correction error. Zero applies that channel immediately. Supplied motion carries the estimate between observation times before the remaining error is smoothed. Linear motion uses trapezoidal velocity integration for coherent constant acceleration. Without supplied linear motion, the filter retains the effective timestamp represented by its blended position. Angular smoothing also estimates and filters motion from timed attitudes, retaining a coherent attitude/rate state instead of amplifying correction steps through a backdated angular fit. The predictor reads this filtered state and its own filtered history, so it can compensate that age instead of extrapolating from a lagging pose labeled as current.
 
-Following a Ghost's orientation also follows its filtered correction error. Strong filtering still takes longer to accept corrections or unobserved changes in motion. Other roots' position filters do not add lag to reference changes.
+The configured prediction limit bounds motion beyond the latest accepted SDK observation. Time needed to bring an older filtered estimate back to that observation is included automatically in the strategy interval. This does not change the shared Realm target or add a second strategy invocation. Filtering cannot reveal an unobserved maneuver: suppressing measurement noise and reacting instantly to a real discontinuity remain competing goals.
 
-Live edits to horizons, half-lives, enabled states, buffering or strategy instances retain history and blend their presentation difference over 0.25 unscaled seconds. Repeated edits rebase the correction while normal motion continues. Raw input is unaffected. For a teleport, supply the new pose and motion, then call `Spatial.ResetPresentation()` to reset playback, estimates, filters and transitions. `Smoothing.Reset()` resets only its filter and tuning; supplied motion remains separate.
+`PacketCorrection.Duration` defaults to 0.1 unscaled seconds. Position uses a cubic Hermite error curve; orientation uses a spherical cubic correction. A new pose rebases the old correction at the arrival time while retaining coherent measured motion. Held or rejected packets do not restart the curve. Zero bypasses it. Correction state belongs to the trait, not the trajectory strategy; it also works with prediction disabled. Clock/presentation resets clear it.
+
+```csharp
+ghost.gameObject.AddComponent<PacketCorrection>().Duration = 0.1f;
+Smoothing smoothing = ghost.gameObject.AddComponent<Smoothing>();
+smoothing.PositionHalfLife = 0.08f;
+smoothing.RotationHalfLife = 0.05f;
+```
+
+### Add a custom observation filter
+
+Derive from `Filter` and override `Process(FilterState, FilterContext)`. Keep per-Ghost estimator state in that component and clear it in `OnReset`. A future Kalman filter can return its posterior pose, velocity and acceleration here, retaining the SDK time represented by each estimate. Prediction then advances that state to the Realm target.
+
+FilterState carries nullable pose/motion channels with independent SDK timestamps. Body angular rates use model right/up/forward axes with Quaternion.AngleAxis signs; world rates use right-handed ECEF axes. FilterContext supplies coordinate metadata, local unscaled time and a helper for conversion to quaternion world angular velocity. Missing motion permits strategy estimation; explicit zero motion remains an override.
+
+Filters receive coherent timestamp groups from retained SDK batches before prediction, and held-input updates let correction error decay between packets. Never mutate Spatial or its history from Process. Return finite observations and coherent times. An unrepresentable result falls back to the preceding valid filter output; other application exceptions propagate. Strategies read only filtered fitting history when filters are active. Disabled filters preserve the ordinary raw-history path.
 
 ## Extrapolate motion independently
 
@@ -164,7 +174,7 @@ extrapolation.MaximumExtrapolation = 0.1f;
 extrapolation.Strategy = new ConstantAccelerationExtrapolation();
 extrapolation.Strategy = new ConstantVelocityExtrapolation();
 extrapolation.Strategy = new SingerExtrapolation { ManeuverTimeConstant = 0.5f };
-extrapolation.Strategy = new CoordinatedTurnExtrapolation { PacketSmoothingDuration = 0.1f };
+extrapolation.Strategy = new CoordinatedTurnExtrapolation();
 extrapolation.Strategy = new NoExtrapolation();
 ```
 
@@ -173,13 +183,13 @@ extrapolation.Strategy = new NoExtrapolation();
 | Constant acceleration (default) | Uses supplied linear acceleration or fits missing linear/angular acceleration from timestamped history. |
 | Constant velocity | Continue linear/angular rates, ignoring linear acceleration. |
 | Singer | Integrate velocity with exponentially decaying acceleration; constant angular velocity. |
-| Coordinated turn | Rotating-body second-order motion and cubic packet correction. |
+| Coordinated turn | Rotating-body second-order motion. |
 | Constant Turn and Acceleration (CTA) | Coordinated turns with missing body acceleration estimated from velocity or position history. |
 | Constant Turn, Climb and Acceleration (CTCA) | Horizontal turning and tangential acceleration with constant vertical climb rate. |
 | Spline | Cubic Bézier continuation fitted to timestamped poses or SDK velocities; quaternion-log rotation. |
 | No extrapolation | Hold observations after recorded playback; retain interpolation and SDK motion assistance. |
 
-`MaximumExtrapolation` caps age beyond the newest observation; it defaults to 0.15 seconds. Larger horizons bridge longer gaps but risk overshooting stops and turns. Zero or a disabled trait bypasses all strategies, including packet correction.
+`MaximumExtrapolation` caps prediction beyond the latest accepted SDK observation; it defaults to 0.15 seconds. Larger horizons bridge longer gaps but risk overshooting stops and turns. A disabled Extrapolation trait bypasses prediction; observation filters remain independent.
 
 ### History-based constant acceleration
 
@@ -255,9 +265,7 @@ Acceleration must be **gravity-free inertial acceleration**. The model derives `
 
 Supplied/estimated rates, including zero, override the optional bank fallback. Otherwise it estimates steady coordinated turn rate `Gravity*tan(bank)/horizontalSpeed`. This assumes negligible sideslip/wind and uses ground speed. It declines near-zero speed, nearly vertical heading and bank magnitudes of 85 degrees or more. Gravity must match the distance unit; the default 9.80665 assumes metres. [Implementation](../Runtime/Entities/CoordinatedTurnExtrapolation.cs).
 
-`PacketSmoothingDuration` defaults to 0.1 unscaled seconds. Position uses a cubic Hermite error spline; rotation uses a spherical cubic quaternion correction. Accepted pose/motion updates advance the prior correction to the arrival time before rebasing its pose and tangent, so correction still progresses when a packet arrives every presentation frame. Held/rejected samples do not restart it. Each root owns its state, so immutable strategies can be shared. The correction reaches the capped trajectory with zero remaining correction/tangent at the end; it can finish after the extrapolation horizon.
-
-Zero duration bypasses packet correction. Omit Smoothing to evaluate cubic correction alone. With Smoothing present, known target velocity and angular rate advance its filters; movement from the packet correction curve remains error for the half-life filters to smooth. Smoothing therefore still reduces correction steps when cubic packet correction is enabled. Presentation/clock resets discard packet state. Custom models can request this pipeline through `IPacketSmoothingStrategy`.
+Packet correction is authored separately through the PacketCorrection filter. It is available to all strategies.
 
 ### Constant Turn and Acceleration (CTA)
 
@@ -273,7 +281,7 @@ Fits use up to eight samples in 0.25 seconds, retaining the minimum needed for s
 
 Sparse or ill-conditioned history falls back to Coordinated Turn. Missing attitude uses Constant Acceleration's world-space prediction. Acceleration alone cannot invent velocity. Presentation and clock resets discard old fits, while immutable strategy instances may be shared. The existing projected time, prediction cap and optional Smoothing trait apply.
 
-CTA has the same packet-correction duration and optional bank-derived turn fallback as Coordinated Turn. Packet correction defaults to 0.1 unscaled seconds; zero applies corrections immediately. Gravity remains available through code and serialization, hidden in the Inspector. [Implementation](../Runtime/Entities/ConstantTurnAccelerationExtrapolation.cs).
+CTA retains the optional bank-derived turn fallback. PacketCorrection is a separate filter. Gravity remains available through code and serialization, hidden in the Inspector. [Implementation](../Runtime/Entities/ConstantTurnAccelerationExtrapolation.cs).
 
 ### Constant Turn, Climb and Acceleration (CTCA)
 
@@ -289,7 +297,7 @@ Horizontal turn rate uses the heading change implied by available angular motion
 
 Attitude retains full body/world angular prediction. When angular motion is unavailable, inferred course motion can advance yaw while retaining the observed bank and pitch. Roll and pitch do not rotate the separate climb velocity into lateral motion. Fits use at most eight eligible observations from a short window, with bounded course refinement. Sparse input lowers the estimate order; acceleration alone cannot invent velocity. Current SDK motion, estimator resets, shared projected time and prediction caps retain their existing contracts.
 
-Packet correction defaults to 0.1 unscaled seconds and uses the existing per-root pipeline. Optional Smoothing applies separately. Gravity stays available through code and serialization, hidden in the Inspector. [Implementation](../Runtime/Entities/ConstantTurnClimbAccelerationExtrapolation.cs).
+PacketCorrection and Smoothing run before this strategy when authored on the Ghost. Gravity stays available through code and serialization, hidden in the Inspector. [Implementation](../Runtime/Entities/ConstantTurnClimbAccelerationExtrapolation.cs).
 
 ## Supply SDK motion
 
@@ -330,7 +338,7 @@ Built-in strategies reuse prepared motion on their owning Spatial component. Pre
 
 ## Implement a custom strategy
 
-Implement `IExtrapolationStrategy.Predict(PredictionRequest)` with a deterministic, non-mutating method. Emas invokes it once per eligible Ghost per Realm projection. The result supplies both pose channels and their velocities to packet correction and smoothing. Live settings edits reuse the previous presentation and its motion instead of evaluating the old strategy again. Separate explicit Realm projections can run within the same Unity frame and each receives its own prediction.
+Implement `IExtrapolationStrategy.Predict(PredictionRequest)` with a deterministic, non-mutating method. Emas invokes it once per eligible Ghost per Realm projection. The result supplies both pose channels and their velocities to presentation after all observation filters have finished. Live settings edits reuse the previous presentation and its motion instead of evaluating the old strategy again. Separate explicit Realm projections can run within the same Unity frame and each receives its own prediction.
 
 The request supplies an interpolated base `Position` and `Rotation`, independent `PositionSeconds` and `RotationSeconds`, and a time-aligned `ExtrapolationContext` for each channel. Intervals are nonnegative and already capped. Return an absolute `Prediction` in the same position coordinates and rotation representation. Its velocity uses source units per second; its angular velocity uses the world axes of the returned quaternion, in radians per second with Quaternion.AngleAxis signs. At zero duration, retain that channel's base pose. Retain missing channels as well.
 
@@ -349,7 +357,7 @@ public sealed class CustomVelocity : IExtrapolationStrategy
 }
 ```
 
-Each context contains raw accepted poses with their own timestamps, time-aligned observation pose/motion, supplied/estimated provenance, world/body angular convention and coordinate metadata. Both contexts are captured before the call. TryGetPositionSample, TryGetVelocitySample, TryGetRotationSample and TryGetAngularVelocitySample expose retained raw observations at or before ObservationTime for strategy-specific estimation. Read these bounded live views only during the strategy call; they allocate no memory and do not mutate or interpolate observations. SDK world angular samples remain ECEF even when the prepared AngularVelocity was converted to tangent axes. Newest motion timestamps may be later than effective sampled motion. Emas owns interpolation, timing limits and per-root histories.
+Each context contains filtered poses with their own timestamps, time-aligned observation pose/motion, supplied/estimated provenance, world/body angular convention and coordinate metadata. Both contexts are captured before the call. TryGetPositionSample, TryGetVelocitySample, TryGetRotationSample and TryGetAngularVelocitySample expose retained filtered observations at or before ObservationTime for strategy-specific estimation. Read these bounded live views only during the strategy call; they allocate no memory and do not mutate or interpolate observations. SDK world angular samples remain ECEF even when the prepared AngularVelocity was converted to tangent axes. Newest motion timestamps may be later than effective sampled motion. Emas owns interpolation, timing limits and per-root histories.
 
 A `[Serializable]` concrete class with a public parameterless constructor appears in the selector with its serialized settings. Runtime-only implementations need no serialization attribute. Null assignment is rejected; missing serialized references use the default strategy. Replace instances for a blended live transition; in-place setting edits are immediate. Finite-result overflows reported as `ArgumentOutOfRangeException` fall back to observed pose; other application exceptions propagate.
 

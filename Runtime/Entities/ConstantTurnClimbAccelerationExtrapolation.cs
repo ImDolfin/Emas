@@ -10,7 +10,7 @@ namespace Emas
     /// histories; acceleration alone cannot invent velocity. Geographic motion uses local east/up/north at the observation.
     /// Timing, caps and optional Smoothing remain caller-owned. Immutable instances may be shared.</remarks>
     [Serializable]
-    public sealed class ConstantTurnClimbAccelerationExtrapolation : IExtrapolationStrategy, IPredictionModel, IPacketSmoothingStrategy
+    public sealed class ConstantTurnClimbAccelerationExtrapolation : IExtrapolationStrategy, IPredictionModel
     {
         private struct Motion
         {
@@ -23,9 +23,6 @@ namespace Emas
             internal double TurnRate;
         }
 
-        [Tooltip("Cubic packet correction duration in unscaled seconds. Zero applies corrections immediately. Independent of the prediction limit.")]
-        [Min(0)]
-        [SerializeField] private float _packetSmoothingDuration = 0.1f;
         [Tooltip("Infer a steady level-turn rate from bank only when angular motion, supplied acceleration and trajectory history cannot provide it.")]
         [SerializeField] private bool _useBankAngleWhenRatesUnavailable = true;
         [HideInInspector]
@@ -34,20 +31,6 @@ namespace Emas
         private const double WindowSeconds = 0.25d;
         private const double MinimumInterval = 0.0001d;
         private const double MinimumSpeedSquared = 1e-8d;
-
-        /// <summary>Gets or sets the duration of cubic packet correction in unscaled seconds.</summary>
-        /// <value>A finite, nonnegative duration, defaulting to 0.1 seconds. Zero bypasses packet correction.</value>
-        /// <remarks>Assign a new strategy instance to blend changes to other model settings.</remarks>
-        /// <exception cref="ArgumentOutOfRangeException">The duration is negative or nonfinite.</exception>
-        public float PacketSmoothingDuration
-        {
-            get => _packetSmoothingDuration;
-            set
-            {
-                Smoothing.ValidateTime(value, nameof(value));
-                _packetSmoothingDuration = value;
-            }
-        }
 
         /// <summary>Gets or sets whether bank may supply a missing horizontal turn rate.</summary>
         /// <value>True by default. Angular motion, supplied normal acceleration and course history take priority.</value>
@@ -79,7 +62,7 @@ namespace Emas
 
         /// <summary>Predicts the complete pose and motion using this model.</summary>
         /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
-        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        /// <returns>The absolute source pose and its linear and angular velocity after observation filtering.</returns>
         public Prediction Predict(PredictionRequest request)
         {
             return PredictionEvaluator.Evaluate(request, this);

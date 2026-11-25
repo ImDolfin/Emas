@@ -10,29 +10,12 @@ namespace Emas
     /// Missing history falls back to Coordinated Turn; missing attitude uses world constant-acceleration prediction.
     /// Instances may be shared when their settings are immutable. Timing, prediction caps and optional Smoothing remain caller-owned.</remarks>
     [Serializable]
-    public sealed class ConstantTurnAccelerationExtrapolation : IExtrapolationStrategy, IPredictionModel, IPacketSmoothingStrategy
+    public sealed class ConstantTurnAccelerationExtrapolation : IExtrapolationStrategy, IPredictionModel
     {
-        [Tooltip("Cubic packet correction duration in unscaled seconds. Zero applies corrections immediately. Independent of the prediction limit.")]
-        [Min(0)]
-        [SerializeField] private float _packetSmoothingDuration = 0.1f;
         [Tooltip("Infer a steady level-turn rate from bank and horizontal speed only when no supplied or estimated angular rate is available.")]
         [SerializeField] private bool _useBankAngleWhenRatesUnavailable = true;
         [HideInInspector]
         [SerializeField] private float _gravity = 9.80665f;
-
-        /// <summary>Gets or sets the duration of cubic packet correction in unscaled seconds.</summary>
-        /// <value>A finite, nonnegative duration, defaulting to 0.1 seconds. Zero bypasses packet correction.</value>
-        /// <remarks>Correction may finish after the prediction cap. Assign a new strategy instance to blend other model changes.</remarks>
-        /// <exception cref="ArgumentOutOfRangeException">The duration is negative or nonfinite.</exception>
-        public float PacketSmoothingDuration
-        {
-            get => _packetSmoothingDuration;
-            set
-            {
-                Smoothing.ValidateTime(value, nameof(value));
-                _packetSmoothingDuration = value;
-            }
-        }
 
         /// <summary>Gets or sets whether missing angular rates may be inferred from bank and horizontal speed.</summary>
         /// <value>True by default. Supplied or estimated angular rates, including zero, override the bank fallback.</value>
@@ -64,7 +47,7 @@ namespace Emas
 
         /// <summary>Predicts the complete pose and motion using this model.</summary>
         /// <param name="request">Independently timed observations and bounded prediction intervals.</param>
-        /// <returns>The absolute source pose and its linear and angular velocity before smoothing.</returns>
+        /// <returns>The absolute source pose and its linear and angular velocity after observation filtering.</returns>
         public Prediction Predict(PredictionRequest request)
         {
             return PredictionEvaluator.Evaluate(request, this);

@@ -7,7 +7,7 @@ namespace Emas
     /// Use a serializable class to persist a strategy on an Extrapolation component.</remarks>
     public interface IExtrapolationStrategy
     {
-        /// <summary>Predicts both pose channels in one evaluation, before smoothing.</summary>
+        /// <summary>Predicts both pose channels in one evaluation, after observation filtering.</summary>
         /// <param name="request">Sampled base pose, independent bounded prediction intervals and time-aligned observations.</param>
         /// <returns>The complete predicted source pose and its linear and angular velocity.</returns>
         Prediction Predict(PredictionRequest request);
